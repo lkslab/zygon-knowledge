@@ -1,0 +1,10 @@
+--- a/Snakefile	2026-08-02 14:54:50.422903042 +0200
++++ b/Snakefile	2026-08-02 14:54:50.446996549 +0200
+@@ -84,6 +84,7 @@
+ include: "rules/build_electricity.smk"
+ include: "rules/build_sector.smk"
+ include: "rules/solve_electricity.smk"
++include: "rules/redispatch.smk"
+ include: "rules/postprocess.smk"
+ include: "rules/development.smk"
+ 

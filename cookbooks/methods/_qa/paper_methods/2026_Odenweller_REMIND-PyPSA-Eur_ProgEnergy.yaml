@@ -1,0 +1,197 @@
+paper: "2026_Odenweller_REMIND-PyPSA-Eur_ProgEnergy.pdf"
+tier: 1
+model_used: >
+  PyPSA-Eur v2025.07.0, power-system-only extraction from the full sector-coupled
+  model, 4 nodes (Germany), hourly resolution, perfect foresight, capacity expansion;
+  coupled with REMIND v3.5.1 (global IAM). 14 single-year networks solved per
+  iteration, covering REMIND timesteps 2030–2150.
+scope: >
+  Defines and demonstrates a bi-directional, price-based, iterative soft coupling
+  of the IAM REMIND and PyPSA-Eur to jointly optimise long-term cross-sectoral
+  mitigation pathways and short-term power system operation, applied to German
+  climate-neutrality-by-2045 scenarios with and without demand-side flexibility.
+methods:
+  - slug: soft-linking-with-iam
+    role: defines
+    evidence: >
+      "We combine the complementary strengths of REMIND, a long-term integrated
+      assessment model, and PyPSA-Eur, an hourly energy system model, through a
+      bi-directional, price-based and iterative soft coupling." (Abstract). Section 3
+      describes the full coupling interface; Section 3.3 formalises the iterative
+      workflow and convergence criteria.
+    procedure_notes: >
+      REMIND runs with perfect foresight 2030–2100 (plus buffer to 2150) in 5-year
+      steps to 2060, 10-year steps thereafter. For each REMIND iteration, 14
+      PyPSA-Eur networks (one per timestep) are solved in parallel. Convergence
+      defined as <5% relative change in all imported parameters for four consecutive
+      iterations. Anticipation factors applied heuristically to capacity factors and
+      market values to damp oscillations. REMIND-to-PyPSA direction passes: sectoral
+      electricity demands, installed capacities (as free capacity), capital/marginal
+      costs, CO2 prices, EV fleet size. PyPSA-to-REMIND direction returns: annual
+      capacity factors, peak residual load (backup sizing), supply-side market values
+      per technology, demand-side sectoral electricity prices, hydrogen/battery
+      storage parameters, grid losses. Key novelty over prior work: full price-based
+      coupling on both supply side (market values) and demand side (sectoral prices),
+      covering all REMIND timesteps, with sector-specific demand profiles and
+      demand-side flexibility.
+    variant: bidirectional-price-based-iterative
+    parameters:
+      convergence_threshold: "<5% relative change"
+      convergence_window: "4 consecutive iterations"
+      pypsa_timesteps_per_iteration: 14
+      remind_time_horizon: "2030–2150"
+      remind_version: "v3.5.1"
+      pypsa_eur_version: "v2025.07.0"
+      solver: "Gurobi 12.0.2 Barrier (no crossover)"
+
+  - slug: sector-coupled-network-assembly
+    role: routine-use
+    evidence: >
+      "We extract the power system from the full energy system model of PyPSA-Eur,
+      while also using sectoral demand profiles and flexibility settings from the full
+      model." (Sec. 2.2). Hydrogen, battery, EV, heat pump and resistive heating
+      buses are all linked to the main electricity bus (Figure 3).
+    procedure_notes: >
+      PyPSA-Eur is run in power-system-only mode but retains sectoral demand buses
+      for EVs, heat pumps, resistive heating, electrolytic hydrogen (end-use and
+      storage). Sector demands provided exogenously from REMIND/EDGE models; demand
+      profiles from PyPSA-Eur defaults or degree-day scaling. CO2 prices enter as
+      marginal cost components passed from REMIND. Unit commitment is turned off.
+    variant: null
+    parameters:
+      sectors: "electricity, EVs, heat pumps, resistive heating, hydrogen end-use and storage"
+      nodes: 4
+      temporal_resolution: "hourly, full-year"
+
+  - slug: demand-side-flexibility-representation
+    role: extends
+    evidence: >
+      "We include endogenous demand-side management for EVs, heat pumps, resistive
+      heating and electrolysers, building on the PyPSA-Eur approach extended with
+      sector-specific data from REMIND and detailed sector models." (Sec. 1.4, novelty
+      3). Table 2 gives scenario-specific flexibility settings for all four sectors.
+    procedure_notes: >
+      DSM scenario: electrolysers 10% minimum load, no ramping constraints; EVs have
+      60 kWh/car battery (fleet size from EDGE-T), 80% min charge at 7 AM, 50%
+      participation; heat pumps thermal storage E/P=3 h w.r.t. peak load (all units
+      flexible); resistive heating thermal storage E/P=2 h w.r.t. peak load. NoDSM
+      scenario: electrolysers 30% minimum load + ±5%/hour ramping limit; EVs follow
+      smoothed/time-shifted profile (no storage flexibility); heating demand met
+      instantly. Thermal storage implemented as equivalent electricity storage.
+    variant: multi-sector-thermal-and-ev
+    parameters:
+      ev_battery_size_kwh: 60
+      ev_min_soc_at_7am: "80%"
+      ev_flexible_fraction: "50%"
+      hp_thermal_storage_ep_ratio_h: 3
+      resistive_heating_ep_ratio_h: 2
+      electrolyser_min_load_dsm: "10%"
+      electrolyser_min_load_nodsm: "30%"
+      electrolyser_ramp_nodsm: "±5%/hour"
+
+  - slug: shadow-prices-and-marginal-values
+    role: extends
+    evidence: >
+      "We obtain market values for all generation technologies from PyPSA-Eur. These
+      represent the relative prices that generators receive for each unit of electricity
+      produced, reflecting the value of flexibility on the supply side." (Sec. 3.2.3).
+      Sectoral electricity prices are defined as the demand-side equivalent (Sec. 3.2.4).
+    procedure_notes: >
+      Market values computed as generation-weighted average of hourly nodal prices per
+      technology. Sectoral prices computed as demand-weighted average of hourly prices
+      per sector. Scarcity prices (>3 standard deviations above average) are removed
+      before calculating both metrics. Both are passed to REMIND as markups/markdowns
+      on the average electricity price (Figure 4, Figure 11). This is described as the
+      first IAM-ESM coupling to include a full price-based coupling for both supply and
+      demand side (Sec. 1.3).
+    variant: market-values-plus-sectoral-prices
+    parameters:
+      scarcity_price_filter: ">3 std deviations above average"
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "We run PyPSA-Eur in capacity expansion mode with installed capacities provided
+      by REMIND for free, using hourly resolution with perfect foresight across the
+      entire year." (Sec. 2.2). REMIND itself uses "perfect foresight ... to maximise
+      intertemporal welfare until 2100" (Sec. 2.1).
+    procedure_notes: >
+      Each PyPSA-Eur network covers a single target year with perfect foresight
+      (full 8760 hours). REMIND uses myopic coupling from its side: each iteration
+      it re-optimises the full 2030–2150 trajectory with perfect foresight given the
+      latest PyPSA-Eur feedback. PyPSA-Eur is not itself a myopic pathway model here;
+      it solves single years in parallel driven by REMIND's trajectory.
+    variant: single-year-perfect-foresight
+    parameters:
+      years_solved: "2030, 2035, 2040, 2045, 2050, 2055, 2060, 2070, 2080, 2090, 2100, 2110, 2130, 2150"
+      temporal_resolution: "hourly"
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "Carbon prices are iteratively adjusted until the respective targets are reached
+      and remain constant after 2045." (Sec. 4). REMIND imposes a global 1000 GtCO2
+      cumulative budget (2°C-compatible) and German interim and neutrality targets;
+      CO2 prices are passed to PyPSA-Eur as marginal cost components (Sec. 3.1.4).
+    procedure_notes: >
+      Emissions constraints operate in REMIND as the primary policy instrument; CO2
+      price is endogenously determined and transferred to PyPSA-Eur each iteration as
+      a component of marginal fuel costs for fossil generators. No separate PyPSA-Eur
+      CO2 cap is applied; the constraint lives in REMIND.
+    variant: iam-price-passed-to-esm
+    parameters:
+      global_budget_gtco2: 1000
+      germany_neutrality_year: 2045
+
+  - slug: transmission-expansion-cooptimisation
+    role: routine-use
+    evidence: >
+      "PyPSA-Eur calculates optimal transmission expansion and optimised power flows,
+      accounting for the spatial distribution of generation and demand. Grid transmission
+      losses are approximated and subtracted from REMIND's electricity balance equation."
+      (Sec. 3.2.6). Transmission expansion is endogenous in PyPSA-Eur (Sec. 1.4,
+      novelty 5).
+    procedure_notes: >
+      Four-node Germany model with AC and DC transmission (Figure 7b). Transmission
+      expansion is co-optimised with generation and storage inside each single-year
+      PyPSA-Eur solve. Grid losses are approximated (citing Neumann et al. 2022) and
+      fed back to REMIND's electricity balance. Hydrogen infrastructure is not included
+      in the current implementation (noted as a limitation in Sec. 5).
+    variant: null
+    parameters:
+      nodes: 4
+
+  - slug: storage-sizing-and-duration
+    role: routine-use
+    evidence: >
+      "PyPSA-Eur optimises the investment and dispatch of hydrogen and battery storage
+      technologies with perfect foresight for one year, covering daily and seasonal
+      balancing." (Sec. 3.2.5). Hydrogen underground storage capacity reaches 93–100
+      TWh by 2045 (Sec. 4.3, Figure 9b).
+    procedure_notes: >
+      Battery and hydrogen storage are sized endogenously by PyPSA-Eur; resulting
+      capacity factors, generation volumes and required capacities are passed to
+      REMIND for harmonisation. Hydrogen underground storage potentials taken from
+      PyPSA-Eur's cavern data. Battery and hydrogen storage capacities from REMIND
+      can optionally be imposed as free capacity in PyPSA-Eur (currently deactivated
+      as it increased solving time with no discernible impact). Pumped hydro storage
+      (PHS) is also modelled.
+    variant: null
+    parameters: {}
+
+  - slug: powerplant-matching-and-fleet-assembly
+    role: routine-use
+    evidence: >
+      "Among other data sources, PyPSA-Eur retrieves renewable potentials from the
+      atlite package and power plants from the powerplantmatching package." (Figure 2
+      caption). Capacity harmonisation is described in Sec. 3.1.2.
+    procedure_notes: >
+      For each REMIND timestep, PyPSA-Eur's existing power plant database is filtered
+      by planned decommissioning, then scaled down or left unchanged to match REMIND's
+      pre-investment capacities. If REMIND capacity exceeds the database total,
+      PyPSA-Eur endogenously locates additional free capacity. Early retirement is
+      modelled by scaling down the database proportionally.
+    variant: null
+    parameters: {}
+
+unmatched_methods: []

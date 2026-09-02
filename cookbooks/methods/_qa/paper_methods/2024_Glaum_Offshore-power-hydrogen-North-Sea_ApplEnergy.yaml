@@ -1,0 +1,159 @@
+paper: "2024_Glaum_Offshore-power-hydrogen-North-Sea_ApplEnergy.pdf"
+tier: 1
+model_used: >
+  PyPSA-Eur-Sec, 130 nodes (64 onshore + 66 offshore), sector-coupled, 3-hourly resolution,
+  single target year (2030 cost projections, carbon-neutral scenario), 33 European countries.
+scope: >
+  Co-optimises offshore HVDC power and hydrogen pipeline networks in the North Sea alongside
+  a full sector-coupled European energy system to assess cost-optimal offshore wind integration
+  topologies (point-to-point vs meshed, electricity vs hydrogen transport).
+methods:
+  - slug: sector-coupled-network-assembly
+    role: routine-use
+    evidence: >
+      "A key feature of our model is its sector-coupled approach, which integrates multiple
+      sectors including electricity, transport, industry, agriculture and heat." (Sec. 2.1).
+      The model minimises total investment and operational costs across all sectors jointly.
+    procedure_notes: >
+      Standard PyPSA-Eur sector-coupled setup extended with bespoke offshore nodes. Carriers
+      include electricity, hydrogen, heat, and Fischer-Tropsch/methanol/methane derivatives.
+      33 countries; 64 onshore + 66 offshore nodes. CO2 neutrality constraint applied.
+    variant: null
+    parameters: {countries: 33, onshore_nodes: 64, offshore_nodes: 66, resolution_h: 3}
+
+  - slug: carrier-network-routing-h2-co2
+    role: extends
+    evidence: >
+      "Each offshore region is also equipped with a corresponding offshore hydrogen platform.
+      Therefore, hydrogen has the same eligible offshore network topology as HVDC (Fig. 4),
+      just with hydrogen platforms and pipelines instead of HVDC infrastructure." (Sec. 2.2,
+      subsection 5). The model endogenously sizes and routes offshore hydrogen pipelines,
+      allowing P2P or meshed topologies.
+    procedure_notes: >
+      Offshore hydrogen platforms include electrolysis, substructure, and desalination unit
+      costing 440 €/kWel. Submarine hydrogen pipelines cost 0.5 €/kWH2/km with 1.9% loss
+      per 1000 km. Topology mirrors the offshore HVDC graph (Fig. 4). Four scenarios vary
+      network topology: no H2, P2P H2, meshed H2. Onshore H2 pipelines also included.
+    variant: offshore-meshed
+    parameters: {platform_cost_eur_per_kw: 440, pipeline_cost_eur_per_kw_per_km: 0.5,
+                 pipeline_loss_pct_per_1000km: 1.9}
+
+  - slug: transmission-expansion-cooptimisation
+    role: routine-use
+    evidence: >
+      "we optimize different technologies like wind, solar, heat pumps, power-to-X and
+      network infrastructure for a single year" (Sec. 2.1). The paper endogenously
+      co-optimises onshore AC transmission expansion and offshore HVDC link capacities
+      alongside generation; a 20 GW per-line cap is applied.
+    procedure_notes: >
+      Onshore transmission expansion scenarios tested: 100%, 110%, 130% of current, and
+      unconstrained optimal. Offshore HVDC cables at 0.9 €/kWel/km; offshore HVDC platforms
+      at 480 €/kWel; onshore HVDC converters at 120 €/kWel. All offshore NS connections
+      are HVDC (distance always >80 km). Piecewise-linear loss approximation for AC lines
+      (Sec. 2.2, Offshore power network); 2% constant + 2.3%/1000 km dynamic loss for DC.
+      No KVL for DC meshed offshore network (transport model, noted as limitation Sec. 6).
+    variant: null
+    parameters: {offshore_cable_cost_eur_per_kw_per_km: 0.9,
+                 per_line_expansion_cap_GW: 20}
+
+  - slug: land-eligibility-and-potentials
+    role: extends
+    evidence: >
+      "we increase the number of offshore nodes in the model, resulting in smaller offshore
+      regions… we divide the offshore regions into smaller segments, with a maximum size of
+      approximately 10,000 km²" (Sec. 2.2, subsection 1). Atlite is used for capacity factor
+      time series with ERA5 at 30×30 km; exclusion areas (nature reserves, shipping lanes)
+      applied at up to 100×100 m resolution.
+    procedure_notes: >
+      Three offshore wind technologies (near fixed-bottom: 1–30 km, <60 m depth; far
+      fixed-bottom: >30 km, <60 m depth; floating: >1 km, <1000 m depth) each with
+      separate potential and capacity factor time series per region. Wake losses modelled
+      piecewise: 9% for first 2 GW, 21% for next 10 GW, 32% beyond (Sec. 2.2, subsection 3).
+      Voronoi diagram allocates offshore shape to nodes.
+    variant: offshore-high-resolution
+    parameters: {max_offshore_region_km2: 10000, era5_resolution_km: 30,
+                 exclusion_area_resolution_m: 100}
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      "The spatial representation in our model includes 130 regions, 64 onshore regions
+      and 66 offshore regions." (Sec. 3). Offshore regions are subdivided using Voronoi
+      diagrams beyond the PyPSA-Eur default.
+    procedure_notes: >
+      Standard PyPSA-Eur k-means/Voronoi clustering for onshore (64 nodes). Offshore
+      clustering is bespoke: regions split to max ~10,000 km² to capture spatial variation
+      in capacity factors. The increase in offshore nodes relative to standard PyPSA-Eur is
+      the key spatial contribution of this paper.
+    variant: null
+    parameters: {total_nodes: 130, onshore_nodes: 64, offshore_nodes: 66}
+
+  - slug: temporal-aggregation-and-segmentation
+    role: routine-use
+    evidence: >
+      "We set the temporal resolution in the model to a 3-hourly resolution for one year.
+      In this way we have enough detail to capture the variability of renewable energy
+      resources and storage operation." (Sec. 3).
+    procedure_notes: >
+      3-hourly snapshots for a full year (2013 weather year, the PyPSA-Eur default). No
+      typical-period selection — full year at 3 h resolution. The choice is stated as a
+      trade-off between detail and computational cost.
+    variant: n-hourly
+    parameters: {resolution_h: 3, weather_year: 2013}
+
+  - slug: weather-year-ensembles
+    role: routine-use
+    evidence: >
+      "For weather data we take the weather year of 2013 which is the default year in
+      PyPSA-Eur." (Sec. 3). ERA5 reanalysis data and SARAH-2 data used via Atlite (Sec. 2.1).
+    procedure_notes: >
+      Single weather year (2013) only; no multi-year ensemble or sensitivity to weather
+      year choice is reported. Counts as routine-use because the paper made an explicit
+      single-year choice citing it as the model default.
+    variant: single-year
+    parameters: {weather_year: 2013, reanalysis: "ERA5 + SARAH-2"}
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "we optimize different technologies like wind, solar, heat pumps, power-to-X and
+      network infrastructure for a single year" (Sec. 2.1). "Our model is partially
+      greenfield which means there are only existing capacities for transmission lines,
+      hydropower, wind and solar." (Sec. 3).
+    procedure_notes: >
+      Overnight/single-target-year optimisation for a carbon-neutral 2030 scenario.
+      Partially greenfield: existing grid, hydro, wind and solar capacities are fixed;
+      all other capacity is greenfield. No myopic or perfect-foresight pathway.
+    variant: overnight-partial-greenfield
+    parameters: {target_year: 2030}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "The optimization model takes into account various essential constraints, such as
+      nodal energy balance, system CO2 emission limits" (Sec. 2.1). "we model the European
+      energy system considering 33 countries with a carbon-neutrality constraint" (Sec. 3).
+    procedure_notes: >
+      System-wide annual CO2 emission cap set to net-zero. Implemented as a single
+      system-level constraint (not per-country). No explicit CO2 price reported; the
+      cap's shadow price is an output (referenced indirectly in Appendix A.3 nodal prices).
+    variant: net-zero-cap
+    parameters: {co2_target: "net-zero"}
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: routine-use
+    evidence: >
+      "we perform a sensitivity analysis testing our results for robustness against
+      different uncertainties like the feasibility of large-scale onshore wind or
+      transmission expansion." (Sec. 1). Sec. 4.3 and Figs. 10–12 report the full sweep.
+    procedure_notes: >
+      Two-dimensional parameter sweep: onshore wind potential at 2.2, 4.4 and 8.8 TW
+      (25%, 50%, 100% of technical potential) crossed with onshore transmission expansion
+      at 100%, 110%, 130%, and unconstrained optimal. All four offshore network topology
+      scenarios run across this grid. One-at-a-time structure within each quadrant of
+      Figs. 10–12; results reported as cost difference relative to the most-constrained base.
+    variant: structured-grid
+    parameters: {onshore_wind_TW: [2.2, 4.4, 8.8],
+                 onshore_tx_expansion_pct: [100, 110, 130, "optimal"]}
+
+unmatched_methods: []

@@ -1,0 +1,296 @@
+# Frozen method vocabulary for the methods book.
+# ============================================================================
+# This is the SINGLE SOURCE OF TRUTH for three things:
+#   1. the slug list pass-1 paper-extraction agents may use (a fixed vocabulary
+#      stops 100 agents inventing 100 names for the same method),
+#   2. the regex bank sweep_corpus.py runs over the corpus (so `prevalence` is
+#      reproducible, not a one-off number in a card),
+#   3. the FAMILIES grouping generate_index.py renders INDEX.md from.
+#
+# Granularity rule: ONE CARD PER PROCEDURE YOU WOULD WRITE DIFFERENTLY.
+# Split when the algorithmic steps differ (myopic vs perfect foresight change the
+# constraint structure); make it a `variants:` entry inside a card when the
+# difference is a parameter or a post-processing choice (nH averaging vs TSAM).
+#
+# `sweep_regex` is a screening heuristic ONLY — it produces hints for pass 1 and
+# an auditable `prevalence.sweep_hits`. The authoritative paper->method mapping is
+# the hand-coded pass-1 pass; where they disagree, pass 1 wins and the card's
+# `prevalence.basis` says so.
+# ============================================================================
+
+families:
+  uncertainty-and-robustness: "Running the model many times, or over a set, to say something the single optimum cannot."
+  foresight-and-pathways: "How time-as-investment is represented: when you decide, what you inherit, what you discount."
+  spatial-resolution: "How geography becomes buses, zones and potentials — and what that aggregation destroys."
+  temporal-resolution: "How 8760+ hours become a tractable snapshot set, and which hours must survive."
+  grid-and-security: "The power-flow formulation, its expansion, and what happens when a line is lost."
+  markets-and-prices: "Reading duals as prices, and representing the instruments and products a market has."
+  sector-coupling: "Building the multi-carrier network: conversion, transport and trade between energy vectors."
+  storage: "Sizing energy vs power, and the distortions that follow from how you did it."
+  tooling-and-reproducibility: "The substrate layers: where a constraint is written, where the fleet comes from."
+
+methods:
+
+  # ── A. uncertainty-and-robustness ──────────────────────────────────────────
+  - id: mga-near-optimal-space
+    family: uncertainty-and-robustness
+    one_line: >
+      Map the set of systems within a cost slack epsilon of the optimum by
+      re-optimising the same feasible region against many alternative objectives.
+    sweep_regex: '\bmga\b|modell?ing to generate alternatives|near-?optimal (space|feasible|solution)|broad range'
+
+  - id: sensitivity-and-uncertainty-sweeps
+    family: uncertainty-and-robustness
+    one_line: >
+      Re-run the model over perturbed inputs — one-at-a-time, a structured grid,
+      or a sampled ensemble — and report how the answer moves.
+    sweep_regex: 'sensitivity analys|global sensitivity|latin hypercube|monte carlo|parameter sweep|uncertaint(y|ies) in (the )?(input|cost|assumption)'
+
+  - id: stochastic-and-robust-optimisation
+    family: uncertainty-and-robustness
+    one_line: >
+      Put the uncertainty inside the optimisation: two-stage recourse, scenario
+      trees, or a min-regret/max-min decision rule over an ensemble.
+    sweep_regex: 'stochastic (optimi|program|unit commitment)|two-?stage|recourse|scenario tree|robust optimi|min-?max regret|minimax'
+
+  # ── B. foresight-and-pathways ──────────────────────────────────────────────
+  - id: foresight-and-planning-horizons
+    family: foresight-and-pathways
+    one_line: >
+      Whether investment is decided once for a target year (overnight), horizon
+      by horizon without knowing the future (myopic), or for all horizons at once
+      (perfect foresight).
+    sweep_regex: 'myopic|perfect foresight|overnight (scenario|optimi|cost|invest)|greenfield|planning horizon|investment period|transition path'
+
+  - id: brownfield-and-capacity-vintaging
+    family: foresight-and-pathways
+    one_line: >
+      Carrying the existing fleet into the model with build years, ageing and
+      retirement, so expansion is additional rather than from scratch.
+    sweep_regex: 'brownfield|existing (capacit|fleet|power plant)|vintag|age(ing|-based) retirement|lifetime extension|committed (capacity|project)'
+
+  - id: endogenous-technology-learning
+    family: foresight-and-pathways
+    one_line: >
+      Make technology cost a decreasing function of cumulative deployment inside
+      the optimisation, rather than an exogenous per-year assumption.
+    sweep_regex: 'endogenous learning|learning (curve|rate)|experience curve|one-?factor learning|cost reduction with cumulative'
+
+  - id: discounting-and-cost-of-capital
+    family: foresight-and-pathways
+    one_line: >
+      Turning overnight capital cost into an annuity: discount rate, social vs
+      private, WACC, technology- and country-specific cost of capital.
+    sweep_regex: 'discount rate|social discount|annuit|weighted average cost of capital|\bwacc\b|cost of capital|capital recovery factor'
+
+  - id: soft-linking-with-iam
+    family: foresight-and-pathways
+    one_line: >
+      Coupling the energy-system model to an integrated assessment or macro model
+      by exchanging boundary quantities and iterating to consistency.
+    sweep_regex: 'soft-?link|hard-?link|\bremind\b|integrated assessment|\biam\b|model coupling|bidirectional coupling'
+
+  # ── C. spatial-resolution ──────────────────────────────────────────────────
+  - id: spatial-clustering-and-resolution
+    family: spatial-resolution
+    one_line: >
+      Reducing the full network to N representative buses (k-means, hierarchical,
+      administrative) — and what the aggregation biases.
+    sweep_regex: 'k-?means|hierarchical (agglomerative )?clustering|spatial (resolution|aggregation)|number of (nodes|clusters|regions)|busmap|network reduction|disaggregat'
+
+  # RETIRED 2026-08-05: the essay file is deleted — superseded by the
+  # flow-based-market-coupling / redispatch / investment-geography v2 specs
+  # and the locational-electricity-markets topic cards. Entry kept: paper
+  # evidence files and essay combines_with/requires_methods cross-refs
+  # resolve against this list, not against files on disk.
+  - id: zonal-nodal-and-redispatch
+    family: spatial-resolution
+    one_line: >
+      Representing the market as bidding zones rather than nodes, and the
+      redispatch/congestion-management stage that reconciles zonal schedules with
+      physical flows.
+    sweep_regex: 'zonal|bidding zone|nodal pricing|locational marginal|redispatch|congestion management|market splitting|flow-?based (market )?coupling'
+
+  - id: land-eligibility-and-potentials
+    family: spatial-resolution
+    one_line: >
+      Deriving installable capacity per region from land cover, protected areas,
+      slope and distance rules, then converting weather to capacity factors.
+    sweep_regex: 'land eligibility|land availability|installable potential|exclusion (zone|area|criteri)|\bglaes\b|\batlite\b|corine|copernicus|natura ?2000|capacity factor time series'
+
+  - id: distribution-and-voltage-aware-aggregation
+    family: spatial-resolution
+    one_line: >
+      Representing sub-transmission and distribution — a low-voltage layer, or an
+      aggregation that respects voltage levels rather than flattening them.
+    sweep_regex: 'distribution (grid|network|level)|low.voltage|voltage level|sub-?transmission|voltage-?aware|hosting capacity|\bmv\b/\blv\b'
+
+  # ── D. temporal-resolution ─────────────────────────────────────────────────
+  - id: temporal-aggregation-and-segmentation
+    family: temporal-resolution
+    one_line: >
+      Compressing 8760 hours: n-hourly averaging, typical periods, or adaptive
+      segmentation, with snapshot weightings that keep annual sums right.
+    sweep_regex: '\btsam\b|time.series aggregation|typical (day|period|week)|representative (day|period|week)|segmentation|snapshot weight|n-?hourly|temporal resolution'
+
+  - id: weather-year-ensembles
+    family: temporal-resolution
+    one_line: >
+      Running the same system design over many historical weather years to
+      separate design robustness from the luck of one year.
+    sweep_regex: 'weather year|multiple weather|inter-?annual variability|design year|\bera5\b|climate reanalysis|year-?to-?year variability'
+
+  - id: extreme-event-and-dunkelflaute-analysis
+    family: temporal-resolution
+    one_line: >
+      Identifying and stress-testing the binding low-renewable / high-demand
+      episodes, rather than trusting an average year to contain them.
+    sweep_regex: 'dunkelflaute|extreme (event|weather)|low.(wind|vre|renewable) (period|event)|cold spell|drought|resilience metric|stress test'
+
+  - id: operational-dispatch-and-rolling-horizon
+    family: temporal-resolution
+    one_line: >
+      Dispatch-only runs at fixed capacity, solved whole or in sequential
+      overlapping windows with limited foresight.
+    sweep_regex: 'rolling horizon|receding horizon|operational (dispatch|model|simulation)|dispatch-?only|production cost model|unit dispatch with fixed capacit|limited foresight'
+
+  # ── E. grid-and-security ───────────────────────────────────────────────────
+  - id: linearised-optimal-power-flow
+    family: grid-and-security
+    one_line: >
+      The DC/linearised power-flow formulation itself — cycle vs angle
+      formulations, PTDFs, and the linearisation of losses.
+    sweep_regex: 'linear(ised|ized)? optimal power flow|\blopf\b|\bdc\b (load|power) flow|cycle flow|\bptdf\b|kirchhoff|susceptance|transmission loss'
+
+  - id: transmission-expansion-cooptimisation
+    family: grid-and-security
+    one_line: >
+      Co-optimising line and link capacity with generation, under a volume or
+      cost cap, including the iterative impedance update that keeps it consistent.
+    sweep_regex: 'transmission expansion|grid expansion|line volume|network reinforcement|interconnect(or|ion) (capacity|expansion)|transmission (cap|limit|volume) (constraint|cap)|iterative'
+
+  - id: n-1-security-and-contingency
+    family: grid-and-security
+    one_line: >
+      Keeping the system feasible after the loss of any single element — as a
+      derating margin, or as explicit contingency constraints.
+    sweep_regex: '\bn-1\b|\bn-?1\b security|contingency|security-?constrained|\bsclopf\b|outage constraint|s_max_pu|security margin'
+
+  - id: cascading-failure-analysis
+    family: grid-and-security
+    one_line: >
+      Post-hoc propagation of an initial outage through overload and tripping —
+      a simulation on a solved network, not an optimisation.
+    sweep_regex: 'cascading (failure|outage)|line outage distribution|overload propagation|blackout|critical infrastructure failure|tripping'
+
+  # ── F. markets-and-prices ──────────────────────────────────────────────────
+  - id: shadow-prices-and-marginal-values
+    family: markets-and-prices
+    one_line: >
+      Reading the dual variables of the optimisation as prices and marginal
+      values — and doing it correctly under weighting, clustering and aggregation.
+    sweep_regex: 'shadow price|dual variable|marginal (price|value|cost of)|market value|lagrang|\bkkt\b|capture (price|rate)|value factor'
+
+  - id: price-formation-and-scarcity-rents
+    family: markets-and-prices
+    one_line: >
+      Where prices come from in a system with near-zero marginal costs: scarcity
+      rents, storage arbitrage, and cost recovery for zero-fuel-cost assets.
+    sweep_regex: 'price formation|scarcity (price|rent)|price duration|zero marginal cost|cost recovery|inframarginal rent|price spike|revenue sufficiency'
+
+  - id: carbon-constraints-and-pricing
+    family: markets-and-prices
+    one_line: >
+      The two interchangeable policy instruments: an emissions cap (annual or
+      cumulative budget) versus an emissions price, and their shadow relationship.
+    sweep_regex: 'co2 (cap|limit|budget|price|constraint)|carbon (cap|budget|price|tax)|emission (cap|limit|price|budget|constraint)|carbon dioxide (cap|budget)'
+
+  - id: balancing-and-ancillary-services
+    family: markets-and-prices
+    one_line: >
+      Representing reserve and balancing products — procurement volumes, reserve
+      co-optimisation, and the sequential market stages after the day-ahead.
+    sweep_regex: 'balancing (market|energy|reserve|service)|ancillary service|reserve (market|requirement|procurement|product)|frequency (response|containment)|\bafrr\b|\bmfrr\b|spinning reserve|operating reserve'
+
+  - id: unit-commitment-and-ramping
+    family: markets-and-prices
+    one_line: >
+      Binary on/off status with start-up costs, minimum load, minimum up/down
+      times and ramp limits — and its linear relaxation.
+    sweep_regex: 'unit commitment|start-?up cost|minimum (load|up|down) time|ramp(ing)? (rate|limit|constraint)|must-?run|part-?load efficiency|committable'
+
+  - id: additionality-and-24-7-matching
+    family: markets-and-prices
+    one_line: >
+      Constraining a consumer's procurement to match its consumption in time and
+      space — hourly matching, additionality, and temporal-correlation rules.
+    sweep_regex: '24/7|24-7|hourly matching|temporal (matching|correlation)|additionality|carbon-?free energy (procurement|score)|\bcfe\b|geographic correlation|delegated act'
+
+  - id: cost-allocation-and-equity-metrics
+    family: markets-and-prices
+    one_line: >
+      Attributing system cost, benefit and burden across regions, countries or
+      households, and measuring the resulting distributional outcome.
+    sweep_regex: 'cost allocation|burden shar|distributional (effect|impact|outcome)|equity|fairness|regional (benefit|cost) distribution|just transition|affordability|gini'
+
+  # ── G. sector-coupling ─────────────────────────────────────────────────────
+  - id: sector-coupled-network-assembly
+    family: sector-coupling
+    one_line: >
+      Building the multi-carrier network itself: carrier buses, conversion links
+      with efficiencies, and a shared CO2 accounting bus.
+    sweep_regex: 'sector.?coupl|multi-?(sector|carrier|energy)|energy system model with (heat|transport|industry)|cross-?sector|integrated energy system|efficiency of conversion link'
+
+  - id: carrier-network-routing-h2-co2
+    family: sector-coupling
+    one_line: >
+      Endogenous routing and sizing of hydrogen and CO2 pipeline networks,
+      including retrofit of existing gas infrastructure.
+    sweep_regex: 'hydrogen (network|pipeline|backbone)|h2 (network|pipeline)|co2 (network|pipeline|transport)|repurpos|retrofit(ted)? (gas|pipeline)|pipeline routing'
+
+  - id: demand-side-flexibility-representation
+    family: sector-coupling
+    one_line: >
+      Making demand shiftable: EV smart charging and V2G, thermal inertia,
+      industrial load shifting, and the restriction parameters that bound them.
+    sweep_regex: 'demand.side (management|response|flexibilit)|\bdsm\b|load shifting|smart charging|\bv2g\b|vehicle-?to-?grid|flexible (demand|load)|behavioural flexibilit'
+
+  - id: import-and-trade-representation
+    family: sector-coupling
+    one_line: >
+      Representing imports of energy carriers and green commodities from outside
+      the modelled region, with price, volume and emissions accounting.
+    sweep_regex: 'import (of )?(hydrogen|green|energy carrier|steel|ammonia|methanol)|energy import|synthetic fuel import|power-?to-?x import|exporter|trade of (green|energy)|import (price|limit|dependenc)'
+
+  # ── H. storage ─────────────────────────────────────────────────────────────
+  - id: storage-sizing-and-duration
+    family: storage
+    one_line: >
+      Sizing energy and power capacity independently or at fixed duration, across
+      short-duration to seasonal storage — and the distortions each choice causes.
+    sweep_regex: 'storage (sizing|duration|capacity)|energy-?to-?power|max_hours|long.duration storage|\bldes\b|seasonal storage|cyclic state of charge|storage arbitrage'
+
+  # ── I. tooling-and-reproducibility ─────────────────────────────────────────
+  - id: custom-constraints-with-linopy
+    family: tooling-and-reproducibility
+    one_line: >
+      Where a bespoke constraint actually goes: the extra_functionality hook and
+      the linopy expression API that every L5 rung in this book lands on.
+    sweep_regex: '\blinopy\b|extra_functionality|custom constraint|additional constraint (is |was )?(added|imposed|implemented)|constraint formulation in|pyomo'
+
+  - id: powerplant-matching-and-fleet-assembly
+    family: tooling-and-reproducibility
+    one_line: >
+      Assembling the existing generation fleet by reconciling several
+      overlapping power-plant databases into one deduplicated set.
+    sweep_regex: 'powerplantmatching|power plant match|\bopsd\b|\bgeo\b database|entsoe.*(capacit|plant) (list|database)|plant.level database|deduplicat'
+
+  # ADDED at pass 1.5 (see RECONCILE.md): four papers do model validation as their
+  # method and had to log it under `unmatched_methods` because no slug existed. The
+  # original sweep_regex for this concept was broken (0 hits) — see RECONCILE.md.
+  - id: model-validation-and-backtesting
+    family: tooling-and-reproducibility
+    one_line: >
+      Testing the model against observed reality — hindcasting historical dispatch
+      or prices, bias-correcting profiles, and calibrating network capacities.
+    sweep_regex: 'validat(e|ed|ing|ion) against|compar(ed|ison) (with|to|against) (historical|observed|actual|reported)|hindcast|backtest|recreate realit|bias correction|calibrat(e|ed|ion) (to|against)|\bsmape\b|\bmape\b|\brmse\b|goodness of fit'

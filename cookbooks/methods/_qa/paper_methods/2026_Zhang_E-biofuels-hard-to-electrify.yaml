@@ -1,0 +1,169 @@
+paper: "2026_Zhang_E-biofuels-hard-to-electrify.pdf"
+tier: 1
+model_used: >
+  PyPSA-Eur (sector-coupled, v2025.04.0), 39 nodes, 3-hourly temporal resolution,
+  full year, overnight greenfield, covering EU-27 + UK + Norway + Switzerland + Balkans.
+scope: >
+  System-integrated assessment of e-biofuels (hydrogen-augmented biomass-to-liquid
+  pathways) as a cost-effective option for supplying liquid fuels in hard-to-electrify
+  aviation and shipping sectors in a net-zero European energy system, under varying
+  carbon sequestration capacity, biomass availability, and renewable-fuel mandates.
+methods:
+  - slug: sector-coupled-network-assembly
+    role: routine-use
+    evidence: >
+      "PyPSA-Eur is an open-source, sector-coupled, full European energy system
+      optimization model based on linear programming. It encompasses the power sector,
+      transport (including shipping and aviation), space and water heating, industry, and
+      industrial feedstocks." (Methods: PyPSA-Eur model section). Four new e-biofuel
+      conversion links were added to the existing multi-carrier network: e-biomass-to-liquid,
+      e-biomethanol, e-biogas-methanol, and e-bioSNG.
+    procedure_notes: >
+      The model co-optimises capacity expansion and operation across electricity, hydrogen,
+      gas, biomass and liquid-fuel carriers. A new carbon–energy allocation framework was
+      formulated to represent e-biofuel production (Eqs. 1–17), generalised from
+      Fischer–Tropsch to methanol and SNG pathways. Conversion efficiencies and capital
+      costs for each e-biofuel technology were parameterised from published techno-economic
+      studies (Methods: Parametrisation of e-biofuel technologies).
+    variant: null
+    parameters: {nodes: "39", temporal_resolution: "3-hourly", year: "2040 costs (€2015)", discount_rate: "7%"}
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "A 39-node spatial resolution and a 3-hourly temporal resolution were applied over
+      a full year in overnight greenfield scenarios, chosen as a trade-off between
+      computational effort and the difference in results compared to a 1-hour resolution."
+      (Methods: PyPSA-Eur model section).
+    procedure_notes: >
+      Single target-year (2050) greenfield optimisation; no myopic pathway or perfect
+      foresight multi-period formulation. All capacity decisions made simultaneously for
+      the single horizon.
+    variant: overnight-greenfield
+    parameters: {target_year: "2050", planning_approach: "overnight greenfield"}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      The model enforces net-zero emissions targets and sweeps carbon sequestration (CS)
+      capacity as the primary structural parameter: "we explore a wide range of CS
+      availability levels: 140, 200, 250, 300, 350, 400, 600, 800, and 1000 Mt CO2 a−1"
+      (Methods: Key assumptions and scenarios). Shadow prices of CO2 are reported as
+      outputs (Fig. S2).
+    procedure_notes: >
+      An annual cap on geological carbon sequestration constrains the amount of fossil
+      fuel permitted in the net-zero system; no explicit carbon price is imposed — the
+      CO2 shadow price emerges endogenously from the sequestration constraint. Renewable-
+      fuel mandate constraints for aviation (70% SAF share; 35% RFNBO sub-target, Eqs.
+      18–19) and shipping (80% renewable share, Eq. 20) were also implemented as
+      additional policy-scenario constraints.
+    variant: null
+    parameters: {co2_sequestration_range_Mt_per_yr: "140–1000", saf_mandate: "70% by 2050", rfnbo_sub_mandate: "35% by 2050", shipping_mandate: "80% renewable"}
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: routine-use
+    evidence: >
+      "Sensitivity analyses first explore the effects of varying biomass import
+      availability, H2 resources, and CO2 sequestration potential (Fig. 6)." (Results:
+      Sensitivity of e-biofuels to system and policy uncertainties). Additional sweeps
+      vary emissions-reduction target, presence of H2/CO2 networks, domestic biomass
+      availability, and e-biofuel capital costs (Fig. 7).
+    procedure_notes: >
+      One-at-a-time and structured grid sweeps: three electrolyser capacity limits
+      (1800, 2500, 3500 TWh/a) × three biomass import levels (0, 1390, 2500 TWh/a) ×
+      three CO2 sequestration levels (200, 300, 500 Mt/a) = 27 combinations (Fig. 6,
+      Fig. S7). Additional one-at-a-time sweeps: emissions targets (−80% to −110%),
+      CO2/H2 network availability, domestic biomass tier (low vs medium JRC ENSPRESO),
+      and +20% e-biofuel capital cost.
+    variant: null
+    parameters: {electrolyser_capacity_limits_TWh_per_yr: "1800, 2500, 3500", biomass_import_levels_TWh_per_yr: "0, 1390, 2500", co2_seq_levels_Mt_per_yr: "200, 300, 500", capital_cost_shock: "+20%"}
+
+  - slug: shadow-prices-and-marginal-values
+    role: routine-use
+    evidence: >
+      "By valuing each liquid-fuel pathway using system shadow prices which reflect
+      scarcity rent, we show that the system value of carbon governs the liquid fuel merit
+      order" (Results: Carbon system value governs the liquid-fuel merit order, Fig. 4).
+      CO2 and biomass shadow prices are reported in Fig. S2.
+    procedure_notes: >
+      Dual variables of the CO2 sequestration constraint and the biomass supply constraint
+      are extracted and used to construct a merit-order chart comparing biofuels, e-biofuels,
+      e-fuels and fossil fuels. Spatial and temporal heterogeneity across nodes and time
+      steps drives the cost ranges shown in Fig. 4. Shadow prices of CO2 are compared
+      across CS-availability scenarios (Fig. S2).
+    variant: null
+    parameters: {}
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      "A 39-node spatial resolution and a 3-hourly temporal resolution were applied …
+      A country-level spatial resolution was adopted for computational feasibility."
+      (Methods: PyPSA-Eur model section).
+    procedure_notes: >
+      39 nodes corresponding to EU-27 + UK + Norway + Switzerland + Balkans at country
+      level. Biomass residue potentials from JRC ENSPRESO explicitly represented at the
+      nodal level. The authors acknowledge that coarse spatial resolution may affect
+      infrastructure-dependent outcomes (Limitations section).
+    variant: null
+    parameters: {nodes: "39", aggregation: "country-level"}
+
+  - slug: transmission-expansion-cooptimisation
+    role: routine-use
+    evidence: >
+      "transmission expansion was constrained to at most 1.5 times the total line volume
+      in 2022" (Methods: PyPSA-Eur model section). One sensitivity scenario co-optimises
+      CO2 and hydrogen transport networks (Fig. 7b).
+    procedure_notes: >
+      Electricity transmission capacity expansion is co-optimised subject to a volume cap
+      of 1.5× the 2022 line volume. A lossy electricity transmission model is used.
+      Separately, a sensitivity run adds endogenous H2 and CO2 pipeline network
+      expansion; its exclusion from the baseline is noted as affecting absolute results
+      (Limitations).
+    variant: null
+    parameters: {transmission_cap_factor: "1.5×2022 volume"}
+
+  - slug: carrier-network-routing-h2-co2
+    role: routine-use
+    evidence: >
+      "If CO2 and hydrogen infrastructure are co-optimised, the effect of including
+      e-biofuels decreases; their deployment share decreases by up to 6%"
+      (Results: Sensitivity, Fig. 7b). The paper distinguishes a baseline without H2/CO2
+      networks from a sensitivity case with them.
+    procedure_notes: >
+      In the baseline scenarios no explicit H2 or CO2 pipeline network is modelled; H2
+      and CO2 are treated as locally balanced at each node. A sensitivity scenario adds
+      co-optimised CO2 and hydrogen transport; the paper reports that this reduces
+      e-biofuel deployment by up to 6% and system cost reduction to at most 0.5%
+      (Methods: Key assumptions; Results: Fig. 7b).
+    variant: null
+    parameters: {}
+
+  - slug: discounting-and-cost-of-capital
+    role: routine-use
+    evidence: >
+      "A uniform discount rate of 7% is applied across all countries."
+      (Methods: PyPSA-Eur model section).
+    procedure_notes: >
+      Single uniform social discount rate of 7% applied to annualise capital costs for
+      all technologies and countries. Technology costs and efficiencies taken from the
+      PyPSA technology dataset v0.12.0 for 2040 in €2015.
+    variant: null
+    parameters: {discount_rate: "7%", cost_year: "2040 (€2015)", dataset: "PyPSA technology dataset v0.12.0"}
+
+  - slug: import-and-trade-representation
+    role: routine-use
+    evidence: >
+      "Additionally, imports of more expensive solid biomass are allowed" (Methods:
+      PyPSA-Eur model section). Sensitivity sweeps biomass import at 0, 1390, and
+      2500 TWh/a (Fig. 6).
+    procedure_notes: >
+      Solid biomass imports from outside Europe are permitted at a higher cost than
+      domestic residues; import quantity is an endogenous optimisation variable bounded
+      by the sweep parameter. Liquid fuel imports (biofuels, e-fuels, e-biofuels) and
+      liquid hydrogen imports are excluded by assumption; this is flagged as a limitation.
+      Upstream emissions from biomass imports are not considered.
+    variant: null
+    parameters: {biomass_import_levels_TWh_per_yr: "0, 1390, 2500"}
+
+unmatched_methods: []

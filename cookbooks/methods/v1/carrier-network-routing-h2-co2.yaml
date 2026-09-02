@@ -1,0 +1,1362 @@
+id: carrier-network-routing-h2-co2
+title: "Endogenous carrier-network routing and sizing (H2 and CO2 pipelines)"
+summary: >
+  Make hydrogen and CO2 pipeline capacities decision variables on a candidate graph
+  between regions, so the optimiser decides where the network goes, how thick each
+  segment is, and whether an existing methane pipe is repurposed instead.
+question: >
+  Where should the hydrogen and CO2 pipelines go, how much capacity does each corridor
+  need, and is it cheaper to retrofit the gas grid or to transport the electricity?
+aliases:
+  - "hydrogen network"
+  - "hydrogen backbone"
+  - "H2 pipeline network"
+  - "CO2 network"
+  - "carbon dioxide transport network"
+  - "pipeline repurposing"
+  - "gas network retrofitting"
+  - "gas-to-hydrogen conversion of pipelines"
+  - "carrier network co-optimisation"
+  - "multi-carrier transmission expansion"
+  - "point-to-point vs meshed"
+  - "CO2 transport and storage (CTS) infrastructure"
+when_to_use:
+  - "where should we build the hydrogen backbone"
+  - "is it cheaper to move hydrogen or to move electricity"
+  - "can we reuse the existing gas pipelines for hydrogen"
+  - "how much of the gas grid would be repurposed"
+  - "do we need a CO2 pipeline network to reach the storage sites"
+  - "where does captured CO2 go and how does it get there"
+  - "what does the system cost if no hydrogen network is allowed"
+  - "how many GW per corridor, and how many actual pipelines is that"
+  - "should the offshore wind come ashore as electricity or as hydrogen"
+  - "compare a meshed network against point-to-point connections"
+  - "how much does the H2 network reduce electricity grid expansion"
+family: sector-coupling
+prevalence:
+  papers: 16
+  tier1: 11
+  tier2: 5
+  sweep_hits: 41
+  basis: >
+    Hand-coded pass 1 over all 100 PDFs (2026-07-25) found 16 papers that actually put
+    a carrier pipeline capacity in the decision vector. The regex screen returned 41,
+    over-counting badly: its pattern matches "retrofit" (buildings), "repurpos" (salt
+    caverns, sites) and any mention of a hydrogen backbone in a related-work paragraph.
+    The role split is the story here — only 1 `extends` and 4 `canonical-use` against
+    11 `routine-use`. This is a SETTLED method: PyPSA-Eur ships it working, so most
+    papers just switch it on and report the resulting network. Three papers in the
+    slice were flagged as mention-only suspects (Dergunova, Seibold, Glaum-Methanol)
+    and all three were KEPT after judging: each endogenously sizes pipeline capacity
+    (a tree topology across 15 GB clusters; new-plus-retrofit H2 with a 20 GW per-link
+    cap; five scenarios over which of H2/CH4/CO2 networks exist plus a
+    post-discretization sensitivity). The flag fired on their prose disclaiming a
+    DIFFERENT carrier, not on the method.
+procedure:
+  - step: >
+      Build the candidate graph. Nobody optimises over all node pairs: the candidate
+      edge set is inherited from an existing topology. The corpus uses three sources —
+      the clustered real gas grid (SciGRID_gas / IGGIELGN in Europe, GGIT globally),
+      the electricity transmission topology projected onto carrier buses, or a
+      published project list (PCI-PMI). Edge length is haversine distance times a
+      detour factor of 1.25 to account for non-straight routing.
+    handle: "create_network_topology(n, prefix, carriers=[...]) / build_clustered_gas_network(..., length_factor=1.25)"
+    provenance: "scripts/prepare_sector_network.py:create_network_topology; scripts/cluster_gas_network.py:build_clustered_gas_network"
+  - step: >
+      Give each carrier its own bus per region so a flow between regions is meaningful
+      at all. This is the prerequisite the card does NOT own — see
+      sector-coupled-network-assembly. Its per-carrier spatial switches decide whether
+      the routing problem exists: collapse CO2 to one EU bus and the CO2 network
+      becomes a set of self-loops.
+    handle: "define_spatial (co2_spatial / gas_network switch the bus set)"
+    provenance: "scripts/prepare_sector_network.py:define_spatial"
+  - step: >
+      Add one extendable Link per candidate edge, with capital_cost proportional to
+      length and p_min_pu = -1 so a single variable serves both directions. Reported
+      unit costs in the corpus: new H2 onshore 250-304 EUR/MW/km, retrofitted H2 117
+      EUR/MW/km, submarine H2 0.5 EUR/kW/km, CH4 87 EUR/km/MW, CO2 onshore 2116
+      EUR/km/(tCO2/h).
+    handle: "n.add('Link', ..., p_nom_extendable=True, p_min_pu=-1, capital_cost=length*cost)"
+    provenance: "scripts/prepare_sector_network.py:add_h2_gas_infrastructure; scripts/prepare_sector_network.py:add_co2_network"
+  - step: >
+      (retrofit variant) Add a PARALLEL H2 link on every existing methane edge, capped
+      at a fixed fraction of the methane pipe's capacity — 60% in the PyPSA family,
+      80% in pypsa-earth's hardcoded variant — priced at the repurposing cost, and make
+      the parent methane link extendable downward (p_nom_min = 0) so decommissioning is
+      a decision.
+    handle: "sector.H2_retrofit + H2_retrofit_capacity_per_CH4"
+    provenance: "scripts/prepare_sector_network.py:H2_retrofit_capacity_per_CH4"
+  - step: >
+      (retrofit variant, THE technically interesting constraint) Couple the two: the
+      retrofitted H2 capacity and the surviving methane capacity share one physical
+      pipe. p_nom(gas) + (1/ratio) * p_nom(H2_retrofitted) == p_nom_today(gas), as an
+      EQUALITY, per edge. Without it retrofit is free capacity: you get the H2 pipe AND
+      the methane pipe out of one steel tube.
+    handle: "add_pipe_retrofit_constraint (called from extra_functionality)"
+    provenance: "scripts/solve_network.py:add_pipe_retrofit_constraint"
+  - step: >
+      Apply length-dependent transport losses and compression electricity. Because a
+      lossy link cannot be bidirectional in one variable, the bidirectional link is
+      SPLIT into a forward link and a mirrored '-reversed' twin carrying capital_cost=0
+      and length=0 (the true length preserved in a new `length_original` column), with
+      the two capacities forced equal at solve time. Corpus values: H2 1.2-2% per
+      1000 km, CO2 0.8% per 1000 km, CO2 compression 250 kWh/t per 1000 km.
+    handle: "lossy_bidirectional_links + add_lossy_bidirectional_link_constraints"
+    provenance: "scripts/prepare_sector_network.py:lossy_bidirectional_links; scripts/solve_network.py:add_lossy_bidirectional_link_constraints"
+  - step: >
+      (CO2 variant) Terminate the CO2 graph in sinks with real potential: per-region
+      sequestration stores sized from a geological database with a per-tonne injection
+      cost, plus a system-wide annual injection budget. Without a spatially bounded
+      sink the CO2 network has nothing to route TO and DAC anywhere is as good as
+      capture at the source.
+    handle: "sector.regional_co2_sequestration_potential + add_co2_sequestration_limit"
+    provenance: "scripts/build_co2_sequestration_potentials.py:create_capacity_map_storage; scripts/solve_network.py:add_co2_sequestration_limit"
+  - step: >
+      Co-optimise the whole thing with generation, conversion, storage and the
+      ELECTRICITY network in one LP. The finding the literature cares about is the
+      substitution between the carrier network and the power grid, which only appears
+      if both are extendable in the same solve.
+    handle: "the standard solve; electricity.transmission_limit governs the power-grid half"
+    provenance: "scripts/prepare_network.py:set_transmission_limit"
+  - step: >
+      Run the scenario cross: {no network} x {network} per carrier. Every corpus paper
+      does this rather than reporting one network, because the answer of interest is
+      the network's system VALUE, not its shape. Reported deltas are small and
+      consistent: 0.5% of cumulative cost for the H2 network alone.
+    handle: "sector.{H2_network,co2_network,gas_network} booleans; sector_opts noH2network token"
+    provenance: "scripts/_helpers.py:noH2network"
+  - step: >
+      (optional post-processing) Discretise the continuous corridor capacities into
+      integer pipeline counts: solve continuously, round segments above a threshold
+      share to a unit size (1200 MW per H2 pipeline), fix, and re-solve dispatch. A
+      "37.4 GW corridor" is not an answer an infrastructure planner can act on.
+    handle: "solving.options.post_discretization.link_unit_size"
+    provenance: "scripts/solve_network.py:post_discretization"
+  - step: >
+      Extract the result as network volume (sum of p_nom_opt * length, in TWkm), the
+      retrofit share of that volume, and per-corridor capacities — after excluding the
+      '-reversed' twins, which would double every number.
+    handle: null
+    provenance: null
+variants:
+  - id: greenfield-routing-on-candidate-graph
+    what: >
+      New-build pipelines only, on a candidate edge set inherited from an existing
+      topology (the gas grid, or the electricity graph when there is no gas grid).
+      Capacity continuous, cost linear in length. The default entry point and what most
+      of the corpus runs; it is also what you fall back to when retrofit is disabled
+      for tractability.
+    papers:
+      - "2022_Victoria_Speed-technological-transformations_Joule.pdf"
+      - "2025_Neumann_Green-energy-steel-imports-net-zero_NatComms.pdf"
+      - "2025_Lindner_PyPSA-DE_EEM.pdf"
+      - "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+      - "2026_Glaum_Minimal-Methanol-Backstop_Joule.pdf"
+      - "2023_Dergunova_great-britain-hydrogen-infrastructure.pdf"
+  - id: gas-network-retrofit
+    what: >
+      The interesting variant. A parallel H2 link on every methane edge, capped at a
+      fraction of the parent pipe (60%), priced at roughly half the new-build cost
+      (117 vs 250 EUR/MW/km), and coupled to the surviving methane capacity by an
+      EQUALITY constraint so one tube cannot serve both. The coupling is what makes
+      "decommission methane to gain hydrogen" a real trade-off rather than free
+      capacity, and it is why the corpus reports retrofit shares (63.5-69.1% of network
+      volume) rather than just totals.
+    papers:
+      - "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+      - "2025_Seibold_Germany-Industry-Transformation.pdf"
+  - id: co2-transport-to-sequestration-sites
+    what: >
+      The same graph problem on the captured-carbon carrier, but the objective is
+      geographic: connect inland capture points to coastal/offshore geological storage
+      and to synthetic-fuel synthesis sites. Requires spatially resolved CO2 buses AND
+      a regional sequestration potential map — without the bounded sink the routing is
+      vacuous. The corpus finding is that a CO2 network makes expensive DAC largely
+      redundant, because captured CO2 can reach the sink instead.
+    papers:
+      - "2025_Hofmann_H2-CO2-Network-Strategies_NatEnergy.pdf"
+      - "2026_Fernandes_carbon-dioxide-removal-decarbonise.pdf"
+      - "2026_Xiong_Projects-of-Common-Interest_ERL.pdf"
+      - "2026_Zhang_E-biofuels-hard-to-electrify.pdf"
+      - "2024_Chanal_carbon-capture-solvent-cost-energy-system.pdf"
+      - "2025_Seibold_Germany-Industry-Transformation.pdf"
+  - id: discrete-vs-continuous-pipeline-capacity
+    what: >
+      Post-processing the continuous corridor capacities into integer pipeline counts
+      at a fixed unit size (1200 MW per H2 pipeline), or imposing the integrality as a
+      per-link cap expressed in whole pipelines (50.7 GW = three 48-inch; 20 GW = one
+      48-inch plus one 36-inch). The cheap route is round-then-refix, not a MILP.
+      Reported as a sensitivity rather than a headline, but it is the difference
+      between a number a planner can build and one they cannot.
+    papers:
+      - "2026_Glaum_Minimal-Methanol-Backstop_Joule.pdf"
+      - "2025_Neumann_Green-energy-steel-imports-net-zero_NatComms.pdf"
+      - "2025_Seibold_Germany-Industry-Transformation.pdf"
+  - id: point-to-point-vs-meshed
+    what: >
+      Restrict the candidate graph rather than the capacities: allow only radial
+      connections from each production site to shore/hub (point-to-point), versus
+      allowing the full neighbour graph (meshed), and read the cost difference. The
+      offshore application is where this bites — an offshore H2 graph mirroring the
+      offshore HVDC graph, with the H2-vs-electricity choice made per corridor. Also
+      the shape of the GB study's tree-versus-star topology decision.
+    papers:
+      - "2024_Glaum_Offshore-power-hydrogen-North-Sea_ApplEnergy.pdf"
+      - "2023_Dergunova_great-britain-hydrogen-infrastructure.pdf"
+      - "2023_Tries_Islanding-Green-Hydrogen.pdf"
+  - id: exogenous-project-list-routing
+    what: >
+      Replace the synthetic candidate graph with a real named project list — EU
+      PCI-PMI H2 and CO2 pipelines, storage and sequestration sites — mapped onto the
+      model's regions, and vary which subset is permitted to be built. Turns the
+      question from "where would a network go" into "what is this specific pipeline
+      worth", including regret under delay and cancellation scenarios.
+    papers:
+      - "2026_Xiong_Projects-of-Common-Interest_ERL.pdf"
+  - id: network-value-scenario-cross
+    what: >
+      Not a formulation change but the study design every corpus paper wraps around
+      the others: the {no network} x {network} cross per carrier, often crossed again
+      with electricity grid expansion permissions. The deliverable is a cost delta
+      (0.5% for the H2 network alone) and a substitution statement, not a map.
+    papers:
+      - "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+      - "2022_Victoria_Speed-technological-transformations_Joule.pdf"
+      - "2026_Glaum_Minimal-Methanol-Backstop_Joule.pdf"
+      - "2026_Fernandes_carbon-dioxide-removal-decarbonise.pdf"
+      - "2026_Zhang_E-biofuels-hard-to-electrify.pdf"
+      - "2026_Kalweit_near-optimal-carbon-capture-conversion-storage.pdf"
+literature:
+  - paper: "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The reference application for the retrofit variant and the source of the numbers
+      the whole family reuses: 60% of a decommissioned gas pipe's capacity becomes
+      available for hydrogen, new pipeline 250 EUR/MW/km against 117 EUR/MW/km
+      retrofitted, candidate topology from SciGRID_gas. 181 nodes, 3-hourly,
+      sector-coupled, self-sufficient. The design is a 2x2 cross of electricity-grid
+      expansion against H2-network expansion, which is what isolates the substitution
+      between the two. Results to quote: network volume 204-307 TWkm, of which
+      63.5-69.1% retrofitted. Pipelines are pure transport links — capacity and nodal
+      balance only, no gaseous-flow physics.
+  - paper: "2025_Hofmann_H2-CO2-Network-Strategies_NatEnergy.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The paper that makes H2 and CO2 one method rather than two: both networks
+      co-optimised on the SAME candidate topology (identical to the electricity
+      network, connecting all neighbouring regions), with a four-way scenario cross —
+      Baseline (no networks), CO2-Grid, H2-Grid, Hybrid — so the competition and
+      synergy between them is the result. 90 nodes, 3-hourly, 2050 overnight. Loss and
+      compression figures: H2 1.2% and 1.8% per 1000 km, CO2 0.8% per 1000 km and 250
+      kWh/t per 1000 km. Notably does NOT consider gas-pipeline retrofit, so it is the
+      clean greenfield-plus-CO2 reference rather than the retrofit one.
+  - paper: "2026_Xiong_Projects-of-Common-Interest_ERL.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The exogenous-project-list variant, and the most operationally detailed routing
+      recipe in the corpus: PCI-PMI H2 and CO2 pipelines, H2 storage and CO2
+      sequestration sites pulled from the EC REST API and mapped onto 99 NUTS regions,
+      lengths as haversine x 1.25. Five long-term scenarios varying pipeline freedom
+      plus a regret analysis over delay/cancellation. Also the source of the
+      sequestration sink numbers: 286 Mt/a from depleted offshore fields and 114 Mt/a
+      from PCI-PMI sites, clustered into a 50 km buffer per offshore bus, at 15
+      EUR/tCO2. Gas grid copperplated — only H2 and CO2 are expanded.
+  - paper: "2024_Glaum_Offshore-power-hydrogen-North-Sea_ApplEnergy.pdf"
+    tier: 1
+    role: extends
+    note: >
+      The one `extends` in the slice, and it extends the candidate graph rather than
+      the formulation: every offshore region gets a hydrogen platform, so the H2
+      network inherits the offshore HVDC topology exactly and the electricity-versus-
+      hydrogen choice is made per offshore corridor. 130 nodes (64 onshore, 66
+      offshore). Four scenarios spanning no-H2, point-to-point H2 and meshed H2 — the
+      source of the point-to-point-vs-meshed variant. Offshore platform 440 EUR/kWel,
+      submarine H2 pipeline 0.5 EUR/kW/km at 1.9% loss per 1000 km.
+  - paper: "2023_Dergunova_great-britain-hydrogen-infrastructure.pdf"
+    tier: 2
+    role: canonical-use
+    note: >
+      The small-scale, industrial-cluster end of the method: ~15 GB clusters, hourly,
+      2050, across three FES scenarios. Two contributions to this card. First, the
+      topology is a MODELLING CHOICE stated as such — a tree network adopted rather
+      than a star. Second, an explicit statement of what the transport-link abstraction
+      throws away: "modelled as energy flows, disregarding thermodynamic properties and
+      loss of energy associated with frictional pressure drop", with pipeline packing
+      and compression excluded and operating pressure (40-80 barg) noted but not
+      represented.
+  - paper: "2025_Seibold_Germany-Industry-Transformation.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Runs new-build and retrofit H2 together with a CO2 network in one sector-coupled
+      German-focused model, and contributes the integrality-as-a-cap trick: interregional
+      H2 pipeline expansion capped at 20 GW per link, chosen because it equals one
+      48-inch plus one 36-inch pipeline. Sequestration budget 200 MtCO2/a for Europe.
+      Methane transport assumed unconstrained, which is the standard simplification
+      once H2 is the carrier of interest.
+  - paper: "2025_Neumann_Green-energy-steel-imports-net-zero_NatComms.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Documents the two most common retreats from the full method, both for stated
+      computational reasons: retrofit DISABLED so all H2 pipelines are new-build, and
+      no CO2 network at all "since CO2 is not spatially resolved in this model
+      version" — the cleanest corpus statement of the co2_spatial prerequisite. Also
+      the per-link integrality cap in physical units: 50.7 GW = three parallel 48-inch
+      pipelines. H2 compression 2% per 1000 km, gas 1% per 1000 km.
+  - paper: "2026_Glaum_Minimal-Methanol-Backstop_Joule.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Five-way carrier-network scenario cross (all networks / H2-only / CH4-only / no
+      gaseous networks / methanol backstop) on 100 nodes, which is the network-value
+      design taken to its limit: the question is which pipeline networks you need at
+      all. Contributes the cost triple used in this card (CO2 2116 EUR/km/(tCO2/h), H2
+      282 EUR/km/MW, CH4 87 EUR/km/MW) and runs a post-discretization sensitivity on
+      the continuous capacities, which is the only corpus instance of that check.
+  - paper: "2022_Victoria_Speed-technological-transformations_Joule.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The early PyPSA-Eur-Sec statement of the greenfield default — "a greenfield H2
+      network connecting the different nodes is built if it is cost-effective" — plus
+      the sensitivity that gives this card its headline number: disallowing the H2
+      network raises cumulative system cost by only 0.5%. Also the asymmetry worth
+      relaying: CO2 transport unconstrained and methane freely transported, i.e. the
+      networks that were NOT the study's subject were copperplated.
+  - paper: "2025_Lindner_PyPSA-DE_EEM.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Regional-resolution application (49 regions, 30 in Germany, myopic 2020-2045)
+      whose contribution here is validation-shaped: the endogenously routed H2 network
+      is compared against Germany's official hydrogen network development plan. Restates
+      the transport-link abstraction explicitly ("without explicit consideration of gas
+      flow physics"), and reports the siting consequence — electrolysis clusters near
+      the coast to absorb offshore wind, which is a routing result, not a generation one.
+  - paper: "2026_Fernandes_carbon-dioxide-removal-decarbonise.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Inverts the default: baseline forbids CO2, H2, solid-biomass and biochar
+      transport, and the networks appear only as sensitivities. Contributes the
+      sharpest CO2-network finding in the corpus — equipping the system with a CO2
+      transport network "substantially reduces reliance on costly DAC", because
+      captured CO2 can reach a regional sink instead of being captured wherever the
+      sink is. Gas pipelines from SciGRID_gas fixed, no repurposing in baseline.
+  - paper: "2026_Zhang_E-biofuels-hard-to-electrify.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      A clean quantification of how carrier networks change a technology verdict: with
+      H2 and CO2 infrastructure co-optimised, e-biofuel deployment share falls by up to
+      6%, while total system cost moves at most 0.5%. Baseline treats H2 and CO2 as
+      locally balanced at each node — the "no network" pole of the scenario cross, and
+      a reminder that a nodally balanced carrier is a strong implicit assumption.
+  - paper: "2024_Chanal_carbon-capture-solvent-cost-energy-system.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Sector-coupled fork in which H2 and gas transmission are co-optimised as part of
+      the multi-carrier network and captured CO2 is routed endogenously to sequestration
+      or utilisation on a shared accounting bus. Contributes no routing method content;
+      its value here is as evidence that the CO2 carrier network is routinely load-bearing
+      for CCU chains (the solvent production pathways feed into it) even when the paper
+      is about something else entirely.
+  - paper: "2023_Tries_Islanding-Green-Hydrogen.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The degenerate case of the routing problem, and useful precisely because it is
+      degenerate: two nodes per country, one endogenously sized H2 pipeline from island
+      to mainland, no electricity network at all. Shows what survives when the graph is
+      removed — capacity sizing and the transport-cost trade-off against local
+      conversion. Cost points: 0.226 EUR/kW/km overground, 0.329 submarine, 4.48 EUR/kW
+      compressor, distances 269-1783 km.
+  - paper: "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      The only pypsa-earth instance of the method in the corpus: 14 GADM-L1 nodes in
+      Morocco, hourly, H2 pipeline capacity endogenously sized alongside electrolysers
+      and conversion plant (S1 needs ~2 GW of additional pipeline). Sets the realistic
+      scale expectation for the earth side — a handful of nodes, H2 only, no retrofit
+      question because there is no gas grid worth repurposing, and CO2 from cement CCS
+      handled as a feedstock stream rather than a routed network.
+  - paper: "2026_Kalweit_near-optimal-carbon-capture-conversion-storage.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      In the slice as a deliberate NEGATIVE case, and worth citing to users for that:
+      an explicit decision to exclude both H2 and CO2 network expansion — "independently
+      of wide infrastructure changes" — so that the carbon-management technology choices
+      can be isolated. The CO2 carrier is kept for accounting (capture to sequestration
+      or conversion) with no pipeline routing. Demonstrates that "we did not model the
+      network" is a legitimate, statable scope decision, not an omission.
+pitfalls:
+  - pitfall: >
+      The '-reversed' twin links double-count everything. A lossy bidirectional pipeline
+      exists twice in n.links: the forward link, and a mirror with '-reversed' appended,
+      capital_cost=0 and length=0, whose capacity is forced equal to the forward one.
+      Sum p_nom_opt over carrier == 'H2 pipeline' and you report twice the network
+      capacity; sum p_nom_opt * length and the twins contribute zero, so THAT total is
+      accidentally right — two different aggregations of the same result disagree by 2x.
+    evidence: "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+    note: >
+      Filter on ~n.links.reversed before any capacity aggregation, and use
+      `length_original` (not `length`) whenever you need the physical length of a split
+      link — `length` is zeroed on the twin. Network volume in TWkm is the corpus's
+      reporting unit precisely because it is robust to this; capacity totals are not.
+  - pitfall: >
+      Retrofit without the coupling constraint gives you free capacity. If
+      H2_retrofit is on but no `gas pipeline` links are extendable — the case when
+      gas_network is false, so methane is copperplated to a single EU bus —
+      add_pipe_retrofit_constraint finds an empty gas-pipe index and returns silently.
+      The retrofitted H2 links still exist, still capped per-edge at 60% of the pipe,
+      and now cost 117 EUR/MW/km with no methane capacity given up in exchange. The run
+      succeeds and the retrofit looks unreasonably attractive.
+    evidence: "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+    note: >
+      Never set H2_retrofit true with gas_network false. Assert the constraint exists
+      after solving ('Link-pipe_retrofit' in n.model.constraints) rather than trusting
+      the config, and sanity-check that the surviving methane capacity plus the
+      retrofitted H2 capacity divided by the ratio equals today's pipe capacity.
+  - pitfall: >
+      A CO2 network on a non-spatial CO2 carrier is a set of self-loops. co2_spatial
+      false collapses every regional 'co2 stored' bus into one EU bus, but co2_network
+      is an independent boolean that still runs add_co2_network — which builds links
+      between bus0 and bus1 that are now the same bus. No error, no flow, no cost, and
+      the study reports "with CO2 network" results that are identical to without.
+    evidence: "2025_Neumann_Green-energy-steel-imports-net-zero_NatComms.pdf"
+    note: >
+      The corpus paper that hit this states the dependency plainly ("a CO2 network is
+      not explicitly co-optimised since CO2 is not spatially resolved"). Require
+      co2_spatial true whenever co2_network is true, and verify by counting distinct
+      'co2 stored' buses before believing any CO2 routing result.
+  - pitfall: >
+      Continuous corridor capacities are not buildable pipelines. The LP returns
+      fractional GW per corridor; a 0.4 GW result is not a thin pipeline, it is
+      four-tenths of the smallest pipe anyone builds, and the reported network volume
+      quietly includes a long tail of such segments. Rounding after the fact changes
+      the answer, which is why the one paper that checked ran it as a sensitivity.
+    evidence: "2026_Glaum_Minimal-Methanol-Backstop_Joule.pdf"
+    note: >
+      Either post-discretise (unit size 1200 MW per H2 pipeline) and report the
+      integer-pipeline result alongside the continuous one, or express the answer in
+      whole-pipeline units the way the corpus does (50.7 GW = three 48-inch, 20 GW =
+      one 48-inch plus one 36-inch). Do not present fractional corridor capacities as
+      an infrastructure recommendation.
+  - pitfall: >
+      Losses and compression electricity apply only to the carriers listed in
+      transmission_efficiency.enable, and the compression demand lands on bus2 at the
+      INFLOW end. Drop 'H2 pipeline retrofitted' from that list while keeping 'H2
+      pipeline' and retrofit becomes lossless relative to new-build — a silent thumb on
+      the scale of the very trade-off the study is about.
+    evidence: "2025_Hofmann_H2-CO2-Network-Strategies_NatEnergy.pdf"
+    note: >
+      Enable every H2 and gas carrier you have instantiated, or none of them, and state
+      which. If any carrier is left lossless, say so in the write-up: 1.2-2% per 1000 km
+      compounds over a continental network.
+  - pitfall: >
+      The candidate graph decides the answer, and it is chosen before any solving.
+      Routing along the clustered gas grid, along the electricity topology, or along a
+      published project list gives three different networks from the same LP, and none
+      of them can propose a corridor the graph omitted. The corpus states its topology
+      choice explicitly (tree not star; identical to the electricity network; PCI-PMI
+      list) because the choice is a result, not a detail.
+    evidence: "2023_Dergunova_great-britain-hydrogen-infrastructure.pdf"
+    note: >
+      Report the candidate edge set and the detour factor (1.25) as part of the method,
+      and if the user's question is "where should pipelines go" rather than "how thick
+      should these corridors be", say up front that the model answers the second.
+  - pitfall: >
+      Pipelines are transport links, not gas flows. No pressure, no linepack, no
+      frictional drop, no compressor placement — capacity limits and nodal balance
+      only. The consequence users care about: intra-hour pipeline storage (linepack) is
+      absent, so the model cannot use the pipe as short-duration storage and will
+      substitute dedicated H2 storage instead.
+    evidence: "2023_Dergunova_great-britain-hydrogen-infrastructure.pdf"
+    note: >
+      Fine for capacity-planning questions, wrong for operability ones. If the user
+      asks about pressure management, compressor siting or linepack flexibility, this
+      method does not answer it and no config key changes that — flag it before the
+      study rather than after.
+requires_methods:
+  - sector-coupled-network-assembly
+combines_with:
+  - transmission-expansion-cooptimisation
+  - carbon-constraints-and-pricing
+  - import-and-trade-representation
+  - spatial-clustering-and-resolution
+  - custom-constraints-with-linopy
+  - foresight-and-planning-horizons
+  - temporal-aggregation-and-segmentation
+  - shadow-prices-and-marginal-values
+  - mga-near-optimal-space
+  - storage-sizing-and-duration
+topics:
+  - hydrogen-network-buildout
+  - ccs-ccu-deployment
+  - methane-gas-phase-down
+  - industrial-cluster-decarbonization
+  - direct-electrification-vs-h2
+  - sector-coupling
+  - offshore-wind-integration
+  - green-hydrogen-siting
+pypsa_primitive:
+  symbol: "pypsa/optimization/abstract.py:optimize_transmission_expansion_iteratively"
+  pypsa_version: "0.30.3"
+  exposed_by: >
+    both — pypsa-eur calls it in its iterative solve branch and passes the
+    post_discretization block through as kwargs; pypsa-earth calls the same primitive
+    but never populates its unit-size arguments
+  reachable_via: >
+    The routing and sizing itself needs no primitive: an extendable Link with
+    p_min_pu=-1 and a length-scaled capital_cost is plain PyPSA, which is why this
+    method is turnkey rather than L5. The one genuine primitive is the DISCRETISATION
+    half: optimize_transmission_expansion_iteratively accepts link_unit_size and
+    link_threshold as per-carrier dicts and performs the round-then-refix pass via
+    discretized_capacity, so integer pipeline counts are library code, not new
+    formulation. pypsa-eur reaches it through
+    solving.options.post_discretization.link_unit_size, whose default block already
+    names 'H2 pipeline': 1200 and 'gas pipeline': 1500 — but not 'CO2 pipeline'.
+  note: >
+    Two consequences worth knowing. First, the primitive only runs in the ITERATIVE
+    branch, which pypsa-eur skips entirely when no line is s_nom_extendable — so an
+    H2-network study on a fixed electricity grid silently gets no discretisation.
+    Second, CO2 pipeline discretisation is one dict entry away in both models, because
+    link_unit_size is keyed by carrier and accepts any carrier name. Soft anchor: pypsa
+    is a conda dependency, not a submodule, so this is pinned to a version string.
+models:
+  - model: pypsa-eur
+    version_anchor:
+      ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d"
+      date: "2026-07-25"
+    functionality:
+      - id: h2-network-retrofit
+        role: >
+          the method's core surface — registry status `working`. Both greenfield
+          (H2_network, default true) and retrofit (H2_retrofit, default FALSE) live
+          behind these keys in one function
+      - id: gas-network-links
+        role: >
+          supplies the candidate graph AND the retrofit substrate: the SciGRID_gas
+          pipelines clustered to bus pairs are simultaneously the methane links, the
+          retrofit parents, and one of the two carrier sets create_network_topology
+          uses to seed new H2 edges
+      - id: pipe-retrofit-constraint
+        role: >
+          the shared-capacity equality between a retrofitted H2 pipe and the surviving
+          methane pipe — the technically interesting constraint, and the one that
+          silently disappears if no gas pipe is extendable
+      - id: co2-network-sequestration
+        role: >
+          the CO2 half: spatially resolved 'co2 stored' buses, the CO2 pipeline graph,
+          CO2Stop-derived regional storage potentials with an injection cost, and DAC
+      - id: co2-sequestration-limit
+        role: >
+          the annual injection budget that bounds the CO2 network's sink; without it
+          the sequestration store is effectively free and the routing is unconstrained
+      - id: lossy-bidirectional-links
+        role: >
+          length-dependent losses and compression electricity for the pipeline
+          carriers, implemented by splitting each bidirectional link into a forward
+          link and a '-reversed' twin — the source of this card's first pitfall
+      - id: post-discretization
+        role: >
+          turns continuous corridor capacities into integer pipeline counts; registry
+          status `partial` because it only fires in the iterative solve branch
+      - id: transmission-expansion-limits
+        role: >
+          the electricity half of the co-optimisation. The corpus's headline finding is
+          the substitution between the H2 network and the power grid, which requires
+          this to be non-fixed in the same solve
+      - id: custom-constraint-hook
+        role: >
+          where a bespoke topology restriction lands — a point-to-point-only cap, or a
+          per-corridor whole-pipeline limit — since no config key expresses either
+    available:
+      verdict: turnkey
+      how: >
+        Every part of the procedure except the final extraction is config. H2_network
+        and gas_network and co2_network are all TRUE by default, so a default
+        sector-coupled run already routes and sizes H2, methane and CO2 pipelines on the
+        clustered gas/electricity topology, with losses and compression enabled for DC,
+        both H2 carriers and gas pipelines, regional CO2Stop sequestration potentials,
+        and an injection budget rising to 250 MtCO2/a by 2050. Retrofit is the single
+        non-default flip (H2_retrofit, false), and it brings its own solve-time
+        coupling constraint with no wiring. The candidate graph, the 1.25 detour
+        factor, the 60% retrofit ratio and the 1200 MW discretisation unit are all
+        parameters with literature-matching defaults.
+      missing: >
+        Only the last procedure step has no handle: no output computes network volume in
+        TWkm, the retrofit share of it, or per-corridor capacity — and the '-reversed'
+        twins make a naive aggregation wrong by 2x. Beyond that, three things are
+        genuinely absent rather than merely unwired. There is no way to restrict the
+        candidate graph to a point-to-point subset from config (the topology is
+        create_network_topology's output, take it or leave it), no per-link
+        whole-pipeline cap, and no 'CO2 pipeline' entry in the post_discretization
+        link_unit_size dict, so the CO2 network alone stays continuous. Pipeline
+        physics — pressure, linepack, compressor siting — is absent by design at every
+        layer and is not a gap this method can close.
+      provenance: "scripts/prepare_sector_network.py:add_h2_gas_infrastructure; scripts/prepare_sector_network.py:add_co2_network; scripts/solve_network.py:add_pipe_retrofit_constraint"
+    levers:
+      - key: "sector.H2_network"
+        effect: >
+          Builds extendable H2 pipeline links on the candidate graph. When false,
+          remove_h2_network strips every link whose carrier contains 'H2 pipeline'
+          AFTER they were added — so retrofit links are removed too, and this is also
+          the 'no network' pole of the scenario cross.
+        default: "true"
+        provenance: "config/config.default.yaml:H2_network; scripts/prepare_sector_network.py:remove_h2_network"
+      - key: "sector.H2_retrofit"
+        effect: >
+          Adds a parallel 'H2 pipeline retrofitted' link on every clustered methane
+          edge AND flips the parent methane links to extendable with p_nom_min=0 and a
+          nominal 0.1 EUR/MWkm/a cost (present only to break the degeneracy between
+          keeping and decommissioning). The single most consequential non-default key
+          for this method.
+        default: "false"
+        provenance: "config/config.default.yaml:H2_retrofit; scripts/prepare_sector_network.py:add_h2_gas_infrastructure"
+      - key: "sector.H2_retrofit_capacity_per_CH4"
+        effect: >
+          The conversion ratio, used twice: as the per-edge cap
+          (p_nom_max = pipe p_nom * ratio) at build time, and inverted as the
+          coefficient 1/ratio in the shared-capacity equality at solve time. 0.6 is the
+          corpus value (Neumann 2023's "60% of its capacity becomes available").
+        default: "0.6"
+        provenance: "config/config.default.yaml:H2_retrofit_capacity_per_CH4; scripts/solve_network.py:add_pipe_retrofit_constraint"
+      - key: "sector.gas_network"
+        effect: >
+          Instantiates per-region gas buses and the clustered SciGRID_gas pipelines as
+          capacitated links. Load-bearing far beyond methane: false collapses gas to a
+          single 'EU gas' bus, which removes the retrofit parents and hence the coupling
+          constraint, and removes 'gas pipeline' as a candidate carrier for new H2 edges.
+        default: "true"
+        provenance: "config/config.default.yaml:gas_network; scripts/prepare_sector_network.py:define_spatial"
+      - key: "sector.gas_network_connectivity_upgrade"
+        effect: >
+          k for networkx k_edge_augmentation over the complement graph: adds
+          minimum-length new methane edges until the gas graph is k-connected, using
+          only pipes above 1500 MW to build the base graph. This is how the candidate
+          graph gets fixed when the real gas grid is disconnected at your clustering.
+        default: "1"
+        provenance: "config/config.default.yaml:gas_network_connectivity_upgrade; scripts/prepare_sector_network.py:add_h2_gas_infrastructure"
+      - key: "sector.co2_network"
+        effect: >
+          Builds extendable CO2 pipeline links between 'co2 stored' buses on the
+          create_network_topology graph, priced per length with separate onshore and
+          submarine rates weighted by underwater_fraction.
+        default: "true"
+        provenance: "config/config.default.yaml:co2_network; scripts/prepare_sector_network.py:add_co2_network"
+      - key: "sector.co2_spatial"
+        effect: >
+          Whether 'co2 stored' is one bus per region or one 'EU' bus. The silent
+          prerequisite for co2_network: false makes every CO2 pipeline a self-loop.
+        default: "true"
+        provenance: "config/config.default.yaml:co2_spatial; scripts/prepare_sector_network.py:define_spatial"
+      - key: "sector.co2_network_cost_factor"
+        effect: >
+          Multiplies CO2 pipeline capital cost. The intended sensitivity handle for
+          "how cheap must CO2 transport be before the network beats co-located DAC".
+        default: "1"
+        provenance: "config/config.default.yaml:co2_network_cost_factor; scripts/prepare_sector_network.py:add_co2_network"
+      - key: "sector.regional_co2_sequestration_potential"
+        effect: >
+          Turns the CO2Stop geological database into per-region 'co2 sequestered' store
+          capacities. Sub-keys that matter: include_onshore (false by default, so only
+          offshore sinks), min_size/max_size in Gt, and years_of_storage=25 which
+          annualises the stock into a flow. Without this the sink is unbounded per
+          region and the network has no geography to route to.
+        default: "{enable: true, include_onshore: false, min_size: 3, max_size: 25, years_of_storage: 25}"
+        provenance: "config/config.default.yaml:regional_co2_sequestration_potential; scripts/prepare_sector_network.py:add_co2_tracking"
+      - key: "sector.co2_sequestration_cost"
+        effect: >
+          EUR/tCO2 injection cost, applied as capital_cost on the 'co2 sequestered'
+          store. Xiong uses 15; the default is double that.
+        default: "30"
+        provenance: "config/config.default.yaml:co2_sequestration_cost; scripts/prepare_sector_network.py:add_co2_tracking"
+      - key: "sector.co2_sequestration_potential"
+        effect: >
+          Per-horizon system-wide injection budget in MtCO2/a, imposed as a
+          GlobalConstraint on the 'co2 sequestered' carrier. Note it is added from
+          prepare_network inside solve_network, not via extra_functionality, and only
+          when such stores exist.
+        default: "{2030: 40, 2040: 180, 2050: 250} (0 before 2030)"
+        provenance: "config/config.default.yaml:co2_sequestration_potential; scripts/solve_network.py:add_co2_sequestration_limit"
+      - key: "sector.transmission_efficiency"
+        effect: >
+          Per-carrier losses and compression. `enable` lists which carriers get split
+          into forward/'-reversed' pairs; the defaults cover DC, 'H2 pipeline', 'H2
+          pipeline retrofitted', 'gas pipeline' and the distribution grid, with H2
+          compression at 1.8% per 1000 km. Both H2 carriers must stay listed together
+          or retrofit becomes artificially lossless.
+        default: "{enable: [DC, H2 pipeline, H2 pipeline retrofitted, gas pipeline, electricity distribution grid]}"
+        provenance: "config/config.default.yaml:transmission_efficiency; scripts/prepare_sector_network.py:lossy_bidirectional_links"
+      - key: "solving.options.post_discretization"
+        effect: >
+          Rounds corridor capacities to unit sizes. link_unit_size already names 'H2
+          pipeline': 1200 and 'gas pipeline': 1500 MW at threshold 0.3; 'CO2 pipeline'
+          is absent and must be added. Off by default, and only merged into the solve
+          kwargs in the iterative branch.
+        default: "{enable: false, link_unit_size: {DC: 2000, H2 pipeline: 1200, gas pipeline: 1500}}"
+        provenance: "config/config.default.yaml:post_discretization; scripts/solve_network.py:post_discretization"
+      - key: "solving.options.skip_iterations"
+        effect: >
+          Must be false for post_discretization to have any effect, since collect_kwargs
+          only merges the block in the iterative branch. Worse, the iterative branch is
+          auto-skipped when no LINE is s_nom_extendable — so an H2 study on a fixed
+          electricity grid gets no discretisation regardless of both keys.
+        default: "false"
+        provenance: "config/config.default.yaml:skip_iterations; scripts/solve_network.py:collect_kwargs"
+      - key: "electricity.transmission_limit"
+        effect: >
+          The electricity half of the co-optimisation. Neumann 2023's 2x2 design is
+          exactly this key crossed with H2_network: fix the power grid ('v1.0') or let
+          it expand, with and without the hydrogen network.
+        default: "'vopt'"
+        provenance: "config/config.default.yaml:transmission_limit; scripts/prepare_network.py:set_transmission_limit"
+    assembly:
+      - step: >
+          Confirm the carrier buses are spatially resolved before anything else:
+          gas_network true for per-region gas buses, co2_spatial true for per-region
+          'co2 stored' buses. Both are default-true, but a config inherited from an
+          electricity-focused study often turns them off, and each silently voids the
+          corresponding routing problem.
+        uses: [gas-network-links, co2-network-sequestration]
+        config: "sector.gas_network: true; sector.co2_spatial: true"
+        code: null
+        provenance: "scripts/prepare_sector_network.py:define_spatial"
+      - step: >
+          Choose the candidate graph. Defaults route new H2 along the union of DC links
+          and clustered gas pipelines and CO2 along lines plus DC; a disconnected gas
+          graph at your clustering is repaired by raising
+          gas_network_connectivity_upgrade. There is no config route to a restricted
+          (point-to-point) subset — that is a post-hoc drop of links by index.
+        uses: [h2-network-retrofit, gas-network-links]
+        config: "sector.gas_network_connectivity_upgrade"
+        code: "scripts/prepare_sector_network.py:create_network_topology"
+        provenance: "scripts/prepare_sector_network.py:create_network_topology; scripts/cluster_gas_network.py:build_clustered_gas_network"
+      - step: >
+          For the retrofit variant, flip H2_retrofit true and set the ratio. Verify
+          afterwards that the coupling constraint actually materialised — it is skipped
+          silently when either the extendable gas-pipe index or the retrofitted-H2
+          index is empty, which is exactly what happens if gas_network is false.
+        uses: [h2-network-retrofit, pipe-retrofit-constraint]
+        config: "sector.H2_retrofit: true; sector.H2_retrofit_capacity_per_CH4: 0.6"
+        code: null
+        provenance: "scripts/solve_network.py:add_pipe_retrofit_constraint"
+      - step: >
+          For the CO2 variant, bound the sink: regional potentials from CO2Stop
+          (enable true, include_onshore as the policy question), the per-tonne injection
+          cost, and the annual budget per horizon. An unbounded sink makes the CO2
+          network's value indeterminate.
+        uses: [co2-network-sequestration, co2-sequestration-limit]
+        config: "sector.regional_co2_sequestration_potential.enable; sector.co2_sequestration_potential; sector.co2_sequestration_cost"
+        code: null
+        provenance: "scripts/build_co2_sequestration_potentials.py:create_capacity_map_storage; scripts/solve_network.py:add_co2_sequestration_limit"
+      - step: >
+          Decide losses deliberately. Keep both H2 carriers in
+          transmission_efficiency.enable so new-build and retrofit are compared on
+          equal terms, and record that every enabled carrier now exists twice in
+          n.links.
+        uses: [lossy-bidirectional-links]
+        config: "sector.transmission_efficiency.enable"
+        code: null
+        provenance: "scripts/prepare_sector_network.py:lossy_bidirectional_links; scripts/solve_network.py:add_lossy_bidirectional_link_constraints"
+      - step: >
+          Run the scenario cross, not a single case. The deliverable is the cost and
+          capacity delta between {no network} and {network} per carrier, optionally
+          crossed with the electricity expansion limit. sector_opts carries a
+          noH2network token if you prefer the wildcard to a config edit.
+        uses: [transmission-expansion-limits]
+        config: "sector.H2_network; sector.co2_network; electricity.transmission_limit"
+        code: null
+        provenance: "scripts/_helpers.py:noH2network; scripts/prepare_network.py:set_transmission_limit"
+      - step: >
+          Optionally discretise: enable post_discretization, keep skip_iterations
+          false, add 'CO2 pipeline' to link_unit_size if the CO2 network is the subject,
+          and confirm at least one line is extendable or the whole branch is skipped.
+        uses: [post-discretization]
+        config: "solving.options.post_discretization.enable; solving.options.post_discretization.link_unit_size; solving.options.skip_iterations"
+        code: null
+        provenance: "scripts/solve_network.py:post_discretization; scripts/solve_network.py:collect_kwargs"
+      - step: >
+          Write the extraction. Filter ~n.links.reversed, aggregate p_nom_opt *
+          length_original into TWkm per carrier, and report the retrofit share as
+          'H2 pipeline retrofitted' volume over total H2 volume. Nothing in the repo
+          does this and the naive version is wrong by 2x.
+        uses: []
+        config: null
+        code: "new extraction script — no existing rule produces network volume or retrofit share"
+        provenance: "scripts/prepare_sector_network.py:length_original"
+    boundary:
+      - variant: greenfield-routing-on-candidate-graph
+        rung: L0
+        note: >
+          H2_network and co2_network are both true by default. A default sector-coupled
+          run already does this; the only decision is which scenario cross to report.
+      - variant: gas-network-retrofit
+        rung: L1
+        note: >
+          One non-default flip (H2_retrofit true) plus the ratio, and the solve-time
+          coupling constraint attaches itself. L1 rather than L0 because the flip is
+          only valid in combination with gas_network true — the pairing is the
+          non-default value, and getting it wrong is a silent failure rather than an
+          error.
+      - variant: co2-transport-to-sequestration-sites
+        rung: L1
+        note: >
+          co2_network is default-true, but a defensible study needs the specific
+          combination: co2_spatial true, regional_co2_sequestration_potential enabled,
+          a considered include_onshore, and an injection budget matched to the horizon.
+          The CO2Stop data is fetched by an existing retrieve rule, so this is config,
+          not data work.
+      - variant: discrete-vs-continuous-pipeline-capacity
+        rung: L1
+        note: >
+          For H2 and gas: enable post_discretization, set skip_iterations false, and
+          the default unit sizes (1200 / 1500 MW at z=0.3) already match the
+          literature. Two traps make it L1 rather than L0 — the block is only merged in
+          the iterative branch, and that branch is auto-skipped when no line is
+          extendable. For CO2 it is L1 plus one dict entry, since link_unit_size is
+          keyed by arbitrary carrier name.
+      - variant: point-to-point-vs-meshed
+        rung: L2
+        note: >
+          No config surface restricts the candidate graph. The graph is
+          create_network_topology's return value, so the change is a localised
+          filter — drop the H2/CO2 links that are not radial to the chosen hub, right
+          after they are added. A dozen lines in prepare_sector_network, not a
+          reformulation. Glaum's offshore version is larger only because the offshore
+          bus set itself has to exist first.
+      - variant: exogenous-project-list-routing
+        rung: L3
+        note: >
+          The mechanism is data, not code: replace the clustered candidate CSV with a
+          project list mapped to bus pairs, lengths as haversine x 1.25. The consuming
+          code path already reads a CSV of bus0/bus1/length/p_nom, so a new resource
+          plus a rule input swap gets you there. Note eur has a transmission_projects
+          surface for the ELECTRICITY grid and nothing equivalent for H2 or CO2 — the
+          asymmetry Xiong had to close by hand.
+      - variant: network-value-scenario-cross
+        rung: L0
+        note: >
+          Pure config permutation over three booleans plus the transmission limit; the
+          scenario/run machinery fans it out. The only work is the extraction that
+          differences the runs.
+    where:
+      - change: "restrict the candidate graph to a point-to-point / tree subset"
+        anchor: "scripts/prepare_sector_network.py::add_h2_gas_infrastructure, immediately after the H2_network n.add block; and ::add_co2_network"
+        provenance: "scripts/prepare_sector_network.py:create_network_topology; scripts/prepare_sector_network.py:add_co2_network"
+      - change: "per-corridor whole-pipeline capacity cap (50.7 GW, 20 GW)"
+        anchor: "p_nom_max on the added H2 links, or a custom constraint in the extra_functionality hook"
+        provenance: "scripts/prepare_sector_network.py:add_h2_gas_infrastructure; scripts/solve_network.py:custom_extra_functionality"
+      - change: "swap the candidate topology for an exogenous project list"
+        anchor: "rule cluster_gas_network output (resources gas_network_base_s_{clusters}.csv), consumed as clustered_gas_network_file"
+        provenance: "rules/build_sector.smk:cluster_gas_network; scripts/cluster_gas_network.py:build_clustered_gas_network"
+      - change: "network volume / retrofit share extraction excluding reversed twins"
+        anchor: "a new script downstream of solve_sector_network; length_original is the length column to use"
+        provenance: "scripts/prepare_sector_network.py:length_original"
+      - change: "CO2 pipeline discretisation"
+        anchor: "solving.options.post_discretization.link_unit_size — add a 'CO2 pipeline' key"
+        provenance: "config/config.default.yaml:link_unit_size; scripts/solve_network.py:post_discretization"
+    data_dependencies:
+      - input: "SciGRID_gas / IGGIELGN pipe segments (candidate graph + retrofit parents)"
+        required_for: "gas-network-retrofit, greenfield-routing-on-candidate-graph"
+        availability: >
+          exists by default — retrieve_gas_infrastructure_data fetches IGGIELGN.zip and
+          build_gas_network cleans it. Europe-only coverage; outside the SciGRID
+          footprint the retrofit variant has no substrate at all
+      - input: "CO2Stop geological storage units and hydrocarbon traps"
+        required_for: "co2-transport-to-sequestration-sites"
+        availability: >
+          exists by default via rule retrieve_co2stop, consumed by
+          build_co2_sequestration_potentials. Europe-only, and offshore-only unless
+          include_onshore is flipped
+      - input: "PCI-PMI (or national) project list of H2/CO2 pipelines and sequestration sites"
+        required_for: exogenous-project-list-routing
+        availability: >
+          absent — Xiong pulled it from the EC REST API and mapped it to 99 NUTS
+          regions by hand. No rule fetches it and no resource holds it
+      - input: "offshore bus set and offshore candidate graph"
+        required_for: point-to-point-vs-meshed
+        availability: >
+          region-dependent — Glaum's 66 offshore buses are a fork-level extension of
+          the standard offshore representation, not a config option
+    cost_profile:
+      solves: >
+        One solve per scenario cell. The corpus's designs are 2x2 (grid expansion x H2
+        network) through 4 (Baseline/CO2-Grid/H2-Grid/Hybrid) to 5 (which gaseous
+        networks exist at all) and Xiong's 5 long-term x 3 short-term regret cells.
+        Discretisation adds one fixed-capacity re-solve on top of the iterative
+        sequence, not a separate study.
+      relative: >
+        Not the scenario count — the LP size. Each enabled carrier network adds roughly
+        one extendable Link per region pair, doubled again for every carrier in
+        transmission_efficiency.enable because of the '-reversed' split. Turning on H2 +
+        retrofit + CO2 + gas on a 90-100 node sector-coupled model is where the corpus
+        stops being able to run hourly: every paper in the slice is at 3-hourly, 4-hourly
+        or TSAM-segmented (750-2190 steps), and none is hourly above 15 nodes.
+      note: >
+        Segment or coarsen BEFORE adding carriers, not after. The corpus's documented
+        retreats are informative: Neumann 2025 disabled retrofit outright "for
+        computational reasons" (retrofit roughly doubles the H2 link count and makes the
+        methane links extendable too), and Fernandes made both networks
+        sensitivity-only. Retrofit is the expensive flip, not the CO2 network. The one
+        hourly study in the slice buys it with 15 nodes and a single year.
+    verifies:
+      - variant: gas-network-retrofit
+        check: "'Link-pipe_retrofit' in n.model.constraints"
+        over: run
+        note: >
+          The coupling constraint is missing. Almost always because gas_network was
+          false so no methane pipe was extendable, and add_pipe_retrofit_constraint
+          returned on an empty index. The run succeeded, retrofit capacity was free, and
+          the retrofit share is meaningless.
+      - variant: gas-network-retrofit
+        check: "(n.links.carrier == 'H2 pipeline retrofitted').any() and (n.links.query(\"carrier == 'gas pipeline'\").p_nom_extendable).any()"
+        over: run
+        note: >
+          Retrofit links exist but their parent methane pipes are not extendable (or
+          vice versa) — the two halves of the trade-off were not both instantiated, so
+          decommissioning was never a decision the optimiser could make.
+      - variant: greenfield-routing-on-candidate-graph
+        check: "n.links.query(\"carrier == 'H2 pipeline' and ~reversed\").p_nom_opt.sum() > 0"
+        over: run
+        note: >
+          No hydrogen network was built. Either H2_network was false, or every corridor
+          was uneconomic — distinguish by checking the links exist at all, because
+          remove_h2_network deletes them rather than zeroing them.
+      - variant: co2-transport-to-sequestration-sites
+        check: "n.buses.query(\"carrier == 'co2 stored'\").index.size > 1"
+        over: run
+        note: >
+          Exactly one 'co2 stored' bus means co2_spatial was false, so every CO2
+          pipeline is a self-loop and the 'with CO2 network' scenario is identical to
+          the 'without' one. The single most damaging silent no-op in this method.
+      - variant: discrete-vs-continuous-pipeline-capacity
+        check: "all((p % 1200) < 1e-6 or (p % 1200) > 1200 - 1e-6 for p in n.links.query(\"carrier == 'H2 pipeline' and ~reversed\").p_nom_opt)"
+        over: run
+        note: >
+          Capacities off the 1200 MW grid mean post_discretization never fired — either
+          skip_iterations was left true, or no line was s_nom_extendable so pypsa-eur
+          took the single-pass branch. The run succeeds and returns fractional pipelines.
+  - model: pypsa-earth
+    version_anchor:
+      ref: "8435f4c8cc05f30088933b37b7db497ff860dc53"
+      date: "2026-07-25"
+    functionality:
+      - id: h2-pipeline-routing
+        role: >
+          earth's own surface for the H2 half — registry status `working`. Note the id
+          differs from eur's h2-network-retrofit, which is itself the asymmetry: earth
+          has routing and repurposing but not the retrofit CONSTRAINT
+      - id: gas-network-links
+        role: >
+          registry status `dead-key`, and the asymmetry that matters most. The gas
+          pipelines are downloaded, cleaned and clustered, and the resulting CSV IS
+          consumed — but only as the H2 candidate graph. No methane Link is ever built,
+          so gas is nodal-unlimited and there is nothing to trade a retrofit against
+      - id: co2-network-sequestration
+        role: >
+          the CO2 half — registry status `working`, but thinner than eur's: pipelines
+          yes, per-region geological potentials no
+      - id: transmission-expansion-limits
+        role: "the electricity half of the co-optimisation, via the ll wildcard"
+      - id: custom-constraint-hook
+        role: >
+          the single extra_functionality entry point where the missing pipe-retrofit
+          coupling constraint would land, and where the existing H2 network volume cap
+          already lives
+      - id: myopic-foresight
+        role: >
+          the ONLY path on which earth's H2_retrofit_capacity_per_CH4 key is consumed —
+          add_brownfield subtracts already-retrofitted capacity from today's gas grid
+          between horizons. Registry status `partial`
+      - id: existing-baseyear-brownfield
+        role: >
+          supplies the build years that add_brownfield's retrofit bookkeeping keys off;
+          registry status `partial`
+      - id: h2-export-chain
+        role: >
+          earth-only, and often the real driver of pipeline routing here: an export
+          demand at a port node pulls the H2 network toward the coast, which is the
+          shape of the corpus's one earth study
+    available:
+      verdict: assemble
+      how: >
+        The routing half is turnkey and genuinely works: sector.hydrogen.network is
+        true by default and add_hydrogen builds extendable H2 links, choosing between
+        two candidate graphs — the clustered real gas network (GGIT globally, IGGIELGN
+        for Europe) or, when network_routes is 'greenfield' or no gas network was found,
+        the electricity topology (lines plus DC links). gas_network_repurposing adds a
+        parallel 'H2 pipeline repurposed' link on each gas edge. sector.co2_network
+        builds CO2 pipelines on the create_network_topology graph, and
+        hydrogen.network_limit imposes a global TWkm cap via add_h2_network_cap. The
+        verdict is `assemble` rather than `turnkey` because three named pieces of the
+        procedure are wired to nothing and must be added by hand.
+      missing: >
+        Three concrete gaps, each a different kind. (1) NO shared-capacity coupling
+        constraint. There is no add_pipe_retrofit_constraint anywhere in earth's
+        scripts. Repurposed H2 capacity is capped per-edge at a HARDCODED 0.8 of the
+        pipe's capacity, and — because no methane Link exists to give up — costs nothing
+        in methane throughput. sector.hydrogen.H2_retrofit_capacity_per_CH4 (0.6)
+        exists but is read ONLY by add_brownfield, i.e. only on the myopic pathway and
+        only as between-horizon bookkeeping, never as a constraint in the LP. The 0.6
+        and the 0.8 are two different numbers doing the same job in two different
+        places. (2) NO regional CO2 sequestration potential: the 'co2 stored' stores are
+        created with e_nom_max=inf and the only bound is a single global scalar
+        (co2_sequestration_potential, 200 Mt) applied to the FINAL snapshot's stored
+        energy. There is no CO2Stop equivalent, no per-region sink map, and no 'co2
+        sequestered' store tier — so a CO2 network has no geography to route toward and
+        earth cannot answer "which coastal sink does this capture point reach". (3) NO
+        losses on the sector H2 network: sector.transmission_efficiency does contain an
+        'H2 pipeline' entry with 1.7% compression per 1000 km, and earth does have
+        lossy_bidirectional_links and set_length_based_efficiency in _helpers — but they
+        are called from add_extra_components, which belongs to the ELECTRICITY-only
+        workflow's H2 pipelines (electricity.extendable_carriers.Link). The sector
+        workflow's H2 pipelines never pass through either, so they are lossless and
+        draw no compression electricity. Post-discretisation of pipelines has no config
+        surface either.
+      provenance: "scripts/prepare_sector_network.py:add_hydrogen; scripts/prepare_sector_network.py:add_co2; scripts/solve_network.py:add_h2_network_cap"
+    levers:
+      - key: "sector.hydrogen.network"
+        effect: >
+          Builds the H2 pipeline links. Default true. Also gates the Snakefile input
+          that supplies the pipelines CSV, so flipping it changes the DAG, not just the
+          network.
+        default: "true"
+        provenance: "config.default.yaml:network; scripts/prepare_sector_network.py:add_hydrogen"
+      - key: "sector.hydrogen.network_routes"
+        effect: >
+          'gas' (default) routes new H2 links along the clustered gas network's bus
+          pairs; 'greenfield' routes them along the electricity topology instead. Note
+          the fallback: if the clustered gas network is empty, greenfield is used
+          regardless of this key. eur has no equivalent switch — it always unions both.
+        default: "'gas'"
+        provenance: "config.default.yaml:network_routes; scripts/prepare_sector_network.py:add_hydrogen"
+      - key: "sector.hydrogen.gas_network_repurposing"
+        effect: >
+          Adds a parallel 'H2 pipeline repurposed' link on every clustered gas edge at
+          the repurposed capital cost, capped at 0.8 of the pipe's capacity — a
+          hardcoded factor citing the European Hydrogen Backbone report, NOT the config
+          ratio. Default TRUE, which is the opposite of eur's H2_retrofit default.
+        default: "true"
+        provenance: "config.default.yaml:gas_network_repurposing; scripts/prepare_sector_network.py:add_hydrogen"
+      - key: "sector.hydrogen.H2_retrofit_capacity_per_CH4"
+        effect: >
+          Reads 0.6 and is inverted to CH4_per_H2 in add_brownfield to subtract
+          already-retrofitted capacity from today's gas grid between myopic horizons.
+          NOT used at build time (0.8 is hardcoded there) and NOT used as an LP
+          constraint. Live but narrow — treat the key as myopic-only.
+        default: "0.6"
+        provenance: "config.default.yaml:H2_retrofit_capacity_per_CH4; scripts/add_brownfield.py:H2_retrofit_capacity_per_CH4"
+      - key: "sector.hydrogen.network_limit"
+        effect: >
+          Global cap on total H2 network volume: sum(p_nom * length) <= limit * 1000,
+          imposed at solve time over 'H2 pipeline' links only (repurposed links are NOT
+          counted). eur has no per-carrier equivalent — its transmission limit covers
+          the electricity grid only, so this is one place earth is ahead.
+        default: "2000"
+        provenance: "config.default.yaml:network_limit; scripts/solve_network.py:add_h2_network_cap"
+      - key: "sector.hydrogen.underground_storage"
+        effect: >
+          Salt-cavern H2 storage. Default FALSE here against eur's true — worth
+          flagging because pipeline sizing and storage siting substitute for each
+          other, so an earth H2 network study on defaults is sized against no
+          geological storage at all.
+        default: "false"
+        provenance: "config.default.yaml:underground_storage; scripts/prepare_sector_network.py:add_hydrogen"
+      - key: "sector.gas.network"
+        effect: >
+          DEAD. The config comment says so literally: "ALWAYS FALSE for now (NOT
+          USED)". prepare_gas_network still runs and still clusters the pipelines, and
+          the resulting CSV is still consumed as the H2 candidate graph — but no gas
+          Link is ever added to the network. Methane is nodal and unlimited. This is
+          the single structural reason the retrofit trade-off cannot exist here.
+        default: "false"
+        provenance: "config.default.yaml:network; scripts/prepare_gas_network.py:cluster_gas_network"
+      - key: "sector.gas.network_data"
+        effect: >
+          'GGIT' (global, Global Energy Monitor) or 'IGGIELGN' (Europe, SciGRID_gas).
+          The global option is the reason earth can attempt this method outside Europe
+          at all, and the reason the candidate graph is coarser there.
+        default: "'GGIT'"
+        provenance: "config.default.yaml:network_data; scripts/prepare_gas_network.py:download_GGIT_gas_network"
+      - key: "sector.gas.network_data_GGIT_status"
+        effect: >
+          Which pipeline statuses enter the candidate graph. The default list includes
+          Proposed, Shelved and Mothballed alongside Operating — so by default a
+          PROPOSED pipeline is available for H2 repurposing as if it already existed.
+        default: "[Construction, Operating, Idle, Shelved, Mothballed, Proposed]"
+        provenance: "config.default.yaml:network_data_GGIT_status; scripts/prepare_gas_network.py:prepare_GGIT_data"
+      - key: "custom_data.gas_network"
+        effect: >
+          Swaps the clustered candidate graph for a user CSV at
+          data/custom/pipelines.csv. This is earth's sanctioned route to an exogenous
+          project list — a config flip plus a file, where eur needs a resource swap.
+        default: "false"
+        provenance: "config.default.yaml:gas_network; scripts/prepare_gas_network.py:cluster_gas_network"
+      - key: "sector.co2_network"
+        effect: >
+          Builds extendable CO2 pipeline links between 'co2 stored' buses, with
+          onshore/submarine cost split by underwater_fraction — structurally the same
+          code as eur's.
+        default: "true"
+        provenance: "config.default.yaml:co2_network; scripts/prepare_sector_network.py:add_co2"
+      - key: "sector.co2_sequestration_potential"
+        effect: >
+          A single SCALAR in Mt, constraining the summed stored CO2 at the final
+          snapshot. The whole sink model: no per-region map, no cost curve, and the code
+          carries a TODO admitting 200 is a Europe number. Compare eur's per-horizon
+          dict plus a CO2Stop-derived regional store map.
+        default: "200"
+        provenance: "config.default.yaml:co2_sequestration_potential; scripts/solve_network.py:add_co2_sequestration_limit"
+      - key: "sector.co2_sequestration_cost"
+        effect: >
+          EUR/tCO2 applied as capital_cost on the (unbounded) 'co2 stored' stores. With
+          no potential map this cost is the only thing discouraging sequestration
+          anywhere, which makes the CO2 network's routing driven by capture geography
+          alone.
+        default: "20"
+        provenance: "config.default.yaml:co2_sequestration_cost; scripts/prepare_sector_network.py:add_co2"
+      - key: "electricity.extendable_carriers.Link"
+        effect: >
+          Add 'H2 pipeline' here and the ELECTRICITY-only workflow builds its own H2
+          network via attach_hydrogen_pipelines — with lossy_bidirectional_links and
+          set_length_based_efficiency applied, unlike the sector one. A separate,
+          cheaper entry point for an electricity+H2 study, and the only earth path that
+          gets pipeline losses.
+        default: "[]"
+        provenance: "config.default.yaml:extendable_carriers; scripts/add_extra_components.py:attach_hydrogen_pipelines"
+    assembly:
+      - step: >
+          Decide which of earth's TWO H2 pipeline paths you are on. The sector path
+          (sector.hydrogen.network) gives repurposing, the network volume cap and CO2
+          coupling but no losses. The electricity path
+          (electricity.extendable_carriers.Link += 'H2 pipeline') gives losses and
+          compression but no repurposing and no CO2. They are separate code, and
+          nothing warns you if you enable both.
+        uses: [h2-pipeline-routing]
+        config: "sector.hydrogen.network; electricity.extendable_carriers.Link"
+        code: null
+        provenance: "scripts/prepare_sector_network.py:add_hydrogen; scripts/add_extra_components.py:attach_hydrogen_pipelines"
+      - step: >
+          Choose the candidate graph and clean the status filter. network_routes 'gas'
+          uses the clustered GGIT/IGGIELGN pipelines; 'greenfield' uses the power
+          topology. If you stay on 'gas', narrow network_data_GGIT_status to
+          Operating (plus Construction if defensible) — the default admits Proposed and
+          Shelved pipes as repurposing candidates.
+        uses: [gas-network-links, h2-pipeline-routing]
+        config: "sector.hydrogen.network_routes; sector.gas.network_data; sector.gas.network_data_GGIT_status"
+        code: null
+        provenance: "scripts/prepare_gas_network.py:prepare_GGIT_data; scripts/prepare_gas_network.py:cluster_gas_network"
+      - step: >
+          Accept or fix the repurposing gap. As shipped, gas_network_repurposing gives
+          free H2 capacity at 0.8 of each gas pipe with no methane cost, because
+          sector.gas.network is dead and no methane Link exists. Two honest routes:
+          state the assumption (defensible where methane transport is genuinely
+          unconstrained, which is how much of the corpus treats it), or build the
+          methane links and the coupling constraint yourself — the second is the L5
+          work below.
+        uses: [gas-network-links, custom-constraint-hook]
+        config: "sector.hydrogen.gas_network_repurposing"
+        code: "scripts/solve_network.py:extra_functionality"
+        provenance: "scripts/solve_network.py:extra_functionality; scripts/prepare_sector_network.py:add_hydrogen"
+      - step: >
+          Bound the H2 network if the question is about network scale: network_limit is
+          a global TWkm cap already wired into the solve. Remember it counts 'H2
+          pipeline' only, so a repurposing-heavy solution slips past it.
+        uses: [h2-pipeline-routing, custom-constraint-hook]
+        config: "sector.hydrogen.network_limit"
+        code: null
+        provenance: "scripts/solve_network.py:add_h2_network_cap"
+      - step: >
+          For the CO2 half, enable co2_network and then decide what to do about the
+          missing sink geography. The scalar potential plus a per-tonne cost is all
+          there is; if the user's question is "which sequestration site does this reach",
+          you must supply a per-region e_nom_max on the 'co2 stored' stores from an
+          external dataset. That is the L3 row below.
+        uses: [co2-network-sequestration]
+        config: "sector.co2_network; sector.co2_sequestration_potential; sector.co2_sequestration_cost"
+        code: "scripts/prepare_sector_network.py:add_co2"
+        provenance: "scripts/prepare_sector_network.py:add_co2; scripts/solve_network.py:add_co2_sequestration_limit"
+      - step: >
+          If losses matter, port them. lossy_bidirectional_links and
+          set_length_based_efficiency already exist in _helpers and already read
+          sector.transmission_efficiency['H2 pipeline'] — the work is calling them on
+          the sector network's H2 links after add_hydrogen, in that order, and then
+          living with the '-reversed' twins in every downstream aggregation. Earth's
+          solve-time capacity-sync constraint already handles the pairs.
+        uses: [h2-pipeline-routing]
+        config: "sector.transmission_efficiency"
+        code: "scripts/prepare_sector_network.py:add_hydrogen"
+        provenance: "scripts/_helpers.py:lossy_bidirectional_links; scripts/solve_network.py:add_lossy_bidirectional_link_constraints"
+    boundary:
+      - variant: greenfield-routing-on-candidate-graph
+        rung: L0
+        note: >
+          sector.hydrogen.network is default true and network_routes selects the graph.
+          Genuinely turnkey, and the corpus's one earth study (Morocco, 14 nodes) is
+          exactly this. Lossless, which is the caveat, not a blocker.
+      - variant: gas-network-retrofit
+        rung: L5
+        note: >
+          The headline asymmetry. Repurposed LINKS are L0 (default true), but the
+          method's defining constraint is absent: no add_pipe_retrofit_constraint, no
+          methane Links to couple to (sector.gas.network is a dead key by its own
+          comment), and the config ratio is consumed only by add_brownfield on the
+          myopic path. Doing this properly means building the methane network, making it
+          extendable downward, and writing the equality in extra_functionality — three
+          pieces, one of which is a capability eur has and earth does not. L5, and the
+          honest interview answer is "use pypsa-eur for the retrofit question".
+      - variant: co2-transport-to-sequestration-sites
+        rung: L3
+        note: >
+          Pipelines are L0. The sink is the blocker and it is DATA: no CO2Stop
+          equivalent, no per-region potential map, no 'co2 sequestered' store tier, and
+          the only bound is one global scalar on the final snapshot's stored energy with
+          a TODO conceding it is a Europe number. Outside Europe there is no open
+          regional storage atlas to substitute, so check
+          cookbooks/pypsa-earth/data_quality for the country before promising a
+          sequestration-routing study.
+      - variant: discrete-vs-continuous-pipeline-capacity
+        rung: L2
+        note: >
+          No post_discretization config block exists, but earth calls the same pypsa
+          primitive that implements it. Following the sibling
+          transmission-expansion-cooptimisation card's finding for lines, this is a new
+          config block and a few kwargs — L2, a wiring gap rather than a capability
+          gap. link_unit_size is keyed by carrier name, so 'H2 pipeline' and 'CO2
+          pipeline' come along for free once the block exists.
+      - variant: point-to-point-vs-meshed
+        rung: L2
+        note: >
+          Same shape as eur: no config surface, but the candidate edge list is built in
+          plain pandas inside add_hydrogen (and add_links_elec_routing_new_H2_pipelines
+          for the greenfield route), so a topology filter is a localised edit. Slightly
+          cheaper than eur because both routes construct the frame explicitly rather
+          than returning it from a shared helper.
+      - variant: exogenous-project-list-routing
+        rung: L1
+        note: >
+          Earth is AHEAD of eur here, and it is the one place it is. custom_data.gas_network
+          true redirects the pipelines input to data/custom/pipelines.csv, a documented
+          user-supplied bus0/bus1/length/capacity table. A config flip plus a file
+          against eur's resource-and-rule swap. The catch is that the same CSV serves as
+          both the candidate graph and the repurposing substrate, so a project list of
+          H2 pipelines will be read as gas pipes to repurpose.
+      - variant: network-value-scenario-cross
+        rung: L0
+        note: >
+          Three booleans (hydrogen.network, gas_network_repurposing, co2_network) plus
+          the ll wildcard; earth's smaller base cases make the cross cheap. The most
+          tractable variant here by a wide margin.
+    where:
+      - change: "the missing shared-capacity coupling between repurposed H2 and methane"
+        anchor: "scripts/solve_network.py::extra_functionality — a new constraint alongside add_h2_network_cap; requires methane Links to exist first"
+        provenance: "scripts/solve_network.py:extra_functionality; scripts/solve_network.py:add_h2_network_cap"
+      - change: "build methane Links so there is something to trade the retrofit against"
+        anchor: "scripts/prepare_sector_network.py — the clustered CSV read in add_hydrogen is already the pipe table; sector.gas.network is the dead switch to revive"
+        provenance: "scripts/prepare_sector_network.py:add_hydrogen; scripts/prepare_gas_network.py:cluster_gas_network"
+      - change: "per-region CO2 sequestration potential (e_nom_max on the co2 stored stores)"
+        anchor: "scripts/prepare_sector_network.py::add_co2, the n.madd('Store', spatial.co2.nodes, ...) block"
+        provenance: "scripts/prepare_sector_network.py:add_co2"
+      - change: "losses and compression on the sector H2 network"
+        anchor: "scripts/prepare_sector_network.py::add_hydrogen, after the pipeline n.madd — call _helpers.lossy_bidirectional_links then set_length_based_efficiency, in that order"
+        provenance: "scripts/_helpers.py:set_length_based_efficiency; scripts/_helpers.py:lossy_bidirectional_links"
+      - change: "post-discretisation of pipeline capacities"
+        anchor: "scripts/solve_network.py — the optimize_transmission_expansion_iteratively call site; add a solving.options.post_discretization block"
+        provenance: "scripts/solve_network.py:optimize_transmission_expansion_iteratively"
+      - change: "candidate-graph topology filter (point-to-point / tree)"
+        anchor: "scripts/prepare_sector_network.py::add_hydrogen — the h2_links frame, before either add_links_new_H2_pipelines or add_links_elec_routing_new_H2_pipelines"
+        provenance: "scripts/prepare_sector_network.py:add_links_elec_routing_new_H2_pipelines"
+    data_dependencies:
+      - input: "GGIT global gas pipeline table (or IGGIELGN for Europe)"
+        required_for: "greenfield-routing-on-candidate-graph, gas-network-retrofit"
+        availability: >
+          exists by default — downloaded by prepare_gas_network from a pypsa-meets-earth
+          mirror. Coverage is the real question: GGIT is global but sparse, and outside
+          gas-rich regions the clustered graph can come back EMPTY, in which case the
+          code silently falls back to greenfield routing on the power topology
+      - input: "regional CO2 geological storage potentials"
+        required_for: co2-transport-to-sequestration-sites
+        availability: >
+          ABSENT — no CO2Stop equivalent, no rule, no resource. The only bound is the
+          global 200 Mt scalar whose own code comment concedes it is a Europe number.
+          Must be supplied from an external national atlas, and for most of earth's
+          target regions no open one exists
+      - input: "user pipeline table at data/custom/pipelines.csv"
+        required_for: exogenous-project-list-routing
+        availability: >
+          must be built — the config switch and the input branch exist, the file does
+          not. Columns follow the clustered gas-network CSV (bus0, bus1, length,
+          capacity)
+      - input: "salt-cavern / underground H2 storage potentials"
+        required_for: "greenfield-routing-on-candidate-graph (as the substitute for pipeline capacity)"
+        availability: >
+          region-dependent and OFF by default (hydrogen.underground_storage false,
+          against eur's true), with custom_data.h2_underground as the override hook.
+          Pipeline sizing without any geological storage option is a distortion worth
+          naming to the user
+    cost_profile:
+      solves: >
+        One per scenario cell, same as eur. The tractable cross here is
+        {hydrogen.network} x {gas_network_repurposing} x {co2_network} plus the ll
+        wildcard.
+      relative: >
+        Materially cheaper than eur, for a structural reason as well as a scale one.
+        Earth's corpus study is 14 nodes hourly; earth's sector H2 links are NOT split
+        into forward/reversed pairs, so the link count is half what the same topology
+        costs in eur; and no methane network is ever built, which removes another set of
+        extendable links entirely. The retrofit variant's LP cost is zero here because
+        the retrofit constraint does not exist.
+      note: >
+        The binding constraint on earth is almost never solve time — it is data and
+        missing formulation. Do not coarsen to buy compute you did not need; spend the
+        effort on the sink map or the coupling constraint instead. If the study is
+        electricity-plus-hydrogen rather than fully sector-coupled, the
+        electricity.extendable_carriers.Link route is cheaper still and is the only one
+        that gets pipeline losses for free.
+    verifies:
+      - variant: greenfield-routing-on-candidate-graph
+        check: "(n.links.carrier == 'H2 pipeline').any()"
+        over: run
+        note: >
+          No H2 pipeline links at all. Most likely the clustered gas network came back
+          empty and the greenfield fallback also found no candidates — check the
+          clustered pipelines CSV before blaming the config.
+      - variant: gas-network-retrofit
+        check: "(n.links.carrier == 'gas pipeline').any()"
+        over: run
+        note: >
+          There are no methane links, which is the DEFAULT state on earth
+          (sector.gas.network is dead). Any repurposed H2 capacity in this run was free:
+          nothing was given up. Fails by design until the L5 work above is done — that
+          is the point of asserting it.
+      - variant: gas-network-retrofit
+        check: "(n.links.carrier == 'H2 pipeline repurposed').any()"
+        over: run
+        note: >
+          Repurposed links missing despite gas_network_repurposing being default true —
+          means the clustered gas network was empty and the code took the greenfield
+          branch, so the run answers a different question than the one asked.
+      - variant: co2-transport-to-sequestration-sites
+        check: "n.buses.query(\"carrier == 'co2 stored'\").index.size > 1"
+        over: run
+        note: >
+          One 'co2 stored' bus means the CO2 pipelines are self-loops, same failure mode
+          as eur. On earth also check that the stores are not all e_nom_max inf, because
+          an unbounded sink makes the routing result uninterpretable even when the buses
+          are spatial.
+      - variant: network-value-scenario-cross
+        check: "len(ns) == 2 ** 3"
+        over: ensemble
+        note: >
+          A missing cell in the {H2 network} x {repurposing} x {CO2 network} cross. The
+          cost delta between poles is the entire deliverable, so a dropped run does not
+          degrade the answer, it removes it.

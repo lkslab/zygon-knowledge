@@ -1,0 +1,135 @@
+paper: "2025_Lindner_PyPSA-DE_EEM.pdf"
+tier: 1
+model_used: >
+  PyPSA-DE, a bespoke PyPSA model derived from PyPSA-Eur; 49 regions (30 Germany,
+  19 European neighbours), 3-hourly temporal resolution, full sector-coupling,
+  electricity and hydrogen transmission networks, 2020–2045 in 5-year steps.
+scope: >
+  Introduces PyPSA-DE, the first open-source cross-sectoral high-resolution model
+  of the German energy system, and uses it to compare integrated cross-sectoral
+  planning with regional pricing against the German national grid development plan
+  (NDP), finding 92 billion EUR savings in transmission investment.
+methods:
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "In 5-year steps with myopic foresight from 2020 to 2045, PyPSA-DE builds a
+      linear optimization problem to minimize total system costs." (Sec. II Methods)
+    procedure_notes: >
+      Myopic pathway optimisation; investment decisions are made horizon by horizon
+      (2020, 2025, 2030, 2035, 2040, 2045) without knowledge of future periods.
+      Single net-zero scenario is run; no perfect-foresight comparison is reported.
+    variant: myopic-pathway
+    parameters: {horizon_years: "2020–2045", step_size_years: 5}
+
+  - slug: sector-coupled-network-assembly
+    role: canonical-use
+    evidence: >
+      "PyPSA-DE simulates supply, demand, storage and transmission networks to
+      cover energy and non-energy demand in the electricity, heating, transport,
+      agriculture, waste and industry sectors." (Sec. II Methods)
+    procedure_notes: >
+      Built on PyPSA-Eur as a base. Germany-specific data added from the national
+      grid development plans, the Marktstammdatenregister power/gas unit register,
+      and other national sources. Sectors include electricity, heating (district and
+      individual), transport (BEV), industry, and waste. CO2 budget constraint
+      enforced at EU level.
+    variant: null
+    parameters: {}
+
+  - slug: linearised-optimal-power-flow
+    role: routine-use
+    evidence: >
+      "The grid is modeled with an optimal linearized power flow with piecewise
+      linear losses, an approach found to agree well with the full load flow
+      calculation [5]. The linear load flow is solved with a computationally
+      efficient cycle-based formulation [15]." (Sec. II and Sec. III.C)
+    procedure_notes: >
+      Cycle-based LOPF formulation (citing Hörsch et al. 2018, ref [15]). Piecewise
+      linear loss approximation (citing Neumann et al. 2022, ref [5]). The paper
+      explicitly acknowledges this as a simplifying assumption that differs from
+      full non-linear load flow. Base network extracted from OpenStreetMap and
+      validated against official data.
+    variant: cycle-flow-with-pwl-losses
+    parameters: {}
+
+  - slug: transmission-expansion-cooptimisation
+    role: canonical-use
+    evidence: >
+      "New lines are not built as discrete units, but optimized continuously and
+      discretized in a further step as soon as a certain maximum loading is exceeded
+      [5]." (Sec. III.C) The model co-optimises generation, storage and
+      transmission network expansion across all planning periods.
+    procedure_notes: >
+      Continuous capacity optimisation of new lines, then discretised when loading
+      threshold is exceeded. Both HVAC and HVDC lines considered (onshore and
+      offshore). Model identifies one-third reduction in transmission expansion
+      vs. the German NDP. The comparison with the NDP is a central result of the
+      paper.
+    variant: continuous-then-discretised
+    parameters: {}
+
+  - slug: n-1-security-and-contingency
+    role: routine-use
+    evidence: >
+      "Based on [17], the N-1 criterium is approximated by restricting the maximal
+      line loading to 70%." (Sec. III.C, citing Gazafroudi et al. 2022)
+    procedure_notes: >
+      N-1 security is handled as a static line loading derating (s_max_pu = 0.7
+      implied), not as explicit contingency constraints. The paper acknowledges
+      this as a simplification.
+    variant: derating-margin
+    parameters: {max_line_loading: "70%"}
+
+  - slug: carrier-network-routing-h2-co2
+    role: routine-use
+    evidence: >
+      "Next to the expansion of the electricity grid, the model constructs a
+      hydrogen pipeline network that connects electrolysis, hydrogen imports from
+      neighboring countries and large-scale consumers in the industry sector...
+      Following the approach in [3] pipelines are modeled as linear transport links,
+      without explicit consideration of gas flow physics." (Sec. III.D)
+    procedure_notes: >
+      Hydrogen network endogenously sized alongside electricity network. Pipelines
+      modelled as linear transport links (no gas flow physics). Results compared
+      against the official German hydrogen network development plan. Electrolysis
+      sited predominantly near the coast to integrate offshore wind.
+    variant: linear-transport-links
+    parameters: {}
+
+  - slug: zonal-nodal-and-redispatch
+    role: canonical-use
+    evidence: >
+      "While the NDP expands the grid to remove congestion arising from the market
+      dispatch of a single bidding zone, leading to substantial grid expansion, we
+      use regional prices to manage congestion within Germany. Regional prices help
+      the system to dispatch local assets to manage congestion, leading to less
+      expansion as well as congestion rents that lower the grid tariffs charged to
+      consumers." (Sec. III.C)
+    procedure_notes: >
+      The paper's central policy comparison is nodal/regional pricing (PyPSA-DE
+      result) vs. the current single German bidding zone (NDP baseline). PyPSA-DE
+      runs a nodal/regional price model at 49-node resolution; the NDP case
+      represents the single-zone status quo. The paper reports that nodal pricing
+      reduces total transmission investment by ~92 billion EUR and lowers end-consumer
+      prices in all regions.
+    variant: nodal-vs-single-zone-comparison
+    parameters: {regions: 49, germany_regions: 30, neighbour_regions: 19}
+
+  - slug: demand-side-flexibility-representation
+    role: routine-use
+    evidence: >
+      "At the daily scale the needs rise by a factor 10 between 2020 and 2045,
+      primarily to integrate solar fluctuations, and are met by a mix of electric
+      vehicle charging management and stationary batteries." (Sec. III.B) BEV
+      chargers appear in the electricity balance figure legend.
+    procedure_notes: >
+      EV smart charging represented as a flexible load. Demand-side management
+      also mentioned in the context of flexibility provision at the daily scale,
+      alongside stationary batteries and trade. The flexibility analysis uses
+      the Artelys methodology (ref [12]) to attribute flexibility needs by
+      time scale (daily, weekly) to specific technologies.
+    variant: ev-smart-charging
+    parameters: {}
+
+unmatched_methods: []

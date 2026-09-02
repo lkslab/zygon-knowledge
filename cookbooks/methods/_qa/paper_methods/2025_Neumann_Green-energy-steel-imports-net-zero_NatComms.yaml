@@ -1,0 +1,189 @@
+paper: "2025_Neumann_Green-energy-steel-imports-net-zero_NatComms.pdf"
+tier: 1
+model_used: >
+  PyPSA-Eur (sector-coupled, 110 nodes, all sectors including electricity/heat/transport/industry/shipping/aviation,
+  4-hourly equivalent temporal resolution, weather year 2013, integrated with TRACE global supply chain model)
+scope: >
+  Explores the cost savings and infrastructure implications of importing renewable energy and green
+  materials (electricity, hydrogen, hydrogen derivatives, steel) into Europe for a net-zero carbon
+  European energy system, sweeping import volumes, costs, and carrier subsets.
+methods:
+  - slug: import-and-trade-representation
+    role: extends
+    evidence: >
+      "We integrate an open model of global energy supply chains, TRACE, with the sector-coupled energy system
+      model for Europe PyPSA-Eur, to investigate the impact of imports on European energy infrastructure needs."
+      (Abstract/Introduction). Import vectors include electricity, hydrogen (pipeline and ship), methane, ammonia,
+      methanol, Fischer-Tropsch fuels, and steel from 11 exporting regions to 12 European entry points (Methods,
+      "Modelling of import supply chains and costs").
+    procedure_notes: >
+      Levelised cost of energy exports from TRACE model (Hampp et al. 2023) provides constant marginal import
+      cost for each carrier and entry point. Electricity imports are endogenously co-optimised (wind/solar/storage
+      capacities + HVDC sizing in exporting country). Hydrogen and methane entry points constrained to existing/planned
+      LNG terminals and pipeline entry points with expansion cap of 2.5x. Ammonia, carbonaceous fuels and steel are
+      not spatially resolved. TRACE updated: atlite used instead of GEGIS for potentials, techno-economic assumptions
+      aligned with PyPSA-Eur, steel added as import vector. Exporting countries: Australia, Argentina, Chile,
+      Kazakhstan, Namibia, Turkey, Ukraine, Eastern US/Canada, mainland China, MENA. Annual reference export demand
+      of 500 TWh or 100 Mt steel per region.
+    variant: levelised-cost-with-endogenous-electricity
+    parameters: {import_vectors: 8, exporting_regions: 11, entry_points: 12, hvdc_losses: "3%/1000km + 2% converter",
+                  h2_pipeline_losses: "2%/1000km compression", expansion_cap: "2.5x existing capacity"}
+
+  - slug: sector-coupled-network-assembly
+    role: routine-use
+    evidence: >
+      "For our analysis, we use the European sector-coupled high-resolution energy system model PyPSA-Eur based on
+      the open-source modelling framework PyPSA, covering the energy demands of all sectors including electricity,
+      heat, transport, industry, agriculture, as well as international shipping and aviation." (Methods section,
+      "Modelling of the European energy system")
+    procedure_notes: >
+      All sectors modelled: electricity, heat (decentral + district heating), transport (land fully electrified,
+      shipping methanol, aviation green kerosene/methanol), industry, agriculture, international shipping/aviation,
+      non-energy feedstocks in chemicals. Heating supply: heat pumps, electric/gas boilers, CHP. Power-to-X:
+      electrolysis, methanation, methanolisation, Haber-Bosch ammonia, Fischer-Tropsch. Waste heat from PtX processes
+      fed into district heating. Steel and ammonia industry can relocate within Europe (H2-DRI + EAF modelled
+      explicitly). New methanol usage pathways added: methanol-to-olefins/aromatics, methanol-to-power (OCGT/Allam
+      cycle), steam reforming with/without CCS. Technology costs from Danish Energy Agency catalogue for 2030.
+    variant: full-sector-coupling-with-industry-relocation
+    parameters: {nodes: 110, target_year: 2030, sequestration_cap: "200 MtCO2/a", biomass_potential: "1569 TWh",
+                  min_part_load_methanolisation: "30%", min_part_load_FT: "70%"}
+
+  - slug: carrier-network-routing-h2-co2
+    role: routine-use
+    evidence: >
+      "Networks are considered for electricity, methane and hydrogen transport. However, different to Neumann et al.,
+      pipeline retrofitting to hydrogen is disabled for computational reasons such that all hydrogen pipelines are
+      assumed to be newly built." (Methods, "Modelling of the European energy system"). "A carbon dioxide network
+      is not explicitly co-optimised since CO2 is not spatially resolved in this model version."
+    procedure_notes: >
+      Electricity network: HVAC + HVDC co-optimised. Hydrogen network: new-build only (no gas pipeline retrofit),
+      expansion capped at 50.7 GW per connection (three 48-inch parallel pipelines). Gas network from ENTSO-E and
+      SciGRID gas data, supplemented by LNG terminal locations. H2 compression electricity demand: 2%/1000km.
+      Gas compression: 1%/1000km. HVDC: 3%/1000km + 2% converter loss. HVAC losses: piecewise linear approximation.
+      Dynamic line rating up to 30% capacity increase. Transmission lines capped at 15 GW (HVAC) / 25 GW (HVDC).
+      CO2 network absent (CO2 not spatially resolved).
+    variant: new-build-h2-pipelines-no-retrofit
+    parameters: {h2_pipeline_cap: "50.7 GW", hvac_expansion_cap: "15 GW", hvdc_expansion_cap: "25 GW",
+                  h2_compression_losses: "2%/1000km", gas_compression_losses: "1%/1000km"}
+
+  - slug: temporal-aggregation-and-segmentation
+    role: routine-use
+    evidence: >
+      "The model is solved with an uninterrupted 4-hourly equivalent resolution for the weather year 2013,
+      using a segmentation clustering approach implemented in the tsam toolbox." (Methods, "Modelling of the
+      European energy system", ref 69: Hoffmann et al. 2022 Applied Energy)
+    procedure_notes: >
+      Segmentation-based temporal aggregation (tsam toolbox) producing 4-hourly equivalent snapshots. Single
+      weather year 2013. "Weather variations between years are not considered for computational reasons." (Body text).
+      The segmentation is Pareto-optimal per Hoffmann et al. 2022 (ref 69).
+    variant: tsam-segmentation-4h
+    parameters: {resolution: "4-hourly equivalent", weather_year: 2013, method: "tsam segmentation"}
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "Renewable potentials and time series for wind and solar electricity generation are calculated with atlite,
+      considering land eligibility constraints like nature reserves or distance criteria to settlements. Given low
+      onshore wind expansion in many European countries in recent years, restrictive onshore wind expansion potentials
+      are applied, using a 1.5 MW/km2 factor for the eligible land area." (Methods, "Modelling of the European
+      energy system"). Also in TRACE extension: "land availability and wind and solar time-series are determined
+      using atlite instead of GEGIS."
+    procedure_notes: >
+      Atlite used for both European and exporting-country renewable potentials (replacing GEGIS in TRACE).
+      Land eligibility excludes nature reserves and applies settlement distance criteria. Onshore wind capacity
+      density: 1.5 MW/km2. Geological hydrogen storage potentials from Caglayan et al. 2020. Biomass potentials
+      from JRC-ENSPRESO medium 2030, restricted to agricultural/forestry residues, waste, manure (1569 TWh total).
+    variant: atlite-restrictive-onshore
+    parameters: {onshore_wind_density: "1.5 MW/km2", biomass_potential: "1569 TWh",
+                  biomass_carbon: "546 MtCO2/a", capture_rate: "up to 90%"}
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "In terms of investment periods, no pathway optimisation is conducted, but a greenfield approach is pursued
+      except for existing hydroelectricity and transmission infrastructure targeting net-zero CO2 emissions."
+      (Methods, "Modelling of the European energy system"). Technology cost projections for 2030 used throughout.
+    procedure_notes: >
+      Single-period overnight optimisation for a net-zero target state. Existing hydroelectricity and transmission
+      inherited; all other capacity is greenfield. No transition pathway modelled. 2030 technology costs used
+      as proxy for mid-century infrastructure build-out requirements.
+    variant: overnight-greenfield
+    parameters: {target_year_costs: 2030, existing_assets: "hydro + transmission only"}
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: routine-use
+    evidence: >
+      "We perform sensitivity analyses interpolating between very high levels of imports and no imports at all,
+      exploring low and high costs for imports to account for associated uncertainties, and system responses to
+      the exclusion of subsets of import vectors, in order to probe the flatness of the solution space."
+      (Introduction). Figs. 5 and 6 show systematic cost variation sweeps of ±20% on import costs.
+    procedure_notes: >
+      Three dimensions swept: (1) import volumes from 0 to 7500 TWh; (2) import cost variations of ±10% and ±20%
+      applied uniformly to all vectors except electricity, and separately for carbonaceous fuels only; (3) exclusion
+      of subsets of import vectors (each vector allowed individually and in combinations). Table A.1 (Appendix A)
+      presents one-at-a-time sensitivity of TRACE supply chain costs to WACC (3–12%), DAC investment cost
+      (+25 to +200%), electrolysis cost, biogenic CO2 availability, excess electricity sale price, and geological
+      storage. Not a full factorial or Latin hypercube; scenarios are structured discrete variants.
+    variant: discrete-scenario-sweeps-plus-ota-supply-chain
+    parameters: {import_cost_variation: "±10%, ±20%", wacc_range: "3–12%", import_volume_range: "0–7500 TWh",
+                  vector_subsets: 8}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "While enforcing net-zero emissions for carbon dioxide, we also limit the annual carbon sequestration potential
+      to 200 MtCO2/a." (Body text, model description). "The overall annual sequestration of CO2 is limited to
+      200 MtCO2/a." (Methods).
+    procedure_notes: >
+      Annual CO2 emissions cap set to net-zero with carbon management tracing through: industrial emissions,
+      biomass/gas combustion, carbon capture, DAC, electrofuels, recycling, waste-to-energy. Sequestration cap
+      of 200 MtCO2/a allows sequestering ~140 MtCO2/a unabated industrial process emissions. CO2 capture rate
+      90%. No CO2 network (not spatially resolved). CO2 shadow price not explicitly reported as a result but is
+      a binding constraint.
+    variant: net-zero-cap-with-sequestration-limit
+    parameters: {co2_cap: "net-zero", sequestration_limit: "200 MtCO2/a", ccs_capture_rate: "90%"}
+
+  - slug: transmission-expansion-cooptimisation
+    role: routine-use
+    evidence: >
+      "The model simultaneously optimises spatially explicit investments and the operation of generation, storage,
+      conversion and transmission assets to minimise total system costs in a linear optimisation problem."
+      (Methods). Transmission expansion shown in Fig. 7 as TWkm of added HVAC/HVDC capacity.
+    procedure_notes: >
+      HVAC, HVDC and hydrogen pipeline capacities co-optimised with generation and storage. Per-link caps applied:
+      15 GW HVAC, 25 GW HVDC, 50.7 GW H2 pipelines. Dynamic line rating allows up to 30% capacity increase on
+      existing lines. N-1 resilience approximated by limiting line utilisation to 70% of dynamic capacity.
+      Piecewise linear loss approximation for HVAC (Neumann et al. 2022). Solved with Gurobi as linear program.
+    variant: co-optimised-with-per-link-caps
+    parameters: {hvac_cap: "15 GW", hvdc_cap: "25 GW", h2_pipeline_cap: "50.7 GW",
+                  n1_derating: "70% of dynamic capacity", dlr_limit: "30% capacity increase"}
+
+  - slug: shadow-prices-and-marginal-values
+    role: routine-use
+    evidence: >
+      "Capital expenditures are distributed to hours in proportion to the production volume. Missing bars indicate
+      that no domestic production occurred..." The cost breakdown in Fig. 4 decomposes domestic synthesis costs
+      into electricity cost, hydrogen cost, carbon cost, investment cost, and heat revenue using marginal prices
+      of inputs and outputs. (Fig. 4 caption and body text, "Import dynamics for different energy carriers")
+    procedure_notes: >
+      Marginal prices of inputs (electricity, hydrogen, CO2) and outputs (heat) used to attribute production
+      costs per region and snapshot. Capital costs distributed proportionally to production volume (not shadow
+      price of capacity constraint). Used to compare domestic synthesis costs against import costs and explain
+      import share decisions. Not the primary study focus but used as an analytical decomposition tool.
+    variant: marginal-cost-decomposition
+    parameters: {}
+
+  - slug: linearised-optimal-power-flow
+    role: routine-use
+    evidence: >
+      "The losses of high-voltage AC transmission lines are estimated using a piecewise linear approximation
+      as proposed in Neumann et al., in addition to the linearised power flow equations." (Methods, ref 81:
+      Hörsch et al. 2018 EPSR — cycle-flow LOPF).
+    procedure_notes: >
+      Linearised (DC) power flow with cycle-flow formulation (Hörsch et al. 2018). HVAC losses approximated
+      with piecewise linear fit (Neumann et al. 2022). HVDC links modelled as lossless links with explicit
+      converter losses (2% static + 3%/1000km line losses). Solved as single LP with Gurobi.
+    variant: cycle-flow-with-piecewise-loss-approximation
+    parameters: {hvdc_converter_loss: "2%", hvdc_line_loss: "3%/1000km"}
+
+unmatched_methods: []

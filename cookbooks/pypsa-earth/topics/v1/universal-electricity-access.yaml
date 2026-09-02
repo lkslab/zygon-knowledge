@@ -1,0 +1,49 @@
+id: universal-electricity-access
+title: Universal electricity access
+rank: 22
+question: >
+  What is the cheapest national path to universal electricity access by 2030,
+  and what does the grid need to deliver it? Africa's dominant modelling
+  question (World Bank/ESMAP GEP over 58 countries, IRENA, AfDB) — the purest
+  "need over money" topic: institutional buyers, open-source tooling expected.
+when_to_use:
+  - "universal access by 2030 plan"
+  - "national electrification strategy / least-cost access"
+  - "how much generation and grid does full access need"
+  - "SDG7 / energy-access scenario"
+  - "electrify the unserved population"
+recipes:
+  generation_conversion: [solar-mini-grids, solar-home-systems, rooftop-distributed-solar, utility-scale-solar-pv]
+  demand: [electricity-load, demand-spatial-disaggregation, residential-electricity-demand, demand-scenarios-and-growth]
+functionality:
+  - id: geospatial-access-electrification
+    role: "the core missing capability — no settlement tiers, connection status, or access-cost optimization"
+  - id: gadm-admin-clustering
+    role: "admin-unit zones align results with the national electrification agencies' planning units"
+  - id: spatial-clustering
+    role: "resolution lever, but the network floor is the >51 kV OSM grid — never settlements"
+  - id: distribution-grid-lv
+    role: "one aggregate LV bus per node with linear cost — the only distribution stand-in"
+  - id: distribution-power-flow
+    role: "no feeder model, so connection-cost realism below the substation is absent"
+  - id: scenario-matrix
+    role: "access-ambition variants only via exogenous demand scenarios, not access targets"
+gap_assessment: >
+  The flagship hole. PyPSA-Earth has no concept of electrification status:
+  build_demand_profiles spreads national consumption over GADM regions by
+  WorldPop population and GDP, so unelectrified people are already counted as
+  served load and "raising access" is indistinguishable from demand growth.
+  There are no OnSSET/GEP-style settlement tiers, no grid-vs-off-grid
+  connection-cost optimization, and the network stops at the 51 kV OSM
+  threshold — the solar-mini-grids and solar-home-systems recipes document the
+  same hole from the technology side. What the model CAN do is the upstream
+  half: size the bulk generation and transmission that a full-access demand
+  projection implies (grow demand via demand-scenarios-and-growth, allocate it
+  by population, expand the grid). Pair it with OnSSET/GEP for the settlement
+  layer. Data caveat: access-country demand often falls back to DEFAULT rows in
+  the growth/share CSVs and WorldPop-keyed allocation — check the data_quality
+  scorecard before quoting nodal results.
+coverage: gap
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

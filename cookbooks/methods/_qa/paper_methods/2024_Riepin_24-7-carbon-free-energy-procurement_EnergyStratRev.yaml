@@ -1,0 +1,188 @@
+paper: "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+tier: 1
+model_used: >
+  PyPSA-Eur, modified with custom 24/7 CFE procurement constraints, 37 bidding zones
+  (country-level), electricity-only, 2920 snapshots (3-hourly), two planning years
+  (2025 and 2030).
+scope: >
+  Studies the means, costs, and system-level impacts of 24/7 carbon-free energy
+  procurement strategies across four European regions (Ireland, Denmark, Germany,
+  Poland) and two years (2025, 2030), comparing hourly CFE matching to 100% annual
+  renewable matching.
+methods:
+  - slug: additionality-and-24-7-matching
+    role: defines
+    evidence: >
+      "We introduce new model components (parameters, variables, constraints) into the
+      PyPSA-Eur model to represent voluntary clean energy procurement." The hourly
+      matching constraint (Eq. 2) requires that hourly generation from procured CFE
+      generators plus storage discharge plus grid imports multiplied by the grid CFE
+      factor minus excess supply is >= CFE score x * total load, for every hour t.
+      (Sec. 2 "Methods and experimental design", Eq. 1 and Eq. 2)
+    procedure_notes: >
+      Two procurement strategies are modelled and compared: (1) 100% annual volumetric
+      matching (Eq. 1: sum of contracted RES dispatch over year equals annual demand);
+      (2) 24/7 hourly matching (Eq. 2) based on Google's 24/7 CFE methodology [25].
+      CFE score x is swept from 80% to 100%. Contracted generators must be additional
+      and sited in the local bidding zone. Excess CFE can be curtailed or sold to the
+      grid, capped at 20% of annual demand. The grid CFE factor introduces a nonconvex
+      term; handled by iterative update starting from CFE_t=0, with one forward pass
+      (2 iterations) yielding good convergence. 10% of C&I demand participates.
+    variant: hourly-cfe-score-sweep
+    parameters: {cfe_score_range: "80%–100%", participation_rate: "10% of C&I demand",
+                  excess_cap: "20% of annual demand", iterations: 2}
+
+  - slug: brownfield-and-capacity-vintaging
+    role: routine-use
+    evidence: >
+      "We use a brownfield investment approach, which means that we keep the existing
+      power generation and storage assets in the model and only optimise the capacity
+      expansion of new assets." (Sec. 2 "Optimisation model")
+    procedure_notes: >
+      Existing fleet data from powerplantmatching package. National decommissioning
+      plans for coal and nuclear incorporated from beyondfossilfuels.org and
+      world-nuclear.org. Brownfield applies to the background system; participating
+      consumers' procured assets are new (additional). (SI Sec. S2)
+    variant: null
+    parameters: {}
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "The model performs a perfect-foresight optimisation of investment and power
+      dispatch decisions to meet electricity demand of the 24/7 consumers, as well as
+      the demand of other consumers in the European electricity system for 2025 or 2030."
+      (SI Sec. S2)
+    procedure_notes: >
+      Overnight / single target-year approach; two separate optimisations for 2025 and
+      2030 rather than a transition pathway. Greenfield for participating consumers'
+      assets; brownfield for background system. No myopic rolling or perfect-foresight
+      multi-period pathway.
+    variant: overnight
+    parameters: {target_years: [2025, 2030]}
+
+  - slug: temporal-aggregation-and-segmentation
+    role: routine-use
+    evidence: >
+      "The problem is solved with a temporal resolution of 2920 snapshots, representing
+      a 3-hourly average of the hourly time-series data." (Sec. 2 "Methods and
+      experimental design")
+    procedure_notes: >
+      8760-hour year reduced to 2920 snapshots by 3-hourly averaging. Single climate
+      year 2013 used as the representative weather year for renewable feed-in profiles.
+      Demand profiles assumed same as 2013 for both target years.
+    variant: n-hourly
+    parameters: {resolution: "3h", snapshots: 2920, climate_year: 2013}
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      "electricity demand, supply and power transmission infrastructure ... are
+      clustered to 37 individual bidding zones. Thus, each zone represents a country."
+      (Sec. 2 "Model scope")
+    procedure_notes: >
+      The ENTSO-E area reduced to 37 bidding zones at country level (some countries
+      split by synchronous area, e.g. DK1/DK2). AC lines >= 220 kV and all HVDC lines
+      included. Islands not connected to the main European system excluded.
+    variant: null
+    parameters: {zones: 37}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "We assume price for EU ETS allowances to be 80 €/tCO2 and 130 €/tCO2 for 2025
+      and 2030, accordingly." (SI Sec. S2)
+    procedure_notes: >
+      CO2 priced via EU ETS allowance price (exogenous, not a cap). The additionality
+      constraint (Eq. 2) and the background system optimisation together drive
+      system-level emissions reduction. Scope 2 emissions of participating consumers
+      tracked as a reporting metric.
+    variant: co2-price
+    parameters: {co2_price_2025: "80 EUR/tCO2", co2_price_2030: "130 EUR/tCO2"}
+
+  - slug: shadow-prices-and-marginal-values
+    role: routine-use
+    evidence: >
+      "The wholesale market prices are derived from dual variables of a nodal energy
+      balance constraint." (Sec. 2 "24/7 CFE hourly matching")
+    procedure_notes: >
+      Nodal shadow prices used as wholesale market prices that participating consumers
+      face for grid imports and for revenue from selling excess CFE electricity to the
+      grid. Used in cost breakdown analysis (Figs. 3b, 4, 5e–5f, 6d–6f).
+    variant: null
+    parameters: {}
+
+  - slug: storage-sizing-and-duration
+    role: routine-use
+    evidence: >
+      Battery storage and long-duration energy storage (LDES — underground hydrogen
+      storage in salt caverns with electrolyzer and fuel cell) are co-optimised as
+      procurement options for participating consumers across three technology palettes.
+      (Sec. 2 "Carbon-free energy technologies in scope"; Table S1)
+    procedure_notes: >
+      Battery storage: energy cost 187 €/kWh (2025), power cost via inverter 215 €/kW.
+      LDES (hydrogen storage in salt caverns): 2.5 €/kWhH2 (2025); electrolyzer
+      550 €/kWel, fuel cell 1200 €/kW efficiency 0.50/0.54. Three palettes: palette 1
+      (wind, solar, battery), palette 2 (+LDES), palette 3 (+LDES + clean firm
+      generators). Energy and power sized independently; max_hours not stated
+      explicitly. (SI Table S1)
+    variant: null
+    parameters: {ldes_energy_cost_2025: "2.5 EUR/kWhH2", battery_energy_cost_2025: "187 EUR/kWh"}
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: routine-use
+    evidence: >
+      "Our experimental setup incorporates a wide range of scenarios, allowing us to
+      generalise our results beyond individual assumptions." Scenarios vary technology
+      palette (1–3), region (IE, DK1, DE, PL) and year (2025, 2030). A specific
+      mechanism-isolation experiment reruns optimisation with excess electricity to grid
+      fixed at zero to separate profile vs volume decarbonisation effects. (Sec. 2
+      "Methods and experimental design"; Sec. 3.5)
+    procedure_notes: >
+      One-at-a-time variation of: technology palette, grid location, planning year.
+      CFE score swept 80%–100% in each case. Mechanism isolation: re-ran optimisation
+      with excess export constrained to zero; difference attributed to volume mechanism
+      (Sec. 3.5). Results shown across 8 background-grid combinations (4 zones x 2 years).
+    variant: scenario-sweep-plus-isolation
+    parameters: {regions: [IE, DK1, DE, PL], years: [2025, 2030],
+                  cfe_targets: "80%–100%", technology_palettes: 3}
+
+  - slug: powerplant-matching-and-fleet-assembly
+    role: routine-use
+    evidence: >
+      "The existing power plant fleet data is based on the powerplantmatching package."
+      (SI Sec. S2; reference [42])
+    procedure_notes: >
+      Powerplantmatching used to assemble the background fleet. Coal/nuclear
+      decommissioning plans from beyondfossilfuels.org and world-nuclear.org. Paper
+      does not describe the matching procedure itself — cited as a data input.
+    variant: null
+    parameters: {}
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "The renewable feed-in profiles are computed with the atlite package." (SI Sec. S2;
+      reference [S40])
+    procedure_notes: >
+      Atlite used to compute capacity factor time series for wind and solar PV for the
+      climate year 2013. The paper does not detail exclusion zones or land eligibility
+      criteria applied — atlite cited as the tool; background system follows standard
+      PyPSA-Eur land eligibility defaults.
+    variant: null
+    parameters: {climate_year: 2013}
+
+  - slug: linearised-optimal-power-flow
+    role: routine-use
+    evidence: >
+      The optimisation "includes the linear optimal power flow on the transmission
+      network for the planning year. This is standard for the PyPSA-Eur model."
+      (Sec. 2 "Optimisation model")
+    procedure_notes: >
+      LOPF applied to AC lines >= 220 kV and all HVDC links. Bidding-zone level
+      clustering (37 zones) means the network is relatively coarse. No further
+      details on cycle vs angle formulation given — defers to PyPSA-Eur standard.
+    variant: null
+    parameters: {}
+
+unmatched_methods: []

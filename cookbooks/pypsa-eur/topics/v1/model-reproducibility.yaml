@@ -1,0 +1,57 @@
+id: model-reproducibility
+title: Model reproducibility
+rank: 87
+question: >
+  Can someone else (or you, next year) rerun the study and get the same
+  numbers — pinned environment, declared data provenance, config-as-code run
+  definitions? The transparency push (EU, academia, dev banks) that favors
+  auditable open models over black-box consultancy tools.
+when_to_use:
+  - "make this study rerunnable / auditable"
+  - "pin the environment and data versions"
+  - "same config, same result — why do numbers differ"
+  - "open, transparent alternative to black-box tools"
+  - "archive a run for review or publication"
+recipes:
+  generation_conversion: []
+  demand: []
+functionality:
+  - id: workflow-reproducibility
+    role: "core — lockfile + pinned dataset versions + config stored in n.meta; optional objective-value check hard-fails on drift"
+  - id: config-schema-validation
+    role: "every config and scenario override validated against a typed pydantic schema at workflow start — typos fail fast"
+  - id: data-retrieval-versioning
+    role: "closes earth's biggest residual: dataset versions are pinned in data/versions.csv with archive fallbacks, not retrieved live"
+  - id: scenario-matrix
+    role: "the run IS the config — every wildcard and option lives in yaml under version control, run.prefix isolates result trees"
+  - id: shared-resources-caching
+    role: "declared sharing of intermediate inputs keeps parallel runs consistent with each other"
+  - id: numeric-stability-options
+    role: "caveat lever — noisy_costs is seeded RNG; fix the seed (or disable noise) plus check_objective for bit-level repeatability"
+  - id: solver-choice
+    role: "solver + options declared in config; solver version pinned by the lockfile"
+  - id: summary-outputs
+    role: "canonical result tables to diff between reruns"
+gap_assessment: >
+  The strongest reproducibility story in the family, stronger than earth on
+  every residual the earth card lists. The workflow is a Snakemake DAG
+  driven entirely by yaml; the software stack is pinned (pixi/conda
+  lockfiles); and the two earth weak points are closed by machinery:
+  (1) input data does not drift with retrieval date — data/versions.csv pins
+  every external dataset to a version with primary/archive/build sources, so
+  the same config pulls the same bytes; (2) config typos cannot silently
+  no-op — the full config and every scenario override are validated against
+  a typed schema before anything runs. Provenance is carried in-band: the
+  solved network stores its complete config in n.meta, and
+  solving.check_objective lets an archived study assert its own objective
+  value on rerun. Honest residuals are the LP-numerics ones only:
+  noisy_costs deliberately perturbs costs (seeded — fix the seed or disable
+  it), LP degeneracy means identical objectives can hide slightly different
+  capacity splits across solver versions or thread counts, and commercial
+  solver builds are outside the lockfile's control. Within one pinned
+  environment, reruns reproduce; across solver versions, compare objectives
+  and energy balances, not individual capacities.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

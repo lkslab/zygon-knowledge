@@ -1,0 +1,114 @@
+id: heat-pump-water-heaters
+title: Heat pump water heaters
+summary: >
+  Dedicated heat pumps for domestic hot water (sanitary hot water), as distinct
+  from space-heating heat pumps.
+when_to_use:
+  - "add heat pump water heaters"
+  - "HPWH"
+  - "electrify water heating"
+  - "domestic hot water demand"
+  - "hot water heat pump"
+  - "sanitary hot water technology"
+  - "separate water heating from space heating"
+  - "pypsa-eur: no dedicated carrier — DHW is folded into the heat buses served by the generic air/ground heat pumps"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        NOT a distinct technology — but the hot-water SERVICE is fully counted
+        and served. Demand side keeps water and space separate a long way:
+        build_energy_totals extracts per-country "total residential water" /
+        "total services water" (JRC-IDEES "Water heating" rows, Eurostat fill)
+        with their own final-to-useful heating efficiencies
+        (build_heating_efficiencies); rule build_hourly_heat_demand gives water
+        demand its own BDEW intraday profile (flat across the year —
+        weekday/weekend shape only, no seasonality, unlike space heat which is
+        scaled by the degree-day series from build_daily_heat_demand). The fold
+        happens in add_heat: heat_load sums the "{sector} water" and
+        "{sector} space" columns onto ONE heat bus per heat system, so hot
+        water is supplied by whatever serves that bus — the same
+        "decentral air-sourced heat pump" (55 C sink,
+        sector.heat_pump_sink_T_individual_heating), resistive heater, gas
+        boiler, solar thermal collector and water tank storage that serve space
+        heat. Consequences of the fold that matter here: the exogenous space
+        heat reduction (sector.reduce_space_heat_exogenously) and the
+        endogenous retrofitting generators scale/offset ONLY the space columns,
+        leaving water demand untouched; residential heat DSM likewise keys on
+        "residential space" only.
+      mechanism: >
+        rule build_energy_totals (water/space/cooking columns +
+        heating_efficiencies) -> rule build_hourly_heat_demand
+        (data/heat_load_profile_BDEW.csv intraday profiles; water use gets
+        intraday_year_profile only) -> rule prepare_sector_network:
+        build_heat_demand scales profiles to pop-weighted totals x efficiency,
+        then add_heat adds the combined Load per heat bus. No code path creates
+        a water-only bus, link or cost row ("water heater" appears nowhere in
+        scripts or config at this ref).
+      not_covered: >
+        No HPWH component, cost row, or COP model at DHW-appropriate sink
+        temperatures (everything runs at the single 55 C decentral sink). No
+        way to electrify water heating separately from space heating — supply
+        technology choice is per heat bus, not per end use. No dedicated hot
+        water tank per dwelling distinct from the generic
+        "{heat_system} water tanks" store (thermal-storage recipe). No legionella
+        / minimum-temperature constraint. The water-demand intraday profile is
+        BDEW (German) for all countries.
+      provenance: "scripts/prepare_sector_network.py:build_heat_demand; scripts/prepare_sector_network.py:add_heat; scripts/build_hourly_heat_demand.py:intraday_profiles; scripts/build_energy_totals.py:build_heating_efficiencies"
+    levers:
+      - key: sector.heat_pump_sink_T_individual_heating
+        effect: "The one decentral sink temperature — effectively the DHW delivery temperature assumption as well; raising it to a DHW-realistic 60 C lowers COP for ALL decentral heat (space included)."
+        default: "55.0"
+        provenance: "config/config.default.yaml:heat_pump_sink_T_individual_heating; rules/build_sector.smk:build_cop_profiles"
+      - key: sector.heat_pump_sources
+        effect: "Which heat pumps exist per system — these are the units implicitly doing water heating."
+        default: "{urban central: [air], urban decentral: [air], rural: [air, ground]}"
+        provenance: "config/config.default.yaml:heat_pump_sources; scripts/prepare_sector_network.py:add_heat"
+      - key: sector.tes
+        effect: "Water tank storage on each heat bus — the closest thing to a hot water cylinder; false removes it."
+        default: "true"
+        provenance: "config/config.default.yaml:tes; scripts/prepare_sector_network.py:add_heat"
+      - key: energy.energy_totals_year
+        effect: "Which historical year's water-heating totals (and efficiencies) are used."
+        default: "2023"
+        provenance: "config/config.default.yaml:energy_totals_year; scripts/prepare_sector_network.py:build_heat_demand"
+    boundary:
+      - variant: "hot water demand met by heat pumps"
+        rung: L0
+        note: "implicit default — water demand sits on the heat buses the heat pumps serve; no action needed, but also no way to see HPWH separately in results"
+      - variant: "change the space-vs-water demand split"
+        rung: L3
+        note: "demand-data change: the water/space columns come from JRC-IDEES/Eurostat in build_energy_totals — see the demand book's residential-water-heating-demand recipe"
+      - variant: "different water-heating intraday profile"
+        rung: L3
+        note: "edit data/heat_load_profile_BDEW.csv (columns 'residential water weekday/weekend', 'services water weekday/weekend'), consumed by rule build_hourly_heat_demand"
+      - variant: "seasonal variation in DHW demand"
+        rung: L2
+        note: "build_hourly_heat_demand assigns water demand a year-flat profile (only space is multiplied by the daily degree-day series); a seasonality factor is a small edit in its sector/use loop"
+      - variant: "HPWH as its own technology on a separate hot-water bus (own COP, own tank)"
+        rung: L5
+        note: "requires splitting the heat_load fold in add_heat into separate space/water buses and adding a dedicated link + cost row + COP at DHW sink temperature; all downstream heat techs currently assume one combined bus"
+      - variant: "electrify water heating only (keep fossil space heat)"
+        rung: L5
+        note: "impossible per end use today — supply competition is per heat bus; needs the same bus split as above"
+    where:
+      - change: "the water+space fold into one load per heat bus"
+        anchor: "scripts/prepare_sector_network.py::add_heat (heat_load block using heat_demand water/space columns) and ::build_heat_demand"
+        provenance: "scripts/prepare_sector_network.py:heat_load; scripts/prepare_sector_network.py:build_heat_demand"
+      - change: "water intraday profile and its year-flat treatment"
+        anchor: "scripts/build_hourly_heat_demand.py (sector/use loop; else-branch for use != 'space')"
+        provenance: "scripts/build_hourly_heat_demand.py:intraday_year_profile"
+      - change: "water-heating totals and efficiencies per country"
+        anchor: "scripts/build_energy_totals.py (JRC-IDEES 'Water heating' rows; build_heating_efficiencies)"
+        provenance: "scripts/build_energy_totals.py:Water heating; scripts/build_energy_totals.py:build_heating_efficiencies"
+    data_dependencies:
+      - input: "data/heat_load_profile_BDEW.csv (water weekday/weekend columns)"
+        required_for: "hourly water demand shape"
+        availability: "exists by default in the repo"
+      - input: "JRC-IDEES / Eurostat energy balances (water heating rows)"
+        required_for: "annual water-heating totals per country"
+        availability: "retrieved by the workflow (rule build_energy_totals inputs)"
+      - input: "cost row for a dedicated HPWH"
+        required_for: "the L5 explicit-HPWH variant"
+        availability: "absent — no such row is consumed anywhere at this ref"

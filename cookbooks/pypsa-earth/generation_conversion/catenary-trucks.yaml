@@ -1,0 +1,74 @@
+id: catenary-trucks
+title: Overhead-catenary trucks (eHighway)
+summary: >
+  Heavy trucks drawing power directly from overhead catenary lines on electrified
+  highway corridors (eHighway / electric road systems).
+
+when_to_use:
+  - "catenary trucks / overhead line trucks"
+  - "eHighway / electric road system / ERS"
+  - "electrified highway corridors for freight"
+  - "pantograph trucks"
+  - "dynamic charging of trucks while driving"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        NOT covered at all. No catenary/eHighway concept exists anywhere in the
+        repository (no config key, carrier, script, or data input mentions it —
+        verified by repo-wide search). Road transport is one aggregate demand split
+        only into EV-battery, H2 fuel-cell, and ICE-oil shares in
+        add_land_transport; there is no direct-electricity road transport pathway
+        without a battery, no corridor/route representation, and no highway
+        infrastructure component.
+      mechanism: >
+        Nothing to describe — the nearest neighbouring mechanism is the EV pathway in
+        add_land_transport (battery bus + charger link), which is structurally
+        different: catenary supply is a direct AC load plus corridor infrastructure
+        investment, neither of which exists.
+      not_covered: >
+        Everything: catenary demand share, corridor geometry, infrastructure capex,
+        truck segment itself (see electric-heavy-trucks — trucks are not even a
+        distinct demand).
+      provenance: "scripts/prepare_sector_network.py:add_land_transport"
+
+    levers: []
+
+    boundary:
+      - variant: "Crude proxy: treat catenary trucks as more EV share"
+        rung: L1
+        note: "Raise sector.land_transport_electric_share — wrong physics (routes demand through EV battery Store/charger) but the only config-level knob touching road electricity."
+      - variant: "Direct-electricity road load (catenary energy as AC load, no infrastructure)"
+        rung: L2
+        note: "Add a share and a plain Load on the AC buses inside add_land_transport, carved from the aggregate — small code edit, but demand data for the catenary-truck fraction is on you."
+      - variant: "Corridor-resolved catenary demand"
+        rung: L3
+        note: "Needs freight-corridor traffic data mapped to network buses (no such dataset in the repo) feeding the L2 load."
+      - variant: "Catenary infrastructure as investable component with rule plumbing"
+        rung: L4
+        note: "New rule to build corridor topology/costs plus new Links/Loads and config keys."
+      - variant: "Full eHighway model (infrastructure optimisation, truck routing, hybrid battery-catenary operation)"
+        rung: L5
+        note: "Bespoke Python — new component logic and constraints; nothing to build on."
+
+    where:
+      - change: "Where any catenary demand share would be carved out"
+        anchor: "scripts/prepare_sector_network.py function add_land_transport"
+        provenance: "scripts/prepare_sector_network.py:add_land_transport"
+      - change: "Where corridor demand data would enter the workflow"
+        anchor: "rule prepare_transport_data -> scripts/prepare_transport_data.py"
+        provenance: "Snakefile:prepare_transport_data"
+
+    data_dependencies:
+      - input: "Freight corridor traffic volumes / highway geometry for the target region"
+        required_for: "any corridor-resolved catenary variant"
+        availability: "absent"
+      - input: "Catenary infrastructure cost assumptions (costs.csv row)"
+        required_for: "investable-infrastructure variants"
+        availability: "absent (no such technology row is referenced anywhere)"
+      - input: "UNSD 'total road' aggregate (to carve a catenary share from)"
+        required_for: "the L2 proxy load"
+        availability: "must be built (standard demand chain)"

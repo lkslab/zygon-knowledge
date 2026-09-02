@@ -1,0 +1,55 @@
+id: hydrogen-network-buildout
+title: Hydrogen network buildout
+rank: 59
+question: >
+  What hydrogen transport infrastructure emerges endogenously — repurposed gas
+  pipelines vs greenfield H2 pipelines vs moving electricity instead — and
+  where do storage and production sit relative to the network?
+when_to_use:
+  - "endogenous H2 backbone / pipeline buildout"
+  - "repurpose gas pipelines for hydrogen"
+  - "pipeline vs wires: transport H2 or electricity"
+  - "H2 network size cap / staged buildout"
+  - "hydrogen storage siting on the network"
+recipes:
+  generation_conversion: [hydrogen-pipelines, natural-gas-pipelines,
+                          hydrogen-storage-salt-caverns, electrolysers,
+                          green-hydrogen]
+  demand: [hydrogen-export-demand, steel-demand]
+functionality:
+  - id: h2-pipeline-routing
+    role: "core — extendable H2 pipelines along clustered GGIT gas routes (repurposed, 80% cap) or greenfield along the power topology, plus a GWkm network cap"
+  - id: sector-coupled-workflow
+    role: "H2 demand (industry, transport, exports) and supply competition live in the sector chain"
+  - id: gas-network-links
+    role: "context — sector.gas.network is a dead key: no methane Links are ever built, so 'gas grid vs H2 grid' has no gas side"
+  - id: h2-export-chain
+    role: "export volumes are the demand anchor that makes pipelines worth building"
+  - id: myopic-foresight
+    role: "staged buildout: gas-to-H2 pipeline conversion across planning horizons in brownfield runs"
+  - id: spatial-clustering
+    role: "pipeline candidates are cluster-to-cluster; resolution sets network detail"
+  - id: summary-outputs
+    role: "built pipeline capacities and flows per corridor"
+gap_assessment: >
+  Ready for the H2 side: with the sector chain on, bidirectional extendable
+  H2 pipelines are co-optimized between node buses, routed either along the
+  clustered real gas network (GGIT, repurposing capped at 80% of gas capacity
+  with cheaper retrofit costs) or greenfield along the electricity topology,
+  with a total GWkm cap and automatic greenfield fallback where no gas
+  pipelines exist — the pipelines-vs-wires question is answered endogenously.
+  Honest limits: (1) the methane network itself is a documented hole —
+  clustered gas pipelines exist only as H2 routes/repurposing capacity, gas
+  supply stays nodal-unlimited, so repurposing never costs the gas system
+  anything; (2) GGIT attribution is purely geometric (10-km point
+  interpolation against bus regions, no country column) — check the
+  data_quality scorecard (ggit-gas-network) for the region; (3) cavern
+  storage potentials are country-sparse (five North/West African countries
+  listed; scorecard salt-cavern-potentials) and the branch is off by default,
+  so network-adjacent seasonal storage silently degrades to tanks elsewhere;
+  (4) routing is confined to the two given topologies — no free-route
+  pipeline optimization.
+coverage: ready
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

@@ -1,0 +1,52 @@
+id: heat-pump-grid-impact
+title: Heat pump grid impact
+rank: 30
+question: >
+  What does mass heat-pump rollout do to electricity demand — the new winter
+  peak, its weather sensitivity (COP drops exactly when demand spikes), and
+  the generation/grid buildout it forces? TYNDP 2026 now models heat pumps as
+  explicit demand drivers; heat is ~half of final energy in cold climates.
+when_to_use:
+  - "heat pump rollout impact on peak demand"
+  - "winter peak under heating electrification"
+  - "cold-snap COP collapse / coincident heat demand"
+  - "heat pumps vs district heating vs gas system impact"
+  - "thermal storage and building inertia as peak relief"
+recipes:
+  generation_conversion: [air-source-heat-pumps, ground-source-heat-pumps, heat-pump-water-heaters, thermal-storage]
+  demand: [residential-space-heating-demand, services-heat-demand, building-heat-dsm, residential-water-heating-demand]
+functionality:
+  - id: sector-coupled-workflow
+    role: "core — temperature-driven hourly heat demand met by heat pumps with time-varying COP"
+  - id: weather-year-selection
+    role: "the peak is set by the cold snap in the chosen weather year — pick a hard one"
+  - id: distribution-grid-lv
+    role: "heat pumps load the aggregate LV link; reinforcement is a linear cost proxy"
+  - id: distribution-power-flow
+    role: "absent — the feeder/transformer half of 'grid impact' (the DSO question) is out"
+  - id: temporal-resolution-nh
+    role: "keep resolution fine: sopts averaging blunts the cold-snap peak"
+  - id: safe-reserve-margin
+    role: "adequacy re-check once heating moves the annual peak into winter"
+  - id: myopic-foresight
+    role: "staged rollout across horizons via heat-pump shares per scenario"
+gap_assessment: >
+  The bulk-system half is genuinely covered: the sector chain builds
+  degree-day/temperature-driven hourly heat demand per node, serves it with
+  air/ground-source heat pumps whose COP varies with ambient temperature (so
+  the cold-snap demand spike and efficiency drop coincide, the physics that
+  makes this topic hard), and co-optimizes against thermal storage, building
+  DSM, district heating, and backup boilers — "what does 60% heat-pump share
+  do to the winter peak and the capacity mix" is a scenario run. Gaps:
+  (1) the distribution network, where much of the real pain lands, is a
+  single linear LV-reinforcement cost — no feeders, no transformer limits,
+  no hosting-capacity answer; (2) one weather year per run, so 1-in-20
+  cold-year peaks need weather-year sweeps (multi-weather-year absent);
+  (3) building-stock detail (retrofit state, hybrid heat pumps, emergency
+  resistance backup) is coarse — see the building-retrofit and heat recipes.
+  For Global-South cases check the data_quality scorecard: heat shares in
+  many countries derive from DEFAULT fuel-share rows.
+coverage: ready
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

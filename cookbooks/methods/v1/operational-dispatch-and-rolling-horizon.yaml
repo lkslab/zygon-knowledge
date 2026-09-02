@@ -1,0 +1,1138 @@
+id: operational-dispatch-and-rolling-horizon
+title: "Operational (dispatch-only) optimisation and rolling-horizon / limited-foresight solving"
+summary: >
+  Optimise only the dispatch of a system whose capacities are already fixed — either
+  as one solve over the whole period, or as a sequence of shorter overlapping windows
+  that each see only a limited look-ahead.
+question: >
+  Given this fleet, how would it actually be operated — and how much of the answer is
+  an artefact of the optimiser knowing the entire year in advance?
+aliases:
+  - "dispatch-only optimisation"
+  - "operational optimisation"
+  - "economic dispatch"
+  - "unit dispatch / production cost model"
+  - "PCM (production cost modelling)"
+  - "rolling horizon"
+  - "receding horizon"
+  - "moving window optimisation"
+  - "limited foresight"
+  - "myopic dispatch"
+  - "myopic foresight"
+  - "perfect foresight dispatch"
+  - "look-ahead horizon"
+  - "hindcast / backcast dispatch"
+  - "operational feasibility check"
+when_to_use:
+  - "how would this system actually be operated, not what should we build"
+  - "run the model with capacities fixed, don't let it build anything"
+  - "reproduce what happened in 2022 with this model"
+  - "simulate a market year at existing capacity"
+  - "does the optimiser cheat by knowing the whole year in advance"
+  - "the model's storage looks too good — it knows the future"
+  - "solve it day by day like a day-ahead market would"
+  - "what does dispatch look like with only 24/48 hours of foresight"
+  - "how much load shedding does this design cause in a bad weather year"
+  - "check whether the capacities from the coarse model are actually operable"
+  - "production cost model / PCM run"
+  - "hourly generation and prices for a fixed fleet"
+family: temporal-resolution
+prevalence:
+  papers: 9
+  tier1: 4
+  tier2: 5
+  sweep_hits: 17
+  basis: >
+    Hand-coded pass 1 over all 100 PDFs (2026-07-25) found 9 papers that actually run a
+    dispatch-only optimisation at fixed capacity. The regex screen returned 17; the 8
+    extra are papers where "dispatch" appears once as ordinary vocabulary for the
+    operational half of a capacity-expansion LP (Brown 2018 sector coupling, Victoria
+    2019 storage, Neumann 2022 losses, Neumann 2023 hydrogen, Zhu 2018, Zeyen 2025,
+    Geis 2026, Xie 2024) — co-optimised dispatch inside an expansion run is NOT this
+    method, and none of those fixes capacity or limits foresight. Odenweller 2026
+    (REMIND-PyPSA soft-link, 4 hits) was excluded on the same test. Groissbock 2017 is
+    flagged in EVIDENCE_INDEX as a suspect but is KEPT: PyPSA there IS the economic
+    dispatch engine, called per capacity scenario, which is the method even though the
+    surrounding expansion loop is Excel. Roles skew hard to routine-use (5 of 9): this
+    is infrastructure that most papers use without discussing, which is exactly why the
+    perfect-foresight artefact below goes unremarked so often.
+procedure:
+  - step: >
+      Obtain the fleet. Two routes: fix capacities from a prior capacity-expansion solve
+      of the same model, or insert exogenous capacities from a historical/statistical
+      fleet database. Which route you take decides whether the run is a feasibility test
+      of a model output or a hindcast against reality.
+    handle: "n.optimize.fix_optimal_capacities() (expansion route); electricity.powerplants_filter (historical route)"
+    provenance: "scripts/solve_operations_network.py:fix_optimal_capacities; scripts/build_powerplants.py:powerplants_filter"
+  - step: >
+      Remove capacity from the variable set: every nominal attribute becomes fixed
+      (p_nom_extendable = False for generators, links, stores, storage units; s_nom for
+      lines). The objective collapses to variable operating cost only, so annualised
+      capital cost no longer influences dispatch.
+    handle: "n.optimize.fix_optimal_capacities(); or electricity.extendable_carriers emptied + transmission limit ll v1.0"
+    provenance: "scripts/solve_operations_network.py:fix_optimal_capacities; scripts/prepare_network.py:set_transmission_limit"
+  - step: >
+      Add a feasibility valve. A dispatch-only LP over a fixed fleet is routinely
+      infeasible where an expansion LP would simply have built more, so the corpus adds
+      non-extendable load-shedding generators at a high but finite cost (5000 EUR/MWh in
+      Karkossa, "high but non-extendable" in Frysztacki). Shed energy then becomes a
+      RESULT — the adequacy metric — rather than an error.
+    handle: "solving.options.load_shedding.{enable,default_cost}"
+    provenance: "config/config.default.yaml:load_shedding; scripts/solve_network.py:add_load_balance_components"
+  - step: >
+      Decide the foresight regime. EITHER solve all snapshots at once (perfect foresight
+      over the whole period), OR partition the snapshots into windows of `horizon` steps
+      solved consecutively. This single choice is the method's payload and is discussed
+      in step 5.
+    handle: "solving.options.rolling_horizon"
+    provenance: "config/config.default.yaml:rolling_horizon; scripts/solve_network.py:optimize_with_rolling_horizon"
+  - step: >
+      If rolling: choose window length and overlap. Windows advance by
+      (horizon - overlap) snapshots; the overlap region is solved twice and only the
+      non-overlapping head is kept, which gives every retained hour some look-ahead
+      beyond itself. Corpus values: 96h horizon / 48h overlap (Brown 2025), 336h / 0
+      overlap (Karkossa 2026), 36h horizon re-optimised daily (Welfonder 2024), 24h / 0
+      (Franken 2025). Zero overlap is the cheap default and the one that hurts storage.
+    handle: "solving.options.horizon; solving.options.overlap"
+    provenance: "config/config.default.yaml:horizon; config/config.default.yaml:overlap"
+  - step: >
+      Chain storage state across windows. Each window's terminal state of charge becomes
+      the next window's initial state, and — critically — the CYCLIC state-of-charge
+      constraint must be dropped, or every window is independently forced back to its
+      own starting level and no energy can be moved between windows at all.
+    handle: "prepare_network(..., rolling_horizon=True) sets state_of_charge_cyclic/e_cyclic = False; pypsa then carries e_initial forward"
+    provenance: "scripts/solve_network.py:state_of_charge_cyclic"
+  - step: >
+      Supply a terminal value for stored energy, or accept the myopic bias. Inside a
+      window the optimiser has no reason to end with energy in store, so it empties
+      long-duration storage at every window boundary. The corpus's fix is an exogenous
+      bid price: Brown 2025 bids chemical storage at a constant marginal storage value
+      equal to the mean of the long-term model's storage shadow price. Nothing in either
+      workflow does this.
+    handle: null
+    provenance: null
+  - step: >
+      Solve, then read the operational quantities the question actually needs: nodal
+      prices from the duals, generation by carrier, curtailment, unserved energy, storage
+      cycling. In a fixed-capacity run the bus dual is a short-run marginal price rather
+      than a long-run one, which is what makes this the right run for a price study.
+    handle: "n.buses_t.marginal_price; make_summary"
+    provenance: "scripts/make_summary.py:marginal_price"
+  - step: >
+      (validation extension) Repeat over several historical years and score the modelled
+      hourly series against observed market data. Karkossa 2026 scores SMAPE/MAE/RMSE on
+      prices for 2020-2024 x 35 countries and compares perfect-foresight against
+      rolling-horizon head to head — the only way to establish which foresight regime is
+      the honest one for a given system.
+    handle: null
+    provenance: null
+variants:
+  - id: full-year-perfect-foresight-dispatch
+    what: >
+      One solve over the whole period at fixed capacity. Cheapest, simplest, and the
+      corpus baseline — but the optimiser sees all 8760 hours, so every store is
+      dispatched with knowledge of the future. Use when dispatch is a feasibility test
+      or a pre-screen rather than a claim about how the system would be run.
+    papers:
+      - "2017_Groissbock_high-renewable-penetration-scenarios.pdf"
+      - "2018_Weber_Counter-intuitive-CO2-caps_Energy.pdf"
+      - "2023_Frysztacki_Inverse-methods-disaggregation_Energy.pdf"
+      - "2023_Grochowicz_weather-induced-extreme-events-renewable.pdf"
+      - "2026_Stoeckl_voltage-aware-grid-aggregation-european-network.pdf"
+      - "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+  - id: rolling-window-with-overlap
+    what: >
+      Sequential windows that overlap, so each retained hour has look-ahead beyond
+      itself. The corpus's answer to the perfect-foresight artefact. Brown 2025's 96h/48h
+      is the reference parameterisation; it costs roughly 2x the solves of a
+      non-overlapping schedule of the same window length because the overlap is solved
+      twice.
+    papers:
+      - "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+      - "2024_Welfonder_open-source-stochastic-unit-commitment-PyPSA.pdf"
+  - id: rolling-window-no-overlap
+    what: >
+      Windows tile the period without overlap: state of charge is chained but each
+      window is blind to the next. Cheapest rolling variant and the one that most
+      distorts storage, because the last hour of every window has zero incentive to
+      retain energy. Karkossa's two-week windows; Franken's independent days.
+    papers:
+      - "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+      - "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+  - id: market-aligned-multistage-dispatch
+    what: >
+      Windows aligned to real market gate-closure times rather than a fixed stride, with
+      the information set changing per stage: stochastic before the reserve auction,
+      partially resolved after it, deterministic on the delivery day. The only variant
+      that reproduces what an actual trader's optimisation looks like; requires unit
+      commitment and a scenario generator.
+    papers:
+      - "2024_Welfonder_open-source-stochastic-unit-commitment-PyPSA.pdf"
+  - id: dispatch-as-feasibility-screen
+    what: >
+      The dispatch run is not the answer but a filter: solve at fixed capacity to find
+      out where the design fails. Frysztacki reads load shedding and curtailment to score
+      three disaggregation algorithms; Stoeckl reads line loading (>70% always, >90%
+      once) to select transmission expansion candidates; Grochowicz reads load shedding
+      to cross-validate a shadow-price event detector. Cheap, and the most common use in
+      the corpus.
+    papers:
+      - "2023_Frysztacki_Inverse-methods-disaggregation_Energy.pdf"
+      - "2026_Stoeckl_voltage-aware-grid-aggregation-european-network.pdf"
+      - "2023_Grochowicz_weather-induced-extreme-events-renewable.pdf"
+  - id: historical-hindcast-dispatch
+    what: >
+      Fleet and fuel prices taken from history rather than from a prior model solve, run
+      over past years so the output can be scored against observed prices and
+      generation. Needs time-varying fuel and CO2 prices, a date-filtered fleet, and the
+      real weather year — a data problem more than a code one.
+    papers:
+      - "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+      - "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+      - "2018_Weber_Counter-intuitive-CO2-caps_Energy.pdf"
+literature:
+  - paper: "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+    tier: 2
+    role: extends
+    note: >
+      The key paper for this card and the only one in the corpus that tests the foresight
+      regime as a hypothesis rather than assuming one. PyPSA-Eur v2025.07.0, 39 nodes,
+      hourly, fixed capacities, 2020-2024, 35 countries, three scenarios: perfect
+      foresight + static fuel prices, perfect foresight + dynamic fuel prices, rolling
+      horizon + dynamic fuel prices. Rolling windows are 336h with NO overlap and final
+      state of charge passed between windows; load shedding priced at 5000 EUR/MWh; no
+      unit commitment. Best rolling-horizon result was 20.76% average SMAPE against
+      observed prices. Contributes the card's sharpest concrete warning: a cyclic
+      storage constraint requiring equal hydro reservoir levels at the start and end of
+      each window caused load shedding in Norway — the exact failure mode the config key
+      is supposed to prevent.
+  - paper: "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The reference parameterisation for overlapping windows: "a rolling-horizon dispatch
+      optimisation with a 96-hour look-ahead horizon and a 48-hour overlap between
+      windows", only the first 48 hours of each window retained, capacities fixed from a
+      long-term model. Also the source of the terminal-value fix: chemical storage is bid
+      at a CONSTANT marginal storage value equal to the mean of the long-term model's
+      storage shadow price, deliberately not state-of-charge dependent. Quantifies the
+      cost of myopia directly — peak load shedding up 13.9% and average load served down
+      0.5% versus perfect foresight — which is the number to quote to a user who asks
+      whether foresight matters. PyPSA v0.27.1 library, single-node, three countries, 70
+      weather years.
+  - paper: "2023_Frysztacki_Inverse-methods-disaggregation_Energy.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The reference for dispatch-as-feasibility-screen and the clearest statement of what
+      the method IS: "the model is solved as a pure operational problem, where no further
+      capacity can be built ... the technology capacities are removed from the set of
+      optimisation variables and replaced by a fixed number". Full-year, 2-hourly, 1250
+      nodes, capacities from three competing disaggregation algorithms, load-shedding
+      generators with high non-extendable capacity to guarantee feasibility, Gurobi
+      interior point (barrier tol 1e-9, feas tol 1e-6), 5-node HPC cluster at 48 CPU /
+      256 GB per node. Run twice per design ("regular" vs "copperplate" intra-cluster
+      transmission), which is a useful diagnostic pattern in its own right: it separates
+      infeasibility caused by the fleet from infeasibility caused by the network.
+  - paper: "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The most extreme foresight restriction in the corpus and an honest account of its
+      cost: 1096 independent daily solves (2022-01-01 to 2024-12-31), 48 half-hourly
+      settlement periods each, ~300 GSP buses, exogenous capacities from historical data,
+      NTC links with Kirchhoff's law removed. "Each model run only uses a 24-hour
+      optimisation horizon", and storage units carry NO state of charge between days. The
+      paper itself names this a limitation for pumped hydro whose energy-to-power ratio
+      implies inter-day optimisation — i.e. a worked example of the pitfall below, stated
+      by the authors.
+  - paper: "2024_Welfonder_open-source-stochastic-unit-commitment-PyPSA.pdf"
+    tier: 2
+    role: defines
+    note: >
+      Defines the rolling/receding-horizon pattern for this literature in the crispest
+      terms — "the optimal UC strategy for, e.g., the next 36h is calculated, but is only
+      applied for the next hour or the next day, after which the optimal strategy is
+      recalculated" — and generalises it to a three-stage market-aligned scheme keyed to
+      gate closures (aFRR at 09:00, day-ahead at 12:00, delivery day). 36h horizon,
+      re-optimised daily at midnight, each stage a fresh MILP with updated ARIMAX
+      scenario draws. Built as modular extensions to the PyPSA library, not to a
+      workflow, which is why nothing in either model exposes any of it.
+  - paper: "2023_Grochowicz_weather-induced-extreme-events-renewable.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Uses dispatch-only runs as the out-of-sample cross-validation for a different
+      method: 1600 dispatch optimisations (40 capacity designs x 40 weather years),
+      PyPSA-Eur 0.6.1, 181 generation / 90 network nodes, 1-hourly, an artificial
+      high-cost generator at every node so load shedding is measurable. The scale is the
+      lesson — dispatch-only runs are cheap enough to do 1600 of, which is why they are
+      the natural inner loop of a weather-year ensemble.
+  - paper: "2018_Weber_Counter-intuitive-CO2-caps_Energy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Full-year hourly dispatch of the German system for 2015 at 128 nodes with the
+      existing fleet fixed, derived from PyPSA-Eur data, re-solved under a sweep of CO2
+      caps and CO2 prices. Establishes the pattern of using a dispatch-only model as the
+      testbed for a policy instrument, and is the corpus's warning that a dispatch model
+      re-solved under a hard cap can produce genuinely counter-intuitive (Giffen-like)
+      responses.
+  - paper: "2026_Stoeckl_voltage-aware-grid-aggregation-european-network.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Dispatch-only at fixed capacity used purely as a pre-screen at full grid resolution
+      (6795 buses, 3 representative 24-hour periods, 2013 weather, 2050 horizon): solve
+      the operational problem first, then flag lines and transformers as expansion
+      candidates on loading thresholds (>70% across all time steps, or >90% at least
+      once). The pattern to reuse when the expansion problem is too large to pose
+      directly.
+  - paper: "2017_Groissbock_high-renewable-penetration-scenarios.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      PyPSA at its most reduced: called as an external economic-dispatch tool from an
+      Excel-driven expansion loop for two isolated Saudi mini-grids, full-year hourly,
+      single bus, no network, GLPK, one dispatch solve per capacity scenario (PV/wind/CSP/
+      GT swept 5-150% of peak demand) with annuities added outside PyPSA. Two caveats the
+      paper states explicitly and that generalise to every card in this book: the dispatch
+      "does not consider spinning reserve or forecasting errors", and ramp rates were not
+      applied. The template for soft-linking a dispatch engine into someone else's
+      planning framework.
+pitfalls:
+  - pitfall: >
+      A whole-year dispatch solve gives storage PERFECT FORESIGHT over all 8760 hours.
+      No real operator has this, and the LP exploits it: storage is charged and
+      discharged on the exact global optimum of the year, so its revenue, cycle count and
+      contribution to adequacy are all systematically overstated, and the residual need
+      for other flexibility is understated. Nothing in the run signals that this is
+      happening — the solve simply succeeds.
+    evidence: "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+    note: >
+      Quantified in Brown 2025: moving from perfect foresight to a 96h/48h rolling regime
+      raised peak load shedding 13.9% and cut average load served 0.5% on the SAME fleet.
+      If the user's question is about storage value, price spikes, adequacy or dispatch
+      realism, perfect foresight is the wrong regime and rolling-window-with-overlap is
+      the answer. If the question is a feasibility screen (dispatch-as-feasibility-screen)
+      the artefact is benign — it makes the screen optimistic, i.e. conservative about
+      declaring a design infeasible.
+  - pitfall: >
+      Rolling horizon does not remove the foresight problem, it MOVES it to the window
+      boundary. Inside a window the optimiser is still clairvoyant; at the end of a window
+      stored energy has no value, so long-duration storage is drained into every seam. The
+      shorter the window relative to the storage duration, the worse: Franken's 24-hour
+      independent days cannot use pumped hydro inter-day at all.
+    evidence: "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+    note: >
+      Two mitigations, in order of preference. (1) Overlap: set `overlap` to at least the
+      characteristic duration of the storage you care about — Brown's 48h overlap on a 96h
+      window is the corpus reference. (2) A terminal value for stored energy, which no
+      workflow implements; Brown's version is a constant bid at the long-term model's mean
+      storage shadow price. Never present rolling-horizon storage revenues from a
+      zero-overlap run as an arbitrage estimate.
+  - pitfall: >
+      The cyclic state-of-charge constraint is fatal in a rolling run. If
+      state_of_charge_cyclic / e_cyclic survive, EVERY window is forced to end at its own
+      starting level, which both forbids inter-window energy transfer and can make windows
+      individually infeasible. pypsa-eur therefore clears the cyclic flags and zeroes the
+      initial state when `rolling_horizon: true` — but ONLY in scripts/solve_network.py;
+      scripts/solve_operations_network.py calls prepare_network without the
+      `rolling_horizon` argument, so the dedicated operations rule does not get the fix.
+    evidence: "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+    note: >
+      Karkossa reports exactly this failure in the wild: a cyclic constraint on hydro
+      reservoir levels per window caused load shedding in Norway. Assert
+      `not n.storage_units.state_of_charge_cyclic.any() and not n.stores.e_cyclic.any()`
+      on the network before a rolling solve, and prefer the `rolling_horizon: true` path
+      through rule solve_network over rule solve_operations_network until the latter is
+      fixed upstream.
+  - pitfall: >
+      Fixing capacity changes what the bus dual MEANS. With capacity variable, the
+      marginal price contains a long-run scarcity component; with capacity fixed it is a
+      short-run marginal cost that can sit at zero for long stretches and then jump to the
+      load-shedding cost. The choice of load-shedding price is therefore silently setting
+      the price cap of the study.
+    evidence: "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+    note: >
+      Report the load-shedding cost alongside any price result (Karkossa: 5000 EUR/MWh;
+      pypsa-eur default: 100000 EUR/MWh, which will produce implausible price spikes if
+      left alone in a hindcast). See shadow-prices-and-marginal-values and
+      price-formation-and-scarcity-rents.
+  - pitfall: >
+      A dispatch-only LP with no unit commitment, no reserve requirement and no forecast
+      error is not an operational simulation, however fine the time resolution. Groissbock
+      states it plainly of PyPSA-as-dispatch-tool: it "does not consider spinning reserve
+      or forecasting errors within the dispatch", and ramp rates were not applied.
+    evidence: "2017_Groissbock_high-renewable-penetration-scenarios.pdf"
+    note: >
+      If the user's question is about thermal cycling, minimum stable generation,
+      start-up cost or reserve adequacy, this card is the wrong one on its own — compose
+      with unit-commitment-and-ramping (and note Karkossa deliberately ran WITHOUT unit
+      commitment, which is part of why its price SMAPE floors around 20%).
+  - pitfall: >
+      Perfect-foresight and rolling-horizon runs are not comparable on objective value.
+      Rolling horizon is a heuristic: the sum of window objectives is an upper bound on
+      the true single-solve optimum, and pypsa-eur's own objective-value check is skipped
+      in the rolling path (`if not rolling_horizon: check_objective_value(...)`), while
+      the returned status/condition are set to empty strings.
+    evidence: "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+    note: >
+      Compare the two regimes on physical and market outputs (prices, generation mix,
+      unserved energy, SMAPE against observation) as Karkossa does — never on total system
+      cost. And be aware that a rolling run reports no solver status: a window that failed
+      is a warning in the log, not a failed rule, so check the log rather than trusting
+      the presence of an output file.
+requires_methods: []
+combines_with:
+  - unit-commitment-and-ramping
+  - model-validation-and-backtesting
+  - price-formation-and-scarcity-rents
+  - shadow-prices-and-marginal-values
+  - weather-year-ensembles
+  - storage-sizing-and-duration
+  - zonal-nodal-and-redispatch
+  - spatial-clustering-and-resolution
+  - brownfield-and-capacity-vintaging
+  - powerplant-matching-and-fleet-assembly
+  - extreme-event-and-dunkelflaute-analysis
+  - stochastic-and-robust-optimisation
+topics:
+  - power-market-reform-spot-markets
+  - renewable-integration
+  - resource-adequacy
+  - storage-revenue-stacking
+  - locational-electricity-markets
+  - curtailment-minimization
+  - minimum-operational-demand
+  - solver-speed-scalability
+pypsa_primitive:
+  symbol: "pypsa/optimization/abstract.py:optimize_with_rolling_horizon"
+  pypsa_version: "0.30.3"
+  exposed_by: >
+    pypsa-eur, via solving.options.rolling_horizon (+ horizon / overlap) in BOTH
+    scripts/solve_network.py and scripts/solve_operations_network.py. NOT pypsa-earth,
+    which has no such config key and only a commented-out reference in
+    scripts/solve_network.py.
+  reachable_via: >
+    On pypsa-eur, a config flip — nothing else. Signature at 0.30.3:
+    optimize_with_rolling_horizon(n, snapshots=None, horizon=100, overlap=0, **kwargs).
+    It computes starting_points = range(0, len(snapshots), horizon - overlap), raises
+    ValueError if overlap >= horizon, calls n.optimize(sns, **kwargs) per window, and
+    between windows copies the previous window's last-snapshot values into
+    n.stores.e_initial and n.storage_units.state_of_charge_initial. Note the defaults
+    differ from pypsa-eur's: the library default horizon is 100, pypsa-eur's config
+    default is 365. Both are SNAPSHOT COUNTS, not days.
+  note: >
+    THE CONTRAST CASE TO mga-near-optimal-space, and the reason both cards belong in the
+    same book. Both are `pypsa/optimization/abstract.py` primitives of the same kind — a
+    loop that re-poses the same LP — living in the same pypsa 0.30.3 install. But
+    optimize_mga is exposed by NEITHER workflow, which puts MGA at L5 with a handle,
+    while optimize_with_rolling_horizon IS exposed by a pypsa-eur config key, which puts
+    this method at L0/L1. The existence of a library primitive tells you nothing on its
+    own; whether a workflow reaches it is a separate fact, and it is the one that decides
+    the rung. The same asymmetry recurs INSIDE this card: the identical primitive is L0 on
+    eur and L4/L5 on earth.
+    Two library-level gaps to know about. First, the loop is a heuristic with no
+    terminal-value term, so procedure step 7 has no handle at any layer. Second, it
+    swallows failures: a window that solves badly produces `logger.warning` and the loop
+    continues, and the function returns the network rather than a (status, condition)
+    pair — which is why pypsa-eur sets status/condition to "" and skips its objective
+    check in this path. Soft anchor: pypsa is a conda dependency, not a submodule, so
+    this claim is pinned to a version string rather than a SHA.
+models:
+  - model: pypsa-eur
+    version_anchor:
+      ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d"
+      date: "2026-07-25"
+    functionality:
+      - id: operations-only-solve
+        role: >
+          the method's dedicated surface — registry status `working`: rule
+          solve_operations_network takes a solved network, calls
+          n.optimize.fix_optimal_capacities(), re-solves dispatch and writes `_op.nc`.
+          Electricity chain only; the sector chain has no equivalent rule.
+      - id: rolling-horizon-dispatch
+        role: >
+          the foresight lever — registry status `working`:
+          solving.options.rolling_horizon plus horizon/overlap, consumed by both
+          solve_network.py and solve_operations_network.py. This is the capability
+          pypsa-earth's registry does not even have an entry for.
+      - id: load-shedding-voll
+        role: >
+          the feasibility valve procedure step 3 requires; without it a fixed-capacity
+          LP is routinely infeasible and the run fails instead of reporting unserved
+          energy. Per-carrier costs across all bus carriers, so it also covers a
+          sector-coupled dispatch run.
+      - id: linearized-unit-commitment
+        role: >
+          the realism upgrade — registry status `partial`. Off by default via
+          conventional.unit_commitment; Karkossa ran without it, which bounds how well a
+          dispatch hindcast can reproduce observed prices.
+      - id: dynamic-emission-pricing
+        role: >
+          required for historical-hindcast-dispatch and a capability earth lacks
+          entirely: time-varying ETS prices (opts token Ept) into generator marginal
+          cost. Paired with conventional.dynamic_fuel_price, this is Karkossa's "dynamic
+          fuel prices" scenario.
+      - id: fleet-retirement-filter
+        role: >
+          the exogenous-fleet route in procedure step 1 — a pandas date query on
+          DateIn/DateOut selects the fleet that actually existed in the hindcast year.
+      - id: weather-year-selection
+        role: >
+          pairs with the fleet filter: a hindcast must use the SAME year for weather and
+          fleet. An ERA5 cutout spanning 1940-2024 is configured, so any target year is
+          reachable — but atlite.default_cutout points at a 2013-pinned SARAH3 cutout, so
+          it must be repointed as well as moving the snapshots window.
+      - id: nodal-marginal-prices
+        role: >
+          the primary output of a dispatch-only run and the quantity Karkossa, Brown and
+          Franken all score. Short-run marginal in this mode, not long-run.
+      - id: curtailment-mode
+        role: >
+          optional output shaping: fixes VRE to profile and adds negative curtailment
+          generators so curtailed energy is an explicit dispatched carrier — the metric
+          Frysztacki reads off the screening run.
+      - id: temporal-resolution-nh
+        role: >
+          the affordability lever, and the one to be careful with here: coarsening
+          snapshots also lengthens what a given `horizon` count covers, since horizon is
+          a snapshot count.
+    available:
+      verdict: turnkey
+      how: >
+        Both halves of the method are config-reachable, by two independent routes.
+        ROUTE A (recommended, and what config/examples/config.validation.yaml ships):
+        empty every list in electricity.extendable_carriers and pin transmission with the
+        `ll` wildcard, so rule solve_network is itself a dispatch-only run; then set
+        solving.options.rolling_horizon: true with horizon/overlap. That example config
+        already sets extendable_carriers all-empty, load_shedding.enable, horizon: 1000,
+        overlap: 48, dynamic_fuel_price and the Ept opts token — i.e. Karkossa's setup,
+        shipped in-repo. ROUTE B: run the full expansion, then rule
+        solve_operations_network, which calls n.optimize.fix_optimal_capacities() and
+        re-solves the same network into `_op.nc`, honouring rolling_horizon too. Route B
+        is the only route that fixes capacities FROM a prior solve; route A is the only
+        route that is currently free of the three defects listed in `missing`.
+      missing: >
+        Procedure steps 7 and 9 have no handle: there is no terminal/end-of-window value
+        for stored energy anywhere (Brown's constant marginal-storage-value bid is a
+        hand-written marginal_cost on the storage link), and no validation/scoring
+        against observed data (no plot_validation rule or scripts/validate*.py at this
+        ref — see model-validation-and-backtesting). Three concrete defects in
+        scripts/solve_operations_network.py at this ref, all silent: (1) it takes
+        `all_kwargs, _ = collect_kwargs(..., mode="single")`, but that mode returns
+        (model_kwargs, solve_kwargs) — so solve_kwargs is DISCARDED and the non-rolling
+        operations solve runs on pypsa's default solver_name="highs" with no solver
+        options, ignoring solving.solver entirely; (2) it calls prepare_network WITHOUT
+        `rolling_horizon=`, so the cyclic-storage teardown that solve_network.py performs
+        does not happen in this rule — Karkossa's Norway failure mode; (3) the string
+        "extra_functionality" does not appear in the file at all, so CO2 caps, CCL/BAU/
+        SAFE constraints, operational reserves and custom_extra_functionality are all
+        dropped from the operations re-solve even though the rule declares
+        custom_extra_functionality in its params. Also: rolling_horizon is documented as
+        having "currently no effect on sector-coupled networks", and is incompatible with
+        store_model (a pydantic model_validator rejects the combination).
+      provenance: "scripts/solve_operations_network.py:fix_optimal_capacities; scripts/solve_network.py:optimize_with_rolling_horizon; scripts/lib/validation/config/solving.py:check_store_model_rolling_horizon"
+    levers:
+      - key: "solving.options.rolling_horizon"
+        effect: >
+          Switches the solve from one whole-period optimisation to a sequence of windows.
+          The single most important lever on this card: false means storage has perfect
+          foresight over every snapshot in the run.
+        default: "false"
+        provenance: "config/config.default.yaml:rolling_horizon; scripts/solve_network.py:optimize_with_rolling_horizon"
+      - key: "solving.options.horizon"
+        effect: >
+          Number of SNAPSHOTS per window (not days, not hours). At hourly resolution the
+          default 365 is about 15 days; Karkossa's two weeks is 336, Brown's look-ahead is
+          96, Franken's day is 48 half-hours. Under nH averaging the same number covers n
+          times as long, so this key and clustering.temporal.resolution_elec must be set
+          together.
+        default: "365"
+        provenance: "config/config.default.yaml:horizon; scripts/solve_network.py:collect_kwargs"
+      - key: "solving.options.overlap"
+        effect: >
+          Snapshots solved twice at each seam and discarded from the earlier window;
+          windows advance by (horizon - overlap). This is the look-ahead that keeps
+          storage from being drained into every boundary — set it to at least the duration
+          of the storage you care about. Must be strictly less than horizon or pypsa
+          raises ValueError.
+        default: "0"
+        provenance: "config/config.default.yaml:overlap; scripts/solve_network.py:collect_kwargs"
+      - key: "electricity.extendable_carriers"
+        effect: >
+          Emptying every list (Generator/StorageUnit/Store/Link) makes rule solve_network
+          itself a dispatch-only run without needing solve_operations_network — route A,
+          and exactly what config/examples/config.validation.yaml does.
+        default: "{'Generator': ['solar','solar-hsat','onwind','offwind-ac','offwind-dc','offwind-float','OCGT','CCGT'], 'StorageUnit': [], 'Store': ['battery','H2'], 'Link': []}"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:extendable_carriers"
+      - key: "solving.options.load_shedding"
+        effect: >
+          enable/default_cost/all_carriers/carriers. Mandatory in practice for a
+          fixed-capacity run, and default_cost sets the effective price cap of the study.
+          The 100000 EUR/MWh default is 20x Karkossa's 5000 and will dominate any price
+          statistic if left alone.
+        default: "{'enable': False, 'default_cost': 100000, 'all_carriers': True, 'carriers': {}}"
+        provenance: "config/config.default.yaml:load_shedding; scripts/solve_network.py:add_load_balance_components"
+      - key: "conventional.unit_commitment"
+        effect: >
+          Adds committable/min-load/ramp/start-up attributes per conventional carrier from
+          data/unit_commitment.csv; pair with solving.options.linearized_unit_commitment
+          (already true by default) to keep it an LP. The realism step Karkossa omitted.
+        default: "false"
+        provenance: "config/config.default.yaml:unit_commitment; scripts/add_electricity.py:unit_commitment"
+      - key: "conventional.dynamic_fuel_price"
+        effect: >
+          Time-varying fuel prices into generator marginal cost — indispensable for a
+          2020-2024 hindcast, where the whole story is the gas price. Karkossa's "dynamic"
+          scenarios; set together with the Ept opts token for time-varying CO2 prices.
+        default: "false (true in config/examples/config.validation.yaml)"
+        provenance: "config/config.default.yaml:dynamic_fuel_price; scripts/add_electricity.py:dynamic_fuel_price"
+      - key: "electricity.powerplants_filter"
+        effect: >
+          A pandas query on the powerplantmatching fleet — `not (DateOut < 2019)` in the
+          shipped validation config — which is how you get the fleet that actually existed
+          in the hindcast year rather than a modelled one.
+        default: "'(DateOut > 2025 or DateOut != DateOut) and (DateIn < 2026 or DateIn != DateIn)'"
+        provenance: "config/config.default.yaml:powerplants_filter; scripts/build_powerplants.py:powerplants_filter"
+      - key: "snapshots.start"
+        effect: >
+          Selects the year being dispatched; must agree with the fleet filter, the fuel/CO2
+          price series and the cutout. Karkossa runs 2020-2024 as five separate full-year
+          runs, not one multi-year solve.
+        default: "'2013-01-01'"
+        provenance: "config/config.default.yaml:snapshots; scripts/_helpers.py:get_snapshots"
+      - key: "solving.options.store_model"
+        effect: >
+          Must stay false in a rolling run — a pydantic model_validator raises
+          "store_model is not supported with rolling_horizon". Worth knowing because it is
+          a config-validation failure, not a runtime one, so it fails before any solving.
+        default: "false"
+        provenance: "config/config.default.yaml:store_model; scripts/lib/validation/config/solving.py:check_store_model_rolling_horizon"
+    assembly:
+      - step: >
+          Choose the route. Route A (dispatch-only from the start): empty all four
+          electricity.extendable_carriers lists and pin the transmission limit via the
+          `ll` wildcard, so rule solve_network never has a capacity variable.
+          config/examples/config.validation.yaml is a working starting point. Route B
+          (fix from a prior solve): run the normal expansion, then request the
+          `_op.nc` output of rule solve_operations_network.
+        uses: [operations-only-solve, transmission-expansion-limits]
+        config: "electricity.extendable_carriers (all empty); scenario.ll (e.g. v1.0)"
+        code: null
+        provenance: "scripts/prepare_network.py:set_transmission_limit; scripts/solve_operations_network.py:fix_optimal_capacities"
+      - step: >
+          Turn on the feasibility valve and set its price deliberately. A fixed-capacity
+          run without load shedding will fail on the first tight hour, and the cost you
+          choose becomes the study's price cap.
+        uses: [load-shedding-voll]
+        config: "solving.options.load_shedding.enable: true; solving.options.load_shedding.default_cost"
+        code: null
+        provenance: "config/config.default.yaml:load_shedding; scripts/solve_network.py:add_load_balance_components"
+      - step: >
+          Set the foresight regime: rolling_horizon: true, then horizon and overlap in
+          SNAPSHOT counts consistent with your temporal resolution. Sanity-check that
+          overlap < horizon (pypsa raises otherwise) and that horizon comfortably exceeds
+          the duration of your longest storage.
+        uses: [rolling-horizon-dispatch, temporal-resolution-nh]
+        config: "solving.options.rolling_horizon; solving.options.horizon; solving.options.overlap"
+        code: null
+        provenance: "config/config.default.yaml:rolling_horizon; scripts/solve_network.py:optimize_with_rolling_horizon"
+      - step: >
+          Verify the cyclic-storage teardown actually ran. Route A through solve_network
+          gets it (prepare_network is called with rolling_horizon=cf_solving[...] and
+          clears state_of_charge_cyclic / e_cyclic and zeroes the initial states). Route B
+          through solve_operations_network does NOT — prepare_network is called there
+          without the argument. If you must use route B, that one-argument omission is the
+          edit to carry in a bundle diff.
+        uses: [operations-only-solve]
+        config: null
+        code: "scripts/solve_operations_network.py (pass rolling_horizon= to prepare_network)"
+        provenance: "scripts/solve_network.py:state_of_charge_cyclic"
+      - step: >
+          For historical-hindcast-dispatch, align the four data axes to the target year:
+          snapshots window, cutout/weather year, fleet date filter, and the fuel + CO2
+          price series (dynamic_fuel_price plus the Ept opts token). Mismatching any one
+          of them produces a plausible-looking run that is validating against the wrong
+          year.
+        uses: [weather-year-selection, fleet-retirement-filter, dynamic-emission-pricing]
+        config: "snapshots.start/end; electricity.powerplants_filter; conventional.dynamic_fuel_price; scenario.opts (Ept)"
+        code: null
+        provenance: "scripts/_helpers.py:get_snapshots; scripts/build_powerplants.py:powerplants_filter; scripts/prepare_network.py:add_dynamic_emission_prices"
+      - step: >
+          Optionally add operational realism before claiming the run is a simulation:
+          unit commitment (kept linear) and/or an operational reserve requirement. Both
+          are config-only here and both materially change the price duration curve.
+        uses: [linearized-unit-commitment, operational-reserves]
+        config: "conventional.unit_commitment: true; solving.options.linearized_unit_commitment: true; electricity.operational_reserve.activate"
+        code: null
+        provenance: "scripts/add_electricity.py:unit_commitment; scripts/solve_network.py:add_operational_reserve_margin"
+      - step: >
+          Extract the operational quantities: nodal duals as short-run prices, generation
+          by carrier, curtailment, unserved energy. make_summary already emits price and
+          curtailment tables; the SMAPE-style scoring against observed data is not here.
+        uses: [nodal-marginal-prices, curtailment-mode, summary-outputs]
+        config: "solving.options.curtailment_mode (optional)"
+        code: "scripts/make_summary.py"
+        provenance: "scripts/make_summary.py:marginal_price"
+    boundary:
+      - variant: full-year-perfect-foresight-dispatch
+        rung: L1
+        note: >
+          Config only, but a non-default combination: empty extendable_carriers, an `ll`
+          value that pins transmission, and load_shedding enabled — or just request rule
+          solve_operations_network's `_op.nc` after an expansion run. Not L0 because the
+          defaults build capacity.
+      - variant: rolling-window-with-overlap
+        rung: L1
+        note: >
+          Three keys: rolling_horizon: true, horizon, overlap. Genuinely one config block —
+          this is the rung that makes this card the contrast case to MGA, where the
+          analogous pypsa primitive is L5 because no key reaches it. Only caveat: choose
+          horizon/overlap in snapshot counts, and keep store_model false.
+      - variant: rolling-window-no-overlap
+        rung: L1
+        note: >
+          The default once rolling_horizon is on, since overlap defaults to 0. Cheapest
+          and the corpus's worst-behaved for storage — the rung is low precisely because
+          the harmful option is the easy one.
+      - variant: dispatch-as-feasibility-screen
+        rung: L1
+        note: >
+          Same config as the full-year variant plus load_shedding and (optionally)
+          curtailment_mode; the "screen" is entirely in how you read the outputs, and
+          make_summary already tabulates unserved energy and curtailment. Frysztacki's
+          regular-vs-copperplate pairing needs clustering.simplify_network /
+          copperplate_regions, still L1.
+      - variant: historical-hindcast-dispatch
+        rung: L3
+        note: >
+          Config reaches every switch, but the run is only meaningful with real-year DATA
+          that is not in the default bundle: a cutout for the target year, historical
+          fuel-price and ETS series, and a date-filtered fleet. Weather is the easy part
+          (an ERA5 cutout spanning 1940-2024 is configured, though default_cutout is a
+          2013-pinned SARAH3 one and must be repointed). Scoring against observed data is
+          separate work — see model-validation-and-backtesting.
+      - variant: market-aligned-multistage-dispatch
+        rung: L5
+        note: >
+          Nothing in the workflow or the library supports stage-dependent information
+          sets. optimize_with_rolling_horizon strides by a fixed (horizon - overlap) and
+          knows nothing about gate closures; Welfonder built this as bespoke PyPSA
+          extensions plus an ARIMAX scenario generator. Needs a new harness, unit
+          commitment as MILP, and stochastic-and-robust-optimisation for the recourse
+          structure.
+    where:
+      - change: "cyclic-storage teardown missing in the dedicated operations rule"
+        anchor: "scripts/solve_operations_network.py -> the prepare_network(...) call (add rolling_horizon=cf_solving['rolling_horizon'])"
+        provenance: "scripts/solve_network.py:state_of_charge_cyclic"
+      - change: "solver settings discarded in the non-rolling operations path"
+        anchor: "scripts/solve_operations_network.py -> `all_kwargs, _ = collect_kwargs(..., mode='single')`; mode 'single' returns (model_kwargs, solve_kwargs)"
+        provenance: "scripts/solve_network.py:collect_kwargs"
+      - change: "extra_functionality never wired into the operations re-solve"
+        anchor: "scripts/solve_operations_network.py -> the n.optimize(...) call; mirror the partial(extra_functionality, ...) pattern in scripts/solve_network.py"
+        provenance: "scripts/solve_network.py:extra_functionality"
+      - change: "terminal value for stored energy at window boundaries"
+        anchor: "solving.options.custom_extra_functionality -> the user module's entry function (or a marginal_cost on the storage discharge link)"
+        provenance: "scripts/solve_network.py:custom_extra_functionality"
+      - change: "market-aligned multistage windows"
+        anchor: "a new driver replacing the n.optimize.optimize_with_rolling_horizon call and its fixed stride"
+        provenance: "scripts/solve_network.py:optimize_with_rolling_horizon"
+    data_dependencies:
+      - input: "ERA5 cutout for the target historical year"
+        required_for: historical-hindcast-dispatch
+        availability: >
+          exists by default — the atlite.cutouts entry europe-1940-2024-era5 covers any
+          year, so only the snapshots window moves. But atlite.default_cutout is
+          europe-2013-sarah3-era5, a SARAH3 cutout pinned to 2013: a hindcast must
+          repoint default_cutout at the ERA5 one (or build a SARAH cutout for the target
+          year), and forgetting to is a silent 2013-weather run labelled with another
+          year
+      - input: "historical fuel price time series (conventional.dynamic_fuel_price) and ETS spot prices (Ept)"
+        required_for: historical-hindcast-dispatch
+        availability: >
+          must be retrieved for the target years — the shipped validation example points
+          at 2019; a 2020-2024 hindcast like Karkossa's needs the corresponding series and
+          they are the dominant driver of the result
+      - input: "date-consistent powerplant fleet (powerplantmatching + custom_powerplants)"
+        required_for: historical-hindcast-dispatch
+        availability: >
+          exists by default via the powerplants_filter date query; accuracy of DateIn/
+          DateOut is the limiting factor, and known-but-unmatched units go in
+          custom_powerplants.csv
+      - input: "observed hourly prices / generation to score against"
+        required_for: historical-hindcast-dispatch
+        availability: >
+          absent from the repo at this ref — no validation rule or scoring script exists;
+          Karkossa's SMAPE/MAE/RMSE comparison is external work
+    cost_profile:
+      solves: >
+        1 LP for the whole-period variants. For rolling: ceil(len(snapshots) /
+        (horizon - overlap)) LPs, each over `horizon` snapshots — 8760h at horizon=336,
+        overlap=0 is 27 windows; at horizon=96, overlap=48 it is 183 windows.
+      relative: >
+        A dispatch-only LP is much cheaper than the expansion LP on the same network:
+        capacity variables are gone and the objective is variable cost only, which is why
+        Grochowicz could afford 1600 of them and Frysztacki could afford 1250 nodes.
+        Rolling horizon is cheaper still per unit of wall clock even though it is more
+        solves — each window is a fraction of the year, LP cost is superlinear in
+        snapshots, and windows are independent enough to be a sequence of small problems.
+        The corpus exploits this in both directions: Franken runs 1096 daily solves at
+        ~300 buses; Stoeckl runs one dispatch at 6795 buses that no expansion problem
+        could reach.
+      note: >
+        Two traps. First, rolling windows are solved SEQUENTIALLY inside one snakemake
+        job — state must chain — so they do not parallelise, and 183 small solves can have
+        worse wall clock than one big one if solver start-up dominates; prefer io_api:
+        direct with HiGHS or Gurobi. Second, memory scales with the window, not the year,
+        which is what makes very high spatial resolution affordable in this mode: trade
+        horizon down to trade nodes up.
+    verifies:
+      - variant: full-year-perfect-foresight-dispatch
+        check: "not n.generators.p_nom_extendable.any() and not n.links.p_nom_extendable.any() and not n.stores.e_nom_extendable.any() and not n.storage_units.p_nom_extendable.any() and not n.lines.s_nom_extendable.any()"
+        over: run
+        note: >
+          Any surviving extendable component means this is not a dispatch-only run — the
+          classic silent failure of route A, where one forgotten list in
+          extendable_carriers (Store defaults to ['battery','H2']) leaves capacity in the
+          objective and the run is quietly a partial expansion.
+      - variant: rolling-window-with-overlap
+        check: "not n.storage_units.state_of_charge_cyclic.any() and not n.stores.e_cyclic.any()"
+        over: run
+        note: >
+          A surviving cyclic constraint forces every window back to its own starting
+          level, forbidding inter-window energy transfer. This is Karkossa's Norway load
+          shedding, and it is exactly what happens if the run went through rule
+          solve_operations_network instead of rule solve_network.
+      - variant: rolling-window-with-overlap
+        check: "0 < n.config['solving']['options']['overlap'] < n.config['solving']['options']['horizon']"
+        over: run
+        note: >
+          Zero overlap silently downgrades the run to rolling-window-no-overlap and its
+          storage results are not comparable; overlap >= horizon makes pypsa raise
+          ValueError before any solving.
+      - variant: rolling-window-no-overlap
+        check: "n.stores_t.e.iloc[-1].sum() >= 0 and len(n.snapshots) > n.config['solving']['options']['horizon']"
+        over: run
+        note: >
+          A period no longer than one window is not a rolling run at all — it is a single
+          solve wearing the config of one, and its storage has full foresight over
+          everything.
+      - variant: dispatch-as-feasibility-screen
+        check: "'load' in n.generators.carrier.unique() or n.generators.carrier.str.contains('load').any()"
+        over: run
+        note: >
+          The screen measures unserved energy, so the load-shedding generators must
+          actually be in the network. If they are absent the run either failed as
+          infeasible or is reporting a feasibility it never tested.
+  - model: pypsa-earth
+    version_anchor:
+      ref: "8435f4c8cc05f30088933b37b7db497ff860dc53"
+      date: "2026-07-25"
+    functionality:
+      - id: operations-only-solve
+        role: >
+          the method itself — registry status `absent`, and verified so: no rule named
+          solve_operations_network exists anywhere in the repo (the only hit is
+          doc/user-guide/rules-reference/solving/index.md, which CLAIMS the rule exists —
+          inherited documentation, not code), and the string fix_optimal_capacities
+          appears nowhere in any script.
+      - id: load-shedding-voll
+        role: >
+          the feasibility valve, and earth's one advantage on this card: status `working`
+          and ON by default (solving.options.load_shedding: 100, in EUR/kWh — a unit trap,
+          it is multiplied by 1000 to reach EUR/MWh). Capacity is sized per bus from peak
+          demand with a 1.2 safety margin rather than left unbounded.
+      - id: unit-commitment
+        role: >
+          the realism upgrade — status `partial` and weaker than eur's: the attribute
+          survives clustering but no earth code sets committable=True and there is no ramp
+          data, so dispatch is an LP relaxation everywhere.
+      - id: nodal-marginal-prices
+        role: "the primary output — status `working`, duals available on any solved network"
+      - id: weather-year-selection
+        role: >
+          one weather year per run; note earth additionally has load_options.weather_year
+          for the demand side, which must be kept consistent with the cutout year — an
+          extra alignment step eur does not have
+      - id: fleet-retirement-filter
+        role: >
+          the exogenous-fleet route: electricity.powerplants_filter is a pandas date query,
+          the same mechanism as eur, consumed in attach_conventional_generators
+      - id: temporal-resolution-nh
+        role: >
+          the affordability lever, via the opts token (3h by default) rather than a
+          dedicated config key
+      - id: monte-carlo-sampling
+        role: >
+          status `partial`, and the nearest thing to a many-solve harness if you need
+          hundreds of dispatch runs (Grochowicz-style). It varies INPUTS per solve, not
+          the foresight regime, so it is a fan-out shape to borrow, not a rolling-horizon
+          implementation.
+      - id: scenario-matrix
+        role: >
+          where a new `_op` wildcard would have to be plumbed if an operations rule is
+          added — Snakefile:scenario drives the cartesian expansion
+      - id: operational-reserves
+        role: "status `working`; the GenX-style hourly reserve requirement, same surface as eur"
+    available:
+      verdict: assemble
+      how: >
+        Only the fixed-capacity half is reachable, and only indirectly. There is no
+        operations rule and no `_op` output: you make the network non-extendable BEFORE
+        solving by emptying all four electricity.extendable_carriers lists (default leaves
+        Generator and Store populated) and pinning transmission with an `ll` wildcard
+        value like v1.0, which routes through prepare_network's set_transmission_limit.
+        Load shedding is already on by default, so the feasibility valve — the piece
+        people usually forget — is the one thing earth gives you for free. The result is a
+        whole-period dispatch solve with PERFECT FORESIGHT and no way to restrict it from
+        config.
+      missing: >
+        The entire foresight half of the method. solving.options has exactly seven keys
+        (formulation, load_shedding, noisy_costs, min_iterations, max_iterations,
+        clip_p_max_pu, skip_iterations, track_iterations) and none of them is
+        rolling_horizon, horizon or overlap; the only occurrence of the string
+        rolling_horizon in the whole repo is inside a COMMENT in
+        scripts/solve_network.py (`if status != "ok":  # and not rolling_horizon:`) — a
+        vestige of the pypsa-eur code this file was forked from, which is evidence the
+        feature was consciously dropped rather than never considered. So procedure steps
+        4, 5, 6, 7 and 9 have no handle: no window partitioning, no state chaining, no
+        cyclic teardown, no terminal value, no validation. There is also no
+        `fix_optimal_capacities` path at all, so procedure steps 1 and 2 cannot take
+        capacities FROM a prior solve — only from config, which means you cannot test the
+        operability of an expansion result the way Frysztacki does.
+      provenance: "scripts/solve_network.py:get_load_shedding_capacity; scripts/prepare_network.py:set_transmission_limit; config.default.yaml:extendable_carriers"
+    levers:
+      - key: "electricity.extendable_carriers"
+        effect: >
+          The only route to a fixed-capacity network: empty all four lists. The default
+          leaves five extendable generator carriers and two extendable stores, so this is
+          a mandatory, non-obvious edit — forget the Store list and battery/H2 stay
+          investable.
+        default: "{'Generator': ['solar','onwind','offwind-ac','offwind-dc','OCGT'], 'StorageUnit': [], 'Store': ['battery','H2'], 'Link': []}"
+        provenance: "config.default.yaml:extendable_carriers; scripts/add_extra_components.py:extendable_carriers"
+      - key: "solving.options.load_shedding"
+        effect: >
+          Cost of unserved energy in EUR/kWh (not MWh — it is multiplied by 1000 in
+          solve_network), or false to disable. On by default at 100, i.e. 100000 EUR/MWh.
+          Capacity per bus is derived from peak demand with a 1.2 safety margin rather
+          than being unbounded, which means severe shortfalls can still be infeasible.
+        default: "100"
+        provenance: "config.default.yaml:load_shedding; scripts/solve_network.py:get_load_shedding_capacity"
+      - key: "electricity.powerplants_filter"
+        effect: >
+          Date query selecting the fleet for the dispatched year — the exogenous-fleet
+          route for a hindcast, and the only fleet lever since there is no
+          fix-from-prior-solve path.
+        default: "'(DateOut >= 2022 or DateOut != DateOut) and (DateIn <= 2023 or DateIn != DateIn)'"
+        provenance: "config.default.yaml:powerplants_filter; scripts/add_electricity.py:attach_conventional_generators"
+      - key: "snapshots.start"
+        effect: >
+          The dispatched period. Must agree with the cutout year AND with
+          load_options.weather_year, which is a separate key in earth.
+        default: "'2013-01-01'"
+        provenance: "config.default.yaml:snapshots; scripts/build_demand_profiles.py:weather_year"
+      - key: "scenario.opts"
+        effect: >
+          Carries the temporal-resolution token (3h by default) and the CO2 policy token.
+          The affordability lever for a long dispatch run; note earth has no static-vs-
+          dynamic CO2 price choice equivalent to eur's Ept.
+        default: "['Co2L-3h']"
+        provenance: "config.default.yaml:opts; scripts/prepare_network.py:average_every_nhours"
+      - key: "monte_carlo.options.add_to_snakefile"
+        effect: >
+          Wires the many-solve fan-out into the DAG (adding a {unc} wildcard and a second
+          conditional solve_network rule). Relevant only if the study needs hundreds of
+          dispatch runs over sampled inputs; it does nothing for foresight.
+        default: "false"
+        provenance: "config.default.yaml:add_to_snakefile; scripts/monte_carlo.py:monte_carlo_sampling_chaospy"
+    assembly:
+      - step: >
+          Make the network non-extendable at build time, since nothing can fix it after a
+          solve: empty all four electricity.extendable_carriers lists (Generator,
+          StorageUnit, Store, Link) and choose an `ll` wildcard that pins transmission
+          (v1.0 / c1.0) so set_transmission_limit does not open line expansion.
+        uses: [scenario-matrix]
+        config: "electricity.extendable_carriers (all four emptied); scenario.ll"
+        code: null
+        provenance: "config.default.yaml:extendable_carriers; scripts/prepare_network.py:set_transmission_limit"
+      - step: >
+          Confirm load shedding is on and priced deliberately. It is on by default at 100
+          EUR/kWh, which is 100000 EUR/MWh after the internal x1000 — almost certainly not
+          what a price study wants. Also check the per-bus capacity sizing (peak demand x
+          1.2) is enough for the shortfall you expect, or the run is infeasible despite
+          the valve.
+        uses: [load-shedding-voll]
+        config: "solving.options.load_shedding"
+        code: null
+        provenance: "scripts/solve_network.py:get_load_shedding_capacity"
+      - step: >
+          Align the year across THREE places, not two: snapshots.start/end, the atlite
+          cutout, and load_options.weather_year for the demand profile. Earth's demand is
+          built from a weather-driven profile with its own year key, so a hindcast can
+          silently mix years in a way eur cannot.
+        uses: [weather-year-selection, fleet-retirement-filter]
+        config: "snapshots.start/end; load_options.weather_year; electricity.powerplants_filter"
+        code: null
+        provenance: "scripts/build_demand_profiles.py:weather_year; scripts/add_electricity.py:attach_conventional_generators"
+      - step: >
+          For rolling horizon there is no config path — write it. Cheapest honest route,
+          and the reason the rung below is L4 rather than L5: the optimisation is already
+          library code. Add a new script that loads the prepared network, sets
+          state_of_charge_cyclic / e_cyclic to False and the initial states to 0, and calls
+          n.optimize.optimize_with_rolling_horizon(snapshots, horizon, overlap,
+          solver_name=..., extra_functionality=...) — the same three lines pypsa-eur's
+          solve_network.py runs. pypsa is already in earth's environment at the same
+          version.
+        uses: []
+        config: "new keys under solving.options (rolling_horizon/horizon/overlap), mirroring pypsa-eur's names"
+        code: "new scripts/solve_operations_network.py + a new rule in Snakefile"
+        provenance: "pypsa/optimization/abstract.py:optimize_with_rolling_horizon"
+      - step: >
+          Plumb the new rule's output through the wildcard machinery: an `_op` suffix on
+          the network filename, the rule's input pointed at the solved network, and the
+          scenario cartesian product extended so solve_all_networks can request it. This
+          is the L4 half of the work and the part that is genuinely earth-specific — earth
+          keeps its rules in one monolithic Snakefile with two conditional solve_network
+          definitions (a plain one and a monte-carlo one carrying a {unc} wildcard), so a
+          third solve variant has to be threaded through both branches.
+        uses: [scenario-matrix, monte-carlo-sampling]
+        config: null
+        code: "Snakefile (new rule + solve_all_networks target)"
+        provenance: "Snakefile:solve_all_networks; Snakefile:solve_network"
+      - step: >
+          Read the operational outputs. make_summary already emits prices, curtailment and
+          supply/withdrawal by carrier; duals are on the solved network. Scoring against
+          observed data is out of scope here and much harder than on eur — see
+          data_dependencies.
+        uses: [nodal-marginal-prices, summary-outputs]
+        config: null
+        code: "scripts/make_summary.py"
+        provenance: "scripts/make_summary.py:marginal_price"
+    boundary:
+      - variant: full-year-perfect-foresight-dispatch
+        rung: L1
+        note: >
+          Reachable but only by construction, not by fixing a solved network: empty all
+          four extendable_carriers lists plus a pinning `ll`. L1 rather than L0 because
+          the defaults leave five generator carriers and two stores extendable, and there
+          is no single "operations" switch to flip.
+      - variant: dispatch-as-feasibility-screen
+        rung: L1
+        note: >
+          Same config, and load shedding is already on, so the unserved-energy metric is
+          available out of the box. But note the screen cannot test an EXPANSION result
+          the way Frysztacki does, because there is no fix_optimal_capacities path — you
+          can only screen a design you specified in config.
+      - variant: rolling-window-no-overlap
+        rung: L4
+        note: >
+          THE CARD'S SHARPEST ASYMMETRY: identical pypsa 0.30.3, identical primitive, L1
+          on eur and L4 here, purely because no config key and no rule reach it. Not L5 —
+          the optimisation is library code and the pypsa-eur implementation is a
+          three-line pattern to copy — but a new script, new config keys and wildcard
+          plumbing through a monolithic Snakefile with two conditional solve_network rules
+          is squarely rule-and-plumbing work.
+      - variant: rolling-window-with-overlap
+        rung: L4
+        note: >
+          Same work as the no-overlap case, plus getting the cyclic-storage teardown right
+          before the first window (the step earth has no precedent for, and the one
+          pypsa-eur's own operations script gets wrong). Do this rather than the no-overlap
+          variant: the extra cost is one config value.
+      - variant: historical-hindcast-dispatch
+        rung: L5
+        note: >
+          The blocker here is DATA and it is severe, which is the usual earth story. No
+          dynamic fuel price mechanism, no ETS spot price ingestion (eur's Ept has no
+          earth analogue at all), and for most earth regions no observed hourly price or
+          generation series to score against — often no liberalised market to produce one.
+          Consult cookbooks/pypsa-earth/data_quality before promising a hindcast; for many
+          countries this variant is not a code problem but an unanswerable question.
+      - variant: market-aligned-multistage-dispatch
+        rung: L5
+        note: >
+          Everything the eur L5 needs, on top of the L4 rolling-horizon plumbing that does
+          not exist yet, on top of unit commitment that no earth code activates
+          (committable is never set True and there is no ramp data). Furthest-away variant
+          in the whole card.
+    where:
+      - change: "rolling-horizon dispatch: new operations script"
+        anchor: "a new scripts/solve_operations_network.py calling n.optimize.optimize_with_rolling_horizon; mirror pypsa-eur's solve_network.py rolling branch"
+        provenance: "scripts/solve_network.py:extra_functionality"
+      - change: "cyclic-storage teardown before the first window"
+        anchor: "the new script, before the optimize call: state_of_charge_cyclic / e_cyclic to False, initial states to 0"
+        provenance: "scripts/solve_network.py:prepare_network"
+      - change: "new rule + `_op` wildcard plumbing"
+        anchor: "Snakefile — a third solve variant alongside the two conditional solve_network rules, and the solve_all_networks target"
+        provenance: "Snakefile:solve_all_networks"
+      - change: "new config keys for the foresight regime"
+        anchor: "config.default.yaml solving.options — add rolling_horizon/horizon/overlap using pypsa-eur's names"
+        provenance: "config.default.yaml:skip_iterations"
+      - change: "many-solve fan-out if hundreds of dispatch runs are needed"
+        anchor: "scripts/monte_carlo.py + monte_carlo.options.add_to_snakefile (the {unc} wildcard branch)"
+        provenance: "scripts/monte_carlo.py:monte_carlo_sampling_chaospy"
+    data_dependencies:
+      - input: "cutout + demand weather year for the dispatched period"
+        required_for: historical-hindcast-dispatch
+        availability: >
+          region-dependent — cutouts are built per region in earth, and the demand profile
+          carries its own load_options.weather_year that must be set to match
+      - input: "historical fuel and CO2 price series"
+        required_for: historical-hindcast-dispatch
+        availability: >
+          absent — earth has no dynamic_fuel_price or ETS-spot equivalent; fuel costs come
+          from the static technology-data cost pipeline, so a crisis-year hindcast is
+          missing its dominant driver
+      - input: "observed hourly prices / generation for the study region"
+        required_for: historical-hindcast-dispatch
+        availability: >
+          absent for most earth regions and frequently non-existent rather than merely
+          unretrieved; check cookbooks/pypsa-earth/data_quality for the country grade
+          before offering validation
+      - input: "date-accurate powerplant fleet for the target year"
+        required_for: historical-hindcast-dispatch
+        availability: >
+          region-dependent — powerplantmatching coverage outside Europe is uneven, so the
+          fleet the dispatch is run on may itself be the largest error source
+    cost_profile:
+      solves: >
+        1 LP per scenario for the reachable variants. Rolling horizon does not exist, so
+        the window count is not a parameter here until the L4 work is done.
+      relative: >
+        Cheaper than eur in absolute terms — smaller regions, electricity-only, and
+        3-hourly by default via the opts token — so the whole-period dispatch solve is
+        rarely the binding constraint. Its cost is not the reason rolling horizon is
+        missing.
+      note: >
+        The perverse consequence of the missing feature: because a whole-year earth
+        dispatch solve is cheap, there is no compute pressure pushing users towards
+        windows, so the perfect-foresight storage artefact goes unnoticed. On earth the
+        reason to want rolling horizon is realism, not tractability — and realism is the
+        harder sell for adding a rule. If storage valuation or price realism is the
+        question, the honest answer is to route the study to pypsa-eur where the lever
+        exists, or to budget the L4 work.
+    verifies:
+      - variant: full-year-perfect-foresight-dispatch
+        check: "not n.generators.p_nom_extendable.any() and not n.stores.e_nom_extendable.any() and not n.links.p_nom_extendable.any() and not n.lines.s_nom_extendable.any()"
+        over: run
+        note: >
+          On earth this is the load-bearing check, because there is no
+          fix_optimal_capacities to guarantee it — extendability is only as absent as your
+          config edit was complete, and the default Store list (['battery','H2']) is the
+          one people forget.
+      - variant: dispatch-as-feasibility-screen
+        check: "n.generators.carrier.str.contains('load').any()"
+        over: run
+        note: >
+          Load shedding is on by default, so its absence means someone set
+          solving.options.load_shedding to false and the run's feasibility says nothing
+          about adequacy.
+      - variant: rolling-window-with-overlap
+        check: "not n.storage_units.state_of_charge_cyclic.any() and not n.stores.e_cyclic.any()"
+        over: run
+        note: >
+          Only meaningful after the L4 work lands. Stated here so the check exists the day
+          the rule does — this is the teardown pypsa-eur's own operations script omits, so
+          a copied implementation will inherit the bug.

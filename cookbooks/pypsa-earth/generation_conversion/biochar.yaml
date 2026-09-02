@@ -1,0 +1,68 @@
+id: biochar
+title: Biochar
+summary: >-
+  Pyrolysing biomass into a stable carbon-rich solid applied to soils — a carbon
+  removal pathway that also yields heat/bio-oil co-products.
+when_to_use:
+  - "biochar"
+  - "pyrolysis of biomass for carbon removal"
+  - "char to soil / soil carbon sequestration via char"
+  - "carbon removal from agricultural residues"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >-
+        Nothing — "biochar" appears nowhere in the workflow, config, or the shipped
+        cost data (data/costs.csv). This is a grounded absence. The machinery it is
+        absent FROM does exist: the biomass resource chain (add_biomass: "solid
+        biomass" Stores bounded by sector.solid_biomass_potential) and the carbon
+        accounting chain (add_co2: "co2 atmosphere" and "co2 stored" buses/stores;
+        add_dac as the template for a link that moves CO2 out of the atmosphere).
+      mechanism: >-
+        None. The nearest structural pattern is an exogenous-removal Link in the style
+        of add_dac — biochar would be a Link with bus0 on the solid biomass buses,
+        a negative-emission term on "co2 atmosphere", and its carbon output either
+        into the existing "co2 stored" bus or into a new dedicated store, plus
+        optional heat co-product output (cf. the multi-output CHP CC links in
+        add_biomass).
+      not_covered: >-
+        Everything: no pyrolysis technology, no biochar carrier or store, no soil
+        application, no permanence discount, no cost row.
+      provenance: "scripts/prepare_sector_network.py:add_co2"
+    levers:
+      - key: sector.solid_biomass_potential
+        effect: "Would bound any biochar pathway's feedstock (shared with all other biomass uses); today it only feeds the existing biomass links."
+        default: "40"
+        provenance: "config.default.yaml:solid_biomass_potential ; scripts/prepare_sector_network.py:add_biomass"
+      - key: sector.co2_sequestration_potential
+        effect: "If biochar carbon is routed into the existing 'co2 stored' Stores, this cap (shared with DAC/CC) would bound it."
+        default: "200"
+        provenance: "config.default.yaml:co2_sequestration_potential ; scripts/solve_network.py:add_co2_sequestration_limit"
+    boundary:
+      - variant: "Any biochar representation at all"
+        rung: L5
+        note: >-
+          Bespoke Python: a new pyrolysis Link (solid biomass -> co2 removal + heat
+          co-product) in prepare_sector_network, modelled on the add_dac link (for the
+          atmosphere->stored carbon flow) and the biomass CHP CC link (for
+          multi-output efficiencies). Also needs an L3 cost row (none exists in
+          technology-data as shipped) and, if permanence should differ from geological
+          storage, a separate 'biochar' store/carrier outside the co2 stored budget.
+    where:
+      - change: "New pyrolysis/removal link"
+        anchor: "scripts/prepare_sector_network.py functions add_dac (removal-link template) and add_biomass (biomass-input multi-output link template)"
+        provenance: "scripts/prepare_sector_network.py:add_dac"
+      - change: "Carbon accounting target buses"
+        anchor: "scripts/prepare_sector_network.py function add_co2 ('co2 atmosphere' / 'co2 stored')"
+        provenance: "scripts/prepare_sector_network.py:add_co2"
+      - change: "Cost row for pyrolysis/biochar"
+        anchor: "costs CSV consumed via Snakefile rule retrieve_cost_data (or data/costs.csv override)"
+        provenance: "Snakefile:retrieve_cost_data"
+    data_dependencies:
+      - input: "Biochar techno-economics (pyrolysis CAPEX, carbon yield, stability fraction)"
+        required_for: "The L5 pathway"
+        availability: "absent — no row in the shipped cost data; must be supplied"
+      - input: "Regional biomass residue potential"
+        required_for: "Feedstock bound (shared with the biomass recipe)"
+        availability: "region-dependent — default is a whole-area placeholder scalar"

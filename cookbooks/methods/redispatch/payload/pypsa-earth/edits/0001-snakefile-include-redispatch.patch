@@ -1,0 +1,11 @@
+--- a/Snakefile	2026-08-02 15:11:32.322476231 +0200
++++ b/Snakefile	2026-08-02 15:11:32.338984107 +0200
+@@ -63,6 +63,8 @@
+ SDIR = config["summary_dir"].strip("/") + f"/{SECDIR}"
+ RESDIR = config["results_dir"].strip("/") + f"/{SECDIR}"
+ 
++include: "rules/redispatch.smk"
++
+ ATLITE_NPROCESSES = config["atlite"].get("nprocesses", 4)
+ 
+ 

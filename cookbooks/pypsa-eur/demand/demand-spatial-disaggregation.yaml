@@ -1,0 +1,230 @@
+id: demand-spatial-disaggregation
+title: Spatial disaggregation of demand to nodes
+summary: >-
+  How country-level demand totals and profiles are split across network buses —
+  GDP/population keys, industrial site databases, port/airport locations, and
+  population layouts.
+when_to_use:
+  - "where does the demand sit on the network"
+  - "distribute / allocate load to buses or regions"
+  - "demand in the wrong place / city has too little load"
+  - "put industry demand at actual plant locations"
+  - "GDP vs population weighting of load"
+  - "port or airport demand location"
+  - "regional demand shares"
+  - "nodal distribution key"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >-
+        Five distinct keys. (1) Electricity: build_demand_profiles splits each
+        country's hourly series across LV-substation bus regions with
+        factors = normed(0.6 * normed(gdp_n) + 0.4 * normed(pop_n)), where gdp/pop
+        come from the GADM shapes enriched by build_shapes (add_gdp_data /
+        add_population_data from WorldPop rasters); uniform fallback if weights sum
+        to zero. (2) Population-keyed sector demand: prepare_heat_data and
+        prepare_transport_data multiply country energy totals by
+        pop_layout.fraction (clustered population layout). (3) Industry: rule
+        build_industrial_distribution_key maps the facility database
+        (resources/industrial_database.csv built by build_industrial_database from
+        GEM steel tracker, SFI cement, refineries, paper, ammonia sources) to GADM
+        buses via locate_bus and builds per-sector capacity-proportional keys
+        (build_nodal_distribution_key); sectors with no facilities in a country
+        fall back to the GDP key. (4) Point infrastructure: add_aviation and
+        add_shipping locate airports/ports (prepare_airports/prepare_ports) with
+        locate_bus and set p_set fractions per site. (5) Residential/services
+        fuels re-use the normalized nodal shape of the existing electricity load
+        (normalize_by_country in add_residential/add_services).
+      mechanism: >-
+        locate_bus (scripts/_helpers.py) is the shared point-to-GADM-region
+        matcher used by industry, ports, airports (and powerplants); the GADM
+        layer is set by build_shape_options.gadm_layer_id and honoured when
+        cluster_options.alternative_clustering builds GADM-based nodes. The
+        electricity 0.6/0.4 weights are hardcoded constants in the upsample
+        function, not config keys.
+      not_covered: >-
+        No config lever for the GDP/pop weighting (contrast pypsa-eur's
+        load.distribution_key); no gridded electricity-consumption raster; heat
+        and transport are population-only (no urban/industrial weighting of
+        transport); facility databases carry capacity, not production, and their
+        coverage is region-dependent; services demand has no own spatial key
+        (follows the electricity shape).
+      provenance: "scripts/build_demand_profiles.py:def upsample ; scripts/build_shapes.py:def add_gdp_data ; scripts/build_industrial_distribution_key.py:build_nodal_distribution_key ; scripts/_helpers.py:def locate_bus ; scripts/prepare_sector_network.py:def add_aviation"
+    levers:
+      - key: build_shape_options.gdp_method
+        effect: "How GDP is rasterised onto GADM shapes for the electricity key (false disables the gdp column)."
+        default: "standard"
+        provenance: "config.default.yaml:gdp_method ; scripts/build_shapes.py:def add_gdp_data"
+      - key: cluster_options.alternative_clustering
+        effect: "Clusters the network to GADM administrative regions, making demand keys align with admin units instead of Voronoi cells."
+        default: "true"
+        provenance: "config.default.yaml:alternative_clustering ; scripts/build_industrial_distribution_key.py:gadm_clustering"
+      - key: custom_data.industry_database
+        effect: "Reads data/custom/industrial_database.csv instead of the built default facility database for industry keys."
+        default: "false"
+        provenance: "config.default.yaml:industry_database ; scripts/build_industrial_distribution_key.py:industry_database"
+      - key: custom_data.airports
+        effect: "Uses data/custom/airports.csv instead of the OurAirports-derived list for aviation demand placement."
+        default: "false"
+        provenance: "config.default.yaml:custom_data ; Snakefile:rule prepare_airports"
+      - key: sector.airport_sizing_factor
+        effect: "Sizing factor applied when preparing the airport list that carries aviation demand fractions."
+        default: "3"
+        provenance: "config.default.yaml:airport_sizing_factor ; Snakefile:rule prepare_airports"
+    boundary:
+      - variant: "Cluster demand to administrative regions"
+        rung: L0
+        note: "cluster_options.alternative_clustering (GADM-based nodes) is default-on."
+      - variant: "Change the 0.6 GDP / 0.4 population electricity weighting"
+        rung: L2
+        note: "Constants are hardcoded in the upsample function of build_demand_profiles.py — no config key."
+      - variant: "Place industry at your own site list"
+        rung: L3
+        note: "custom_data.industry_database: true + data/custom/industrial_database.csv (country, technology, capacity, coordinates)."
+      - variant: "Custom airport/port locations"
+        rung: L3
+        note: "custom_data.airports + data/custom/airports.csv; export ports likewise via custom_data (rule prepare_ports)."
+      - variant: "Weight heat/transport by something other than population"
+        rung: L2
+        note: "prepare_heat_data/prepare_transport_data multiply totals by pop_layout.fraction; a different key means editing that multiplication or the clustered layout inputs."
+      - variant: "Gridded (raster) electricity demand disaggregation"
+        rung: L4
+        note: "No raster pipeline exists for demand; would need a new rule producing per-region weights consumed by build_demand_profiles."
+    where:
+      - change: "Electricity GDP/pop weights and uniform fallback"
+        anchor: "scripts/build_demand_profiles.py nested function upsample (rule build_demand_profiles)"
+        provenance: "scripts/build_demand_profiles.py:def upsample"
+      - change: "GDP/population attributes on GADM shapes"
+        anchor: "scripts/build_shapes.py functions add_gdp_data / add_population_data"
+        provenance: "scripts/build_shapes.py:def add_population_data"
+      - change: "Industry distribution keys (capacity-proportional, GDP fallback)"
+        anchor: "scripts/build_industrial_distribution_key.py function build_nodal_distribution_key (rule build_industrial_distribution_key)"
+        provenance: "Snakefile:rule build_industrial_distribution_key ; scripts/build_industrial_distribution_key.py:build_nodal_distribution_key"
+      - change: "Point-to-region matching for sites/ports/airports"
+        anchor: "scripts/_helpers.py function locate_bus"
+        provenance: "scripts/_helpers.py:def locate_bus"
+      - change: "Aviation / shipping nodal fractions"
+        anchor: "scripts/prepare_sector_network.py functions add_aviation / add_shipping"
+        provenance: "scripts/prepare_sector_network.py:def add_shipping"
+      - change: "Population layouts feeding heat/transport keys"
+        anchor: "rules build_population_layouts / build_clustered_population_layouts"
+        provenance: "Snakefile:rule build_clustered_population_layouts"
+    data_dependencies:
+      - input: "WorldPop population rasters + GDP data on GADM shapes"
+        required_for: "Electricity GDP/pop key and population layouts"
+        availability: "region-dependent downloads during build_shapes"
+      - input: "resources/industrial_database.csv (GEM steel, SFI cement, refineries, paper, ammonia)"
+        required_for: "Industry keys at facility locations"
+        availability: "must be built (rule build_industrial_database, remote sources); coverage region-dependent"
+      - input: "resources ports.csv / airports.csv"
+        required_for: "Shipping and aviation demand placement"
+        availability: "must be built (rules prepare_ports / prepare_airports from global datasets)"
+      - input: "Clustered population/GDP layouts (pop_layout, clustered_gdp_layout)"
+        required_for: "Population-keyed sector totals and industry GDP fallback"
+        availability: "must be built (build_clustered_population_layouts)"
+    demand_dimensions:
+      driver: "Keys derive from GDP, population, facility capacity, and port/airport presence"
+      spatial: "Electricity 0.6 gdp + 0.4 pop over GADM; sector totals by pop fraction; industry by site capacity with GDP fallback; aviation/shipping at located sites"
+      temporal: "Keys are static; profiles handled separately"
+      scenario: "Keys do not vary by scenario (same distribution key for all {demand} tags and horizons)"
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >-
+        (1) Electricity: build_electricity_demand_base combines three keys with
+        priority — JRC energy-atlas electricity-consumption raster for EU27
+        countries (energy_atlas_distribution_keys), UK local-authority
+        consumption statistics for GB (gb_distribution_keys), and a NUTS3
+        GDP/population key elsewhere (nuts3_distribution_keys, weights from
+        load.distribution_key). (2) Sector totals: rule
+        build_population_weighted_energy_totals multiplies country totals by
+        pop_layout.fraction. (3) Industry: rule build_industrial_distribution_key
+        builds per-subsector keys from Hotmaps industrial sites
+        (emission-weighted, prepare_hotmaps_database) supplemented by GEM steel
+        and cement plant trackers, an ammonia site list and refineries
+        (prepare_gem_steel_database, prepare_gem_cement_database,
+        prepare_ammonia_database); build_industrial_energy_demand_per_node
+        multiplies nodal production by sector energy ratios. (4) Shipping: rule
+        build_shipping_demand assigns international navigation demand to nodes by
+        port outflow volumes (sjoin_nearest on the world port index,
+        properties_outflows). (5) Transport: car stock split by population
+        (build_nodal_transport_data).
+      mechanism: >-
+        For the electricity NUTS3 key the code reads
+        gdp_weight = distribution_key.get("gdp", 0.6) and
+        pop_weight = distribution_key.get("pop", 0.4) — note the default config
+        spells the second key "population", which the code does not read, so out
+        of the box only the gdp weight is configurable and the pop weight stays at
+        its 0.4 fallback unless a "pop" key is added to load.distribution_key.
+        Keys are combined per country and renormalised (GB mix of LAD + NUTS3 for
+        Northern Ireland).
+      not_covered: >-
+        The energy-atlas raster covers EU27 only (non-EU countries fall through to
+        NUTS3 GDP/pop); heat and most sector demands are population-weighted with
+        no urban-density option at this step; no per-carrier custom key config —
+        alternative keys mean new data or code.
+      provenance: "scripts/build_electricity_demand_base.py:nuts3_distribution_keys ; scripts/build_electricity_demand_base.py:energy_atlas_distribution_keys ; scripts/build_industrial_distribution_key.py:prepare_hotmaps_database ; scripts/build_shipping_demand.py:properties_outflows ; scripts/build_population_weighted_energy_totals.py:pop_layout.fraction"
+    levers:
+      - key: load.distribution_key
+        effect: "Weights of the NUTS3 GDP/pop electricity key; caveat: code reads keys 'gdp' and 'pop', while the shipped default provides 'gdp' and 'population', so only gdp takes effect until a 'pop' key is supplied."
+        default: "{gdp: 0.6, population: 0.4}"
+        provenance: "config/config.default.yaml:distribution_key ; scripts/build_electricity_demand_base.py:nuts3_distribution_keys"
+      - key: load.substation_only
+        effect: "Allocates load only to regions of buses flagged substation_lv."
+        default: "true"
+        provenance: "config/config.default.yaml:substation_only ; scripts/build_electricity_demand_base.py:substation_only"
+      - key: industry.hotmaps_locate_missing
+        effect: "Geocodes Hotmaps sites lacking coordinates via Nominatim before building industry keys."
+        default: "false"
+        provenance: "config/config.default.yaml:hotmaps_locate_missing ; scripts/build_industrial_distribution_key.py:locate_missing_industrial_sites"
+    boundary:
+      - variant: "Adjust GDP weight of the electricity key"
+        rung: L0
+        note: "load.distribution_key.gdp; to change the pop weight add a 'pop' entry (the 'population' key is not read) — effectively L1 with that caveat."
+      - variant: "Use raster-based keys outside EU27"
+        rung: L2
+        note: "energy_atlas_distribution_keys skips countries not in EU27; extending needs another raster and a small edit in build_electricity_demand_base.py."
+      - variant: "Custom industrial site database"
+        rung: L3
+        note: "No custom-file switch; replace/patch the hotmaps input of rule build_industrial_distribution_key (or the GEM tracker files)."
+      - variant: "Different key for a specific sector demand (e.g. services by floor area)"
+        rung: L2
+        note: "build_population_weighted_energy_totals applies pop fraction wholesale; a per-column key needs an edit there."
+      - variant: "Move shipping demand to specific ports"
+        rung: L3
+        note: "Port outflows come from the world port index attributes; supply an edited ports file to rule build_shipping_demand."
+    where:
+      - change: "Electricity key priority chain (raster > GB stats > NUTS3)"
+        anchor: "scripts/build_electricity_demand_base.py function upsample_load (rule build_electricity_demand_base)"
+        provenance: "scripts/build_electricity_demand_base.py:upsample_load ; rules/build_electricity.smk:rule build_electricity_demand_base"
+      - change: "Industry site keys"
+        anchor: "scripts/build_industrial_distribution_key.py function build_nodal_distribution_key (rule build_industrial_distribution_key)"
+        provenance: "scripts/build_industrial_distribution_key.py:build_nodal_distribution_key ; rules/build_sector.smk:rule build_industrial_distribution_key"
+      - change: "Population weighting of sector totals"
+        anchor: "scripts/build_population_weighted_energy_totals.py (rule build_population_weighted_energy_totals)"
+        provenance: "rules/build_sector.smk:rule build_population_weighted_energy_totals"
+      - change: "Shipping port allocation"
+        anchor: "scripts/build_shipping_demand.py (rule build_shipping_demand)"
+        provenance: "rules/build_sector.smk:rule build_shipping_demand"
+    data_dependencies:
+      - input: "JRC energy-atlas electricity consumption raster (EU27)"
+        required_for: "Raster-based electricity key"
+        availability: "exists by default (retrieve rule); EU27 only"
+      - input: "DESNZ local-authority consumption workbook + ONS LAD boundaries"
+        required_for: "GB electricity key"
+        availability: "exists by default (retrieve rules)"
+      - input: "NUTS3 shapes with gdp/pop attributes"
+        required_for: "Fallback electricity key and industry population column"
+        availability: "exists by default (resources nuts3_shapes)"
+      - input: "Hotmaps industrial sites, GEM steel/cement trackers, ammonia and refinery lists"
+        required_for: "Industry keys"
+        availability: "exists by default (retrieve rules); Europe coverage"
+      - input: "World port index with outflow attributes"
+        required_for: "Shipping demand allocation"
+        availability: "exists by default (input of rule build_shipping_demand)"
+    demand_dimensions:
+      driver: "Keys derive from consumption rasters, official statistics, site emissions/capacities, port outflows, population"
+      spatial: "Electricity: raster (EU27) / LAD stats (GB) / NUTS3 gdp-pop; sectors: population fraction; industry: Hotmaps+GEM sites; shipping: port outflows"
+      temporal: "Keys are static per run"
+      scenario: "Keys constant across planning horizons; only totals change"

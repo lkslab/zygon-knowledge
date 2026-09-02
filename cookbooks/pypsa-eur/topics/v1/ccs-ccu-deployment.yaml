@@ -1,0 +1,61 @@
+id: ccs-ccu-deployment
+title: CCS / CCU deployment
+rank: 56
+question: >
+  How much carbon capture gets built where — industrial point-source, BECCS,
+  DAC — where does the CO2 go (pipelines, sequestration, utilization), and at
+  what CO2 price does capture beat abatement alternatives?
+when_to_use:
+  - "CCS deployment under a carbon budget"
+  - "CO2 transport and storage infrastructure"
+  - "DAC vs point-source capture vs BECCS"
+  - "sequestration potential as a binding limit"
+  - "captured CO2 for synthetic fuels (CCU)"
+recipes:
+  generation_conversion: [co2-transport-and-sequestration, industrial-ccs,
+                          direct-air-capture, beccs, allam-cycle,
+                          e-diesel-fischer-tropsch, e-methanol, blue-hydrogen]
+  demand: [industrial-process-emissions, cement-minerals-demand]
+functionality:
+  - id: co2-network-sequestration
+    role: "core — captured-carbon buses, CO2 pipeline network along the grid topology, CO2Stop-derived REGIONAL sequestration potentials with cost, DAC; all default-on"
+  - id: co2-sequestration-limit
+    role: "annual injection cap per horizon (seq token sweepable) — the budget that shapes deployment curves"
+  - id: co2-cap
+    role: "the binding emissions constraint that makes capture and removal deploy"
+  - id: co2-budget-pathway
+    role: "cumulative carbon budgets distributed over horizons for pathway CCS studies"
+  - id: co2-atmosphere-constraint
+    role: "net-negative accounting through the non-cyclic atmosphere store (BECCS/DACCS removal)"
+  - id: emission-pricing
+    role: "static Ep sweeps trace the CO2-price deployment threshold per capture route"
+  - id: dynamic-emission-pricing
+    role: "observed ETS price paths (Ept) as an alternative price driver"
+  - id: methanol-suite
+    role: "CCU beyond Fischer-Tropsch: methanolisation and downstream methanol-to-power/kerosene/reforming routes, individually switchable"
+  - id: carrier-attribute-scaling
+    role: "capture capex sensitivity as adjustments/opts tokens"
+  - id: summary-outputs
+    role: "captured/sequestered CO2 balances and the CO2 shadow price per run"
+gap_assessment: >
+  Materially stronger than pypsa-earth — both halves work. CCS: capture links
+  across the sector chain (industry CC for gas/biomass/process emissions, SMR
+  CC, CHP CC, BioSNG/biomass-to-methanol CC, Allam cycle, DAC) feed per-node
+  co2-stored buses with a default-on CO2 pipeline network, and — unlike
+  earth's single system-wide number — sequestration is REGIONALIZED from the
+  CO2Stop geodatabase (per-region e_nom_max, offshore-first allocation,
+  annualized injection capacity), so "where does the CO2 go" is answered by
+  geological siting plus pipeline flows under an annual injection cap that is
+  one seq-token sweep away. CCU: stored CO2 competes between sequestration,
+  Fischer-Tropsch liquids AND a full methanol economy (methanolisation with
+  power/kerosene/reforming offtakes), so the storage-vs-utilization margin is
+  endogenous. Remaining caveats: one shared capture rate (sector.cc_fraction)
+  across CC technologies; captured CO2 cannot be vented by default
+  (sector.co2_vent false — capture-heavy configs can go infeasible without a
+  sink); intra-year co2-stored tanks are cyclic buffers only; and no
+  mineralization or other non-fuel utilization route. For deployment-curve,
+  siting and CO2-price-threshold studies this is ready machinery.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

@@ -1,0 +1,135 @@
+paper: "2023_Frysztacki_Inverse-methods-disaggregation_Energy.pdf"
+tier: 1
+model_used: >
+  PyPSA-Eur v0.3.0, electricity-only, 33 countries, full resolution 5323 nodes /
+  3609 substations; clustered down to 37–217 nodes for capacity expansion, then
+  disaggregated and re-run at 1250 nodes for operational dispatch.
+scope: >
+  Proposes and compares three inverse/disaggregation methods (uniform, re-optimise,
+  min-excess) for mapping spatially low-resolved capacity expansion results back to
+  a high-resolution network, then quantifies load-shedding and curtailment in the
+  resulting operational dispatch to assess feasibility of coarse model outputs.
+methods:
+  - slug: spatial-clustering-and-resolution
+    role: defines
+    evidence: >
+      "A hierarchical agglomerative clustering is chosen for the spatial scale. It is
+      a bottom-up approach, where each node is treated as a singleton cluster. Then,
+      in every iteration, two clusters that have the highest similarity and that are
+      connected by a transmission line are aggregated." (Sec. 2.2). The paper's core
+      contribution is the inverse of this clustering — three novel disaggregation
+      methods — and a feasibility quantification at varying cluster counts (37–217
+      nodes). The sweep hit count of 126 reflects that spatial clustering and
+      disaggregation are the paper's central subject.
+    procedure_notes: >
+      Hierarchical agglomerative clustering using similarity of renewable capacity
+      factor time-series (solar and wind). Capacity expansion runs at 37, 67, 97,
+      127, 157, 187, 217 clusters. Operational feasibility tested at 1250 nodes
+      (approx. 25% of full 5323-node network). Three disaggregation methods
+      compared: (a) uniform distribution within cluster subject to land-use upper
+      bound (Eq. 3–5); (b) re-optimisation per cluster enforcing same technology
+      totals (Eq. 6); (c) min-excess objective minimising curtailed surplus (Eq. 7).
+      Copperplate sensitivity sets intra-cluster transmission to infinity (Eq. 9–10).
+    variant: hierarchical-agglomerative-renewable-similarity
+    parameters: {cluster_counts: "37, 67, 97, 127, 157, 187, 217", operational_resolution_nodes: 1250, full_resolution_nodes: 5323}
+
+  - slug: operational-dispatch-and-rolling-horizon
+    role: canonical-use
+    evidence: >
+      "To investigate the quality of the proposed disaggregation methods, the model
+      is solved as a pure operational problem, where no further capacity can be built.
+      This is equivalent to solving Eq. (1) with its associated constraints, however
+      the technology capacities G_{v,s} are removed from the set of optimisation
+      variables and replaced by a fixed number that is the result of the
+      disaggregation." (Sec. 2.7). Step (v) in the modelling pipeline is explicitly
+      an operational dispatch at fixed capacity.
+    procedure_notes: >
+      Full-year dispatch at 2-hour resolution (w_t = 2 ∀t, Sec. 2.2) at 1250 nodes
+      with fixed capacities from the disaggregation step. Load-shedding generators
+      with high but non-extendable capacity added to guarantee physical feasibility.
+      Interior point solver (Gurobi). Run in two scenarios: "regular" (actual intra-
+      cluster transmission limits) and "copperplate" (intra-cluster lines set to
+      infinite capacity). Barrier convergence tolerance 1e-9, feasibility tolerance
+      1e-6. All runs on a 5-node HPC cluster with 48 CPUs and 256 GB memory each.
+    variant: dispatch-only-fixed-capacity
+    parameters: {temporal_resolution_hours: 2, operational_nodes: 1250, solver: "Gurobi interior-point"}
+
+  - slug: temporal-aggregation-and-segmentation
+    role: routine-use
+    evidence: >
+      "In terms of temporal scale, every two consecutive hours are aggregated.
+      Temporal aggregation, such as spatial aggregation, can lead to a different type
+      of modelling error. Therefore a high temporal resolution is maintained. The
+      approach to aggregate only two consecutive hours has shown to yield good results
+      compared to hourly-resolution while reducing the model size by a factor of 2."
+      (Sec. 2.2, between Table 1 and Sec. 2.3).
+    procedure_notes: >
+      2-hourly snapshot weighting (w_t = 2 ∀t) applied to both capacity expansion
+      and operational runs. No TSAM or typical periods — a simple n-hourly averaging.
+      Cited as a deliberate trade-off between accuracy and computational cost.
+    variant: n-hourly-averaging
+    parameters: {n_hours: 2, size_reduction_factor: 2}
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "An additional constraint is formulated to account for land-use constraints.
+      This upper limit is formally defined as G_{v,s} ≤ G^max_{v,s} ∀v ∈ c (Eq. 4)
+      and is enforced by selecting the generators where (4) is not satisfied and
+      uniformly distributing the residual capacity over the remaining nodes within
+      the cluster." (Sec. 2.3). Also stated in model description (Sec. 2.2): "(i)
+      Creating the model … land-use constraints …".
+    procedure_notes: >
+      Land-use upper bounds (G^max_{v,s}) enforced as a constraint in the uniform
+      disaggregation method. Capacity factors derived from ERA5 reanalysis and
+      SARAH-2 solar data processed via atlite (Sec. 2.2). The paper does not detail
+      the land eligibility methodology itself — it inherits it from PyPSA-Eur v0.3.0.
+    variant: null
+    parameters: {}
+
+  - slug: linearised-optimal-power-flow
+    role: routine-use
+    evidence: >
+      "applying only a linearised power flow model" listed explicitly as a model
+      limitation (Sec. 5, Limitations). Kirchhoff-consistent power flows are
+      referenced throughout (Eq. 1 includes power flow constraints; Sec. 2.2 states
+      the model "account for the system to be physically plausible including
+      Kirchhoff's circuit laws").
+    procedure_notes: >
+      Standard DC/linearised OPF as used in PyPSA-Eur v0.3.0. The paper
+      acknowledges this as a limitation ("neglecting dynamic line rating"). Inter-
+      cluster power flows from the low-resolved solution are distributed to high-
+      resolution lines proportional to line capacity (Eq. 8) for the re-optimise
+      and min-excess disaggregation methods.
+    variant: null
+    parameters: {}
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      The capacity expansion step (iii in Fig. 1) is a standard overnight optimisation
+      for a single target year of a fully renewable European electricity system.
+      "All results presented in this paper were carried out for a fully self-sufficient
+      and fully renewable Europe." (Sec. 5). Single weather year used: ERA5 and
+      SARAH-2 data from 2017 (cited in Sec. 2.2 as historical weather data).
+    procedure_notes: >
+      Greenfield overnight capacity expansion (no brownfield existing fleet beyond
+      what the model initialises). Single weather year. No multi-year pathway or
+      myopic rolling investment. CO2 target: 100% renewable electricity (zero
+      emissions). The operational step (v) then fixes those capacities — no
+      re-investment allowed.
+    variant: overnight
+    parameters: {target: "100% renewable electricity", weather_year: "single year (ERA5/SARAH-2 2017 vintage)"}
+
+unmatched_methods:
+  - name: "inverse-disaggregation"
+    evidence: >
+      The paper's core novel contribution — mapping low-resolved capacity expansion
+      optimisation variables back to high spatial resolution — is not covered by any
+      existing slug. Three algorithms are defined: (a) uniform distribution with
+      land-use upper bounds (Eq. 3–5), (b) per-cluster re-optimisation with capacity
+      equality constraints (Eq. 6), and (c) min-excess objective minimising curtailed
+      surplus electricity (Eq. 7). This is a post-processing / inverse-problem method
+      that sits between spatial-clustering-and-resolution (the forward step) and
+      operational-dispatch-and-rolling-horizon (the feasibility test). No existing
+      slug captures the disaggregation algorithm itself.

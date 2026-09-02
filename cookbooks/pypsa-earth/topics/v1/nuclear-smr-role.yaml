@@ -1,0 +1,53 @@
+id: nuclear-smr-role
+title: Nuclear / SMR role
+rank: 55
+question: >
+  What role does nuclear — existing fleets, new large builds, and small
+  modular reactors — play in a decarbonizing system: how much firm low-carbon
+  capacity is it worth, and at what cost does new nuclear or an SMR beat
+  renewables plus storage?
+when_to_use:
+  - "value of nuclear in the future mix"
+  - "new nuclear build vs renewables + storage"
+  - "SMR deployment scenarios"
+  - "nuclear phase-out or lifetime extension"
+  - "nuclear as firm capacity for adequacy"
+recipes:
+  generation_conversion: [conventional-nuclear, small-modular-reactors,
+                          green-hydrogen]
+  demand: [electricity-load]
+functionality:
+  - id: safe-reserve-margin
+    role: "SAFE makes firm capacity bind — the frame in which nuclear's adequacy value shows up"
+  - id: country-carrier-capacity-limits
+    role: "CCL floors/caps encode national nuclear policy (build programs, phase-out ceilings)"
+  - id: bau-minimum-capacities
+    role: "system-wide nuclear capacity floors as an alternative policy handle"
+  - id: fleet-retirement-filter
+    role: "retire or extend the existing fleet by DateIn/DateOut query"
+  - id: co2-cap
+    role: "tight Co2L is what creates the firm-low-carbon niche nuclear competes for"
+  - id: carrier-attribute-scaling
+    role: "nuclear+c sweeps trace the capex breakeven vs VRE+storage"
+  - id: unit-commitment
+    role: "nuclear inflexibility (min-load, ramping) is not enforced — LP dispatch flatters it"
+gap_assessment: >
+  Conventional nuclear is solid: the existing fleet loads from
+  powerplantmatching by default with country-level availability derating from
+  IAEA statistics, phase-out/extension is a one-line powerplants_filter
+  query, and making nuclear extendable is a config edit (new builds land only
+  at buses with existing plants unless that restriction is lifted — a small
+  documented code change). SMRs are a documented proxy, not a technology:
+  there is no SMR-reactor carrier, and the string "SMR" in the codebase means
+  steam methane reforming (hydrogen) — the small-modular-reactors recipe
+  walks the ladder from "nuclear with SMR-like costs" (config only) to a
+  distinct carrier with its own cost row and candidate sites (cost-table +
+  config + fleet-csv work). What no rung reaches: modular integer builds /
+  unit-size economics (no MILP build logic) and operational inflexibility
+  (no min-load or ramp constraints wired in), both of which flatter nuclear
+  in LP dispatch. Pink (nuclear) hydrogen exists in the sector chain with an
+  enforceable production share.
+coverage: ready
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

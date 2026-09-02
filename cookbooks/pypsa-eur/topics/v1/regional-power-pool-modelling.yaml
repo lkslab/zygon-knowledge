@@ -1,0 +1,62 @@
+id: regional-power-pool-modelling
+title: "Regional power pool modelling"
+rank: 71
+question: >
+  What is a power pool worth — which cross-border corridors should be built,
+  how do costs and benefits split across member countries, and what does
+  deeper integration buy versus national self-build? Globally the question of
+  EAPP/WAPP/SAPP, ASEAN and SIEPAC; for pypsa-eur the pool is the ENTSO-E
+  system and the EU internal market itself.
+when_to_use:
+  - "value of European market integration vs national self-build"
+  - "which cross-border interconnectors first"
+  - "who wins and who loses from pooling"
+  - "TYNDP-style multi-country corridor study"
+  - "self-sufficiency floors vs full integration"
+recipes:
+  generation_conversion: [hv-transmission-lines, hvdc-interconnectors,
+                          transmission-expansion-projects,
+                          conventional-hydropower]
+  demand: [electricity-load, demand-spatial-disaggregation,
+           demand-scenarios-and-growth]
+functionality:
+  - id: administrative-clustering
+    role: "country/NUTS/bidding-zone zoning so results map onto member states and market zones"
+  - id: bidding-zone-shapes
+    role: "real market-zone geometries (DK1/DK2, NO/SE/IT splits) for pool-realistic zoning"
+  - id: transmission-expansion-limits
+    role: "cross-border corridor expansion co-optimized under volume/cost caps (config transmission_limit or lv/lc token)"
+  - id: transmission-projects
+    role: "TYNDP2020/NEP candidate corridors filtered by permitting status — real project pipelines, not abstract candidates"
+  - id: autarky
+    role: "the no-pool counterfactual — set electricity.autarky in config; the ATK opts token is broken at this ref"
+  - id: equity-self-sufficiency
+    role: "EQ encodes political self-sufficiency floors — always give a value (EQ0.7c); a bare EQ token crashes"
+  - id: copperplate-regions
+    role: "the full-integration counterfactual — merge member zones into one unconstrained node"
+  - id: transmission-losses
+    role: "default-on piecewise losses keep cross-border trade values honest"
+  - id: nodal-marginal-prices
+    role: "price convergence and per-country trade value read from duals"
+  - id: scenario-matrix
+    role: "sweep pool configurations, EQ levels and transmission limits"
+gap_assessment: >
+  Home turf, with a European address: pypsa-eur co-optimizes the whole
+  ENTSO-E multi-country system on a validated grid, and the canonical pool
+  study — integrated run vs autarkic (electricity.autarky) and
+  EQ-constrained counterfactuals, corridor expansion under volume/cost caps
+  or restricted to real TYNDP/NEP projects, per-country benefit from nodal
+  duals and cross-border flows — runs out of the box, with bidding-zone
+  clustering aligning results to actual market geography. Two wildcard traps
+  at this ref: the ATK token KeyErrors (use the config path) and a bare EQ
+  token crashes (use a valued form like EQ0.7c). Structural caveats, not
+  blockers: trade is planner-optimal — no bilateral contracts, wheeling
+  charges or market-coupling rules (single social planner); benefit
+  *allocation* between members is post-processing on duals, not a built-in
+  output. Hard scope limit: the data pipeline is European (ENTSO-E/OSM grid,
+  JRC/Eurostat demand) — African or ASEAN pools cannot be modelled here;
+  pypsa-earth is the sibling model for those geographies.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

@@ -1,0 +1,142 @@
+id: hv-transmission-lines
+title: High-voltage transmission lines
+summary: The HV AC transmission grid — existing lines, their ratings and voltage classes, and capacity expansion of the grid.
+when_to_use:
+  - "add or reinforce transmission lines"
+  - "grid expansion / transmission expansion planning"
+  - "the grid data looks wrong / missing power lines"
+  - "change line capacity or thermal rating"
+  - "N-1 security margin on lines"
+  - "model a specific voltage level (132/220/380/500/750 kV)"
+  - "use my own grid dataset instead of OpenStreetMap"
+  - "how strong is the grid between region A and B"
+  - "limit or forbid grid expansion"
+  - "known in pypsa-eur as: lines, transmission lines, AC, AC-AC, AC line"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        The existing HV grid is extracted from OpenStreetMap per country (rule
+        download_osm_data via the earth_osm package), filtered and cleaned (rule
+        clean_osm_data, minimum voltage clean_osm_data_options.threshold_voltage,
+        default 51 kV), topologically fixed (rule build_osm_network: bus merging,
+        splitting of overpassing lines), and turned into PyPSA Line components with
+        carrier "AC" in rule base_network. Each line gets a standard line type from
+        lines.ac_types chosen by nearest nominal voltage (_get_linetype_by_voltage),
+        from which s_nom is derived (_set_lines_s_nom_from_linetypes). Expansion is
+        optimised in the LP: the {ll} wildcard (e.g. "copt", "v1.25", "l1.5") makes
+        lines extendable and bounds total expansion by cost or volume
+        (set_transmission_limit in scripts/prepare_network.py).
+      mechanism: >
+        download_osm_data -> clean_osm_data -> build_osm_network -> base_network
+        (networks/base.nc) -> simplify_network/cluster_network -> add_electricity ->
+        prepare_network (s_max_pu, transmission limit) -> solve_network (linear
+        optimal power flow, sequential impedance updates via
+        optimize_transmission_expansion_iteratively for "opt" limits).
+      not_covered: >
+        No sub-transmission/distribution lines (below threshold_voltage); no discrete
+        line investments (expansion is continuous); no per-line candidate catalogue
+        beyond existing corridors (except the optional augmented_line_connections
+        rule); no AC power-flow effects beyond the linearised approximation; line
+        ratings are static (see dynamic-line-rating-facts recipe).
+      provenance: "scripts/base_network.py:_set_electrical_parameters_lines"
+    levers:
+      - key: lines.s_max_pu
+        effect: "N-1 proxy: fraction of s_nom usable in the OPF, applied to all lines in prepare_network (set_line_s_max_pu)."
+        default: "0.7"
+        provenance: "scripts/prepare_network.py:set_line_s_max_pu"
+      - key: scenario.ll
+        effect: "Transmission expansion limit wildcard: 'v'olume/'c'ost/'l'ine multiple + factor or 'opt' (e.g. copt, v1.25, l1.0 freezes today's capacity)."
+        default: "[\"copt\"]"
+        provenance: "scripts/prepare_network.py:set_transmission_limit"
+      - key: electricity.voltages
+        effect: "Voltage classes kept in the base network; selects which lines.ac_types entries are used."
+        default: "[132., 220., 300., 380., 500., 750.]"
+        provenance: "scripts/base_network.py:_get_linetypes_config"
+      - key: lines.ac_types
+        effect: "Map nominal voltage -> pypsa standard line type; sets impedance and thermal rating (s_nom) per voltage class."
+        default: "132..750 kV mapped to Al/St conductor types (e.g. 380.: 'Al/St 240/40 4-bundle 380.0')"
+        provenance: "scripts/base_network.py:_get_linetype_by_voltage"
+      - key: lines.s_nom_max
+        effect: "Global cap on any single line's extendable capacity (set_line_nom_max called from set_transmission_limit)."
+        default: ".inf"
+        provenance: "scripts/prepare_network.py:set_transmission_limit"
+      - key: lines.length_factor
+        effect: "Multiplier on geodesic line length used when costing transmission expansion (update_transmission_costs)."
+        default: "1.25"
+        provenance: "scripts/add_electricity.py:update_transmission_costs"
+      - key: lines.under_construction
+        effect: "Handling of OSM lines tagged under construction: 'zero' (capacity 0, expandable), 'remove', or 'keep'."
+        default: "zero"
+        provenance: "config.default.yaml:under_construction"
+      - key: clean_osm_data_options.threshold_voltage
+        effect: "Minimum voltage [V] for OSM assets to enter the model (filter_voltage in clean_osm_data)."
+        default: "51000"
+        provenance: "scripts/clean_osm_data.py:filter_voltage"
+      - key: clean_osm_data_options.use_custom_lines
+        effect: "Replace or merge OSM lines with a user geojson: 'OSM_only', 'custom_only', 'add_custom', 'none' (with clean_osm_data_options.path_custom_lines)."
+        default: "OSM_only"
+        provenance: "scripts/clean_osm_data.py:load_network_data"
+      - key: build_osm_network.force_ac
+        effect: "Force all extracted lines/substations to AC (drops DC handling) during network building."
+        default: "false"
+        provenance: "config.default.yaml:force_ac"
+      - key: augmented_line_connection.add_to_snakefile
+        effect: "Enable the optional augmented_line_connections rule, which adds extendable greenfield HVAC (and/or HVDC) candidate lines to raise nodal connectivity to connectivity_upgrade."
+        default: "false"
+        provenance: "scripts/augmented_line_connections.py:k_edge_augmentation"
+    boundary:
+      - variant: "Tighten/relax the N-1 margin on all lines"
+        rung: L0
+        note: "lines.s_max_pu — single scalar applied network-wide."
+      - variant: "Freeze the grid at today's capacity / allow limited expansion"
+        rung: L1
+        note: "scenario.ll value: l1.0 freezes, v1.25 allows 25% volume growth, copt unconstrained cost-optimal."
+      - variant: "Restrict the model to certain voltage classes"
+        rung: L1
+        note: "Edit electricity.voltages (and matching lines.ac_types keys); clean_osm_data_options.threshold_voltage sets the floor."
+      - variant: "Add missing lines / fix wrong OSM grid data"
+        rung: L3
+        note: "Provide a custom lines geojson and set clean_osm_data_options.use_custom_lines to 'add_custom' or 'custom_only' with path_custom_lines (same pattern for substations and cables)."
+      - variant: "Add greenfield candidate corridors beyond existing routes"
+        rung: L1
+        note: "augmented_line_connection.add_to_snakefile: true with new_line_type ['HVAC']; candidates are auto-generated by k-edge augmentation, not user-specified routes."
+      - variant: "User-specified candidate line between two chosen buses"
+        rung: L5
+        note: "No config/data path; add an extendable Line row programmatically (pattern to copy: n.madd('Line', ...) in scripts/augmented_line_connections.py)."
+      - variant: "Per-line expansion caps or costs"
+        rung: L2
+        note: "Only global caps exist (lines.s_nom_max); per-line values need a localised edit after set_transmission_limit in prepare_network."
+      - variant: "New conductor/line type not in pypsa standard types"
+        rung: L2
+        note: "lines.ac_types entries must name a pypsa standard line type; a custom type must be registered on the network in base_network before _set_lines_s_nom_from_linetypes."
+    where:
+      - change: "Custom grid data injection (lines/cables/substations)"
+        anchor: "scripts/clean_osm_data.py:load_network_data + config clean_osm_data_options.path_custom_lines"
+        provenance: "scripts/clean_osm_data.py:load_network_data"
+      - change: "Expansion limit / extendability of lines"
+        anchor: "scripts/prepare_network.py:set_transmission_limit (consumes the {ll} wildcard)"
+        provenance: "scripts/prepare_network.py:set_transmission_limit"
+      - change: "Line type / rating assignment per voltage"
+        anchor: "scripts/base_network.py:_get_linetype_by_voltage + config lines.ac_types"
+        provenance: "scripts/base_network.py:_get_linetype_by_voltage"
+      - change: "Greenfield candidate line generation"
+        anchor: "rule augmented_line_connections -> scripts/augmented_line_connections.py"
+        provenance: "Snakefile:augmented_line_connections"
+      - change: "Transmission capital costs"
+        anchor: "scripts/add_electricity.py:update_transmission_costs (HVAC overhead cost row) and lines.length_factor"
+        provenance: "scripts/add_electricity.py:update_transmission_costs"
+    data_dependencies:
+      - input: "OSM power extracts per country (earth_osm save_osm_data: substation/line/cable/generator into resources/osm/raw)"
+        required_for: "any grid representation"
+        availability: "must be built (rule download_osm_data, enable.download_osm_data: true); quality is region-dependent"
+      - input: "custom lines/substations/cables geojson"
+        required_for: "manual grid corrections (use_custom_lines)"
+        availability: "absent — user-provided"
+      - input: "technology cost file (resources/costs.csv from rule retrieve_cost_data, or data/costs.csv; rows HVAC overhead etc.)"
+        required_for: "expansion costing"
+        availability: "exists by default (enable.retrieve_cost_data: true)"
+      - input: "offshore_shapes.geojson (rule build_shapes)"
+        required_for: "underwater fraction of DC assets in base_network"
+        availability: "must be built (standard workflow)"

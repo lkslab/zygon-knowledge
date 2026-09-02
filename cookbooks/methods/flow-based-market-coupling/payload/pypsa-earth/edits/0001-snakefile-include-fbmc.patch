@@ -1,0 +1,11 @@
+--- a/Snakefile	2026-08-02 15:11:32.322476231 +0200
++++ b/Snakefile	2026-08-02 15:11:32.338675956 +0200
+@@ -65,6 +65,8 @@
+ 
+ ATLITE_NPROCESSES = config["atlite"].get("nprocesses", 4)
+ 
++include: "rules/fbmc.smk"
++
+ 
+ wildcard_constraints:
+     simpl="[a-zA-Z0-9]*|all",

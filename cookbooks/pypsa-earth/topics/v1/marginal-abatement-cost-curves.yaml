@@ -1,0 +1,50 @@
+id: marginal-abatement-cost-curves
+title: Marginal abatement cost curves
+rank: 67
+question: >
+  What does the next tonne of CO2 cost to abate, which measures deliver
+  cheap abatement first, and how does the system-wide MACC bend as targets
+  tighten? The lingua franca of climate-policy economics — ministries and
+  carbon-price setters ask for the curve.
+when_to_use:
+  - "marginal abatement cost curve for the power/energy system"
+  - "what carbon price delivers this emissions target"
+  - "cheapest next tonne of abatement"
+  - "abatement cost by measure / technology"
+  - "system cost vs emissions-reduction frontier"
+recipes:
+  generation_conversion: [beccs, direct-air-capture, industrial-ccs,
+                          green-hydrogen]
+  demand: [industrial-process-emissions, demand-scenarios-and-growth]
+functionality:
+  - id: co2-cap
+    role: "core — sweep Co2L and the constraint dual IS the marginal abatement cost"
+  - id: emission-pricing
+    role: "the inverse sweep: set Ep, read resulting emissions — price-to-quantity map"
+  - id: scenario-matrix
+    role: "the sweep machinery — a list of Co2L tokens fans out the whole curve"
+  - id: summary-outputs
+    role: "system cost and emissions per point; cost deltas between caps"
+  - id: carbon-intensity-metrics
+    role: "gCO2/kWh per point needs a few lines of post-processing"
+  - id: sector-coupled-workflow
+    role: "extends the curve past power into heat/industry/transport abatement"
+gap_assessment: >
+  Derivable, not delivered. A system-wide MACC is a textbook exercise on
+  top of pypsa-earth: put a list of Co2L factors in scenario.opts, solve
+  each, and either read the CO2-constraint dual (the exact marginal
+  abatement cost at that budget) or difference total system costs between
+  adjacent caps; the Ep sweep gives the same curve from the price axis.
+  Because the optimization re-dispatches and re-invests at every point,
+  this is a proper general-equilibrium MACC — better than bottom-up
+  measure-stacking curves that ignore interactions. What does not exist is
+  any MACC tooling: no rule assembles the sweep into a curve, no
+  decomposition attributes abatement between cap levels to technologies or
+  measures (doable but genuinely fiddly post-processing, since everything
+  shifts at once), and no per-sector marginal costs unless sector-specific
+  budgets are hand-added. Expect a saw-toothed dual near degenerate optima
+  — noisy_costs helps, and cost-differencing is smoother than raw duals.
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

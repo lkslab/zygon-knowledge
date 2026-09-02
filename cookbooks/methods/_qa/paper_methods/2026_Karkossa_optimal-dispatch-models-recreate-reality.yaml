@@ -1,0 +1,172 @@
+paper: "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+tier: 2
+model_used: >
+  PyPSA-Eur v2025.07.0, 39 nodes, electricity-only, hourly dispatch, fixed capacities,
+  5 years (2020–2024), 35 European countries.
+scope: >
+  Retrospective hindcast of European electricity prices and generation dispatch during
+  2020–2024 (including the 2022 energy crisis) using PyPSA-Eur as a dispatch-only
+  model, comparing perfect-foresight vs rolling-horizon and static vs dynamic fuel prices.
+methods:
+  - slug: operational-dispatch-and-rolling-horizon
+    role: extends
+    evidence: >
+      "Rolling horizon dispatch, by contrast, divides the full single-year optimisation
+      into a sequence of smaller optimisation problems, each covering a limited window of
+      n time steps. After each window is solved, the horizon advances, and the problem is
+      re-optimised using updated information." (Sec. II.C). Three scenarios are evaluated:
+      perfect foresight-static, perfect foresight-dynamic, and rolling horizon-dynamic.
+      The rolling horizon scenario yielded average SMAPE of 20.76%.
+    procedure_notes: >
+      Window size is two weeks (336 hours) with no temporal overlap. Final storage states
+      (state of charge) are passed between windows. A cyclic storage constraint requires
+      identical hydropower reservoir levels at the start and end of each optimisation window,
+      which caused load shedding in Norway. The full year (8760 hours) is optimised
+      independently per year. Fixed generation and transmission capacities throughout.
+      No unit commitment constraints. Load shedding price of 5,000 EUR/MWh used for
+      feasibility. (Sec. II.A, II.C, II.D, III discussion)
+    variant: two-week-window-no-overlap
+    parameters: {window_hours: 336, overlap: 0, years: "2020-2024", countries: 35, nodes: 39}
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "Perfect foresight solves the entire year in a single optimization problem, providing
+      the model with full knowledge of demand, renewable availability, and fuel prices."
+      (Sec. II.C). Used as the baseline scenario against which the rolling horizon is
+      benchmarked. Each year from 2020 to 2024 is optimised independently in all scenarios.
+    procedure_notes: >
+      Overnight / single-year dispatch: no investment, capacities fixed. Two perfect-foresight
+      variants run: one with static fuel prices and one with dynamic (daily/weekly) historical
+      fuel and CO2 prices. 8760-hour single LP per year. (Sec. II.C, II.D)
+    variant: overnight-single-year
+    parameters: {horizon: "1 year", years_run: 5}
+
+  - slug: shadow-prices-and-marginal-values
+    role: canonical-use
+    evidence: >
+      "Modelled electricity prices are given by the nodal marginal prices (shadow prices)
+      of the power balance constraint at each node." (Sec. II.E). These nodal marginal
+      prices are the primary validation variable compared against historical ENTSO-E prices.
+    procedure_notes: >
+      Duals of the nodal power balance constraint extracted at each of 39 nodes. Compared
+      hourly, daily (load-weighted European average), and weekly against ENTSO-E transparency
+      platform prices. MAE, RMSE, and SMAPE computed at hourly resolution with daily and
+      weekly aggregations. Load-weighted European average price computed across countries
+      weighted by respective load. (Sec. II.E, III.A)
+    variant: null
+    parameters: {metric: "SMAPE, MAE, RMSE", aggregations: "hourly, daily, weekly"}
+
+  - slug: price-formation-and-scarcity-rents
+    role: critiques
+    evidence: >
+      "This gap could originate from the simplified marginal-cost pricing scheme: market
+      prices are set by fuel costs, CO2 price, and variable O&M costs, assuming uniformity
+      across similar plants. In reality, unit-specific factors such as ramping constraints,
+      efficiency differences, different fuel costs due to long-term agreements, startup costs,
+      and outages drive additional variability." (Sec. IV Discussion). The paper's central
+      finding is whether optimal dispatch prices match observed prices during a crisis.
+    procedure_notes: >
+      Paper identifies that the model's marginal-cost pricing cannot reproduce intra-day
+      price spikes or the Iberian Exception price cap. Analyses how fuel price time-series
+      resolution (static vs dynamic) propagates to electricity prices. Gas/coal substitution
+      in the optimal mix vs historical dispatch is a key discrepancy studied. (Sec. III, IV)
+    variant: null
+    parameters: {}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "Daily time series were used for both natural gas and CO2 emission allowance prices."
+      (Sec. II.A). "The marginal cost of each generator is computed from fuel prices, using
+      the lower heating value, the generator's efficiency and the CO2 price." (Sec. II.A).
+      For the static scenario a CO2 price of 50 EUR/tCO2 is assumed.
+    procedure_notes: >
+      CO2 price enters as a marginal cost component for each generator; no explicit cap
+      constraint — price is an input datum. Daily resolution from trading economics source
+      for the dynamic scenarios. Static scenario uses 50 EUR/tCO2 fixed. (Sec. II.A, II.D)
+    variant: co2-price-as-input
+    parameters: {static_co2_price_eur_tco2: 50}
+
+  - slug: powerplant-matching-and-fleet-assembly
+    role: routine-use
+    evidence: >
+      "Both conventional generation capacities and hydropower (run-of-river, reservoir hydro,
+      pumped hydro storage) are based on the combined database maintained at powerplantmatching
+      v.0.7.1 for the year 2020 and were kept constant across all simulations." (Sec. II.B).
+    procedure_notes: >
+      Fleet fixed at 2020 snapshot from powerplantmatching v0.7.1; thermal generators assumed
+      fully available (no outages); nuclear limited by country-specific annual capacity factor.
+      Renewable capacities vary by year using IRENA per-country data. (Sec. II.B)
+    variant: null
+    parameters: {powerplantmatching_version: "0.7.1", base_year: 2020}
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "Renewable time series were obtained using atlite v0.4.1 to create capacity factor
+      time series with 3 different resource classes for all solar and wind technologies per
+      country, as well as hydropower inflow time series. ERA5 reanalysis data were used to
+      calculate hydro inflow and wind speeds. For solar radiation, we used SARAH3." (Sec. II.B).
+    procedure_notes: >
+      atlite used for weather-to-generation conversion; 3 resource classes per technology per
+      country. ERA5 for wind and hydro, SARAH3 for solar. Installed renewable capacities
+      taken from IRENA and vary by year. Known ERA5 wind speed bias in Iberian Peninsula
+      identified as contributing to Spain discrepancies. (Sec. II.B, IV)
+    variant: null
+    parameters: {atlite_version: "0.4.1", resource_classes: 3}
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      "An hourly electricity dispatch optimization was performed individually for the years
+      2020 to 2024 for 35 European countries, represented with a spatial resolution of 39
+      nodes using PyPSA-Eur v2025.07.0." (Sec. II.A). The paper also discusses this as a
+      limitation: "each country is represented by a single bidding zone, although in reality
+      some countries consist of several bidding zones." (Sec. IV)
+    procedure_notes: >
+      39-node network; one node per country with exceptions yielding 39 from 35 countries.
+      Clustered transmission network with linearised power flows used for cross-border exchange.
+      Zonal representation identified as a limitation omitting domestic congestion. (Sec. II.A, IV)
+    variant: null
+    parameters: {nodes: 39, countries: 35}
+
+  - slug: zonal-nodal-and-redispatch
+    role: critiques
+    evidence: >
+      "Cross-border electricity exchanges were endogenously determined using linearized power
+      flows and the clustered transmission network in PyPSA-Eur." (Sec. II.A). Limitation
+      noted: "each country is represented by a single bidding zone, although in reality some
+      countries consist of several bidding zones. This omits domestic constraints, which may
+      translate to a distorted representation of market results at country level." (Sec. IV)
+    procedure_notes: >
+      Model runs nodal (one node per country-zone) with DC linearised flows; paper critiques
+      this as insufficient to replicate bidding-zone price formation in countries with internal
+      congestion. No redispatch modelled. (Sec. II.A, IV)
+    variant: null
+    parameters: {}
+
+  - slug: unit-commitment-and-ramping
+    role: critiques
+    evidence: >
+      "The model does not include unit commitment constraints such as start-up costs, minimum
+      up/down times, or thermal cycling limitations." (Sec. II.A). Discussion attributes
+      intra-day price spike omission partly to absence of "ramping constraints, efficiency
+      differences, different fuel costs due to long-term agreements, startup costs, and
+      outages." (Sec. IV)
+    procedure_notes: >
+      Unit commitment explicitly omitted from the dispatch LP. Paper identifies this as a
+      source of discrepancy between modelled and historical price volatility, especially for
+      intra-day spikes. (Sec. II.A, IV)
+    variant: null
+    parameters: {}
+
+unmatched_methods:
+  - name: "hindcast-validation-smape"
+    evidence: >
+      The paper's methodological contribution includes a systematic hindcast validation
+      framework using SMAPE (Symmetric Mean Absolute Percentage Error) alongside MAE and
+      RMSE to compare modelled vs historical hourly/daily/weekly electricity prices across
+      24 countries and 5 years (Sec. II.E, III). This is a model validation methodology
+      rather than a modelling method — no existing slug covers retrospective dispatch
+      validation against observed market prices.

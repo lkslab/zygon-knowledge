@@ -1,0 +1,125 @@
+paper: "2017_Eriksen_Optimal-heterogeneity-renewable_Energy.pdf"
+tier: 1
+model_used: >
+  A bespoke PyPSA-style model: a simplified 30-node (one node per country) European
+  electricity-only network with linearised DC power flow, 8 years of hourly weather
+  data (2000-2007), no storage, backup from CCGTs. PyPSA library is not mentioned;
+  the model is custom (pre-PyPSA) built around PTDF-based flows and an analytical
+  synchronised balancing scheme.
+scope: >
+  Finds the cost-optimal spatial distribution of onshore wind and solar PV capacities
+  across 30 European countries (heterogeneity), comparing heuristic rules (CF-proportional,
+  CF-max, optimal portfolio theory) and a novel greedy axial search optimiser, evaluated
+  on LCOE = wind + solar + backup + transmission costs.
+methods:
+  - slug: linearised-optimal-power-flow
+    role: routine-use
+    evidence: >
+      "The linear relationship follows from the DC approximation, which is known to be
+      a good approximation for high-voltage flows. For the Power Transfer Distribution
+      Factors H_ln we have assumed unit susceptances" (Sec. 2.2). Power flows computed
+      as F_l(t) = sum_n H_ln P_n(t) with PTDF matrix H constructed from Moore-Penrose
+      pseudo-inverse of the network Laplacian.
+    procedure_notes: >
+      Unit susceptances assumed throughout; no iterative impedance update. Flows used
+      to size transmission capacity at the 99% quantile (Eq. 13). DC approximation
+      taken as fixed; no sensitivity to this choice is performed.
+    variant: ptdf-unit-susceptance
+    parameters: {nodes: 30, network: "ENTSO-E 2011 topology plus predicted lines to 2014"}
+
+  - slug: transmission-expansion-cooptimisation
+    role: routine-use
+    evidence: >
+      Transmission capacity K_l^T is sized endogenously at the 99% quantile of absolute
+      flows (Eq. 13-14), weighted by link length (km). An additional optimisation scales
+      all transmission capacities down by a uniform factor zeta to find the LCOE minimum
+      (Sec. 4.4, Fig. 9); the resulting layouts are denoted GAS*.
+    procedure_notes: >
+      Co-optimisation is indirect: capacity follows from the synchronised balancing
+      dispatch given a fixed renewable layout, then zeta is swept over [0,1] to find
+      the optimal uniform scaling. For K=2 GAS the minimum is at zeta=0.60 (K=1: 0.55,
+      K=3: 0.65). AC link cost: 400 EUR/km/MW; HVDC: 1500 EUR/km/MW plus 150 kEUR/MW
+      per converter station pair.
+    variant: uniform-scaling-post-hoc
+    parameters: {zeta_optimal: "0.55-0.65 depending on K", quantile: 0.99}
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: routine-use
+    evidence: >
+      Section 5 performs sensitivity analysis varying solar capital cost (reductions of
+      25%, 50%, 75%) and gas backup fuel price (increases to 150%, 200% of baseline)
+      across K=1,2,3 heterogeneity levels. Effect of selling curtailment energy to other
+      sectors at 80 EUR/MWh also quantified (Sec. 5.2).
+    procedure_notes: >
+      One-at-a-time sweeps; for each scenario the GAS optimisation is re-run at K=2 and
+      LCOE re-evaluated at optimal alpha_EU. Solar cost varied by adjusting CapEx in
+      Table 3; gas cost varied as a multiplier on the variable OpEx of CCGT (56 EUR/MWh
+      baseline). No Monte Carlo; no joint variation of parameters.
+    variant: one-at-a-time
+    parameters: {solar_cost_reductions: ["25%", "50%", "75%"], gas_price_multipliers: ["1.5x", "2x"]}
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      The model is a single-year overnight cost-optimisation: "the mean VRES generation
+      equals the mean load (gamma_EU = 1)" with no investment dynamics across years
+      (Sec. 7). Cost present values computed with Eq. (15) using a fixed 4% discount
+      rate per year and technology-specific lifetimes.
+    procedure_notes: >
+      Greenfield / overnight: existing fleet not carried; backup modelled as CCGT with
+      30-year lifetime, wind/solar 25 years, transmission 40 years. No pathway or
+      myopic sequencing. Full 8-year hourly weather used for dispatch simulation.
+    variant: overnight-greenfield
+    parameters: {discount_rate: "4%/yr", lifetimes: {wind: 25, solar: 25, CCGT: 30, transmission: 40}}
+
+  - slug: spatial-clustering-and-resolution
+    role: critiques
+    evidence: >
+      Discussion (Sec. 6) explicitly notes the limitation: "the distribution of wind and
+      solar capacities within each country was fixed. Further heterogeneity of renewables
+      could be exploited by fine-tuning the distribution within each country, or by using
+      a finer-scale model." Cites Horsch & Brown (2017) showing VRES costs 10% lower
+      with 362 nodes vs one-node-per-country.
+    procedure_notes: >
+      Model uses exactly 30 nodes (one per country) aggregated from ISET 50x50 km
+      gridded weather data. Country-level capacity factors from EuroStat 2014 rescaled
+      to ISET 2000-2007 time series. The critique is that this aggregation understates
+      heterogeneity benefit and may over- or under-estimate transmission needs.
+    variant: country-level-30-node
+    parameters: {nodes: 30, weather_resolution: "50x50 km aggregated to country"}
+
+  - slug: discounting-and-cost-of-capital
+    role: routine-use
+    evidence: >
+      "The present value of each element can be calculated directly as V = CapEx +
+      sum_{t=1}^{T_life} OpEx_t / (1+r)^t where r is the rate of return assumed to be
+      4% per year" (Eq. 15, Sec. 2.4). LCOE then evaluated per component and summed.
+    procedure_notes: >
+      Uniform 4% real discount rate applied to all technologies and all countries. No
+      country-specific or technology-specific cost of capital. Social/private distinction
+      not discussed.
+    variant: uniform-social-rate
+    parameters: {discount_rate: "4%/yr"}
+
+unmatched_methods:
+  - name: "greedy-axial-search optimisation"
+    evidence: >
+      Section 3.4 and Algorithm 1 define a novel 'Greedy Axial Search' (GAS) heuristic
+      that minimises LCOE over 60 variables (gamma_n, alpha_n for 30 countries) by
+      stepping one variable at a time along coordinate axes with renormalisation, halving
+      step size on convergence (maxStepSize=1, minStepSize=5e-4, tolerance=1e-4). This
+      is a bespoke derivative-free optimiser distinct from any slug: it is not
+      sensitivity-and-uncertainty-sweeps (single objective optimisation, not parameter
+      variation), not mga (not near-optimal space mapping), and not
+      stochastic-and-robust-optimisation. No existing slug captures coordinate-descent /
+      greedy-axial local search.
+  - name: "optimal portfolio theory for VRES siting"
+    evidence: >
+      Section 3.3 applies Markowitz mean-variance portfolio theory (Markowitz 1958)
+      to VRES capacity layouts: overall capacity factor = return, standard deviation of
+      aggregate mismatch = risk. 100,000 layouts sampled via Monte Carlo from a
+      Beta distribution (shape params from max-entropy principle, Eq. 25), Pareto
+      front identified as intersection of top-200 CF and bottom-200 sigma subsets,
+      wind/solar Pareto points interpolated (Eq. 18). This is a VRES-siting method,
+      not a planning-horizon, sensitivity, or near-optimal space method. No existing
+      slug fits.

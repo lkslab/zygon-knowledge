@@ -1,0 +1,138 @@
+country: MA
+name: morocco
+continent: Africa
+build_evidence:
+  region: Africa
+  base_buses: 459
+  base_lines: 1253
+  ac_islands_touching: 7
+  largest_component_share: 0.978
+fleet_evidence:
+  plants: 80
+  capacity_mw: 13026.8
+  fueltypes:
+  - CCGT
+  - Hard Coal
+  - Hydro
+  - Oil
+  - Solar
+  - Solid Biomass
+  - Wind
+  source_run: NorthernAfrica
+families:
+  shapes:
+    grade: B
+    detail:
+      gadm-boundaries: A
+      worldpop-population: A
+      gdp-raster: B
+  grid:
+    grade: A
+    detail:
+      osm-grid: A
+    fragmentation: 7 AC islands touch MA; largest in-country component holds 98% of
+      its 459 buses [region Africa]
+  climate:
+    grade: B
+    detail:
+      era5-cutout: A
+      global-gis-layers: B
+  power-fleet:
+    grade: A
+    detail:
+      powerplant-fleet: A
+      hydro-capacities: A
+      eia-hydro-generation: A
+  electricity-demand:
+    grade: B
+    detail:
+      electricity-demand-forecast: B
+  sector-demand:
+    grade: C
+    detail:
+      unsd-energy-balances: B
+      demand-growth-cagr: A
+      demand-efficiency-cagr: A
+      fuel-shares: A
+      district-heating-share: A
+      german-traffic-proxy: C
+      bdew-heat-proxy: C
+  industry:
+    grade: D
+    detail:
+      industry-growth-cagr: A
+      industrial-plant-database: A
+      ammonia-plants: D
+      al-production: D
+  hydrogen:
+    grade: A
+    detail:
+      salt-cavern-potentials: A
+datasets:
+  demand-growth-cagr:
+    grade: A
+    detail: country row
+  demand-efficiency-cagr:
+    grade: A
+    detail: country row
+  industry-growth-cagr:
+    grade: A
+    detail: country row
+  fuel-shares:
+    grade: A
+    detail: country row
+  district-heating-share:
+    grade: A
+    detail: country row
+  salt-cavern-potentials:
+    grade: A
+    detail: country row(s)
+  al-production:
+    grade: D
+    detail: "no row \u2014 feature silently absent/zero"
+  unsd-energy-balances:
+    grade: B
+    detail: in cached UNSD extract
+  electricity-demand-forecast:
+    grade: B
+    detail: GEGIS ssp2 continent file
+  gadm-boundaries:
+    grade: A
+    detail: sliced gadm41_MAR
+  osm-grid:
+    grade: A
+    detail: cached morocco-latest.osm.pbf
+  worldpop-population:
+    grade: A
+    detail: cached tif
+  gdp-raster:
+    grade: B
+    detail: global raster
+  era5-cutout:
+    grade: A
+    detail: cutout-2013-era5-africa.nc on disk
+  powerplant-fleet:
+    grade: A
+    detail: 80 plants, 13026.8 MW (CCGT, Hard Coal, Hydro, Oil, Solar, Solid Biomass)
+      [run NorthernAfrica]
+  hydro-capacities:
+    grade: A
+    detail: country row
+  eia-hydro-generation:
+    grade: A
+    detail: country row
+  industrial-plant-database:
+    grade: A
+    detail: country row(s)
+  ammonia-plants:
+    grade: D
+    detail: "no row \u2014 feature silently absent/zero"
+  german-traffic-proxy:
+    grade: C
+    detail: German weekly traffic counts applied globally
+  bdew-heat-proxy:
+    grade: C
+    detail: German BDEW heat profile applied globally
+  global-gis-layers:
+    grade: B
+    detail: global layers on disk

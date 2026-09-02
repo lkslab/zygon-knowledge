@@ -1,0 +1,55 @@
+id: thermal-storage
+title: Thermal storage
+rank: 47
+question: >
+  How much flexibility can heat storage provide — building tanks buffering heat
+  pumps, seasonal district-heat stores, CSP molten salt — and what is it worth
+  to the power system? Thermal storage is the cheap flexibility the heat
+  transition keeps under-using.
+when_to_use:
+  - "value of thermal energy storage / TES"
+  - "hot water tanks buffering heat pumps"
+  - "seasonal heat storage for district heating (pits, aquifers)"
+  - "CSP with molten-salt storage"
+  - "heat storage vs batteries as flexibility"
+recipes:
+  generation_conversion: [thermal-storage, district-heating, aquifer-thermal-storage, solar-thermal, air-source-heat-pumps]
+  demand: [residential-space-heating-demand, services-heat-demand, building-heat-dsm]
+functionality:
+  - id: tes-constraints
+    role: "core — energy-to-power and charger-ratio constraints size tank/pit stores against their chargers in every heating run"
+  - id: district-heating-suite
+    role: "urban central pit storage (PTES) with temperature-limited capacity and supplemental heating — the seasonal flavour"
+  - id: ates-potentials
+    role: "dead-key — aquifer TES rule exists but crashes on missing config temperature keys when enabled"
+  - id: residential-heat-dsm
+    role: "building thermal mass as free virtual storage — the competitor that erodes small-tank value (off by default)"
+  - id: temporal-resolution-nh
+    role: "coarse nH averaging washes out the daily cycling that pays for decentral tanks"
+  - id: time-segmentation-tsam
+    role: "segmentation keeps extremes while staying tractable for full-year storage chronology"
+  - id: weather-year-selection
+    role: "seasonal-storage value hinges on the weather year's heat demand; 85 years of ERA5 to choose from"
+  - id: summary-outputs
+    role: "storage capacities and cycling by carrier in the standard summaries"
+gap_assessment: >
+  Strong and default-on. Every heat system (residential/services, rural/urban
+  decentral, urban central) gets a water-tank bus + extendable Store +
+  charger/discharger, with capital cost, lifetime and standing loss taken from
+  the cost data (not an earth-style tes_tau constant); urban central nodes
+  additionally get pit storage (PTES) whose capacity follows the dynamic
+  DH temperature spread — genuinely seasonal. Solve-time constraints couple
+  store energy to charger power via the technology-data energy-to-power
+  ratio, so duration is physical rather than free. Aquifer storage (ATES) has
+  a full potential pipeline (BGR aquifer shapes x DH areas) but is dead-key
+  at this ref: enabling it crashes on two config keys that live under ptes
+  instead of ates — add them to use it. Remaining gaps: no power-to-heat-
+  to-power path (Carnot battery / pumped thermal — molten-salt/CSP storage is
+  out too, CSP itself being only a proxy in eur), and no storage inside the
+  industrial temperature bands (industry_t menus have no TES option). For
+  the headline questions — tank value behind heat pumps, seasonal pit stores
+  in DH, TES vs batteries — the standard workflow answers out of the box.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

@@ -1,0 +1,1147 @@
+id: extreme-event-and-dunkelflaute-analysis
+title: "Extreme-event and Dunkelflaute analysis (system-defining events, stress tests)"
+summary: >
+  Identify the individual multi-day episodes of low renewable output and/or high demand
+  that bind the system, then re-impose them on a fixed design to measure what breaks —
+  instead of trusting an average weather year to contain them.
+question: >
+  Which specific episodes design or break this system, and how much load goes unserved
+  when the worst one is imposed on the design I built?
+aliases:
+  - "Dunkelflaute"
+  - "Dunkelflauten"
+  - "dark doldrums"
+  - "dark lull"
+  - "wind drought"
+  - "renewable energy drought"
+  - "low-VRE event"
+  - "extreme event analysis"
+  - "weather-induced extreme events"
+  - "system-defining event"
+  - "SDE"
+  - "compound event"
+  - "cold spell"
+  - "stress test"
+  - "resilience metric"
+  - "weather regime classification"
+  - "critical period"
+when_to_use:
+  - "worst-case wind drought / dunkelflaute stress test"
+  - "does my system survive a two-week dark still spell"
+  - "how much load would be shed in the worst winter week"
+  - "which weather year or which weeks are the stress period"
+  - "how long must storage or backup bridge a low-VRE spell"
+  - "cold snap plus wind lull hitting heat demand at the same time"
+  - "the model built this from an average year — what about the bad years"
+  - "how much backup capacity do I need for resilience, and what does it cost to idle"
+  - "identify the periods that drive the investment decision"
+  - "is my design robust to a weather year it was not sized on"
+family: temporal-resolution
+prevalence:
+  papers: 4
+  tier1: 2
+  tier2: 2
+  sweep_hits: 23
+  basis: >
+    Hand-coded pass 1 over all 100 PDFs (2026-07-25) found 4 papers that actually
+    identify or stress-test extreme episodes as a method. The regex screen returned 23
+    and grossly over-counts: the pattern
+    `dunkelflaute|extreme (event|weather)|...|stress test|drought` fires on any paper
+    that says "extreme weather" in a motivation sentence, on hydro "drought" (a
+    different method — see hydropower-drought-risk), and on "stress test" used as a
+    figure of speech. 19 of the 23 hits are mention-only and are excluded, including
+    2018_Brown_Response-Burden-of-proof, 2018_Schlott_Climate-Change and the whole
+    spatial-clustering cluster. Notable in the role split: 2 of 4 papers `defines`,
+    from two DISCONNECTED disciplines — Mockert defines the meteorological detector,
+    Grochowicz defines the model-internal one — and they disagree about what an event
+    even is. Density per paper is high while count is low, which is why `variants`
+    below is longer than the paper count.
+procedure:
+  - step: >
+      Assemble the time series a detector runs on: per-region renewable availability
+      (capacity factors) and demand, at hourly resolution, over a long record — the
+      corpus uses 40 to 80 ERA5 years, not one. These are already workflow OUTPUTS
+      (resources), so this step is data plumbing, not new modelling.
+    handle: "resources/profile_{clusters}_{technology}.nc + resources/electricity_demand_base_s.nc"
+    provenance: "scripts/build_renewable_profiles.py:snakemake.output.profile; scripts/build_electricity_demand_base.py:upsample_load"
+  - step: >
+      (meteorological route) Reduce the per-technology capacity factors to ONE scalar
+      per timestep by an installed-capacity-weighted mean — Mockert uses 44% solar /
+      50% onshore / 6% offshore for Germany 2018 — then take a running mean over the
+      event duration of interest (48 h).
+    handle: null
+    provenance: null
+  - step: >
+      (meteorological route) Threshold it: an event is a period where the running-mean
+      combined capacity factor falls below X for at least Y consecutive hours. Mockert:
+      X = 0.06, Y = 48 h, giving 169 events over 1979-2018 (4.3/yr, mean 3.4 days,
+      max 8 days). X is CALIBRATED to reproduce a known event frequency, not derived.
+    handle: null
+    provenance: null
+  - step: >
+      (meteorological route, optional) Attribute each event to a large-scale
+      circulation pattern: EOF-reduce daily 500 hPa geopotential height (z500)
+      anomalies, k-means the leading PCs into weather regimes (7 in Mockert, 4 in
+      Grochowicz 2023), and label each event by its dominant regime. This buys
+      subseasonal PREDICTABILITY and physical interpretation — the reason to do it at
+      all — and requires reanalysis fields the energy model never touches.
+    handle: null
+    provenance: null
+  - step: >
+      (model-internal route) Solve the capacity-expansion model once per weather year
+      over the whole record and keep the hourly nodal shadow prices lambda_{n,t} of the
+      electricity balance, alongside demand d_{n,t}.
+    handle: "n.buses_t.marginal_price (assigned by every solve)"
+    provenance: "scripts/make_summary.py:calculate_prices; scripts/solve_network.py:solve_network"
+  - step: >
+      (model-internal route) Declare a period an event when the ACCUMULATED cost
+      sum_{n,t} d_{n,t} * lambda_{n,t} exceeds a threshold C within a window of at most
+      T hours. Grochowicz: C = 100 bn EUR, T = 336 h (14 d). This is the clever move —
+      you are not guessing which weather is bad, you are asking the model which hours it
+      spent its investment budget on, so the definition is endogenous to the system
+      being studied.
+    handle: null
+    provenance: null
+  - step: >
+      (model-internal route) Reduce overlapping candidate windows to a disjoint set:
+      order from shorter/more-expensive to longer, take greedily, then EXTEND each
+      surviving event outward while the event-average hourly cost does not decrease.
+      Calibrate C to yield roughly one event per year — 32 events over 40 years in
+      Grochowicz 2023, 41 over 80 years in Grochowicz 2025, averaging ~7 days, which
+      matches hydrogen-storage discharge duration and is NOT a coincidence.
+    handle: null
+    provenance: null
+  - step: >
+      Classify the events into types by k-means over per-event system metrics — highest
+      and average net load, duration, total and maximal long-duration-storage discharge,
+      average relative load, wind capacity-factor anomaly — with k chosen by silhouette
+      and Calinski-Harabasz. Grochowicz 2025 gets k = 4: severe power deficit, power
+      deficit, cascading, energy deficit. Power-deficit and energy-deficit events call
+      for DIFFERENT backup assets, which is the whole point of classifying.
+    handle: null
+    provenance: null
+  - step: >
+      Stress-test: take a design sized on one year (or on the ensemble), FIX its
+      capacities, impose a different year or the extracted episode, and re-solve dispatch
+      only. Grochowicz 2025 runs 80 x 79 = 6320 such dispatch optimisations.
+    handle: "rule solve_operations_network -> n.optimize.fix_optimal_capacities()"
+    provenance: "rules/solve_electricity.smk:rule solve_operations_network; scripts/solve_operations_network.py:fix_optimal_capacities"
+  - step: >
+      Make the stress test MEASURABLE rather than infeasible: enable value-of-lost-load
+      slack generators so the shortfall appears as priced unserved energy. Without this
+      an inadequate design returns "infeasible" and tells you nothing about magnitude.
+    handle: "solving.options.load_shedding"
+    provenance: "config/config.default.yaml:load_shedding; scripts/solve_network.py:add_load_balance_components"
+  - step: >
+      Report resilience metrics over the ensemble: expected energy not served (EENS),
+      maximum unserved load, per-event peak deficit, and the annualised cost of the
+      backup capacity that would remove them. Grochowicz 2025 separates SHORT-term
+      (power, GW) from LONG-term (energy, TWh) resilience metrics because one number
+      cannot serve both event types.
+    handle: null
+    provenance: null
+variants:
+  - id: threshold-based-event-detection
+    what: >
+      Fixed threshold on a derived scalar: combined capacity factor below X for at least
+      Y hours (or residual load above X). Cheap, transparent, reproducible, and entirely
+      outside the optimisation — a pandas rolling-window operation on profile resources.
+      Its weakness is that X and Y are calibrated to a target event count rather than to
+      the system's actual tolerance, so the events are system-agnostic.
+    papers:
+      - "2023_Mockert_Dunkelflauten-Germany_MetApps.pdf"
+      - "2023_Grochowicz_weather-induced-extreme-events-renewable.pdf"
+  - id: weather-regime-classification
+    what: >
+      EOF + k-means on daily z500 anomalies to define a small set of large-scale
+      circulation regimes, then label each detected event by its dominant regime and
+      analyse its life-cycle embedding. Upstream of and independent of the energy model.
+      Buys physical explanation and a subseasonal-forecast hook; needs reanalysis
+      geopotential fields that neither PyPSA workflow retrieves.
+    papers:
+      - "2023_Mockert_Dunkelflauten-Germany_MetApps.pdf"
+      - "2023_Grochowicz_weather-induced-extreme-events-renewable.pdf"
+  - id: shadow-price-derived-system-defining-events
+    what: >
+      Post-solve and model-internal: accumulate demand-weighted nodal shadow prices and
+      declare an event where sum_{n,t} d*lambda >= C within T hours, then de-overlap and
+      extend. The events are those the model was DESIGNED BY, so the definition adapts
+      to the system's own scarcity structure rather than to a meteorological convention.
+      Costs one full solve per weather year up front, and inherits every caveat about
+      reading duals from an aggregated LP.
+    papers:
+      - "2023_Grochowicz_weather-induced-extreme-events-renewable.pdf"
+      - "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+  - id: stress-test-a-fixed-design
+    what: >
+      Two-stage: size capacities in stage one, freeze them, impose a different weather
+      year or an extracted episode in stage two, and re-solve dispatch only with VOLL
+      slack enabled so the shortfall is priced instead of infeasible. The one variant
+      with real workflow support, and the operational core of the method.
+    papers:
+      - "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+      - "2026_Schauss_Pit-Thermal-Energy-Storage.pdf"
+  - id: event-type-clustering
+    what: >
+      k-means over per-event system metrics (peak and mean net load, duration, storage
+      discharge energy and power, wind CF anomaly) to split events into types, with k
+      selected by silhouette / Calinski-Harabasz. Distinguishes a short deep POWER
+      deficit from a long shallow ENERGY deficit, which is the distinction that decides
+      whether you buy peakers or caverns.
+    papers:
+      - "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+  - id: resilience-metric-reporting
+    what: >
+      Aggregate the stress-test ensemble into decision numbers: EENS, maximum unserved
+      load, and the annualised cost of the back-up capacity that eliminates them,
+      reported separately as short-term (GW) and long-term (TWh) metrics. This is the
+      output layer that turns a set of events into an investment recommendation, and it
+      is where the absence of probabilistic adequacy tooling bites hardest.
+    papers:
+      - "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+literature:
+  - paper: "2023_Mockert_Dunkelflauten-Germany_MetApps.pdf"
+    tier: 1
+    role: defines
+    note: >
+      The meteorological definition, and the one to quote when a user says
+      "Dunkelflaute" and means the weather rather than the model. NO network
+      optimisation at all — atlite is used purely as a reanalysis-to-capacity-factor
+      converter. Defines an event as the 48 h running-mean installed-capacity-weighted
+      combined capacity factor (44% solar / 50% onshore / 6% offshore, Germany 2018)
+      below 0.06 for at least two consecutive days: 169 events over 1979-2018,
+      4.3/yr, mean 3.4 days, max 8 days. Threshold calibrated to Kaspar et al. (2019)
+      event frequency; sensitivity at 0.05 and 0.10 does not move the central findings.
+      Then links each event to one of seven North-Atlantic-European weather regimes
+      (bootstrapped with 1000 draws for significance) and to coincident demand
+      anomalies — the regime link is what makes the events subseasonally predictable.
+      The load-bearing consequence for this book: the detector is a rolling-window
+      threshold on time series the PyPSA workflow already produces, so it is
+      post-processing, and no config key will ever do it.
+  - paper: "2023_Grochowicz_weather-induced-extreme-events-renewable.pdf"
+    tier: 2
+    role: defines
+    note: >
+      Defines the model-internal alternative and, crucially, COMPARES it against the
+      meteorological and load-shedding-based identifiers on the same system, which is
+      the argument for using it. A system-defining event is a period where accumulated
+      demand-weighted electricity shadow prices exceed 100 bn EUR within at most 336 h
+      (Eq. 1, Sec. 2.3). PyPSA-Eur 0.6.1 with small modifications, 181 generation / 90
+      network nodes, electricity-only, hourly, run over 40 ERA5 weather years. 32 events
+      identified, averaging ~7 days — matching hydrogen-storage discharge duration.
+      Contributes the de-overlapping and event-extension procedure (SI A.3) that a
+      reimplementation must copy, and applies both z500 k-means weather regimes (4
+      clusters) and near-surface-field k-means to the extracted events. This is the
+      paper that composes with shadow-prices-and-marginal-values.
+  - paper: "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+    tier: 2
+    role: extends
+    note: >
+      Scales the SDE framework and turns it into an investment answer. PyPSA-Eur
+      v0.13.0, electricity-only, 90 nodes, hourly, solved 80 times (one per weather year
+      1941-2021) with hydrogen energy and power capacities decoupled. Same threshold
+      (C = 100 bn EUR, T = 14 d) yields 41 SDEs — about one every two years. Adds (a)
+      event-type clustering on seven per-event metrics with k = 4 (severe power deficit,
+      power deficit, cascading, energy deficit), (b) validation by 80 x 79 = 6320
+      DISPATCH optimisations measuring EENS and maximum unserved load — the concrete
+      cross-year stress-test design this card's assembly recipe reproduces — and (c) the
+      short-term-versus-long-term resilience metric split. Also the source of the honest
+      framing on cost: resilience backup is capacity that is idle almost always, so its
+      value is a risk statement, not a cost saving.
+  - paper: "2026_Schauss_Pit-Thermal-Energy-Storage.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Included as the honest picture of how the method is USUALLY practised, which is
+      barely at all. PyPSA-DE, sector-coupled, 49 regions, 3-hourly, 2045. A cold
+      Dunkelflaute is used as a stress-test episode to explain why pit-thermal-storage
+      discharge is limited by resistive boosting when VRES are scarce — but the events
+      are NOT detected algorithmically: they simply happen to occur in the single 2019
+      weather year and are read off the dispatch plots. The single weather year is
+      acknowledged as a limitation (Sec. S4.2). Contributes no method content and that
+      is the point: it shows the default practice is "look at the plot", which is
+      exactly what a card like this should let an interview improve on.
+pitfalls:
+  - pitfall: >
+      Windowing the snapshots down to a two-week episode makes the stress test
+      MEANINGLESS as long as storage is cyclic. Both models create storage with
+      cyclic_state_of_charge / e_cyclic = True, so on a 336-hour snapshot index the
+      optimiser must return every store to its starting level within the episode — the
+      seasonal reserve that the real system would draw down is silently forbidden,
+      and the fortnight looks harder than it is. Conversely, an episode-only run with
+      a free initial SOC lets the model start with full caverns for free, and the
+      fortnight looks easier than it is. Both errors are large.
+    evidence: "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+    note: >
+      Do NOT window. Impose the extreme period by running the FULL year that contains
+      it, with capacities fixed, and read out the episode's hours afterwards — which is
+      exactly what Grochowicz 2025's 6320 full-year dispatch runs do. If a short window
+      is unavoidable for compute reasons, you must set e_initial / state_of_charge_initial
+      explicitly from a full-year reference solve and turn cyclic OFF, and that is a
+      code-level intervention (bespoke, no config key), not a config change.
+  - pitfall: >
+      Temporal aggregation destroys the extremes this method exists to find. n-hourly
+      averaging smears a deep 6-hour deficit into a shallow one, and while tsam
+      segmentation is better in principle, NEITHER model ever passes tsam's
+      extreme-value arguments (extremePeriodMethod, addPeakMax, addPeakMin) — both call
+      sites hardcode segmentation-only with noTypicalPeriods=1, so peak preservation is
+      whatever the segmentation optimum happens to give. Detecting events on aggregated
+      profiles, or stress-testing at 3-hourly resolution, can remove the event.
+    evidence: "2023_Mockert_Dunkelflauten-Germany_MetApps.pdf"
+    note: >
+      Run event DETECTION on the unaggregated hourly resource files, never on the
+      solved network's snapshot index. Stress-test at hourly resolution (both
+      models' default is hourly for the electricity chain; earth's default
+      scenario.opts is `Co2L-3h` and must be changed). See
+      temporal-aggregation-and-segmentation, which documents the missing tsam
+      arguments and their anchors — do not re-derive it.
+  - pitfall: >
+      The detection threshold is a free parameter tuned to produce a target event count,
+      not a physical constant. Mockert picks CF < 0.06 to reproduce a published event
+      frequency of 3-4/yr; Grochowicz picks C = 100 bn EUR to get about one event per
+      year. Change the threshold and you change the number, the duration and therefore
+      the storage duration the study appears to justify.
+    evidence: "2023_Mockert_Dunkelflauten-Germany_MetApps.pdf"
+    note: >
+      Report the threshold and a sensitivity around it as part of the result (Mockert
+      tests 0.05 / 0.06 / 0.10). Never present "N Dunkelflauten per year" without the
+      definition attached — the number is not comparable across studies.
+  - pitfall: >
+      Meteorological detection is system-agnostic and can miss the events that actually
+      bind. A weighted-capacity-factor threshold uses ONE fixed capacity mix (Mockert:
+      Germany 2018) and no network, no storage and no demand response, so it cannot know
+      that an event is survivable, nor that a moderate lull coinciding with a cold snap
+      and low imports is not. Grochowicz 2023 exists because of exactly this gap.
+    evidence: "2023_Grochowicz_weather-induced-extreme-events-renewable.pdf"
+    note: >
+      If the user's question is "does MY system survive", use
+      shadow-price-derived-system-defining-events on their own solved system. Use the
+      meteorological detector when the question is about the weather itself, about
+      predictability, or when there is no solved model to interrogate.
+  - pitfall: >
+      Shadow-price-derived events inherit every dual-variable pathology. Prices from a
+      spatially clustered network are aggregate prices, snapshot weightings must be
+      applied before summing over time or a coarsened run under-counts the accumulated
+      cost by the weighting factor, and enabling load shedding CAPS the price at the VOLL
+      you chose — which caps the accumulator and can hide the very worst events.
+    evidence: "2023_Grochowicz_weather-induced-extreme-events-renewable.pdf"
+    note: >
+      Identify events on a run WITHOUT load shedding (so scarcity prices are free to
+      spike), then stress-test WITH load shedding enabled to measure unserved energy.
+      These are two different runs and conflating them is the classic error. Weight the
+      accumulation by snapshot_weightings. See shadow-prices-and-marginal-values.
+  - pitfall: >
+      An extreme-event study on one weather year is not an extreme-event study. The
+      corpus uses 40-80 years precisely because the binding episode is by construction
+      rare, and PyPSA-Eur's default snapshots window is the single year 2013. A "worst
+      case" drawn from one year is a sample of size one from the tail.
+    evidence: "2026_Schauss_Pit-Thermal-Energy-Storage.pdf"
+    note: >
+      Route through weather-year-ensembles for the sampling. State plainly to the user
+      when compute forces a short record, and never call the result a resilience
+      metric — call it an illustrative episode, which is what Schauss honestly does.
+  - pitfall: >
+      Neither model produces reliability statistics, and the difference is easy to
+      oversell. `probabilistic-adequacy` is `absent` in BOTH registries: there is no
+      forced-outage sampling and no LOLE/EUE machinery. A weather-driven stress test
+      answers "what does this weather do to this design", not "what is the loss-of-load
+      expectation" — the thermal fleet never trips, so the results are optimistic
+      relative to a real adequacy assessment.
+    evidence: "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+    note: >
+      Say so in the deliverable. EENS computed over a weather ensemble is a
+      weather-conditional expectation, not an LOLE. If the user needs a regulatory
+      adequacy metric, this method is the wrong tool and no amount of config gets there.
+requires_methods:
+  - weather-year-ensembles
+  - operational-dispatch-and-rolling-horizon
+combines_with:
+  - shadow-prices-and-marginal-values
+  - temporal-aggregation-and-segmentation
+  - storage-sizing-and-duration
+  - sensitivity-and-uncertainty-sweeps
+  - mga-near-optimal-space
+  - demand-side-flexibility-representation
+topics:
+  - dunkelflaute-low-vre-risk
+  - extreme-weather-resilience
+  - resource-adequacy
+  - multi-year-weather-variability
+  - seasonal-storage-gap
+  - firm-low-carbon-capacity
+pypsa_primitive:
+  symbol: "pypsa/optimization/optimize.py:fix_optimal_capacities; pypsa/optimization/optimize.py:add_load_shedding"
+  pypsa_version: "0.30.3"
+  exposed_by: >
+    pypsa-eur only, and only for the STRESS-TEST half: rule solve_operations_network
+    calls n.optimize.fix_optimal_capacities(), and solving.options.load_shedding drives
+    an equivalent (workflow-native, per-carrier) shedding implementation rather than
+    calling add_load_shedding. pypsa-earth exposes neither.
+  reachable_via: >
+    fix_optimal_capacities() takes no arguments — it copies <attr>_opt back onto <attr>
+    for every extendable component and sets <attr>_extendable = False, so a two-stage
+    stress test is three lines on a solved network. add_load_shedding(suffix=,
+    buses=, sign=1e-3, marginal_cost=1e2, p_nom=1e9) adds slack generators; note that
+    both models implement their own version instead, eur per-carrier via
+    add_load_balance_components and earth with a computed per-bus p_nom.
+  note: >
+    The asymmetry to relay: the STRESS-TEST half of this method has library primitives
+    and (in eur) a rule, but the IDENTIFICATION half has no primitive anywhere. There is
+    no pypsa function that finds an event, accumulates a shadow price over a window,
+    de-overlaps candidate periods, or computes EENS. That is why both model verdicts
+    below are `assemble`/`absent` rather than `primitive-only`: the missing piece is not
+    an optimisation formulation one layer down, it is analysis code that does not exist
+    at any layer. Soft anchor: pypsa is a conda dependency, not a submodule, so this
+    claim is pinned to a version string rather than a SHA.
+models:
+  - model: pypsa-eur
+    version_anchor:
+      ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d"
+      date: "2026-07-25"
+    functionality:
+      - id: probabilistic-adequacy
+        role: >
+          the ceiling on what this method can claim — registry status `absent`, no
+          consumer, no forced-outage sampling and no LOLE/EUE. Everything below is a
+          weather-conditional stress test, never a reliability statistic.
+      - id: operations-only-solve
+        role: >
+          the load-bearing surface, and eur's decisive advantage: a DEDICATED RULE
+          (solve_operations_network) that fixes capacities from a prior expansion run
+          and re-solves dispatch. This is stage two of the stress test, wired.
+      - id: load-shedding-voll
+        role: >
+          converts an inadequate design from `infeasible` into a priced quantity of
+          unserved energy — without it the stress test returns no number. Per-carrier
+          shedding costs, so a heat-bus shortfall in a cold Dunkelflaute is priced
+          separately from an electricity one.
+      - id: weather-year-selection
+        role: >
+          how an episode or a stress year is imposed: move the snapshots window. Note
+          get_snapshots accepts LISTS of start/end, so several disjoint episodes can be
+          stitched into one snapshot index — earth cannot do this.
+      - id: multi-weather-year
+        role: >
+          the record the detector needs. Status `partial`: load_cutout concatenates
+          cutout files along time, but the standard workflow runs one year, so a 40-80
+          year record is a per-year sweep, not one solve.
+      - id: rolling-horizon-dispatch
+        role: >
+          the more honest stress test — sequential windows strip perfect annual
+          foresight, so storage cannot be pre-positioned for an event the real operator
+          would not have seen coming. Cyclic storage is disabled in this mode.
+      - id: safe-reserve-margin
+        role: >
+          the deterministic firm-capacity backstop this method's results feed into.
+          Status `partial` and a trap: electricity.SAFE_reservemargin has NO entry in
+          config.default.yaml at this ref, so the key must be added by hand.
+      - id: time-segmentation-tsam
+        role: >
+          the affordability lever for an 80-run ensemble, and simultaneously the pitfall
+          — tsam's extreme-period arguments are never passed, so segmentation does not
+          guarantee the event survives.
+      - id: temporal-resolution-nh
+        role: >
+          the crude affordability lever. Averaging is the WRONG choice for this method
+          specifically; named here so an interview can refuse it.
+      - id: scenario-matrix
+        role: >
+          the ensemble harness: one managed run per weather year, expanded through the
+          run wildcard, rather than a hand-rolled loop.
+      - id: renewable-potentials-land-eligibility
+        role: >
+          produces resources/profile_{clusters}_{technology}.nc — the per-region hourly
+          capacity factors that a threshold detector actually runs on.
+      - id: sector-master-switches
+        role: >
+          why a Dunkelflaute is also a DEMAND event: with heating on, the cold snap that
+          accompanies the lull is a load spike too. Invisible in an electricity-only run.
+      - id: summary-outputs
+        role: >
+          where per-run prices, weighted prices and metrics already land — the cheapest
+          place to hang shadow-price accumulation and EENS aggregation.
+      - id: curtailment-mode
+        role: >
+          the mirror-image diagnostic (surplus rather than deficit episodes); relevant
+          when the user's "extreme event" is a high-VRE one.
+    available:
+      verdict: assemble
+      how: >
+        The STRESS TEST is genuinely wired and is close to turnkey: solve the expansion
+        once, then rule solve_operations_network re-solves hourly dispatch with
+        capacities fixed by n.optimize.fix_optimal_capacities(), and
+        solving.options.load_shedding.enable turns the shortfall into priced unserved
+        energy instead of an infeasibility. Moving the stress period in is
+        snapshots.start/end (L1), and get_snapshots even accepts LISTS of start/end
+        dates, so disjoint episodes concatenate. The ensemble fan-out is
+        run.scenarios/scenario-matrix. Every INPUT a detector needs is already an
+        addressable resource: resources/profile_{clusters}_{technology}.nc for
+        per-region hourly capacity factors, resources/electricity_demand_base_s.nc for
+        nodal demand, and n.buses_t.marginal_price on any solved network for shadow
+        prices.
+      missing: >
+        EVENT IDENTIFICATION ENTIRELY. Procedure steps 2, 3, 4, 6, 7, 8 and 11 have no
+        handle: no capacity-factor weighting, no running mean, no threshold detector, no
+        EOF/z500 weather-regime classification (and no z500 field is retrieved at all —
+        the cutout carries temperature, height and runoff, not geopotential), no
+        shadow-price accumulation over a window, no de-overlapping or event-extension
+        procedure, no event-type clustering, and no EENS / maximum-unserved-load
+        reporting. probabilistic-adequacy is `absent`, so there is no LOLE/EUE and no
+        forced-outage sampling to fall back on. Nothing in the repo knows what an
+        "event" is; the model supplies the time series and the re-solve, and the method
+        is the analysis code you write around them.
+      provenance: "rules/solve_electricity.smk:rule solve_operations_network; scripts/solve_operations_network.py:fix_optimal_capacities; scripts/solve_network.py:add_load_balance_components; scripts/_helpers.py:get_snapshots"
+    levers:
+      - key: "snapshots.start"
+        effect: >
+          The stress period. Accepts a string OR A LIST of start dates (paired with an
+          equal-length snapshots.end), so several disjoint extreme episodes can be
+          concatenated into one snapshot index. Read the cyclic-storage pitfall before
+          using a short window.
+        default: "'2013-01-01'"
+        provenance: "config/config.default.yaml:snapshots; scripts/_helpers.py:get_snapshots"
+      - key: "snapshots.end"
+        effect: >
+          End of the stress period; also list-capable and must have the same length as
+          snapshots.start (asserted in get_snapshots).
+        default: "'2014-01-01'"
+        provenance: "config/config.default.yaml:snapshots; scripts/_helpers.py:get_snapshots"
+      - key: "solving.options.load_shedding.enable"
+        effect: >
+          THE key lever for this method. Adds slack generators so an inadequate design
+          returns priced unserved energy rather than `infeasible` — without it a failed
+          stress test yields no measurement.
+        default: "false"
+        provenance: "config/config.default.yaml:load_shedding; scripts/solve_network.py:add_load_balance_components"
+      - key: "solving.options.load_shedding.default_cost"
+        effect: >
+          The VOLL in EUR/MWh. Directly scales the reported cost of unserved energy AND
+          caps scarcity prices, which is why event identification must run on a
+          run with shedding OFF.
+        default: "100000"
+        provenance: "config/config.default.yaml:default_cost; scripts/solve_network.py:add_load_balance_components"
+      - key: "solving.options.load_shedding.carriers"
+        effect: >
+          Per-carrier shedding costs. In a sector-coupled cold-Dunkelflaute test this
+          lets unserved HEAT be priced differently from unserved electricity.
+        default: "{} (falls back to default_cost for all carriers, since all_carriers: true)"
+        provenance: "config/config.default.yaml:carriers; scripts/solve_network.py:add_load_balance_components"
+      - key: "solving.options.rolling_horizon"
+        effect: >
+          Solves the operations stage in sequential windows instead of one shot,
+          removing perfect annual foresight over the event — the more honest
+          storage-depletion test. Disables cyclic storage as a side effect.
+        default: "false"
+        provenance: "config/config.default.yaml:rolling_horizon; scripts/solve_network.py:optimize_with_rolling_horizon"
+      - key: "solving.options.horizon"
+        effect: "Window length in hours for the rolling-horizon operations solve."
+        default: "365"
+        provenance: "config/config.default.yaml:horizon; scripts/solve_network.py:optimize_with_rolling_horizon"
+      - key: "solving.options.overlap"
+        effect: >
+          Look-ahead hours beyond each rolling window. At the default 0 the operator has
+          zero foresight past the window edge, which understates storage pre-positioning
+          for a multi-day event; set it to at least the event duration.
+        default: "0"
+        provenance: "config/config.default.yaml:overlap; scripts/solve_network.py:optimize_with_rolling_horizon"
+      - key: "electricity.operational_reserve.activate"
+        effect: >
+          Hourly reserve requirement (% load + % VRE + fixed MW) co-optimised with
+          dispatch — the nearest in-model proxy for the headroom a real operator keeps
+          through a lull, and off by default.
+        default: "false"
+        provenance: "config/config.default.yaml:operational_reserve; scripts/solve_network.py:add_operational_reserve_margin"
+      - key: "run.scenarios.enable"
+        effect: >
+          Fans the weather-year ensemble out as managed parallel runs, so 40-80 stress
+          years are snakemake's problem rather than a bash loop.
+        default: "false"
+        provenance: "config/config.default.yaml:scenarios; scripts/_helpers.py:get_scenarios"
+      - key: "atlite.cutouts"
+        effect: >
+          The reanalysis record. The shipped entry is NAMED europe-1940-2024-era5 but
+          its `time` field is ['2013','2013'] — the name advertises 85 years, the
+          default build is one. A long record means editing this time range (and paying
+          for the build), which is what makes the ensemble the expensive part.
+        default: "one entry, europe-1940-2024-era5, time ['2013','2013']"
+        provenance: "config/config.default.yaml:cutouts; rules/common.smk:input_cutout"
+    assembly:
+      - step: >
+          Build (or reuse) the hourly resource time series over as long a record as the
+          cutout allows. The detector's inputs are
+          resources/profile_{clusters}_{technology}.nc (per-region, per-technology
+          availability factors) and resources/electricity_demand_base_s.nc (nodal
+          demand). Do NOT read them off a solved network — its snapshot index may be
+          aggregated.
+        uses: [renewable-potentials-land-eligibility, weather-year-selection, multi-weather-year]
+        config: "snapshots.start/end; atlite.cutouts.<name>.time"
+        code: null
+        provenance: "scripts/build_renewable_profiles.py:snakemake.output.profile; scripts/build_electricity_demand_base.py:upsample_load; scripts/_helpers.py:load_cutout"
+      - step: >
+          (identification route A, meteorological) Write the detector: capacity-weighted
+          combined capacity factor, rolling mean over the target duration, threshold, run
+          -length filter. This is ~50 lines of pandas over the profile files and NO rule
+          owns it — a new script under scripts/ plus a rule if you want it in the DAG.
+          Weather-regime classification additionally needs z500 geopotential, which the
+          cutout does not carry (prepare_kwargs.features is temperature/height/runoff),
+          so that is a new data retrieval, not a new script.
+        uses: [renewable-potentials-land-eligibility]
+        config: null
+        code: "new scripts/build_extreme_events.py — nothing existing performs detection"
+        provenance: "scripts/build_renewable_profiles.py:snakemake.output.profile; config/config.default.yaml:prepare_kwargs"
+      - step: >
+          (identification route B, shadow-price SDEs — the recommended one when a solved
+          system exists) Solve the expansion model once per weather year WITH LOAD
+          SHEDDING OFF, then accumulate sum_{n,t} d_{n,t} * lambda_{n,t} over sliding
+          windows of at most T hours from n.loads_t.p_set and n.buses_t.marginal_price,
+          weighting by n.snapshot_weightings. Threshold at C, de-overlap shorter/dearer
+          first, then extend each event while its average hourly cost does not decrease.
+          Every input exists on the solved network; the accumulator and the de-overlap
+          logic do not exist anywhere.
+        uses: [scenario-matrix, summary-outputs, weather-year-selection]
+        config: "run.scenarios.enable; solving.options.load_shedding.enable = false"
+        code: "new post-processing script; make_summary already computes nodal prices to hang it on"
+        provenance: "scripts/make_summary.py:calculate_prices; scripts/make_summary.py:calculate_weighted_prices; scripts/solve_network.py:solve_network"
+      - step: >
+          Pick the design to stress. Either the least-cost design from one reference year
+          or the ensemble, solved through the normal chain. Keep the solved network —
+          stage two reads capacities off it.
+        uses: [scenario-matrix]
+        config: "the standard solve"
+        code: null
+        provenance: "scripts/solve_network.py:solve_network"
+      - step: >
+          Stress-test it. Point rule solve_operations_network at that solved network with
+          a DIFFERENT snapshots window (the stress year), and set
+          solving.options.load_shedding.enable = true with a defensible VOLL.
+          fix_optimal_capacities() freezes every extendable component and the re-solve is
+          dispatch-only. Run the FULL YEAR containing the episode, not the episode alone
+          — see the cyclic-storage pitfall. Optionally set rolling_horizon with
+          overlap >= the event duration to strip perfect foresight.
+        uses: [operations-only-solve, load-shedding-voll, weather-year-selection, rolling-horizon-dispatch]
+        config: "snapshots.start/end; solving.options.load_shedding.enable; solving.options.load_shedding.default_cost; solving.options.rolling_horizon; solving.options.overlap"
+        code: null
+        provenance: "rules/solve_electricity.smk:rule solve_operations_network; scripts/solve_operations_network.py:fix_optimal_capacities; scripts/solve_network.py:add_load_balance_components"
+      - step: >
+          Cross the ensemble: N designs x M stress years. Grochowicz 2025 runs 80 x 79 =
+          6320 dispatch solves. The scenario matrix expands combinatorially and is the
+          right harness; the only new plumbing is wiring the operations rule's INPUT
+          network to a different run's output than its own.
+        uses: [scenario-matrix, operations-only-solve]
+        config: "run.scenarios.enable; run.scenarios.file"
+        code: "rules/solve_electricity.smk — the operations rule's input wildcard must be decoupled from {run}"
+        provenance: "rules/solve_electricity.smk:rule solve_operations_network; scripts/_helpers.py:get_scenarios"
+      - step: >
+          Aggregate into resilience metrics: EENS = weighted sum of load-shedding
+          generator dispatch over the ensemble, maximum unserved load = its peak,
+          per-event peak deficit, and the annualised cost of the backup that removes
+          them. Report short-term (GW) and long-term (TWh) separately.
+          make_summary already collects per-run costs, capacities and prices; the
+          shedding-generator aggregation and the cross-run expectation are new.
+        uses: [summary-outputs, load-shedding-voll]
+        config: null
+        code: "scripts/make_summary.py — extend, or a new cross-run aggregator"
+        provenance: "scripts/make_summary.py:calculate_metrics; scripts/make_summary.py:calculate_curtailment"
+      - step: >
+          (optional) Cluster the events into types by k-means over per-event system
+          metrics with k chosen by silhouette / Calinski-Harabasz. Pure scikit-learn on
+          the per-event table from the previous steps; no model interaction at all.
+        uses: []
+        config: null
+        code: "new post-processing script"
+        provenance: "scripts/make_summary.py:calculate_metrics"
+    boundary:
+      - variant: threshold-based-event-detection
+        rung: L5
+        note: >
+          No config key, no script, no rule knows what a threshold event is. But the
+          inputs are addressable resource files and the algorithm is a rolling mean and
+          a comparison — a day of pandas, entirely outside the optimisation. L5 because
+          it is new Python, not because it is hard; do not let the rung frighten a user
+          off this variant.
+      - variant: weather-regime-classification
+        rung: L3
+        note: >
+          The blocker is DATA, not code: EOF + k-means on z500 is standard scikit-learn,
+          but no geopotential field is retrieved anywhere. atlite's
+          prepare_kwargs.features requests temperature, height and runoff; z500 is a new
+          ERA5 retrieval and a new resource. Genuinely optional — it buys physical
+          explanation and forecast lead time, never a number the energy model uses.
+      - variant: shadow-price-derived-system-defining-events
+        rung: L5
+        note: >
+          Post-solve, so the model side is L0: nodal marginal prices are assigned by
+          every solve and already surfaced through make_summary. The new code is the
+          windowed accumulator, the de-overlap ordering and the event-extension rule
+          from Grochowicz 2023 SI A.3. Compose with
+          shadow-prices-and-marginal-values for the weighting and clustering caveats
+          on reading duals — those are not optional refinements here, they change the
+          accumulated total.
+      - variant: stress-test-a-fixed-design
+        rung: L1
+        note: >
+          The one cheap variant, and eur's strongest card. rule
+          solve_operations_network + solving.options.load_shedding.enable +
+          snapshots.start/end is the whole stress test with NO code. L1 rather than L0
+          because it needs a specific non-default combination: shedding on (default
+          off), a non-default snapshots window, and the operations rule requested as a
+          target. Rises to L4 only for the cross-product ensemble, where the operations
+          rule's input must be decoupled from its own {run}.
+      - variant: event-type-clustering
+        rung: L5
+        note: >
+          Pure scikit-learn on a per-event metrics table. Cheap once the events and the
+          per-event metrics exist; it inherits the L5 of whichever identification
+          variant produced them.
+      - variant: resilience-metric-reporting
+        rung: L5
+        note: >
+          The load-shedding generators' dispatch is already in the solved network, so
+          EENS for ONE run is a two-line groupby. The L5 is the cross-run expectation
+          and the short-term/long-term split. Hard ceiling: probabilistic-adequacy is
+          `absent`, so no config or code path in this repo produces LOLE or samples
+          forced outages — the metric is weather-conditional and must be labelled so.
+    where:
+      - change: "stress-test stage two — fix capacities and re-solve dispatch"
+        anchor: "rules/solve_electricity.smk::rule solve_operations_network -> scripts/solve_operations_network.py, the n.optimize.fix_optimal_capacities() call before prepare_network"
+        provenance: "rules/solve_electricity.smk:rule solve_operations_network; scripts/solve_operations_network.py:fix_optimal_capacities"
+      - change: "decouple the operations rule's input network from its own {run} for the design x stress-year cross-product"
+        anchor: "rules/solve_electricity.smk::rule solve_operations_network -> input.network (currently RESULTS + networks/base_s_{clusters}_elec_{opts}.nc, i.e. the same run)"
+        provenance: "rules/solve_electricity.smk:rule solve_operations_network"
+      - change: "priced unserved energy instead of infeasibility"
+        anchor: "solving.options.load_shedding.{enable,default_cost,carriers} -> scripts/solve_network.py::add_load_balance_components"
+        provenance: "config/config.default.yaml:load_shedding; scripts/solve_network.py:add_load_balance_components"
+      - change: "event detection on raw resource time series (new script + rule)"
+        anchor: "resources/profile_{clusters}_{technology}.nc and resources/electricity_demand_base_s.nc as inputs to a new rule in rules/build_electricity.smk"
+        provenance: "scripts/build_renewable_profiles.py:snakemake.output.profile; scripts/build_electricity_demand_base.py:upsample_load"
+      - change: "shadow-price accumulation and EENS aggregation across runs"
+        anchor: "scripts/make_summary.py (rule make_summary) — extend calculate_prices/calculate_metrics, or add a cross-run aggregator alongside it"
+        provenance: "scripts/make_summary.py:calculate_prices; scripts/make_summary.py:calculate_metrics"
+      - change: "explicit initial storage state if a short window is genuinely unavoidable"
+        anchor: "scripts/add_electricity.py::attach_storageunits / attach_stores — the cyclic_state_of_charge=True and e_cyclic=True kwargs, plus e_initial / state_of_charge_initial"
+        provenance: "scripts/add_electricity.py:cyclic_state_of_charge; scripts/add_electricity.py:e_cyclic; scripts/add_electricity.py:attach_storageunits"
+      - change: "z500 geopotential retrieval for weather-regime classification"
+        anchor: "atlite.cutouts.<name>.prepare_kwargs.features -> rules/build_cutout or a new ERA5 retrieval rule; the shipped feature list is temperature/height/runoff"
+        provenance: "config/config.default.yaml:prepare_kwargs; rules/common.smk:input_cutout"
+    data_dependencies:
+      - input: "ERA5 500 hPa geopotential height (z500) daily fields over the North Atlantic / Europe"
+        required_for: weather-regime-classification
+        availability: >
+          absent — no rule retrieves it. The shipped cutout's prepare_kwargs.features is
+          [temperature, height, runoff]; `height` is terrain elevation, not geopotential
+          height on a pressure level. A new ERA5 request outside atlite's feature set.
+      - input: "multi-decade ERA5 cutout (40-80 years) over the study region"
+        required_for: shadow-price-derived-system-defining-events
+        availability: >
+          must be built — the config entry is NAMED europe-1940-2024-era5 but ships with
+          time ['2013','2013']. Extending it is a large download and a long build; flag
+          the data volume to the user before starting. load_cutout does concatenate
+          multiple cutout files along time once they exist.
+      - input: "per-region hourly renewable availability and nodal demand"
+        required_for: threshold-based-event-detection
+        availability: >
+          exists by default as resources/profile_{clusters}_{technology}.nc and
+          resources/electricity_demand_base_s.nc for whatever years the cutout covers.
+    cost_profile:
+      solves: >
+        Identification route B: 1 expansion solve per weather year (32 events came from
+        40 years, 41 from 80). Stress test: 1 dispatch solve per design x stress-year
+        pair — Grochowicz 2025 ran 80 x 79 = 6320. Route A costs ZERO solves; it is
+        post-processing on resource files.
+      relative: >
+        A dispatch-only solve is roughly an order of magnitude cheaper than the
+        expansion solve it is derived from (no investment variables), which is what
+        makes the 6320-run cross-product affordable at all. The expansion ensemble is
+        the expensive half: 40-80 x a full solve, at hourly resolution and 90 nodes.
+      note: >
+        The corpus's mitigation is spatial, not temporal: Grochowicz stays hourly and
+        electricity-only at 90 nodes, because coarsening TIME is the one lever this
+        method cannot use — averaging destroys the events (see pitfalls) and tsam's
+        extreme-period preservation is not wired in either model. Coarsen clusters, drop
+        sectors, use dispatch-only for the ensemble, keep 8760 hourly snapshots. If
+        compute forces a shorter record, say so and downgrade the claim from "resilience
+        metric" to "illustrative episode".
+    verifies:
+      - variant: stress-test-a-fixed-design
+        check: "not n.generators.p_nom_extendable.any() and not n.links.p_nom_extendable.any() and not n.storage_units.p_nom_extendable.any()"
+        over: run
+        note: >
+          If anything is still extendable, fix_optimal_capacities did not take and the
+          'stress test' quietly built new capacity to survive the event — the single
+          worst silent failure of this method. The run succeeds and reports zero
+          unserved energy for a design that would in fact have failed.
+      - variant: stress-test-a-fixed-design
+        check: "n.generators.carrier.str.contains('load').any() or (n.generators_t.p.filter(like='load shedding', axis=1).shape[1] > 0)"
+        over: run
+        note: >
+          No shedding generators means load_shedding.enable was left at its default
+          false. An inadequate design then returns infeasible rather than a quantity of
+          unserved energy, so the stress test produces no measurement at all.
+      - variant: stress-test-a-fixed-design
+        check: "not n.storage_units.cyclic_state_of_charge.any() if len(n.snapshots) < 8000 else True"
+        over: run
+        note: >
+          Cyclic storage on a sub-annual snapshot index forces every store back to its
+          starting level inside the window, forbidding the seasonal drawdown the real
+          system would use. The result is meaningless in a direction you cannot sign.
+      - variant: resilience-metric-reporting
+        check: "len(ns) == n_designs * n_stress_years"
+        over: ensemble
+        note: >
+          A short ensemble means stress years were dropped by wildcard expansion rather
+          than solved, and EENS is an expectation over a truncated sample — biased
+          optimistic, because the dropped year might be the binding one.
+      - variant: shadow-price-derived-system-defining-events
+        check: "not ns[0].generators.carrier.str.contains('load shedding').any()"
+        over: ensemble
+        note: >
+          Identification must run on a solve WITHOUT load shedding. Shedding caps the
+          nodal price at the chosen VOLL, which caps the accumulated cost and can push
+          the very worst events below the detection threshold C.
+  - model: pypsa-earth
+    version_anchor:
+      ref: "8435f4c8cc05f30088933b37b7db497ff860dc53"
+      date: "2026-07-25"
+    functionality:
+      - id: probabilistic-adequacy
+        role: "same ceiling as eur — registry status `absent`, no outage sampling, no LOLE/EUE"
+      - id: operations-only-solve
+        role: >
+          THE decisive gap. Registry status `absent`: no operations rule, no
+          fix_optimal_capacities call, and the only 'rolling' string in solve_network.py
+          is a commented-out fragment. The stress test that is L1 in eur must be
+          assembled from scratch here.
+      - id: load-shedding-voll
+        role: >
+          earth's one genuine advantage for this method: solving.options.load_shedding is
+          ON BY DEFAULT at 100 EUR/kWh, with per-bus p_nom sized from the network. An
+          inadequate design already returns priced unserved energy rather than
+          infeasibility — no lever to remember to flip.
+      - id: weather-year-selection
+        role: >
+          how a stress year is imposed. Weaker than eur: base_network calls
+          pd.date_range(freq='h', **snapshots_config), so ONE contiguous window only —
+          no list support, hence no stitching disjoint episodes. And load_options.weather_year
+          must be kept consistent with the cutout year by hand.
+      - id: multi-weather-year
+        role: >
+          registry status `absent` — one weather year per network, inter-annual
+          variability only via separate runs. The 40-80 year record this method assumes
+          is a per-year sweep plus a bespoke aggregator.
+      - id: monte-carlo-sampling
+        role: >
+          the many-solve harness eur lacks (LHS over network quantities, one solve per
+          sample). It varies PARAMETERS, not weather years, so it is the wrong sampler
+          out of the box — but its per-sample rewrite-and-collect loop is structurally
+          the ensemble driver a stress-test cross-product needs.
+      - id: safe-reserve-margin
+        role: >
+          the deterministic firm-capacity floor this method's results argue for or
+          against, activated by a SAFE token in scenario.opts. REGISTRY CORRECTION: the
+          registry rates this `working` for earth versus `partial` for eur, but at this
+          ref electricity.SAFE_reservemargin is absent from earth's config.default.yaml
+          too — it appears only in add_SAFE_constraints' docstring, which reads
+          config["electricity"]["SAFE_reservemargin"] and will KeyError unless the user
+          adds it. The eur/earth asymmetry the registry implies here does not exist; the
+          hand-added-key trap is identical in both. Hence no lever entry below.
+      - id: operational-reserves
+        role: "hourly reserve headroom co-optimised with dispatch; off by default"
+      - id: time-segmentation-tsam
+        role: >
+          affordability lever and pitfall, as in eur — and more pressing, because earth's
+          default scenario.opts is 'Co2L-3h', i.e. 3-hourly averaging is ON BY DEFAULT
+          and will smear the events before you see them.
+      - id: temporal-resolution-nh
+        role: "the default-on averaging that this method must switch OFF first"
+      - id: scenario-matrix
+        role: "combinatorial run expansion — the weather-year sweep harness"
+      - id: renewable-potentials-land-eligibility
+        role: >
+          produces resources/<RDIR>renewable_profiles/profile_{technology}.nc, the
+          per-region hourly capacity factors a threshold detector runs on
+      - id: data-retrieval-bundles
+        role: >
+          earth self-provisions cutouts per region (enable.build_cutout), so a long
+          record is a build cost the user pays per study area — the real binding
+          constraint here
+      - id: summary-outputs
+        role: "per-run cost/capacity/price tables to hang accumulation and EENS on"
+    available:
+      verdict: assemble
+      how: >
+        The INPUTS are all there and one thing is better than eur:
+        solving.options.load_shedding defaults to 100 (EUR/kWh, i.e. on), with per-bus
+        slack capacity sized by get_load_shedding_capacity, so unserved energy is
+        measured by default rather than by remembering a flag. Per-region hourly
+        capacity factors land in resources/<RDIR>renewable_profiles/profile_{technology}.nc
+        and demand in build_demand_profiles; nodal marginal prices are assigned by every
+        solve and surfaced by make_summary's calculate_prices. scenario expansion gives
+        the weather-year fan-out, and scripts/monte_carlo.py is a reusable many-solve
+        loop eur has no equivalent of.
+      missing: >
+        Both halves, and one more than eur. Identification: everything — steps 2, 3, 4,
+        6, 7, 8 and 11 have no handle, no detector, no z500, no accumulator, no
+        de-overlap, no clustering, no EENS. Stress test: the operations-only re-solve
+        DOES NOT EXIST here (registry `absent`; no rule, no fix_optimal_capacities call,
+        rolling horizon is a commented-out fragment in solve_network.py), so stage two
+        of the stress test is itself new work — either a new rule mirroring eur's, or
+        set every p_nom_extendable to False on a solved network from a driver.
+        multi-weather-year is `absent`, snapshots takes one contiguous window only
+        (pd.date_range in base_network, no list support), and solving.options.nhours —
+        the nearest thing to a window selector — is COMMENTED OUT in config.default.yaml
+        and merely truncates to the FIRST n hours while rescaling weightings to 8760,
+        which is a smoke-test shortcut and not an episode selector.
+      provenance: "scripts/solve_network.py:get_load_shedding_capacity; scripts/base_network.py:set_snapshots; scripts/build_demand_profiles.py:build_demand_profiles; scripts/make_summary.py:calculate_prices"
+    levers:
+      - key: "snapshots.start"
+        effect: >
+          The stress window. Single contiguous range only — base_network calls
+          pd.date_range(freq='h', **snapshots_config), so unlike eur no list of disjoint
+          episodes is possible.
+        default: "'2013-01-01'"
+        provenance: "config.default.yaml:snapshots; scripts/base_network.py:set_snapshots"
+      - key: "snapshots.end"
+        effect: "End of the stress window; same single-range restriction."
+        default: "'2014-01-01'"
+        provenance: "config.default.yaml:snapshots; scripts/base_network.py:set_snapshots"
+      - key: "load_options.weather_year"
+        effect: >
+          The weather year of the DEMAND profile, separate from the cutout year. Must be
+          set consistently with snapshots and the cutout or the stress test pairs one
+          year's wind with another year's load — a silent and severe error for a method
+          whose whole subject is the coincidence of low wind and high demand.
+        default: "2013"
+        provenance: "config.default.yaml:weather_year; scripts/build_demand_profiles.py:weather_year"
+      - key: "solving.options.load_shedding"
+        effect: >
+          VOLL in EUR/kWh, or false. Already 100 by default, which is why an inadequate
+          earth design reports unserved energy rather than infeasibility out of the box.
+          Set it to false for the identification run so scarcity prices are uncapped.
+        default: "100"
+        provenance: "config.default.yaml:load_shedding; scripts/solve_network.py:get_load_shedding_capacity"
+      - key: "electricity.operational_reserve.activate"
+        effect: >
+          Hourly reserve requirement co-optimised with dispatch — the in-model proxy for
+          operator headroom through a lull.
+        default: "false"
+        provenance: "config.default.yaml:operational_reserve; scripts/solve_network.py:add_operational_reserve_margin"
+      - key: "scenario.opts"
+        effect: >
+          Where the temporal token lives, and the FIRST thing to change for this method:
+          the default 'Co2L-3h' averages to 3-hourly, smearing the deficits the whole
+          method is trying to see. Also where a SAFE token is added to activate the
+          reserve margin — but see the safe-reserve-margin note: the token alone
+          KeyErrors, because electricity.SAFE_reservemargin is not in the shipped config.
+        default: "['Co2L-3h']"
+        provenance: "config.default.yaml:opts; scripts/prepare_network.py:average_every_nhours; scripts/solve_network.py:add_SAFE_constraints"
+      - key: "monte_carlo.options.add_to_snakefile"
+        effect: >
+          Wires the many-solve sampling loop into the DAG. Samples parameters, not
+          weather years, so it must be adapted — but the per-sample rewrite and
+          collection is the ensemble machinery eur makes you write.
+        default: "false"
+        provenance: "config.default.yaml:add_to_snakefile; scripts/monte_carlo.py:monte_carlo_sampling_chaospy"
+      - key: "enable.build_cutout"
+        effect: >
+          Builds the ERA5 cutout for the study region. Off by default (a prebuilt cutout
+          is retrieved), and the gate on how many weather years the detector can see —
+          each extra year is a build.
+        default: "false"
+        provenance: "config.default.yaml:build_cutout; scripts/retrieve_databundle_light.py:download_and_unzip"
+    assembly:
+      - step: >
+          Turn OFF the default averaging first: scenario.opts 'Co2L-3h' -> 'Co2L' (or
+          keep an explicit '1h'). Every downstream step is meaningless at 3-hourly
+          resolution for this method.
+        uses: [temporal-resolution-nh]
+        config: "scenario.opts"
+        code: null
+        provenance: "config.default.yaml:opts; scripts/prepare_network.py:average_every_nhours"
+      - step: >
+          Assemble the record. One run per weather year through the scenario matrix,
+          keeping snapshots, load_options.weather_year and the cutout year CONSISTENT.
+          multi-weather-year is `absent`, so there is no single-solve multi-year option
+          at all here, and each additional year may need its own cutout build.
+        uses: [weather-year-selection, multi-weather-year, scenario-matrix, data-retrieval-bundles]
+        config: "snapshots.start/end; load_options.weather_year; atlite.cutouts; enable.build_cutout"
+        code: null
+        provenance: "config.default.yaml:weather_year; scripts/build_demand_profiles.py:weather_year; scripts/base_network.py:set_snapshots"
+      - step: >
+          (identification) Write the detector against
+          resources/<RDIR>renewable_profiles/profile_{technology}.nc and the demand
+          profiles. Same ~50 lines of pandas as in eur; the profile files have the same
+          shape, so a detector written once ports between the models. z500 weather
+          regimes need a geopotential retrieval that does not exist here either.
+        uses: [renewable-potentials-land-eligibility]
+        config: null
+        code: "new scripts/build_extreme_events.py"
+        provenance: "scripts/build_renewable_profiles.py:ExclusionContainer; scripts/build_demand_profiles.py:build_demand_profiles"
+      - step: >
+          (identification route B) Accumulate demand-weighted nodal shadow prices over
+          sliding windows on each solved network. SET solving.options.load_shedding TO
+          FALSE for these runs — it defaults to 100 EUR/kWh here, which caps the prices
+          the accumulator sums and will hide the worst events. make_summary's
+          calculate_prices / calculate_weighted_prices are the existing consumers of
+          n.buses_t.marginal_price to extend.
+        uses: [summary-outputs, load-shedding-voll, scenario-matrix]
+        config: "solving.options.load_shedding = false"
+        code: "new post-processing alongside scripts/make_summary.py"
+        provenance: "scripts/make_summary.py:calculate_prices; scripts/make_summary.py:calculate_weighted_prices; scripts/solve_network.py:get_load_shedding_capacity"
+      - step: >
+          BUILD THE MISSING OPERATIONS STAGE. There is no solve_operations_network rule
+          here. Two routes: (a) mirror eur — a new rule taking a solved network, calling
+          n.optimize.fix_optimal_capacities() then re-solving, which is the honest
+          approach and is a new rule plus a new script; or (b) a driver that loads the
+          solved network, sets every <attr>_extendable to False, imposes the stress
+          year's time series and re-solves in-process. Route (b) is faster to write and
+          skips the DAG, which also means the referee's dry-run oracle cannot see it.
+        uses: [operations-only-solve, load-shedding-voll]
+        config: "solving.options.load_shedding (leave at 100 for this stage)"
+        code: "new rule in Snakefile + new scripts/solve_operations_network.py, mirroring pypsa-eur"
+        provenance: "scripts/solve_network.py:get_load_shedding_capacity; scripts/solve_network.py:solve_network"
+      - step: >
+          Fan the design x stress-year cross-product out. Either the scenario matrix, or
+          adapt scripts/monte_carlo.py's per-sample rewrite-and-collect loop from
+          parameter draws to weather years — the closest thing either model has to a
+          ready ensemble driver.
+        uses: [scenario-matrix, monte-carlo-sampling]
+        config: "monte_carlo.options.add_to_snakefile; monte_carlo.options.samples"
+        code: "scripts/monte_carlo.py"
+        provenance: "scripts/monte_carlo.py:monte_carlo_sampling_chaospy; scripts/monte_carlo.py:validate_parameters"
+      - step: >
+          Aggregate EENS, maximum unserved load and per-event deficits from the shedding
+          generators' dispatch across the ensemble, and label the result explicitly as
+          weather-conditional (probabilistic-adequacy is `absent`).
+        uses: [summary-outputs, load-shedding-voll]
+        config: null
+        code: "scripts/make_summary.py — extend, or a new cross-run aggregator"
+        provenance: "scripts/make_summary.py:calculate_metrics; scripts/make_summary.py:calculate_curtailment"
+    boundary:
+      - variant: threshold-based-event-detection
+        rung: L5
+        note: >
+          Identical to eur and the detector code ports directly — profile_{technology}.nc
+          has the same shape. New Python, but a day of it, and zero solves. Earth's real
+          cost here is upstream: fewer weather years available without cutout builds.
+      - variant: weather-regime-classification
+        rung: L3
+        note: >
+          Data blocker, as in eur: no z500 retrieval. Worse here, because earth's cutouts
+          are built per study region rather than drawn from a shipped European one, and a
+          weather-regime analysis needs a synoptic-scale domain (the whole
+          North-Atlantic-European sector) much larger than the study region — so the
+          domain itself must be extended, not just the variable list.
+      - variant: shadow-price-derived-system-defining-events
+        rung: L5
+        note: >
+          Post-solve, so the same L5 accumulator as eur, with one extra trap:
+          load_shedding is ON by default here at 100 EUR/kWh, so prices are capped
+          unless you explicitly set it false. An accumulator run against earth's
+          defaults will systematically under-detect the severest events.
+      - variant: stress-test-a-fixed-design
+        rung: L4
+        note: >
+          THE headline eur/earth asymmetry of this card. What is L1 in eur is L4 here:
+          operations-only-solve is `absent` — no rule, no fix_optimal_capacities call,
+          rolling horizon commented out — so the stress test needs a new rule plus
+          wildcard plumbing to point one run's design at another run's weather. Drops to
+          L5-as-a-driver if you skip the DAG, which costs you the invalidation oracle.
+          Partially offset by load shedding already being on: the measurement half is
+          free.
+      - variant: event-type-clustering
+        rung: L5
+        note: >
+          Pure scikit-learn on a per-event table, identical to eur; inherits the L5 of
+          whatever produced the events.
+      - variant: resilience-metric-reporting
+        rung: L5
+        note: >
+          Cheaper than eur in one respect — shedding generators exist by default, so
+          per-run EENS is a groupby with nothing to enable. The cross-run expectation is
+          new code, and probabilistic-adequacy being `absent` is the same hard ceiling.
+    where:
+      - change: "the entire operations-only stress-test stage (does not exist)"
+        anchor: "Snakefile — a new rule mirroring pypsa-eur's solve_operations_network, plus a new scripts/solve_operations_network.py calling n.optimize.fix_optimal_capacities(); nearest existing anchor is rule solve_network"
+        provenance: "Snakefile:rule solve_network; scripts/solve_network.py:solve_network"
+      - change: "priced unserved energy (already on; the lever to REMEMBER is turning it OFF for identification)"
+        anchor: "solving.options.load_shedding -> scripts/solve_network.py::get_load_shedding_capacity, which sizes per-bus slack p_nom with a 1.2 safety margin"
+        provenance: "config.default.yaml:load_shedding; scripts/solve_network.py:get_load_shedding_capacity"
+      - change: "event detection on raw resource time series (new script + rule)"
+        anchor: "resources/<RDIR>renewable_profiles/profile_{technology}.nc from rule build_renewable_profiles, plus rule build_demand_profiles output, as inputs to a new rule in Snakefile"
+        provenance: "Snakefile:rule build_renewable_profiles; Snakefile:rule build_demand_profiles"
+      - change: "weather-year ensemble driver"
+        anchor: "scripts/monte_carlo.py + the monte_carlo rule — adapt the per-sample loop from parameter draws to weather years"
+        provenance: "scripts/monte_carlo.py:monte_carlo_sampling_chaospy; scripts/monte_carlo.py:validate_parameters"
+      - change: "explicit initial storage state if a short window is unavoidable"
+        anchor: "scripts/add_extra_components.py::attach_storageunits / attach_stores — the cyclic_state_of_charge=True and e_cyclic=True kwargs; also scripts/add_electricity.py::attach_hydro"
+        provenance: "scripts/add_extra_components.py:cyclic_state_of_charge; scripts/add_extra_components.py:e_cyclic; scripts/add_electricity.py:attach_hydro"
+      - change: "turn off default 3-hourly averaging before anything else"
+        anchor: "scenario.opts token -> scripts/prepare_network.py::average_every_nhours"
+        provenance: "config.default.yaml:opts; scripts/prepare_network.py:average_every_nhours"
+    data_dependencies:
+      - input: "ERA5 z500 geopotential over a synoptic-scale domain (much larger than the study region)"
+        required_for: weather-regime-classification
+        availability: >
+          absent, and harder than in eur — earth's cutouts are built per study region
+          (enable.build_cutout, atlite.cutouts.cutout-2013-era5), so both the VARIABLE
+          and the DOMAIN must be extended. Treat as a separate data project.
+      - input: "multi-decade cutout + matching demand years for the study region"
+        required_for: shadow-price-derived-system-defining-events
+        availability: >
+          must be built per region, one cutout per year, and load_options.weather_year
+          must track it. multi-weather-year is `absent`, so there is no concatenation
+          path either. This, not the code, is what makes an 80-year record impractical
+          in earth for most study regions — check cookbooks/pypsa-earth/data_quality for
+          the region's demand-data grade before promising an ensemble.
+      - input: "per-region hourly renewable availability and demand profiles"
+        required_for: threshold-based-event-detection
+        availability: >
+          exists by default via rule build_renewable_profiles and rule
+          build_demand_profiles, for the single configured weather year.
+    cost_profile:
+      solves: >
+        Same shape as eur — 1 expansion solve per weather year for identification, then
+        1 dispatch solve per design x stress-year pair — but the dispatch solve must
+        first be BUILT, and every additional weather year may cost a cutout build on top
+        of the solve.
+      relative: >
+        Base cases are usually cheaper here (smaller regions, electricity-only), so a
+        large stress-test cross-product is more tractable per solve than on a
+        sector-coupled eur run. That advantage is spent on writing the operations stage
+        and on data assembly.
+      note: >
+        Two earth-specific traps that both look like savings and are not: the 3-hourly
+        default (scenario.opts 'Co2L-3h') destroys the events, and solving.options.nhours
+        — commented out in config.default.yaml — truncates to the FIRST n hours while
+        rescaling snapshot weightings to 8760, so it is a smoke test, never an episode
+        selector. Buy tractability with clusters and region scope, never with time.
+    verifies:
+      - variant: stress-test-a-fixed-design
+        check: "not n.generators.p_nom_extendable.any() and not n.links.p_nom_extendable.any() and not n.storage_units.p_nom_extendable.any()"
+        over: run
+        note: >
+          Same failure as eur but likelier here, because nothing in the workflow does the
+          fixing for you — there is no fix_optimal_capacities call anywhere in earth. If
+          this fails, the 'stress test' expanded the system to survive the event and
+          reported no shortfall.
+      - variant: stress-test-a-fixed-design
+        check: "n.loads_t.p_set.index.equals(n.snapshots) and n.snapshots.freqstr in ('h', 'H')"
+        over: run
+        note: >
+          The default scenario.opts is 'Co2L-3h'. A 3-hourly snapshot index means the
+          deficit you are stress-testing has already been averaged away before the solve,
+          and the reported unserved energy is too low by an amount nobody can bound.
+      - variant: resilience-metric-reporting
+        check: "n.generators.filter(like='load shedding', axis=0).shape[0] > 0"
+        over: run
+        note: >
+          Shedding generators are expected by default here (load_shedding: 100). Their
+          absence means someone set load_shedding to false — correct for the
+          identification run, wrong for the stress test, and the two are easy to mix up.
+      - variant: shadow-price-derived-system-defining-events
+        check: "ns[0].generators.filter(like='load shedding', axis=0).shape[0] == 0"
+        over: ensemble
+        note: >
+          The inverse check: identification runs must have shedding OFF. Against earth's
+          defaults this is the failure you will actually hit, because 100 EUR/kWh caps
+          every nodal price and therefore caps the accumulator that defines an event.

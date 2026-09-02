@@ -1,0 +1,58 @@
+id: carbon-pricing-sensitivity
+title: Carbon pricing sensitivity
+rank: 83
+question: >
+  How does the mix, dispatch, emissions, and system cost respond to a CO2
+  price — the switching price for coal-to-gas or fossil-to-clean, the
+  abatement delivered per $/tCO2, and the shadow price a cap implies? ETS
+  design, carbon-tax proposals, CBAM exposure all reduce to this sweep.
+when_to_use:
+  - "what does a carbon price of X do to the mix"
+  - "carbon price sweep / abatement vs price curve"
+  - "coal-to-gas switching price"
+  - "shadow price of a CO2 cap"
+  - "ETS scenario / historical ETS price dispatch"
+recipes:
+  generation_conversion: [coal-power-plants, gas-power-plants,
+                          utility-scale-solar-pv]
+  demand: [electricity-load]
+functionality:
+  - id: emission-pricing
+    role: "core — Ep token adds the price to marginal costs by carrier emission factor"
+  - id: dynamic-emission-pricing
+    role: "Ept feeds HISTORICAL daily ETS spot prices (rolling-window smoothed) into dispatch — real-ETS backcasting earth cannot do"
+  - id: co2-cap
+    role: "the inverse question: the Co2L constraint's dual IS the shadow carbon price (metrics 'co2_shadow')"
+  - id: co2-budget-pathway
+    role: "carbon budgets per horizon (cb token) for pathway-consistent price trajectories"
+  - id: scenario-matrix
+    role: "a list of Ep tokens in scenario opts is the whole sweep"
+  - id: carrier-attribute-scaling
+    role: "fuel-cost sensitivities alongside (switching prices move with gas prices)"
+  - id: nodal-marginal-prices
+    role: "pass-through of the carbon price into electricity prices from duals"
+  - id: summary-outputs
+    role: "emissions, dispatch, cost, and co2_shadow per run — the abatement-curve raw material"
+  - id: demand-elasticity
+    role: "demand never responds to the resulting price — pass-through to consumption is out of scope"
+gap_assessment: >
+  Genuinely ready, and stronger than the earth counterpart: the static sweep
+  is one token per price point (Ep25, Ep50, ...) with the price entering
+  every emitting carrier's marginal cost, and pypsa-eur adds two directions
+  earth lacks — Ept injects the historical EEX/ETS daily price series into
+  dispatch for real-market backcasting, and cb-token carbon budgets give
+  pathway-consistent implicit prices across planning horizons. The dual
+  route is first-class: run with Co2L caps and the metrics table reports the
+  CO2 constraint's shadow price (co2_shadow) directly, so price-vs-abatement
+  curves and cap-implied marginal abatement costs cross-validate from the
+  same summaries. Caveats are the model's usual ones, not pricing-specific:
+  LP dispatch (linearized UC optional) responds to prices more smoothly than
+  real must-run fleets; the price applies to modelled combustion only, so
+  power-only runs miss non-power emissions unless the sector chain is on;
+  and demand never responds to the resulting electricity price
+  (demand-elasticity absent), so consumption-side pass-through is outside
+  scope.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

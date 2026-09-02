@@ -1,0 +1,92 @@
+id: iron-air-batteries
+title: Iron-air / metal-air batteries
+summary: Metal-air batteries (iron-air, zinc-air) — very cheap energy capacity with low round-trip efficiency, aimed at multi-day storage.
+when_to_use:
+  - iron-air battery / Form Energy style storage
+  - metal-air / zinc-air battery
+  - 100-hour battery
+  - ultra-cheap multi-day storage
+  - rust battery
+  - "known in pypsa-eur as: iron-air, iron-air charger, iron-air discharger"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        Nothing iron-air-specific — grounded absence: no iron-air/metal-air carrier,
+        config key, or code branch exists in scripts/ or config.default.yaml. The
+        generic Store + charger/discharger Links machinery (attach_stores) can
+        represent the technology's asymmetric charge/discharge and cheap energy
+        capacity, but only "H2" and "battery" branches exist in code.
+      mechanism: >
+        Not built by any rule. Entry points are attach_stores / attach_storageunits
+        in scripts/add_extra_components.py (rule add_extra_components); attach_stores
+        hardcodes 'if "H2"' / 'if "battery"' branches, attach_storageunits hardcodes
+        lookup_store / lookup_dispatch dicts with only H2 and battery. The retrieved
+        technology-data v0.13.2 costs file already ships "iron-air battery",
+        "iron-air battery charge", "iron-air battery discharge" and "Zn-Air-store" /
+        "Zn-Air-bicharger" rows (verified in a locally built costs_2030_elec.csv) —
+        the data exists upstream, the code does not consume it.
+      not_covered: >
+        Everything technology-specific: carriers, cost mapping, low round-trip
+        efficiency defaults, duration characteristics.
+      provenance: scripts/add_extra_components.py:attach_stores
+    levers:
+      - key: electricity.max_hours.battery
+        effect: Proxy route — set e.g. 100 h on the generic battery StorageUnit and override its costs/efficiency to iron-air numbers.
+        default: "6"
+        provenance: scripts/process_cost_data.py:costs_for_storage
+      - key: electricity.extendable_carriers.Store
+        effect: Carrier list read by attach_stores — config-side half of a distinct iron-air carrier (needs code branch).
+        default: "[battery, H2]"
+        provenance: scripts/add_extra_components.py:attach_stores
+      - key: electricity.extendable_carriers.StorageUnit
+        effect: Carrier list read by attach_storageunits — config-side half of a fixed-duration iron-air StorageUnit.
+        default: "[]"
+        provenance: scripts/add_extra_components.py:attach_storageunits
+    boundary:
+      - variant: Iron-air as a re-costed 100h generic battery (proxy)
+        rung: L1
+        note: >
+          Set electricity.max_hours.battery to ~100 and override battery costs and
+          efficiency via the costs section (load_costs reads costs.marginal_cost —
+          present by default — and investment/FOM/efficiency override maps via
+          config.get("investment") etc., present only as comments in
+          config.default.yaml). Replaces Li-ion in the run.
+      - variant: Distinct iron-air Store+Link carrier alongside Li-ion
+        rung: L2
+        note: >
+          New branch in attach_stores (copy the battery branch; Store cost from
+          "iron-air battery", separate charge/discharge Links from "iron-air battery
+          charge"/"iron-air battery discharge") plus the carrier in
+          electricity.extendable_carriers.Store. Costs rows exist in retrieved
+          technology-data v0.13.2 — no data work.
+      - variant: Distinct fixed-duration iron-air StorageUnit
+        rung: L2
+        note: Extend lookup_store/lookup_dispatch in attach_storageunits, add carrier to extendable_carriers.StorageUnit + electricity.max_hours, and synthesise its combined capital-cost row in load_costs (mirror the costs_for_storage calls).
+      - variant: Iron-air in the sector chain
+        rung: L2
+        note: Parallel block to the hardcoded battery block in add_storage (scripts/prepare_sector_network.py).
+      - variant: Rate limits / charge-state-dependent efficiency
+        rung: L5
+        note: No hook; custom constraints at solve time.
+    where:
+      - change: New Store+Link storage carrier (asymmetric charge/discharge fits here)
+        anchor: scripts/add_extra_components.py, function attach_stores (rule add_extra_components)
+        provenance: scripts/add_extra_components.py:attach_stores
+      - change: New StorageUnit carrier (cost lookup dicts)
+        anchor: scripts/add_extra_components.py, function attach_storageunits (lookup_store / lookup_dispatch)
+        provenance: scripts/add_extra_components.py:lookup_store
+      - change: Combined capital-cost row for a new StorageUnit carrier
+        anchor: scripts/process_cost_data.py, function load_costs (helper costs_for_storage)
+        provenance: scripts/process_cost_data.py:costs_for_storage
+      - change: Sector-chain storage block
+        anchor: scripts/prepare_sector_network.py, function add_storage (rule prepare_sector_network)
+        provenance: scripts/prepare_sector_network.py:add_storage
+    data_dependencies:
+      - input: technology-data costs rows "iron-air battery" / "iron-air battery charge" / "iron-air battery discharge" (and "Zn-Air-store"/"Zn-Air-bicharger" for zinc-air), rule retrieve_cost_data, costs.technology_data_version v0.13.2
+        required_for: Distinct metal-air carrier
+        availability: exists by default in the retrieved costs file; absent from the offline fallback data/costs.csv
+      - input: costs rows "battery storage" / "battery inverter" (to be overridden)
+        required_for: Proxy route
+        availability: exists by default

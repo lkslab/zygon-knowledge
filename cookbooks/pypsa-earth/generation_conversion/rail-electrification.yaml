@@ -1,0 +1,103 @@
+id: rail-electrification
+title: Rail electrification
+summary: >
+  Electric vs diesel rail — how much rail transport runs on electricity and how the
+  electric share evolves.
+
+when_to_use:
+  - "electrify railways / rail electrification"
+  - "electric trains vs diesel trains"
+  - "rail transport energy demand"
+  - "shift rail freight to electric"
+  - "train electricity demand"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        Rail appears as two flat (constant p_set) Loads per node: "rail transport
+        electricity" on the AC bus and "rail transport oil" on the oil bus. The split
+        is p_set_elec = nodal 'electricity rail' and p_set_oil = 'total rail' -
+        'electricity rail', both from the nodal energy totals (population-weighted
+        country energy totals).
+      mechanism: >
+        add_rail_transport in rule prepare_sector_network reads the nodal energy
+        totals CSV (produced by rule prepare_heat_data as
+        nodal_energy_heat_totals_*, population-disaggregating the country
+        energy_totals). Upstream, 'total rail' and 'electricity rail' come from UNSD
+        energy balances (rule build_base_energy_totals, calc_sector) and are
+        projected to the planning horizon in rule prepare_energy_totals by
+        country-level CAGR data files (data/demand/efficiency_gains_cagr.csv and
+        data/demand/growth_factors_cagr.csv, which both carry 'total rail' and
+        'electricity rail' columns). IMPORTANT: the electric/diesel rail split is
+        entirely DATA-driven — no config key in the sector block controls it (unlike
+        road's land_transport_electric_share or shipping's hydrogen share).
+      not_covered: >
+        No config lever for the rail electrification level, no hourly rail demand
+        profile (flat load), no rail-infrastructure (catenary) investment, no
+        hydrogen or battery trains, no distinction of freight vs passenger rail.
+      provenance: "scripts/prepare_sector_network.py:add_rail_transport"
+
+    levers:
+      - key: sector.enable.rail_transport
+        effect: "Master switch: skips add_rail_transport entirely when false."
+        default: "true"
+        provenance: "Snakefile:prepare_sector_network"
+      - key: demand_data.base_year
+        effect: "Base year of the UNSD balance the rail demand (and its electric share) is taken from; CAGR projection spans base_year to planning horizon."
+        default: "2019"
+        provenance: "Snakefile:build_base_energy_totals"
+
+    boundary:
+      - variant: "Include/exclude rail demand"
+        rung: L0
+        note: "sector.enable.rail_transport (default true)."
+      - variant: "Change the pace of rail growth / electrification trend"
+        rung: L3
+        note: >
+          Edit the 'total rail' and 'electricity rail' columns of
+          data/demand/growth_factors_cagr.csv and efficiency_gains_cagr.csv (per
+          country, DEFAULT row as fallback) — a data edit, not config; the split then
+          flows through rule prepare_energy_totals automatically.
+      - variant: "Force a target electric-rail share for a scenario year"
+        rung: L2
+        note: >
+          No share key exists; the smallest edit is in add_rail_transport — scale
+          p_set_elec/p_set_oil by a target share (and, to be consistent, add a config
+          key read via options). Alternatively back-solve the CAGR values (L3).
+      - variant: "Hourly rail demand profile instead of a flat load"
+        rung: L2
+        note: "add_rail_transport sets scalar p_set; supply a time series there (data for the shape is on you)."
+      - variant: "Hydrogen or battery trains"
+        rung: L2
+        note: "New load on the H2 bus / new storage logic carved out of the oil share inside add_rail_transport — pattern-copy the two existing n.madd Load calls."
+      - variant: "Catenary infrastructure costs for electrifying lines"
+        rung: L5
+        note: "No rail network representation exists; bespoke modelling."
+
+    where:
+      - change: "Rail loads and their electric/oil split"
+        anchor: "scripts/prepare_sector_network.py function add_rail_transport (rule prepare_sector_network)"
+        provenance: "scripts/prepare_sector_network.py:add_rail_transport"
+      - change: "Projection of 'total rail' / 'electricity rail' to the planning horizon"
+        anchor: "rule prepare_energy_totals -> scripts/prepare_energy_totals.py (CAGR inputs efficiency_gains_cagr.csv, growth_factors_cagr.csv)"
+        provenance: "Snakefile:prepare_energy_totals"
+      - change: "Extraction of base rail energy from UNSD balances"
+        anchor: "rule build_base_energy_totals -> scripts/build_base_energy_totals.py function calc_sector"
+        provenance: "scripts/build_base_energy_totals.py:calc_sector"
+      - change: "Nodal disaggregation feeding add_rail_transport"
+        anchor: "rule prepare_heat_data (outputs nodal_energy_totals consumed by rail/agriculture)"
+        provenance: "Snakefile:prepare_heat_data"
+
+    data_dependencies:
+      - input: "UNSD energy balances (rail electricity and total rail consumption per country)"
+        required_for: "base-year rail demand and electric share"
+        availability: "must be built (downloaded via build_base_energy_totals); coverage/quality region-dependent"
+      - input: "data/demand/growth_factors_cagr.csv and data/demand/efficiency_gains_cagr.csv ('total rail', 'electricity rail' columns)"
+        required_for: "projecting rail demand and its split to the planning horizon"
+        availability: "exists by default (DEFAULT row used for countries without a specific row)"
+      - input: "clustered population layout (pop_layout)"
+        required_for: "distributing national rail demand to nodes"
+        availability: "must be built (standard sector workflow output)"

@@ -1,0 +1,166 @@
+paper: "2021_Parzen_beyond-cost-reduction-value-energy-storage.pdf"
+tier: 2
+model_used: >
+  PyPSA-Eur, electricity-only, 181 nodes, hourly resolution, single weather year,
+  greenfield wind/solar with existing conventional fleet, solved with Gurobi
+  (~13h, 8 cores, 180 GB RAM).
+scope: >
+  Introduces the "market potential method" (MPM) — a system-value approach that
+  reads optimised storage deployment quantities as technology-valuation signals —
+  and applies it to compare hydrogen and battery storage designs in a 100%
+  emission-free European power system, showing that LCOS-based cost ranking
+  can contradict system-value ranking.
+methods:
+  - slug: storage-sizing-and-duration
+    role: extends
+    evidence: >
+      The paper's core experimental contribution is three storage scenarios that
+      vary the energy-to-power (EP) ratio constraint: "Fix EP ratio" (H2 fixed at
+      100 h, battery at 4 h), "Variable EP ratio" (charger, store and discharger
+      each independently sized), and "H2-Hub" (two H2 electrolyser/fuel-cell
+      technologies sharing one storage tank). Sec. 3.3 and Fig. 5 describe the
+      scenario design; Appendix Eq. 15 gives the fix-EP constraint via T_s.
+    procedure_notes: >
+      The variable-sizing scenario removes the T_s multiplier so charger,
+      store and discharger are optimised independently. The H2-Hub scenario
+      additionally allows two different electrolyser/fuel-cell pairs to share
+      the same tank (cross-operation). Results (Table 3) show ~10% total system
+      cost reduction (152.9 → 139.9 B€/yr) when switching from fixed to variable
+      EP ratio. EP-ratio distributions across 181 buses reported in Fig. 7,
+      showing H2 chargers at 20–200 h and batteries at 2–4 h.
+    variant: variable-vs-fixed-ep-ratio
+    parameters: {H2_fixed_EP_h: 100, battery_fixed_EP_h: 4, nodes: 181, discount_rate_pct: 7}
+
+  - slug: shadow-prices-and-marginal-values
+    role: canonical-use
+    evidence: >
+      "Scarcity signals relevant to seasonal balancing are considered through
+      'unconstrained' locational marginal prices, also known as nodal prices.
+      These nodal prices can increase to extremely high prices such as more than
+      20000 €/kWh and let energy storage be optimised as a seasonal reserve."
+      (Sec. 3.3). The modelled LCOS is derived from these spatially resolved
+      nodal prices (Sec. 4.2, Fig. 8).
+    procedure_notes: >
+      Nodal prices serve as the endogenous electricity price signal for the
+      modelled LCOS calculation; full load hours and EP ratios are also taken
+      from model outputs rather than assumed exogenously (contrast with the
+      static LCOS in Table 4). The spatial distribution of prices and full load
+      hours is visualised per bus in Fig. 8.
+    variant: null
+    parameters: {}
+
+  - slug: linearised-optimal-power-flow
+    role: routine-use
+    evidence: >
+      "PyPSA-Eur typically includes a linearised power flow constraint
+      modelling the physicality of the power transmission network… This is done
+      by including Kirchhoff's Current Law and Kirchhoff's Voltage Law
+      constraints." (Appendix, after Eq. 10). The cycle-basis formulation is
+      cited from [74] (Hörsch et al. 2018).
+    procedure_notes: >
+      Cycle-basis linearised AC power flow (Eq. 11, xl susceptance). Losses
+      are neglected (resistance disregarded). Applied at 181-node resolution
+      for the European transmission network based on ENTSO-E data.
+    variant: cycle-flow
+    parameters: {nodes: 181}
+
+  - slug: transmission-expansion-cooptimisation
+    role: routine-use
+    evidence: >
+      "The network expansion is constrained to a volume of 25% compared to
+      the existing network capacity, acknowledging the increasing political
+      difficulty to develop new transmission lines." (Sec. 3.3).
+    procedure_notes: >
+      Line and link capacity are co-optimised with generation and storage under
+      a 25% volume cap on total new transmission relative to existing capacity.
+      Both HVAC and HVDC lines are included as investment variables (Eq. 3).
+    variant: null
+    parameters: {volume_cap_pct: 25}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "To keep the comparability between scenarios and a decent amount of market
+      potential for energy storage, we set in all scenarios the CO2 emission
+      reduction target to 100%." (Sec. 3.3). The constraint is Eq. 18 in the
+      Appendix.
+    procedure_notes: >
+      A single equality/inequality CO2 cap enforcing 100% GHG reduction is
+      applied uniformly across all three storage scenarios. The cap enters as
+      a linear constraint on generator emissions tracked by carrier variable q.
+    variant: null
+    parameters: {co2_reduction_pct: 100}
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "In terms of market economics, the model assumes perfect competition and
+      foresight for one reference year." (Sec. 3.2). Technology data represent
+      a 2030 scenario (Tables 1–2).
+    procedure_notes: >
+      Single target-year (2030) overnight greenfield optimisation for wind and
+      solar; existing conventional fleet (nuclear, biomass, hydro, run-of-river)
+      held fixed at current capacities. No pathway or myopic multi-period
+      optimisation.
+    variant: overnight
+    parameters: {target_year: 2030}
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "Atlite is one of the tools that are implemented in PyPSA to quantify for
+      instance the land availability for solar and wind power plants by
+      incorporating protected areas and land coverage classification data to
+      reduce the renewable installation potential." (Appendix, after Eq. 7, citing
+      [73] Hofmann et al. 2021). Also: "Renewable availability constraints which
+      restrict solar and wind technical potential based on environmental protection
+      areas, land use coverage and distance criteria." (Sec. 3.2).
+    procedure_notes: >
+      ERA5 weather data at ~20×20 km rasterised globally; atlite used to derive
+      capacity factor time series and installable potentials. Protected-area and
+      land-cover exclusions applied. Single weather year chosen.
+    variant: null
+    parameters: {weather_data: ERA5, resolution_km: 20}
+
+  - slug: discounting-and-cost-of-capital
+    role: routine-use
+    evidence: >
+      Discount rate of 7% is listed in Table 1 for all power-related storage
+      components. The objective function (Eq. 3) uses annualised capital cost c,
+      with the annuity calculation implied by the lifetime and discount rate inputs
+      in Tables 1–2.
+    procedure_notes: >
+      A uniform 7% discount rate is applied across all technologies. Capital
+      costs are annualised before entering the objective. The static LCOS
+      calculation (Table 4, Eq. 1) also discounts total cost and discharged
+      energy over the technology lifetime.
+    variant: null
+    parameters: {discount_rate_pct: 7}
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      "A spatial resolution of 181 nodes matched with an hourly resolution
+      across an entire year accounts for the complex spatio-temporal patterns
+      of renewables and grid congestion events that shape investment decisions."
+      (Sec. 3.2, citing [55] Frysztacki et al. 2021).
+    procedure_notes: >
+      181 nodes aggregated from the full ENTSO-E network. Load time series
+      redistributed by GDP and population per region. No sensitivity on node
+      count is run in this paper; the single resolution is chosen as
+      computationally feasible given ~13 h solve time.
+    variant: null
+    parameters: {nodes: 181, temporal_resolution_h: 1}
+
+unmatched_methods:
+  - name: "market-potential-method"
+    evidence: >
+      The paper's primary contribution is the "market potential method" (MPM),
+      which reads the optimised installed capacity (MPI, MW or MWh) of each
+      storage component from model output as a technology-valuation signal,
+      then applies decision criteria (threshold rule, bigger-is-better) across
+      multiple scenarios to rank competing storage designs (Sec. 3.1, Fig. 2–3,
+      Eq. 2). This is a post-processing valuation framework built on top of
+      standard LP optimisation results, not a modification to the optimisation
+      itself. No existing slug covers systematic use of deployment quantities
+      from a solved LP as a technology-ranking metric.

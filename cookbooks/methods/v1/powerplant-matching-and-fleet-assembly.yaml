@@ -1,0 +1,1537 @@
+id: powerplant-matching-and-fleet-assembly
+title: "Power-plant matching and fleet assembly (record linkage across plant databases)"
+summary: >
+  Reconciling several overlapping, mutually inconsistent power-plant registers into one
+  deduplicated plant list with locations, carriers, capacities and commissioning dates,
+  by probabilistic record linkage and per-attribute reliability arbitration.
+question: >
+  What generation fleet actually exists in my study region today, where is each plant,
+  what does it burn, how big is it and when was it built?
+aliases:
+  - "powerplantmatching"
+  - "PPM"
+  - "power plant matching"
+  - "record linkage"
+  - "deduplication"
+  - "entity resolution"
+  - "database fusion"
+  - "power plant database merging"
+  - "fuzzy matching"
+  - "Duke"
+  - "naive Bayes record linkage"
+  - "gross-to-net capacity"
+  - "installed capacity statistics"
+  - "IRENASTAT"
+  - "Global Power Plant Database"
+  - "Global Energy Monitor"
+  - "OPSD"
+  - "custom powerplants"
+when_to_use:
+  - "where does the model get today's power plants from"
+  - "the fleet in my country looks wrong — too much gas, no coal"
+  - "our national plant register disagrees with the model's plant list"
+  - "can I supply my own list of power stations"
+  - "the model has no existing capacity at all in my country"
+  - "why is the same plant in there twice"
+  - "are these capacities gross or net"
+  - "how does the model know each plant's commissioning year"
+  - "I need the 2020 fleet, not whatever the default is"
+  - "our installed wind and solar totals don't match the national statistics"
+  - "does this work outside Europe"
+  - "which power plant database does this use, and how current is it"
+  - "how are plants assigned to network nodes"
+family: tooling-and-reproducibility
+prevalence:
+  papers: 18
+  tier1: 12
+  tier2: 6
+  sweep_hits: 27
+  basis: >
+    Hand-coded pass 1 over all 100 PDFs (2026-07-25) coded 18 papers as resting on this
+    method. The regex screen returned 27 and OVER-counts moderately: "installed
+    capacity" and "existing capacity" match papers that inherit a precompiled network
+    and never touch the fleet pipeline. The role split is the tell — 2 `defines`, 1
+    `extends`, 15 `routine-use`, 0 `critiques`. This is the most universally USED and
+    least DISCUSSED method in the book: essentially every PyPSA study consumes
+    powerplantmatching output, almost none reports what it did to it, and not one paper
+    in the corpus critiques it. `pitfalls` below is therefore built from the two
+    `defines` papers' own honest self-assessment (Gotzens's validation tables) plus what
+    the code demonstrably does, not from a critique literature that does not exist.
+    `EVIDENCE_INDEX.md` flags Neumann 2023 as a mention-only suspect; it is KEPT,
+    because "existing run-of-river, hydro-electric dams, pumped-hydro storage plants are
+    retrieved from powerplantmatching" in an otherwise greenfield study is a real and
+    named use — a narrow one, which is why it anchors the `hydro-only-fleet` variant
+    rather than a broader claim.
+procedure:
+  - step: >
+      Choose the source databases and the order of trust. The corpus's tooling uses 6-10
+      open registers with per-source reliability scores: at powerplantmatching 0.8.1 the
+      default matching set is ENTSOE, GEO, GPD, JRC, OPSD, BEYONDCOAL, GEM, MASTR, EESI,
+      GHR, scored 1 (CARMA, deprecated) to 6 (GEM). Each source also carries a per-source
+      pre-filter query, because sources are known to be wrong in specific
+      country/fueltype cells (e.g. GEO is excluded for Oil and Nuclear entirely).
+    handle: "matching_sources / fully_included_sources / <SOURCE>.reliability_score"
+    provenance: "powerplantmatching/collection.py:matching_sources; powerplantmatching/matching.py:reliability_score"
+  - step: >
+      Normalise every source into one canonical schema: Name, Fueltype, Technology, Set,
+      Country, Capacity, Efficiency, DateIn, DateRetrofit, DateOut, lat, lon, Duration,
+      EIC, projectID. Fuel and technology strings are mapped through per-target regex
+      lists (target_fueltypes / target_technologies), and plant names are lowercased,
+      accent-stripped and stripped of corporate and unit-number tokens so that string
+      similarity means something.
+    handle: "clean_name / gather_specifications / gather_fueltype_info / gather_technology_info"
+    provenance: "powerplantmatching/cleaning.py:gather_specifications; powerplantmatching/cleaning.py:clean_name"
+  - step: >
+      Harmonise the capacity UNIT before comparing capacities. Some sources report gross
+      capacity (before own-consumption) and some net; the toolset flags this per source
+      (net_capacity: true|false) and rescales gross sources down by fuel- and
+      technology-specific factors derived from the German OPSD register's paired
+      BNetzA-net / UBA-gross entries. Skipping this systematically overstates thermal
+      capacity by a few percent per plant and biases any comparison against reported net
+      statistics.
+    handle: "scale_to_net_capacities(df, is_gross=not config[SRC]['net_capacity'])"
+    provenance: "powerplantmatching/heuristics.py:scale_to_net_capacities; powerplantmatching/heuristics.py:gross_to_net_factors"
+  - step: >
+      Deduplicate WITHIN each source first (vertical aggregation): units of the same
+      station appear as separate rows, so cluster them by name/fuel/technology/capacity/
+      geoposition similarity and sum their capacities into one plant. Done country-wise
+      to bound the comparison set. This step is separate from and prior to cross-database
+      linkage, and its similarity threshold is a different number (0.96) from the
+      cross-database one.
+    handle: "aggregate_units -> duke(Deleteduplicates.xml, threshold 0.96) -> cliques"
+    provenance: "powerplantmatching/cleaning.py:aggregate_units; powerplantmatching/cleaning.py:cliques"
+  - step: >
+      Link candidate duplicates ACROSS database pairs with a naive-Bayes score over five
+      comparators: JaroWinklerTokenized on NAME (low 0.09 / high 0.99), QGram on FUELTYPE
+      (0.09/0.7) and COUNTRY (0.0/0.53), Numeric on CAPACITY (0.3/0.75), and a
+      Geoposition comparator with max-distance 5000 m (0.1/0.8). Accept a pair above
+      threshold 0.965. So the "same plant" decision is a weighted vote of name
+      similarity, geographic distance and capacity agreement — not any one of them.
+    handle: "compare_two_datasets -> duke(Comparison.xml, threshold 0.965) -> best_matches"
+    provenance: "powerplantmatching/matching.py:compare_two_datasets; powerplantmatching/duke.py:duke; powerplantmatching/matching.py:best_matches"
+  - step: >
+      Chain the pairwise links into cross-database cliques, so a plant confirmed by three
+      sources becomes one multi-source record rather than three pairs. A record entering
+      the MATCHED set requires confirmation by at least two sources; single-source
+      records only enter if their source is listed in fully_included_sources.
+    handle: "cross_matches / link_multiple_datasets / extend_by_non_matched"
+    provenance: "powerplantmatching/matching.py:cross_matches; powerplantmatching/heuristics.py:extend_by_non_matched"
+  - step: >
+      Resolve each clique to ONE entry, attribute by attribute, by reliability rank
+      rather than by majority: sort the contributing sources by reliability_score and
+      take the first non-null value per column — except DateIn (min), DateRetrofit (max),
+      DateOut (max) and projectID (union of all source ids, which is what makes the
+      result auditable back to the sources). Fueltype 'Other' and Set 'PP' are
+      deliberately demoted so a more specific claim wins.
+    handle: "reduce_matched_dataframe (props_for_groups: first / min / max)"
+    provenance: "powerplantmatching/matching.py:reduce_matched_dataframe"
+  - step: >
+      Fill the dates the sources do not carry. Commissioning years are missing for a
+      large fraction of open-source-only matches, so they are imputed; decommissioning
+      years are derived from DateIn plus a per-fuel lifetime. Every vintage, retirement
+      and brownfield claim downstream rests on this imputation — see
+      `brownfield-and-capacity-vintaging`.
+    handle: "fill_missing_commissioning_years / fill_missing_decommissioning_years (fuel_to_lifetime)"
+    provenance: "powerplantmatching/heuristics.py:fill_missing_commissioning_years; powerplantmatching/heuristics.py:fill_missing_decommissioning_years"
+  - step: >
+      Reconcile the plant-list TOTAL against reported national statistics, because a
+      plant list built from registers is systematically short: recent additions and
+      small units are missing. Two mechanisms in the corpus — rescale the matched plants
+      up to country totals, or keep the plants and add the residual as new capacity
+      distributed across the region by a heuristic. This is the only step that brings
+      wind and solar in at all, since VRE is excluded from the matching.
+    handle: "rescale_capacities_to_country_totals; pm.data.IRENASTAT()"
+    provenance: "powerplantmatching/heuristics.py:rescale_capacities_to_country_totals; powerplantmatching/data.py:IRENASTAT"
+  - step: >
+      Filter the fleet to the study's base year with a date query on DateIn/DateOut, and
+      overlay locally-known corrections: announced phase-outs, committed projects, plants
+      the registers miss. Both models expose this as a pandas query plus a user CSV.
+    handle: "electricity.powerplants_filter; electricity.custom_powerplants"
+    provenance: "scripts/build_powerplants.py:powerplants_filter; scripts/build_powerplants.py:add_custom_powerplants"
+  - step: >
+      Assign each plant to a network bus. Spatial join to the clustered region polygon,
+      then nearest-neighbour within the SAME COUNTRY for the leftovers, with a distance
+      cap; plants that still fail are dropped and their capacity logged. Cross-border
+      misassignment is the failure this country-wise structure exists to prevent.
+    handle: "map_to_country_bus (sjoin per country, then sjoin_nearest max_distance=10000)"
+    provenance: "scripts/build_powerplants.py:map_to_country_bus"
+  - step: >
+      Aggregate the plant list to network components: group by (bus, carrier), sum
+      capacity, capacity-weight the efficiency and cost attributes, and optionally split
+      each carrier into efficiency quantile classes so a bus's coal fleet is not one
+      average plant. Then attach as non-extendable capacity with build_year and lifetime.
+    handle: "load_and_aggregate_powerplants (clustering.consider_efficiency_classes) -> attach_conventional_generators"
+    provenance: "scripts/add_electricity.py:load_and_aggregate_powerplants; scripts/add_electricity.py:attach_conventional_generators"
+  - step: >
+      Validate the assembled fleet against an independent national total per country and
+      per technology, and report the residual. Gotzens benchmarks against ENTSO-E SO&AF
+      2016 and against a hand-linked German BNetzA/UBA subset (153/181 correct, 0 wrong);
+      Parzen benchmarks against IRENA and USAID and reports 165 of 229 GW matched for
+      Africa with 2-15% per-technology error. NEITHER model performs this check in the
+      workflow — it is the missing acceptance test on the fleet.
+    handle: null
+    provenance: null
+variants:
+  - id: multi-database-record-linkage
+    what: >
+      The full method as the tooling implements it: N open registers, per-source
+      reliability scores, within-source unit aggregation then cross-source naive-Bayes
+      linkage, reliability-ranked claim reduction, two-source confirmation requirement.
+      This is what both models get by default and what every `routine-use` paper below is
+      actually consuming. Gotzens's own numbers set the expectation: 6014 matched records
+      from six open sources, rising to 14348 when the proprietary WEPP register is added.
+    papers:
+      - "2018_Hoersch_PyPSA-Eur_EnergyStratRev.pdf"
+      - "2019_Gotzens_powerplantmatching-power-plant-databases_ESR.pdf"
+      - "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+      - "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+  - id: gross-to-net-rescaling
+    what: >
+      The under-reported correction that makes capacities from different registers
+      comparable at all: gross-reporting sources are scaled down by fuel- and
+      technology-specific net/gross ratios fitted to the German OPSD register's paired
+      BNetzA-net / UBA-gross entries, with a per-fueltype mean as the catch-all for
+      unseen technologies. Ratios are capped at 1.0 to drop obvious data errors. A few
+      percent per thermal plant, systematically in one direction, and invisible in the
+      output — which is why it belongs in the procedure rather than in a footnote.
+    papers:
+      - "2019_Gotzens_powerplantmatching-power-plant-databases_ESR.pdf"
+  - id: osm-extended-global-matching
+    what: >
+      Add OpenStreetMap as an extra source for regions the European registers do not
+      cover, extracted and translated into the canonical schema, and restrict the
+      matching set to the three global-scope registers. This is the pypsa-earth
+      contribution and the reason the method travels outside Europe at all — but note
+      the OSM source is wired and then left DISABLED by default (see the earth section).
+    papers:
+      - "2021_Kirli_PyPSA-meets-Africa-open-electricity-network.pdf"
+      - "2022_Parzen_PyPSA-Earth-global-open-energy-model-Africa_ApplEnergy.pdf"
+      - "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+  - id: statistics-scaling-for-vre
+    what: >
+      Do NOT try to match wind and solar plant-by-plant — the registers exclude them and
+      the unit counts are hopeless. Instead take national installed totals from annual
+      statistics (IRENASTAT is the in-package source; national TSO data where available)
+      and distribute the total across the region's buses by a heuristic. The corpus does
+      this in essentially every paper that has existing VRE at all, and it is a
+      different method with a different error structure from plant matching: the national
+      TOTAL is right and the SPATIAL DISTRIBUTION is invented.
+    papers:
+      - "2022_Victoria_Speed-technological-transformations_Joule.pdf"
+      - "2023_Zeyen_Endogenous-learning-green-hydrogen_NatComms.pdf"
+      - "2025_Franken_Power-system-benefits-transport-heating-flexibility-GB_ApplEnergy.pdf"
+      - "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+  - id: custom-powerplants-override
+    what: >
+      Bring your own plant list, either concatenated onto the matched fleet or REPLACING
+      it entirely, with explicit DateIn/DateOut. The mechanism for national registers the
+      matched fleet is too coarse for (Marktstammdatenregister, REE/ESIOS), for announced
+      phase-out schedules, and for committed projects with a future commissioning year.
+      Off by default in both models and the single highest-value lever on this card.
+    papers:
+      - "2024_Gallego-Castillo_PyPSA-Spain-extension-PyPSA-Eur_ESR.pdf"
+      - "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+      - "2025_Che_space-based-solar-power-european-decarbonization.pdf"
+  - id: national-register-spatial-correction
+    what: >
+      Keep the matched national totals but replace the model's SPATIAL distribution with
+      sub-national official data. PyPSA-Spain takes NUTS-2 installed capacity for wind,
+      solar PV, CCGT and nuclear from the Spanish TSO (ESIOS API) and reallocates, with
+      two implemented adjustment modes — proportional (scale to initial values) and
+      additional (flat increment to non-zero nodes). The right answer whenever the
+      question is regional and the fleet's node assignment is doing the work.
+    papers:
+      - "2024_Gallego-Castillo_PyPSA-Spain-extension-PyPSA-Eur_ESR.pdf"
+  - id: hydro-only-fleet
+    what: >
+      Use the matched fleet for ONE purpose only — existing run-of-river, reservoir and
+      pumped hydro, which no greenfield study can honestly build from scratch — and run
+      everything else greenfield. Cheap, defensible, and the pattern to recommend when
+      the user's question is about future investment and today's thermal stack would only
+      pre-empt it. Requires the JRC hydro database, which is the highest-reliability
+      source in the matching set (score 5) precisely because hydro is well registered.
+    papers:
+      - "2023_Neumann_Broad-Ranges-Investment-Robust_iScience.pdf"
+      - "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+  - id: manual-fleet-assembly
+    what: >
+      The non-European fallback: skip matching, hand-build the plant list. Set
+      `custom_powerplants: "replace"` (earth) or `powerplants_filter: false` plus
+      `custom_powerplants: true` (eur) and supply the full canonical-schema CSV yourself.
+      Not a degraded variant but the correct one wherever the registers are thin — and
+      the reason `data_dependencies` on the earth section is the field to read first.
+    papers:
+      - "2022_Parzen_PyPSA-Earth-global-open-energy-model-Africa_ApplEnergy.pdf"
+      - "2024_Gallego-Castillo_PyPSA-Spain-extension-PyPSA-Eur_ESR.pdf"
+  - id: exogenous-capacity-harmonisation
+    what: >
+      Reconcile the matched fleet against an EXTERNAL model's capacities rather than
+      against statistics: filter by planned decommissioning, then scale the database down
+      proportionally to match the coupling model's pre-investment capacity, and let the
+      energy model endogenously site the remainder if the external capacity exceeds the
+      database total. Odenweller's REMIND-PyPSA coupling does exactly this, and it makes
+      proportional scale-down the operative representation of early retirement. See
+      `soft-linking-with-iam`.
+    papers:
+      - "2026_Odenweller_REMIND-PyPSA-Eur_ProgEnergy.pdf"
+literature:
+  # ── the two papers that make fleet assembly the subject ─────────────────────
+  - paper: "2019_Gotzens_powerplantmatching-power-plant-databases_ESR.pdf"
+    tier: 2
+    role: defines
+    note: >
+      The method paper, and the one to quote for every number on this card. Introduces
+      powerplantmatching as a four-step pipeline: (1) a data module translating each
+      source to the canonical tidy schema (Name, Fueltype, Technology, Set, Country,
+      Capacity, YearCommissioned, lat, lon), (2) within-source unit aggregation into
+      plants by naive-Bayes similarity on name/fuel/location at a 98.5% threshold, (3)
+      cross-database linkage with the same comparator at different weights, chained
+      iteratively, (4) claim reduction by a per-source RELIABILITY table (OPSD highest,
+      CARMA lowest) with modal name/fuel, median capacity and mean coordinates as tie
+      breaks — and the rule that a record only enters the final dataset if at least two
+      databases confirm it. Six open sources (CARMA, ENTSOE, ESE, GEO, OPSD, WRI) plus
+      optionally the proprietary WEPP; wind and solar excluded. Scope EU28 + CH + NO
+      minus CY/MT, base year 2016. The headline comparison is the one to relay to users:
+      6014 matched records from open sources alone versus 14348 with WEPP. Validated
+      against ENTSO-E SO&AF national statistics and against a hand-linked German
+      BNetzA/UBA subset (153 of 181 links correct, 0 wrong). Also the source of this
+      card's `gross-to-net-rescaling` variant (Sec. 2.3, Fig. 3): net/gross correction
+      factors per fuel and technology fitted to the German paired register. No model is
+      run in the paper — it is tooling plus a data-quality assessment, which is exactly
+      why it is the only honest critique source this card has.
+  - paper: "2018_Hoersch_PyPSA-Eur_EnergyStratRev.pdf"
+    tier: 1
+    role: defines
+    note: >
+      Brings the method into the PyPSA family and states the design in one sentence worth
+      reusing verbatim: PPM "achieves good coverage by (1) standardising the records of
+      several freely available databases, (2) linking them using a deduplication and
+      record linkage application and (3) reducing the connected claims about fuel type,
+      technology, capacity and location to the most likely ones". Seven databases (OPSD,
+      ENTSO-E PPL, ESE, GEO, CARMA, GPD), the Duke Java library run in BOTH modes —
+      deduplication within a source and record linkage across source pairs — with
+      Naive-Bayes probability over Jaro, Q-gram, numeric and geo comparators at threshold
+      0.985. Cliques in the resulting directed graph are aggregated as single plants;
+      fuel type by majority vote, capacity by median, location by mean lat/lon. Result:
+      3501 plants, 663 GW for the ENTSO-E area. Note the arbitration rule differs from
+      Gotzens's reliability ranking — the same pipeline has been re-specified since, and
+      the code at 0.8.1 follows Gotzens.
+  # ── the global extension ───────────────────────────────────────────────────
+  - paper: "2022_Parzen_PyPSA-Earth-global-open-energy-model-Africa_ApplEnergy.pdf"
+    tier: 2
+    role: extends
+    note: >
+      The one paper in the corpus that extends the method rather than consuming it, and
+      the direct evidence for earth's whole section: "the existing powerplantmatching
+      tool has been extended to include additional datasets, such as OpenStreetMap, to
+      fine-tune the African model". States the constraint that governs everything outside
+      Europe — of the sources available, only GEO, GPD and IRENA have GLOBAL scope, so OSM
+      is added as a new optional source precisely where data is sparse. Validation against
+      IRENA and USAID country statistics: 165 GW matched against 229 GW reported, 2-15%
+      error per technology, with coal and gas deviations attributed to recent additions
+      not yet in the open registers. Those two numbers are the honest expectation to set
+      for any non-European fleet: roughly three quarters of reported capacity, found.
+  # ── the roadmap that chose the tool ────────────────────────────────────────
+  - paper: "2021_Kirli_PyPSA-meets-Africa-open-electricity-network.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      The pypsa-earth roadmap, included because it records the TOOL SELECTION decision
+      and its stated basis: "the database [GPPD] can be integrated with PyPSA using the
+      powerplantmatching tool [30]. The latter also enables integration with other
+      databases", with GPPD coverage quoted as 80-100% of installed capacity for the
+      conventional categories (coal, gas, oil, hydro). No model is run — an OSM
+      substation extraction (2721 substations) is the only implemented result. Useful as
+      the citation for "why GPD" and as a reminder that the 80-100% figure is a
+      pre-implementation claim, superseded by Parzen's measured 165/229 GW.
+  # ── conventional fleet as the brownfield seed (the dominant use) ───────────
+  - paper: "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The clearest statement of the standard scope split in a sector-coupled study: "for
+      conventional electricity generators, PyPSA-Eur-Sec uses the open
+      powerplantmatching tool, which merges datasets from a variety of sources",
+      supplying location, technology, fuel type, AGE and capacity for coal, lignite, oil,
+      OCGT, CCGT and nuclear — held non-extendable except hydro — while existing wind and
+      solar are deliberately NOT included because the data is "too fragmented". That
+      exclusion is the method's real boundary and the reason `statistics-scaling-for-vre`
+      is a separate variant rather than a detail. 181 nodes, 3-hourly, greenfield
+      otherwise; existing hydro (ror, reservoir, PHS) at fixed capacity with ERA5-runoff
+      inflow.
+  - paper: "2022_Victoria_Speed-technological-transformations_Joule.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The reference for the two-track fleet: "for conventional technologies, i.e. OCGT,
+      CCGT, coal, lignite, nuclear and gas CHP, installed capacities in every country in
+      2020 and commissioning dates are retrieved from powerplantmatching", with wind and
+      solar 2020 capacities taken from annual statistics instead. The COMMISSIONING DATES
+      are the load-bearing part — they are what makes myopic decommissioning by lifetime
+      possible at all, and they are the field Gotzens shows is most often missing.
+      Nuclear lifetime overridden to 60 years.
+  - paper: "2020_Victoria_Early-decarbonisation-pays-off_NatComms.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Notable for how it cites the fleet: "the database of existing power plants was
+      described and validated in a separate publication", i.e. the study delegates fleet
+      assembly wholesale to Gotzens and treats the per-technology-per-country capacity
+      table as an input. The pattern to expect — and the reason this card exists, because
+      a delegated data step is a step nobody in the corpus reports having checked. The
+      2020 capacities seed the brownfield initialisation whose stranded-CCGT result is the
+      paper's headline; see `brownfield-and-capacity-vintaging`.
+  - paper: "2023_Zeyen_Endogenous-learning-green-hydrogen_NatComms.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The explicit two-source formulation in one sentence: "existing generation
+      capacities (lignite, coal, gas, hydro, nuclear, solar, offshore and onshore wind)
+      are taken from the IRENA 2020 report AND the open-source package
+      powerplantmatching" — statistics for the VRE half, plant matching for the thermal
+      half, which is exactly the split both models implement in code. Single-node Europe
+      with six representative regions, seven investment periods 2020-2050; the fleet is
+      the 2020 brownfield starting point for the learning trajectory.
+  - paper: "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      "The existing power plant fleet data is based on the powerplantmatching package" —
+      plus the correction step that matters more than the matching: coal and nuclear
+      decommissioning plans taken from beyondfossilfuels.org and world-nuclear.org and
+      applied on top. That is `custom-powerplants-override` done for the right reason
+      (announced closures are POLICY data, absent from every plant register by
+      construction) and it is L1 work with a large near-term effect. The paper does not
+      describe the matching procedure at all, which is representative.
+  - paper: "2025_Che_space-based-solar-power-european-decarbonization.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Standard use with an explicitly stated post-filter: "data for power plants is
+      sourced using the open-access powerplantmatching tool, which compiles datasets from
+      multiple sources... plant location, technology type, fuel source, age, and
+      capacity", then for 2050 "we remove power plants with a DateOut extending beyond
+      2050 to ensure data consistency", with biomass and nuclear pinned at
+      p_nom_min = current p_nom and coal/oil/gas zeroed. The clean example of the fleet
+      being shaped by a DateOut query — i.e. `powerplants_filter` doing scenario work.
+  - paper: "2025_Franken_Power-system-benefits-transport-heating-flexibility-GB_ApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Plain-language description worth borrowing for an interview: "current-day
+      generation capacities are estimated by the Python library powerplantmatching.
+      Powerplantmatching harmonises different databases, and adds gas turbines, coal and
+      nuclear power plants along with hydropower, and their respective capacities and
+      geolocations to the model." Then the two-track split again: renewable totals scaled
+      and spatially distributed according to National Grid FES projections rather than
+      matched. 17 GB transmission zones on a PyPSA-Eur fork.
+  - paper: "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The single-country non-European application, and evidence that earth's pipeline
+      does run outside Europe: "the conventional electricity generators are obtained from
+      the powerplantmatching tool. Powerplantmatching uses various input sources as
+      OpenStreetMap2022, Global Energy Monitor, IRENA to download, filter and merge the
+      datasets. In this study, powerplantmatching is applied to Morocco delivering the
+      conventional power plants." No bespoke modification beyond standard source fusion —
+      note that the OSM source named here is the one earth's shipped config leaves
+      commented out, so this study enabled it or predates that default. Morocco is also
+      the best-graded country in earth's data-quality matrix (14 A grades), which is why
+      it works cleanly here and is not the case to generalise from.
+  - paper: "2025_Xiong_Modelling-High-Voltage-Grid-Open-Data_NatSciData.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Uses the fleet unchanged as a fixed input while varying the GRID representation:
+      "the model includes a stock of existing power plants (processed with the tool
+      powerplanmatching)". Included because it is the control case — when the fleet is
+      held constant and the topology varies, the fleet's node assignment
+      (map_to_country_bus) is silently doing part of the comparison, since a re-clustered
+      network re-assigns every plant. 318 NUTS2 nodes, 8760 hours, 2030.
+  - paper: "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      The most precisely specified fleet in the corpus and the one to copy for a
+      backtesting study: "both conventional generation capacities and hydropower
+      (run-of-river, reservoir hydro, pumped hydro storage) are based on the combined
+      database maintained at powerplantmatching v.0.7.1 for the year 2020 and were kept
+      constant across all simulations", while RENEWABLE capacities vary by year from IRENA
+      per-country data. Pinning the package VERSION is what makes the hindcast
+      reproducible and is the practice this book's `data.powerplants.version` lever
+      exists to support. Also flags what a fixed fleet omits for dispatch validation: no
+      outages modelled, nuclear capped by a country-specific annual capacity factor
+      instead. See `model-validation-and-backtesting`.
+  - paper: "2018_Weber_Counter-intuitive-CO2-caps_Energy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The single-source case: "the power plant database comes from the Open Power System
+      Data (OPSD) project", used as fixed installed capacity for a 128-node German
+      dispatch model, with no deduplication performed by the paper — it delegates to the
+      PyPSA-Eur pipeline. Worth citing to a user who asks whether one good national
+      register beats a match of several: for one country with a strong register, yes, and
+      that is what `custom-powerplants-override` is for.
+  - paper: "2024_Gallego-Castillo_PyPSA-Spain-extension-PyPSA-Eur_ESR.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      The best in-corpus worked example of correcting the fleet's SPATIAL distribution
+      rather than its totals. Inherits PyPSA-Eur's pipeline ("data of power plants from
+      ENTSO-E, WEPP, OPSD, etc., combined and curated by the Python package
+      powerplantmatching") and then augments it with Spanish TSO data from the ESIOS API
+      giving NUTS-2 installed capacity for wind, solar PV, CCGT and nuclear in 2022,
+      implementing two adjustment modes — proportional and additional — to replace the
+      "initial heuristic spatial distribution". That phrase is the honest name for what
+      `statistics-scaling-for-vre` produces, and this paper is the template for fixing it.
+  - paper: "2023_Neumann_Broad-Ranges-Investment-Robust_iScience.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The narrowest legitimate use, and the anchor for `hydro-only-fleet`: "existing
+      run-of-river, hydro-electric dams, pumped-hydro storage plants are retrieved from
+      powerplantmatching, a merged dataset of conventional power plants" — used ONLY for
+      hydro, as fixed non-extendable lower bounds, with the thermal and VRE fleet
+      greenfield. Flagged in EVIDENCE_INDEX as mention-only and kept deliberately: a
+      study that uses the fleet for exactly one carrier and says so is more informative
+      about the method's boundary than one that uses all of it and says nothing.
+  - paper: "2026_Odenweller_REMIND-PyPSA-Eur_ProgEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The fleet as a quantity to be HARMONISED against another model, which is a use no
+      other paper here makes. "Among other data sources, PyPSA-Eur retrieves renewable
+      potentials from the atlite package and power plants from the powerplantmatching
+      package"; then per REMIND timestep the plant database is filtered by planned
+      decommissioning and scaled DOWN proportionally to match REMIND's pre-investment
+      capacities, with PyPSA-Eur endogenously siting the excess when REMIND's capacity is
+      larger. Note what proportional scale-down means physically: early retirement
+      implemented as shrinking every plant a little rather than closing some — a
+      modelling convention to state explicitly. See `soft-linking-with-iam`.
+pitfalls:
+  - pitfall: >
+      Roughly half the fleet has no observed commissioning year when only open sources
+      are used. Gotzens measures it: without the proprietary WEPP register 47.36% of
+      entries and 55.82% of CAPACITY carry no YearCommissioned, falling to 10.68% /
+      6.33% with WEPP. Only three of the sources carry the field at all, so a record not
+      confirmed by one of those three gets an imputed date.
+    evidence: "2019_Gotzens_powerplantmatching-power-plant-databases_ESR.pdf"
+    note: >
+      Say what fraction of the capacity behind a retirement schedule had a real DateIn
+      before presenting one. Gotzens's own conclusion is that WEPP is "strongly needed"
+      if commissioning years are required — i.e. the fully-open configuration this book
+      rests on is exactly the one where half the build years are guesses. Detail on what
+      the imputation then does is in `brownfield-and-capacity-vintaging`.
+  - pitfall: >
+      The matched fleet is systematically SHORT of reported national capacity, and the
+      shortfall is not random: it is concentrated in recent additions and small units.
+      Parzen measures 165 GW matched against 229 GW reported for Africa (2-15% error per
+      technology), with coal and gas deviations attributed to plants too new to be in the
+      open registers.
+    evidence: "2022_Parzen_PyPSA-Earth-global-open-energy-model-Africa_ApplEnergy.pdf"
+    note: >
+      Never treat the plant list as the fleet. Compare its per-country per-carrier totals
+      against an independent statistic (IRENASTAT, ENTSO-E, the national TSO) BEFORE
+      solving — neither model does this for you — and close the gap deliberately, either
+      by scaling to totals or by `custom-powerplants-override`. A silently-short fleet
+      makes the optimiser build new capacity to cover load that existing plants already
+      serve.
+  - pitfall: >
+      Wind and solar are NOT matched. Both `defines` papers exclude VRE from the linkage
+      by construction, and the corpus's existing VRE comes from national statistics
+      distributed across buses by a heuristic. So the national TOTAL may be right while
+      the SPATIAL distribution is invented — a different error structure from the thermal
+      fleet, in the same table.
+    evidence: "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+    note: >
+      Treat existing VRE as `statistics-scaling-for-vre`, not as matched plants, and say
+      so in any regional result. If the question is regional, replace the distribution
+      with sub-national official data the way PyPSA-Spain does
+      (`national-register-spatial-correction`) — proportional or additive reallocation to
+      NUTS-2 capacities is a data edit, not a code change.
+  - pitfall: >
+      Gross versus net capacity is a systematic, one-directional error that never shows
+      up as a warning. Sources disagree about which they report; only the ones flagged
+      `net_capacity: false` are rescaled, and the correction factors are fitted to GERMAN
+      paired data and then applied everywhere, with a per-fueltype mean as the catch-all
+      for technologies the fitting set never saw.
+    evidence: "2019_Gotzens_powerplantmatching-power-plant-databases_ESR.pdf"
+    note: >
+      If a user supplies their own plant list, ask which convention it is in — a custom
+      CSV bypasses the rescaling entirely, so a gross-capacity national register dropped
+      in via `custom_powerplants` silently inflates the thermal fleet. And treat the
+      German-fitted factors as an assumption outside Germany, especially for technologies
+      absent from the German fleet.
+  - pitfall: >
+      A fleet snapshot is as of a date and knows nothing about policy. Announced
+      phase-outs, national closure schedules and committed projects are not in any plant
+      register by construction, so a run's near-term fossil fleet is routinely wrong in a
+      way a domestic expert spots instantly.
+    evidence: "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+    note: >
+      Bring closure schedules in deliberately — Riepin's external coal/nuclear lists from
+      beyondfossilfuels.org and world-nuclear.org are the pattern. This is L1 work
+      (`custom_powerplants` with explicit DateIn/DateOut) with a large effect on any study
+      whose target year is within about a decade.
+  - pitfall: >
+      Matching decisions are threshold decisions on a similarity score, so both error
+      directions exist and neither is reported downstream: two records of one plant that
+      fall below threshold become two plants (double-counted capacity), and two genuinely
+      distinct nearby units above threshold become one. The geo comparator's 5000 m
+      max-distance means co-located stations are especially exposed.
+    evidence: "2018_Hoersch_PyPSA-Eur_EnergyStratRev.pdf"
+    note: >
+      The output carries `projectID` as a dict of contributing source ids — use it. A
+      record with one source id in a two-source-confirmation configuration, or an
+      implausibly large single entry, is where to look. There is no confidence score in
+      the shipped CSV, so per-plant scrutiny is manual and should be spent on the largest
+      capacities only.
+  - pitfall: >
+      The version of the plant database is a scientific parameter and is usually
+      unreported. The matched dataset is re-released with the package; sources are added
+      and dropped between versions (CARMA deprecated, GEM and BEYONDCOAL added), so the
+      same config on two package versions gives a different fleet.
+    evidence: "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+    note: >
+      Pin it and report it, as Karkossa does ("powerplantmatching v.0.7.1 for the year
+      2020"). In pypsa-eur this is `data.powerplants.version` in data/versions.csv; in
+      pypsa-earth it is whatever the conda pin resolves to, because earth re-runs the
+      matching live rather than fetching a versioned artefact.
+  - pitfall: >
+      Node assignment is part of the method and it moves when the clustering moves.
+      Plants are joined to region polygons and then nearest-neighboured within their
+      country under a distance cap; the ones that still fail are DROPPED and their
+      capacity only logged as a warning. Re-cluster the network and every plant is
+      re-assigned.
+    evidence: "2025_Xiong_Modelling-High-Voltage-Grid-Open-Data_NatSciData.pdf"
+    note: >
+      Read the build_powerplants log for the dropped-capacity table before trusting a
+      regional result, and remember that any comparison across topologies or cluster
+      counts is also a comparison of two different plant-to-bus maps. See
+      `spatial-clustering-and-resolution`.
+requires_methods: []
+combines_with:
+  - brownfield-and-capacity-vintaging
+  - foresight-and-planning-horizons
+  - model-validation-and-backtesting
+  - spatial-clustering-and-resolution
+  - soft-linking-with-iam
+  - operational-dispatch-and-rolling-horizon
+  - unit-commitment-and-ramping
+  - land-eligibility-and-potentials
+topics:
+  - coal-early-retirement
+  - stranded-asset-risk
+  - capacity-expansion
+  - net-zero-pathways
+pypsa_primitive:
+  symbol: "powerplantmatching/heuristics.py:scale_to_net_capacities; powerplantmatching/matching.py:reduce_matched_dataframe; powerplantmatching/collection.py:powerplants"
+  pypsa_version: "0.30.3"
+  exposed_by: >
+    BOTH models — and this is the one card in the book where the "primitive" is not in
+    pypsa at all but in a sibling package, powerplantmatching 0.8.1, installed in the
+    same environment. The whole matching algorithm is library code; neither model
+    reimplements any of it. The asymmetry is in HOW they reach it: pypsa-earth calls
+    pm.powerplants(update=True) and re-runs the matching live against its own
+    configs/powerplantmatching_config.yaml, while pypsa-eur no longer runs the matcher at
+    all and instead retrieves the package's pre-built powerplants.csv artefact through
+    data/versions.csv, then replays only the light post-parse steps in-process.
+  reachable_via: >
+    pm.powerplants(config=None, config_update=None, update=False, from_url=False,
+    extend_by_vres=False, ...) returns the matched frame, caching to matched_data_red.csv;
+    with update=True it re-runs collection -> aggregate_units -> compare_two_datasets ->
+    cross_matches -> reduce_matched_dataframe, which needs the Java Duke binaries shipped
+    in package_data/duke_binaries and network access to every source URL. The pandas
+    `.powerplant` accessor (accessor.py) exposes the heuristics as methods:
+    df.powerplant.fill_missing_decommissioning_years(), .convert_country_to_alpha2(),
+    .to_pypsa_names(), .scale_to_net_capacities(). Every one of those is callable from a
+    driver script today without touching either model.
+  note: >
+    The practical consequence for an interview: nothing on this card requires writing a
+    matching algorithm. Re-running the matcher with different sources, thresholds or
+    reliability scores is a config-file edit to a YAML the package reads — L1/L3 work,
+    not L5 — and the corpus's only real extension (adding OSM as a source) is exactly
+    that. Two soft-anchor caveats: powerplantmatching is a conda dependency, so this is
+    pinned to a version string (0.8.1 in the shared env; eur's lockfile pins 0.8.1,
+    earth's 0.8.0) rather than a SHA, and `pypsa_version` above records the env's pypsa
+    release only because the schema requires that field — the symbols cited are
+    powerplantmatching's, resolved in the same site-packages.
+models:
+  - model: pypsa-eur
+    version_anchor:
+      ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d"
+      date: "2026-07-25"
+    functionality:
+      - id: fleet-retirement-filter
+        role: >
+          `working`. The two config levers that shape the fleet:
+          electricity.powerplants_filter is a pandas query applied before anything else
+          sees the plant table, and electricity.custom_powerplants concatenates a user CSV
+          onto it. Everything a user can do to the fleet without code goes through these
+      - id: data-retrieval-versioning
+        role: >
+          `working` and eur-ONLY — the load-bearing fact of this section. The plant table
+          is not matched by the workflow; it is a versioned artefact resolved through
+          data/versions.csv (data.powerplants.source/version), which is what makes the
+          fleet reproducible and pinnable, and what makes changing the matching itself an
+          out-of-workflow job
+      - id: existing-baseyear-brownfield
+        role: >
+          `working`. The downstream consumer of the assembled fleet under myopic/perfect:
+          bins it into build-year cohorts and folds in existing VRE from IRENASTAT. Owned
+          by `brownfield-and-capacity-vintaging` — this card stops where the plant table
+          is written
+      - id: renewable-potentials-land-eligibility
+        role: >
+          `working`. Supplies the per-node resource CLASS regions that existing VRE
+          capacity is spatially joined into, so eur's existing-VRE placement is
+          class-resolved where earth's is one component per bus
+      - id: spatial-clustering
+        role: >
+          `working`, and part of this method rather than a neighbour: rule
+          build_powerplants runs per {clusters} value and joins plants to that clustering's
+          region polygons, so the plant-to-bus map is a function of the cluster count
+      - id: cost-data-pipeline
+        role: >
+          `working` and eur-only. The join partner for the plant table: per-carrier
+          efficiency, VOM, fuel and LIFETIME come from the cost table, so a plant's
+          DateOut and marginal cost are half fleet data and half cost data
+      - id: workflow-reproducibility
+        role: >
+          `working`. Why the version pin matters — the solved network stores the full
+          config in n.meta, so the fleet's dataset version travels with the result
+      - id: summary-outputs
+        role: >
+          `working`, and the honest gap: 14 summary tables and none of them reports the
+          assembled fleet against reported national capacity, so procedure step 13 has no
+          home
+    available:
+      verdict: turnkey
+      how: >
+        The fleet arrives with no configuration at all. rule retrieve_powerplants fetches
+        the powerplantmatching release's pre-built powerplants.csv (URL and version
+        resolved from data/versions.csv via rules/common.smk:dataset_version; at this ref
+        data.powerplants is source `archive`, version `latest` = 0.8.1). rule
+        build_powerplants then replays only the light post-parse steps that pm.powerplants
+        would have done from cache — the script says so in a comment — namely
+        parse_string_to_dict on projectID/EIC, convert_country_to_alpha2, a country filter,
+        replace_natural_gas_technology / replace_natural_gas_fueltype mapping Steam Turbine
+        -> CCGT and Combustion Engine -> OCGT, and folding Solid Biomass and Biogas into
+        Bioenergy. It applies electricity.powerplants_filter, concatenates
+        data/custom_powerplants.csv if enabled, optionally adds zero-capacity
+        "everywhere powerplants" at every bus for named fueltypes, drops rows without
+        coordinates, and assigns buses with map_to_country_bus: a per-country spatial join
+        to the clustered onshore+offshore regions, then sjoin_nearest within the same
+        country at max_distance 10000 m, warning and dropping what remains. add_electricity
+        then joins the cost table, sets lifetime = dateout - datein (inf if missing) and
+        build_year = datein (0 if missing), groups by (bus, carrier) with
+        capacity-weighted-average strategies, optionally splits carriers into efficiency
+        quantile classes, and attaches the result non-extendable with p_nom = p_nom_min =
+        installed capacity plus build_year and lifetime. Existing VRE is separate:
+        attach_renewable_powerplants reads the SAME powerplants.csv, spatially joins wind
+        and solar rows into resource-class regions and writes p_nom/p_nom_min per (bus,
+        class); estimate_renewable_capacities optionally tops that up to IRENASTAT national
+        totals. Procedure steps 1-12 all have a handle, but note steps 1-9 are handled by
+        the ARTEFACT rather than by this repo.
+      missing: >
+        Two things, one structural and one an outright gap. STRUCTURAL: because the plant
+        table is a downloaded artefact, procedure steps 1-9 — source selection, schema
+        normalisation, gross-to-net rescaling, unit aggregation, linkage, clique chaining,
+        claim reduction, date imputation, statistics reconciliation — are not reachable
+        from this workflow at all. There is no config key for a source list, a reliability
+        score or a matching threshold, and no rule that would re-run the matcher; the only
+        levers are `which released version` and `filter/append afterwards`. Changing the
+        matching means running powerplantmatching yourself and injecting the result (see
+        `where`). GAP: procedure step 13 (validation against reported national capacity)
+        has no handle anywhere — make_summary has no fleet-vs-statistics table, and the
+        only automatic signals are two log warnings, "No powerplants known in: {...}" for
+        empty countries and a per-(Country, Fueltype) dropped-capacity table for plants
+        with no nearby region. Both are warnings in a log, not failures. Also note
+        estimate_renewable_capacities is SKIPPED entirely when foresight is not
+        `overnight`, with only a log line to say so — existing VRE then comes from
+        add_existing_baseyear instead.
+      provenance: "rules/retrieve.smk:retrieve_powerplants; scripts/build_powerplants.py:map_to_country_bus; scripts/add_electricity.py:load_and_aggregate_powerplants"
+    levers:
+      - key: "electricity.powerplants_filter"
+        effect: >
+          A pandas query on the plant table, evaluated in build_powerplants before custom
+          plants are appended and before bus assignment. Ships already ON as an
+          active-in-2026 window. A `DateOut <= YYYY` clause is the L1 form of an
+          exogenous phase-out; a `YearCommissioned <= YYYY` clause pins the fleet to a
+          historical year; `Country not in [...]` is the standard way to carve out a
+          country you intend to replace with your own list. Set it to false to keep
+          everything.
+        default: "'(DateOut > 2025 or DateOut != DateOut) and (DateIn < 2026 or DateIn != DateIn)'"
+        provenance: "config/config.default.yaml:powerplants_filter; scripts/build_powerplants.py:powerplants_filter"
+      - key: "electricity.custom_powerplants"
+        effect: >
+          false | true | a pandas query. Concatenates data/custom_powerplants.csv
+          (canonical powerplantmatching schema, with a `bus` column read as string) onto
+          the filtered fleet; a string value filters WHAT you inject rather than what you
+          keep. Combined with `powerplants_filter: Country not in ['X']` this is the
+          documented country-replacement idiom, and with `powerplants_filter: false` it is
+          full manual assembly. Off by default and the highest-value lever on this card.
+        default: "false"
+        provenance: "config/config.default.yaml:custom_powerplants; scripts/build_powerplants.py:add_custom_powerplants"
+      - key: "electricity.everywhere_powerplants"
+        effect: >
+          A list of Fueltypes to instantiate at ZERO capacity at every bus, with DateIn
+          set to the fleet minimum and DateOut to the fleet maximum so a multi-horizon run
+          keeps them alive. eur-only. The intended use is giving a multi-year model
+          somewhere to put new conventional capacity in regions the register has no plant
+          in — i.e. a structural fix for the sparse-fleet problem, not a data fix.
+        default: "[]"
+        provenance: "config/config.default.yaml:everywhere_powerplants; scripts/build_powerplants.py:add_everywhere_powerplants"
+      - key: "data.powerplants.version"
+        effect: >
+          Which powerplantmatching release's pre-built plant table to fetch, resolved
+          against data/versions.csv (supported at this ref: 0.8.1 = latest, 0.8.0, 0.7.1,
+          0.7.0, each with a `primary` GitHub-tag URL and an `archive` data.pypsa.org
+          mirror). This is the eur-only answer to the reproducibility pitfall — pin it,
+          the way Karkossa pins 0.7.1, rather than riding `latest`.
+        default: "'latest' (resolves to 0.8.1 at this ref)"
+        provenance: "config/config.default.yaml:powerplants; rules/common.smk:dataset_version"
+      - key: "data.powerplants.source"
+        effect: >
+          primary | archive. `primary` pulls the CSV from the powerplantmatching GitHub
+          tag, `archive` from the data.pypsa.org mirror; both are byte-identical artefacts
+          of the same release. Relevant here because a THIRD value, `build`, exists in the
+          versions machinery for other datasets and does not for powerplants — there is no
+          build-it-yourself branch for the fleet.
+        default: "'archive'"
+        provenance: "config/config.default.yaml:powerplants; rules/retrieve.smk:POWERPLANTS_DATASET"
+      - key: "electricity.estimate_renewable_capacities.enable"
+        effect: >
+          Master switch for existing wind and solar. When on AND foresight is `overnight`,
+          add_electricity fills p_nom/p_nom_min for VRE; when foresight is myopic or
+          perfect the whole block is skipped with a log message and existing VRE comes
+          from add_existing_baseyear instead. Reading the log is the only way to know
+          which path ran.
+        default: "true"
+        provenance: "config/config.default.yaml:estimate_renewable_capacities; scripts/add_electricity.py:estimate_renewable_caps"
+      - key: "electricity.estimate_renewable_capacities.from_powerplantmatching"
+        effect: >
+          Take existing VRE from the PLANT TABLE: attach_renewable_powerplants reads the
+          same powerplants.csv, remaps Technology Onshore/Offshore into Fueltype and Solar
+          -> PV, spatially joins each plant into the carrier's resource-class regions, and
+          writes the per-(bus, class) sum to p_nom and p_nom_min. Newer than the IRENASTAT
+          route and on by default — so eur's default existing VRE is now MATCHED plants,
+          class-resolved, not a national-statistics heuristic.
+        default: "true"
+        provenance: "config/config.default.yaml:from_powerplantmatching; scripts/add_electricity.py:attach_renewable_powerplants"
+      - key: "electricity.estimate_renewable_capacities.from_irenastat"
+        effect: >
+          The `statistics-scaling-for-vre` variant, and OFF by default at this ref — a
+          reversal worth knowing. When on, estimate_renewable_capacities pulls IRENASTAT
+          national totals, subtracts what the network already has per country, and
+          distributes the residual across that country's generators in proportion to
+          mean(p_max_pu) * p_nom_max, ignoring anything under 100 kW. Enable it as a
+          top-up on from_powerplantmatching to close the systematic shortfall.
+        default: "false"
+        provenance: "config/config.default.yaml:from_irenastat; scripts/add_electricity.py:estimate_renewable_capacities"
+      - key: "electricity.estimate_renewable_capacities.year"
+        effect: >
+          The IRENASTAT statistics year the top-up reconciles to. Only read on the
+          from_irenastat path, so at default settings this key is inert — set
+          from_irenastat first or it does nothing.
+        default: "2024"
+        provenance: "config/config.default.yaml:estimate_renewable_capacities; scripts/add_electricity.py:estimate_renewable_capacities"
+      - key: "electricity.estimate_renewable_capacities.expansion_limit"
+        effect: >
+          A scalar cap on existing-VRE p_nom_max as a multiple of the installed p_nom_min
+          ("you cannot triple the wind here"). Same from_irenastat-only gating. Distinct
+          from the land-use decrement, which subtracts from a resource potential rather
+          than capping relative to the incumbent.
+        default: "false"
+        provenance: "config/config.default.yaml:expansion_limit; scripts/add_electricity.py:estimate_renewable_capacities"
+      - key: "electricity.estimate_renewable_capacities.technology_mapping"
+        effect: >
+          The dict translating powerplantmatching technology names to eur carriers —
+          Offshore -> offwind-ac, Onshore -> onwind, PV -> solar. Consumed by BOTH VRE
+          paths. Note offshore collapses to offwind-ac only, so a study that distinguishes
+          offwind-dc or offwind-float gets no existing capacity on those carriers.
+        default: "{'Offshore': 'offwind-ac', 'Onshore': 'onwind', 'PV': 'solar'}"
+        provenance: "config/config.default.yaml:technology_mapping; scripts/lib/validation/config/electricity.py:_TechnologyMappingConfig"
+      - key: "clustering.consider_efficiency_classes"
+        effect: >
+          Splits each conventional carrier at a bus into efficiency quantile classes
+          (default quantiles 0.1/0.9, or a supplied list) before aggregation, so a bus's
+          coal fleet becomes up to three components with distinct efficiencies instead of
+          one capacity-weighted average. The lever that decides how much of the matched
+          fleet's heterogeneity survives clustering — relevant for merit-order and
+          price questions.
+        default: "false"
+        provenance: "config/config.default.yaml:consider_efficiency_classes; scripts/add_electricity.py:load_and_aggregate_powerplants"
+      - key: "clustering.exclude_carriers"
+        effect: >
+          Carriers kept as INDIVIDUAL plants instead of aggregated to (bus, carrier) —
+          they are re-indexed as "<bus> <carrier> <id> <name>" and concatenated back on.
+          The route to keeping named units (a specific nuclear station) identifiable
+          through the fleet aggregation.
+        default: "[]"
+        provenance: "config/config.default.yaml:exclude_carriers; scripts/add_electricity.py:load_and_aggregate_powerplants"
+      - key: "electricity.estimate_battery_capacities"
+        effect: >
+          Attaches existing grid batteries from the same plant table (the matched dataset
+          carries a Battery fueltype and Store set). Off by default and eur-only; worth
+          knowing because a 2025-target study that omits it starts with zero storage in
+          markets that already have several GW.
+        default: "false"
+        provenance: "config/config.default.yaml:estimate_battery_capacities; scripts/add_electricity.py:attach_existing_batteries"
+    assembly:
+      - step: >
+          Pin the dataset version first. Set data.powerplants.version to an explicit
+          release rather than `latest`, so the fleet does not move under a re-run. This is
+          the cheapest reproducibility win on the card and it costs nothing.
+        uses: [data-retrieval-versioning, workflow-reproducibility]
+        config: "data.powerplants.version; data.powerplants.source"
+        code: null
+        provenance: "rules/common.smk:dataset_version; rules/retrieve.smk:retrieve_powerplants"
+      - step: >
+          Set the base-year window with powerplants_filter. The default is an
+          active-in-2026 query; change both clauses together for a historical year, and
+          remember the `or DateOut != DateOut` idiom is what keeps rows with UNKNOWN dates
+          in — drop it and you silently discard the undated part of the fleet, which for a
+          weakly-registered country is most of it.
+        uses: [fleet-retirement-filter]
+        config: "electricity.powerplants_filter"
+        code: null
+        provenance: "scripts/build_powerplants.py:powerplants_filter"
+      - step: >
+          Validate before correcting. Read the build_powerplants log for the
+          "No powerplants known in" warning and the dropped-capacity table, then compare
+          the resulting powerplants_s_{clusters}.csv per (Country, carrier) against an
+          independent statistic yourself. Nothing in the repo does this, and it is the step
+          that decides whether the next one is needed.
+        uses: [summary-outputs]
+        config: null
+        code: "no existing script — a few lines of pandas over resources/powerplants_s_{clusters}.csv"
+        provenance: "scripts/build_powerplants.py:map_to_country_bus"
+      - step: >
+          Correct the fleet in DATA, not code. Put locally-known plants, announced
+          closures and committed projects in data/custom_powerplants.csv in the canonical
+          schema with explicit DateIn/DateOut, and set custom_powerplants. For a
+          country-scale replacement use the documented pair —
+          `powerplants_filter: Country not in ['X']` with `custom_powerplants: true` — or
+          `powerplants_filter: false` for full manual assembly.
+        uses: [fleet-retirement-filter]
+        config: "electricity.custom_powerplants; electricity.powerplants_filter"
+        code: "data/custom_powerplants.csv (data, not code)"
+        provenance: "scripts/build_powerplants.py:add_custom_powerplants"
+      - step: >
+          Decide the existing-VRE route explicitly, because the defaults changed. Leave
+          from_powerplantmatching on for class-resolved matched VRE, and ALSO enable
+          from_irenastat if you need the national totals to be right — the two compose,
+          the second filling the residual against IRENASTAT for the chosen year. If
+          foresight is myopic or perfect, none of this runs and existing VRE comes from
+          add_existing_baseyear instead.
+        uses: [renewable-potentials-land-eligibility, existing-baseyear-brownfield]
+        config: "electricity.estimate_renewable_capacities.{enable,from_powerplantmatching,from_irenastat,year,expansion_limit}"
+        code: null
+        provenance: "scripts/add_electricity.py:attach_renewable_powerplants; scripts/add_electricity.py:estimate_renewable_capacities"
+      - step: >
+          Choose how much fleet heterogeneity survives aggregation. consider_efficiency_classes
+          splits each carrier at a bus into efficiency quantiles; exclude_carriers keeps
+          named units intact. Both are free at config level and both change the merit
+          order, so set them from the question rather than leaving them at the defaults.
+        uses: [spatial-clustering, cost-data-pipeline]
+        config: "clustering.consider_efficiency_classes; clustering.exclude_carriers"
+        code: null
+        provenance: "scripts/add_electricity.py:load_and_aggregate_powerplants"
+      - step: >
+          Only if the MATCHING itself must change (different sources, thresholds,
+          reliability order, or a new register): run powerplantmatching out of band with
+          your own config — pm.powerplants(update=True, config_update={...}), which needs
+          the shipped Java Duke binaries — and feed the result in either as a pinned
+          `primary`-style dataset entry or, more simply, as data/custom_powerplants.csv
+          with powerplants_filter false. There is no in-workflow path.
+        uses: [data-retrieval-versioning, fleet-retirement-filter]
+        config: "electricity.custom_powerplants; electricity.powerplants_filter"
+        code: "external driver calling powerplantmatching; data/custom_powerplants.csv"
+        provenance: "powerplantmatching/collection.py:powerplants; powerplantmatching/matching.py:reduce_matched_dataframe"
+    boundary:
+      - variant: multi-database-record-linkage
+        rung: L0
+        note: >
+          Nothing to do — the matched fleet is the default and arrives as a versioned
+          artefact. L0 in the strict sense that a bare run produces it, with the caveat
+          that L0 here also means you cannot influence it.
+      - variant: statistics-scaling-for-vre
+        rung: L1
+        note: >
+          Config only: estimate_renewable_capacities.from_irenastat plus `year`, and
+          optionally expansion_limit. Non-default because from_irenastat now ships FALSE —
+          the default VRE route is matched plants, so the statistics top-up is an opt-in.
+      - variant: custom-powerplants-override
+        rung: L1
+        note: >
+          `custom_powerplants: true` plus a CSV in the canonical schema. Data-shaped work
+          at a config-shaped cost; the schema is documented in the script docstring
+          including the Fueltype/Technology/Set tagging rules and the alpha-2 country
+          requirement.
+      - variant: manual-fleet-assembly
+        rung: L1
+        note: >
+          `powerplants_filter: false` with `custom_powerplants: true` — the documented
+          idiom, so even full manual assembly stays at L1 mechanically. The cost is
+          entirely in sourcing and formatting the list, which is exactly why it does not
+          look like L1 in practice.
+      - variant: hydro-only-fleet
+        rung: L1
+        note: >
+          A powerplants_filter clause keeping only the hydro technologies, or
+          equivalently trimming electricity.conventional_carriers so thermal plants are
+          never attached. One query.
+      - variant: national-register-spatial-correction
+        rung: L1
+        note: >
+          For thermal, L1: supply the register as custom_powerplants with real
+          coordinates and let map_to_country_bus place it. For VRE it is L1 only if your
+          register is a plant list; if it is a table of sub-national TOTALS (as ESIOS is),
+          the redistribution logic PyPSA-Spain implemented does not exist here and the
+          rung becomes L5 — see the note on that variant below.
+      - variant: gross-to-net-rescaling
+        rung: L3
+        note: >
+          L3, not L0, and this is the subtle one. The rescaling already happened inside
+          the artefact for the sources flagged gross, so the shipped fleet is net — but
+          nothing in eur re-applies it, so any plant you ADD via custom_powerplants
+          bypasses it. Correcting a gross-reported custom register means preprocessing
+          your CSV (df.powerplant.scale_to_net_capacities() is one call), i.e. new/edited
+          data input. Changing the FACTORS themselves is out of workflow entirely.
+      - variant: osm-extended-global-matching
+        rung: L5
+        note: >
+          Not reachable here at any config level: eur has no matching step to add a source
+          to. You would run powerplantmatching yourself with OSM in matching_sources and
+          inject the output — a driver script plus a data path, and the pypsa-earth section
+          is where that pattern is already wired.
+      - variant: exogenous-capacity-harmonisation
+        rung: L5
+        note: >
+          Filtering by DateOut is L1, but scaling the database proportionally to an
+          external model's per-carrier capacities per horizon, and handing the excess to
+          endogenous siting, is a harness: Odenweller built it as part of a coupling loop.
+          See `soft-linking-with-iam`.
+    where:
+      - change: "which released plant table is used, and pinning it"
+        anchor: "data.powerplants.{source,version} -> data/versions.csv row `powerplants` -> rule retrieve_powerplants"
+        provenance: "rules/common.smk:dataset_version; rules/retrieve.smk:retrieve_powerplants"
+      - change: "fleet corrections, additions and full replacement"
+        anchor: "data/custom_powerplants.csv, appended by add_custom_powerplants in rule build_powerplants"
+        provenance: "scripts/build_powerplants.py:add_custom_powerplants"
+      - change: "plant-to-bus assignment rules (distance cap, join order)"
+        anchor: "scripts/build_powerplants.py::map_to_country_bus (max_distance argument)"
+        provenance: "scripts/build_powerplants.py:map_to_country_bus"
+      - change: "fleet aggregation into components, efficiency classes, per-carrier attributes"
+        anchor: "scripts/add_electricity.py::load_and_aggregate_powerplants"
+        provenance: "scripts/add_electricity.py:load_and_aggregate_powerplants"
+      - change: "existing VRE placement and top-up to national statistics"
+        anchor: "scripts/add_electricity.py::attach_renewable_powerplants / estimate_renewable_capacities"
+        provenance: "scripts/add_electricity.py:attach_renewable_powerplants; scripts/add_electricity.py:estimate_renewable_capacities"
+      - change: "re-running the matching itself with different sources or thresholds"
+        anchor: >
+          NO in-repo anchor — there is no in-workflow matching step. Run
+          powerplantmatching.collection.powerplants(update=True, config_update=...) in a
+          driver and inject the result via data/custom_powerplants.csv. The only in-repo
+          trace of the package is the import in build_powerplants, which replays the
+          post-parse steps only, and the version floor in envs/environment.yaml.
+        provenance: "scripts/build_powerplants.py:import powerplantmatching as pm; envs/environment.yaml:powerplantmatching"
+    data_dependencies:
+      - input: "powerplantmatching release plant table (powerplants.csv, 0.8.1 at this ref)"
+        required_for: multi-database-record-linkage
+        availability: >
+          exists by default — retrieved, not built. Covers the ENTSO-E area well; the
+          source list is Europe-centric by construction, so eur's country scope and the
+          artefact's coverage happen to coincide
+      - input: "data/custom_powerplants.csv in the canonical schema"
+        required_for: custom-powerplants-override
+        availability: >
+          must be built by the user; the file path is a declared rule input, so a missing
+          file breaks the DAG even when custom_powerplants is false — the repo ships an
+          empty/stub file for exactly that reason
+      - input: "net/gross correction factors for a user-supplied gross-capacity register"
+        required_for: gross-to-net-rescaling
+        availability: >
+          exists by default inside powerplantmatching (fitted to German BNetzA/UBA paired
+          data) but is NOT applied to custom plants — treat applying it as a data
+          preprocessing step you own
+      - input: "IRENASTAT national capacity statistics for the chosen year"
+        required_for: statistics-scaling-for-vre
+        availability: >
+          exists by default — fetched at runtime by pm.data.IRENASTAT() inside
+          add_electricity, so it is a live network call rather than a versioned artefact
+    cost_profile:
+      solves: >
+        Zero. This method adds no solves — it is an input pipeline. The relevant budget is
+        rule build_powerplants (mem_mb 10000 shared with add_electricity, threads 1,
+        seconds to a minute) plus one file download.
+      relative: >
+        Negligible against any solve. But it re-runs per {clusters} value, and any change
+        to powerplants_filter, custom_powerplants or the dataset version invalidates
+        build_powerplants and everything downstream of add_electricity — i.e. the whole
+        solve chain, for every scenario.
+      note: >
+        The real cost is human, not compute: assembling or validating a custom fleet is
+        the expensive part, and it is the step most likely to be skipped. Note the
+        asymmetry with earth — eur downloads a table in seconds where earth re-runs the
+        matcher, so eur is cheap and inflexible and earth is the reverse.
+    verifies:
+      - variant: multi-database-record-linkage
+        check: "set(n.buses.country.unique()) <= set(n.generators.bus.map(n.buses.country).unique())"
+        over: run
+        note: >
+          A country with buses but no conventional generator on any of them means the
+          register had no plants there, or they were all dropped at bus assignment. The
+          run succeeds and that country's load is served entirely by imports or new build.
+      - variant: custom-powerplants-override
+        check: "n.generators.query('not p_nom_extendable').p_nom.sum() > 0"
+        over: run
+        note: >
+          Zero non-extendable capacity after enabling a custom fleet means the CSV was
+          appended but then removed — normally a powerplants_filter clause that the custom
+          rows fail (they are filtered AFTER concatenation), or missing lat/lon so the rows
+          were dropped. The classic silent failure of this lever.
+      - variant: statistics-scaling-for-vre
+        check: "(n.generators.query('carrier in @vre_carriers').p_nom_min <= n.generators.query('carrier in @vre_carriers').p_nom + 1e-6).all()"
+        over: run
+        note: >
+          p_nom_min above p_nom on a VRE generator means the existing-capacity top-up and
+          the potential are inconsistent, which makes the model infeasible or forces
+          capacity the land eligibility does not support.
+  - model: pypsa-earth
+    version_anchor:
+      ref: "8435f4c8cc05f30088933b37b7db497ff860dc53"
+      date: "2026-07-25"
+    functionality:
+      - id: fleet-retirement-filter
+        role: >
+          `working`. Same two levers as eur but with a richer grammar:
+          custom_powerplants accepts "merge" | "replace" as well as a query, and "replace"
+          skips the matcher entirely. The registry's consumer line points at add_electricity,
+          which understates it — the query is applied in build_powerplants too
+      - id: data-retrieval-bundles
+        role: >
+          `working` and earth-ONLY. The counterpart to eur's version registry, and the
+          reason earth's fleet is not reproducible the same way: earth self-provisions
+          global inputs (including the OSM extraction that feeds the optional OSM source)
+          rather than pinning a released plant table
+      - id: existing-baseyear-brownfield
+        role: >
+          `partial`. Cited because the vintage BINNING that eur does in the sector chain,
+          earth does inside load_powerplants in the ELECTRICITY chain — so the fleet leaves
+          this card already cohorted. Owned by `brownfield-and-capacity-vintaging`
+      - id: custom-data-overrides
+        role: >
+          `working` and earth-only. The sanctioned "impose it in data" channel and the
+          right mental model for this card outside Europe: correcting the fleet is a data
+          job here, not a config job
+      - id: renewable-potentials-land-eligibility
+        role: >
+          `working`. Supplies the p_nom_max and the bus list existing VRE is placed against.
+          Earth has no resource_class binning, so existing VRE is one component per bus per
+          carrier — coarser than eur's class-resolved placement
+      - id: gadm-admin-clustering
+        role: >
+          `working` and earth-only. When cluster_options.alternative_clustering is on,
+          build_powerplants additionally stamps a GADM region_id on every plant via
+          locate_bus — a second, administrative plant-to-region map eur has no equivalent for
+      - id: hydro-inflow-normalization
+        role: >
+          `working`. Named because the matched fleet supplies hydro plant MW and locations
+          while the inflow is separately rescaled to IRENA/EIA statistics — two independent
+          data sources meeting on one component
+      - id: spatial-clustering
+        role: >
+          `working`. Unlike eur, build_powerplants runs ONCE on the unclustered base
+          network and assigns plants to substation buses by KDTree; clustering happens
+          afterwards, so the plant-to-bus map is not a function of the cluster count here
+      - id: summary-outputs
+        role: >
+          `working`, and the same gap as eur: no fleet-versus-statistics table, so
+          procedure step 13 is external post-processing in both models
+    available:
+      verdict: assemble
+      how: >
+        Earth's relationship to this method is the opposite of eur's, and the asymmetry is
+        the payload of this card. Earth actually RUNS the matcher:
+        scripts/build_powerplants.py loads configs/powerplantmatching_config.yaml, injects
+        the study's country list into config["target_countries"], puts
+        electricity.powerplants_filter into config["main_query"], and calls
+        pm.powerplants(from_url=False, update=True, config_update=config) — a live
+        re-execution of collection, unit aggregation, Duke linkage, clique chaining and
+        reliability-ranked claim reduction, needing the Java Duke binaries and network
+        access to every source. So procedure steps 1-9 ARE reachable here, by editing a
+        YAML in the repo. It then chains
+        .powerplant.fill_missing_decommissioning_years() (which eur does not call),
+        filters to the target countries, converts to alpha-2, and maps gas technologies
+        onto CCGT/OCGT with a wider alias table than eur's (NG, LNG, CCGT/FO, ...). Bus
+        assignment is a per-country KDTree over substation_lv buses on the UNCLUSTERED base
+        network, plus an optional GADM region_id via locate_bus when alternative_clustering
+        is on. add_electricity's load_powerplants then imputes missing datein from the
+        per-carrier MEAN and dateout from a cost-table or fill_values lifetime, assigns a
+        grouping_year, and aggregate_ppl_by_bus_carrier_year produces cohorted components.
+        Existing VRE is handled inside attach_wind_and_solar: matched wind/solar rows are
+        summed per bus (with a nearest-bus reassignment pass for rows whose bus is not in
+        the profile's bus index), then get_irena_targets_for_carrier reads IRENASTAT for
+        estimate_renewable_capacities.year, computes the per-country gap against the
+        matched total, and distributes it UNIFORMLY across that country's buses into p_nom
+        while p_nom_min stays at the matched capacity. Verdict is `assemble` rather than
+        `turnkey` because the shipped matching configuration is not the one you want: see
+        `missing`.
+      missing: >
+        No procedure step lacks a handle — steps 1-12 all run, which is more than eur can
+        say. What is missing is CONFIGURATION and DATA, in three specific places. (1) The
+        shipped matching_sources are exactly three registers — GEO, GPD, GEM — with CARMA
+        commented out as "deprecated as no more public", i.e. earth deliberately uses only
+        the global-scope sources and drops the European ones. Fewer sources means the
+        two-source confirmation rule bites harder and the reliability arbitration has less
+        to arbitrate. (2) The OSM source that Parzen's paper introduces as earth's
+        contribution is WIRED AND DISABLED: build_powerplants converts the OSM extraction
+        into powerplantmatching format (convert_osm_to_pm) and would register it as
+        EXTERNAL_DATABASE, but `- EXTERNAL_DATABASE` is commented out of BOTH
+        matching_sources and fully_included_sources, and the code path that sets its
+        filename is guarded on its presence in those lists — so by default earth writes an
+        empty powerplants_osm2pm.csv and the OSM data is not used. Enabling it is two
+        uncommented lines (and note the shipped EXTERNAL_DATABASE.fn is a hard-coded
+        absolute path from a developer's machine, overwritten at runtime and marked
+        MODIFIED_BY_WORKFLOW). (3) Procedure step 13, validation against national
+        statistics, has no handle, same as eur — and here it matters more, because
+        earth's own data-quality book records that a country with no entries "simply
+        [has] no rows — no warning". Also: `custom_powerplants: "replace"` returns ONLY
+        the custom rows, so an unset or falsy value in a "replace" workflow silently
+        returns None from add_custom_powerplants.
+      provenance: "scripts/build_powerplants.py:pm.powerplants; scripts/build_powerplants.py:convert_osm_to_pm; scripts/add_electricity.py:get_irena_targets_for_carrier"
+    levers:
+      - key: "electricity.powerplants_filter"
+        effect: >
+          A pandas query, and here it is used TWICE: injected as
+          powerplantmatching's config["main_query"] so it filters inside the matcher, and
+          applied again with .query() after custom plants are added. Ships already ON with
+          an active-in-2022/23 window. A DateOut clause is an exogenous phase-out; a DateIn
+          clause pins the fleet to a year. Note the double application means a query
+          referencing a column the matcher drops will fail inside pm rather than after it.
+        default: "'(DateOut >= 2022 or DateOut != DateOut) and (DateIn <= 2023 or DateIn != DateIn)'"
+        provenance: "config.default.yaml:powerplants_filter; scripts/build_powerplants.py:main_query"
+      - key: "electricity.custom_powerplants"
+        effect: >
+          false | "merge" | "replace" | a query — a richer grammar than eur's. "merge"
+          concatenates data/custom_powerplants.csv onto the matched fleet; "replace" skips
+          pm.powerplants ENTIRELY (ppl starts as an empty DataFrame) and uses only your
+          CSV. That replace mode is the `manual-fleet-assembly` variant as a single config
+          value and it is the most important lever on this card for any weakly-covered
+          region. Off by default.
+        default: "false"
+        provenance: "config.default.yaml:custom_powerplants; scripts/build_powerplants.py:add_custom_powerplants"
+      - key: "electricity.estimate_renewable_capacities.stats"
+        effect: >
+          Which statistics source the existing-VRE gap is measured against. Only "irena"
+          is implemented — get_irena_targets_for_carrier returns an empty Series for any
+          other value, silently disabling the top-up. So this key is effectively a
+          two-state switch: `irena` or off.
+        default: "'irena'"
+        provenance: "config.default.yaml:estimate_renewable_capacities; scripts/add_electricity.py:get_irena_targets_for_carrier"
+      - key: "electricity.estimate_renewable_capacities.year"
+        effect: >
+          The IRENASTAT year the per-country VRE target is read for. The gap
+          (target minus matched) is distributed UNIFORMLY across that country's buses —
+          note uniformly, not resource-weighted as in eur, so earth's existing VRE
+          placement carries no site-quality information at all.
+        default: "2023"
+        provenance: "config.default.yaml:estimate_renewable_capacities; scripts/add_electricity.py:get_irena_targets_for_carrier"
+      - key: "electricity.estimate_renewable_capacities.technology_mapping"
+        effect: >
+          Maps powerplantmatching technology names to earth carriers. Offshore maps to a
+          LIST (offwind-ac, offwind-dc) but the code collapses offwind-dc to offwind-ac
+          before matching, and attach_wind_and_solar forces technology Offshore to carrier
+          offwind-ac outright — so existing offshore capacity never lands on offwind-dc
+          however this key is set.
+        default: "{'Offshore': ['offwind-ac', 'offwind-dc'], 'Onshore': ['onwind'], 'PV': ['solar']}"
+        provenance: "config.default.yaml:technology_mapping; scripts/add_electricity.py:get_irena_targets_for_carrier"
+      - key: "electricity.estimate_renewable_capacities.p_nom_min"
+        effect: >
+          A scalar multiplier on the existing-VRE lower bound in the legacy
+          implementation. Grep it in scripts/ and the only hit is the config definition —
+          the current attach_wind_and_solar sets p_nom_min = the matched capacity directly.
+          Treat as a DEAD KEY at this ref: setting it changes nothing.
+        default: "1"
+        provenance: "config.default.yaml:estimate_renewable_capacities; scripts/add_electricity.py:attach_wind_and_solar"
+      - key: "electricity.estimate_renewable_capacities.p_nom_max"
+        effect: >
+          The earth analogue of eur's expansion_limit (cap existing-VRE potential at a
+          multiple of installed). Same status: no live consumer in the current
+          attach_wind_and_solar, which takes p_nom_max straight from the profile dataset.
+          DEAD KEY at this ref — the exact silent failure this book's hard rules single out.
+        default: "false"
+        provenance: "config.default.yaml:estimate_renewable_capacities; scripts/add_electricity.py:attach_wind_and_solar"
+      - key: "enable.download_osm_data"
+        effect: >
+          Fetches the OSM extraction that feeds the optional OSM source (via the cleaned
+          all_clean_generators.csv that build_powerplants declares as an input and converts
+          with convert_osm_to_pm). On by default — so the DATA for the OSM extension is
+          present and only the matching-config lines that would USE it are commented out.
+        default: "true"
+        provenance: "config.default.yaml:download_osm_data; scripts/build_powerplants.py:osm_powerplants"
+      - key: "cluster_options.alternative_clustering"
+        effect: >
+          When true, build_powerplants additionally resolves each plant to a GADM
+          region_id with locate_bus, on top of the KDTree substation assignment. Relevant
+          here because it gives the fleet a second, administrative spatial key — useful
+          when a national register you want to reconcile against reports by admin unit.
+        default: "true"
+        provenance: "config.default.yaml:alternative_clustering; scripts/build_powerplants.py:locate_bus"
+      - key: "costs.fill_values"
+        effect: >
+          Carries `lifetime`, the fallback used by fill_datein_dateout when a plant has no
+          DateOut and its carrier has no cost-table lifetime — so it is the default
+          retirement age for the unrecorded part of the fleet, which in a weakly-covered
+          region is most of it. Set it per study rather than accepting one number for hydro
+          and nuclear alike.
+        default: "{'FOM': 0, 'VOM': 0, 'efficiency': 1, 'fuel': 0, 'investment': 0, 'lifetime': 25, 'CO2 intensity': 0, 'discount rate': 0.07}"
+        provenance: "config.default.yaml:fill_values; scripts/add_electricity.py:fill_datein_dateout"
+    assembly:
+      - step: >
+          Check the region's fleet grade FIRST, before any config. earth's data-quality
+          book grades `powerplant-fleet` per country: 99 countries A (a native
+          country-specific extract is staged) and 61 B (only the global registers cover
+          it — Latin America, South and East Asia, the Caribbean, US/CA/RU/JP/KR). A B
+          grade is not a failure, but it means the fleet is GEO/GPD/GEM only and the
+          expected shortfall is Parzen's 165-of-229-GW order. Read
+          cookbooks/pypsa-earth/data_quality/countries/<ISO2>.yaml and MATRIX.csv.
+        uses: [data-retrieval-bundles]
+        config: "countries"
+        code: null
+        provenance: "scripts/build_powerplants.py:cntries_without_ppl"
+      - step: >
+          Decide whether to widen the matching set. configs/powerplantmatching_config.yaml
+          ships three sources; adding the European registers back (ENTSOE, OPSD, JRC,
+          BEYONDCOAL) is a YAML edit and is worth it for any study touching Europe or the
+          Mediterranean. Each source needs a reliability_score and, in the package's own
+          defaults, a per-source pre-filter query.
+        uses: []
+        config: "configs/powerplantmatching_config.yaml (matching_sources, fully_included_sources)"
+        code: null
+        provenance: "scripts/build_powerplants.py:matching_sources"
+      - step: >
+          Turn the OSM source ON if the region is B-graded. Uncomment
+          `- EXTERNAL_DATABASE` in both matching_sources and fully_included_sources; the
+          rest is already wired — enable.download_osm_data is on, convert_osm_to_pm
+          translates the extraction into the canonical schema, and build_powerplants
+          overwrites EXTERNAL_DATABASE.fn with the real path at runtime. This is the
+          `osm-extended-global-matching` variant and it is the whole reason earth's
+          section reads differently from eur's.
+        uses: [data-retrieval-bundles]
+        config: "configs/powerplantmatching_config.yaml (EXTERNAL_DATABASE); enable.download_osm_data"
+        code: null
+        provenance: "scripts/build_powerplants.py:convert_osm_to_pm; scripts/build_powerplants.py:EXTERNAL_DATABASE"
+      - step: >
+          Set the base-year window with powerplants_filter, remembering it is applied both
+          inside the matcher (as main_query) and after custom plants are appended, and that
+          the `!= itself` NaN idiom is what keeps undated plants in — which for a B-graded
+          country is most of the fleet.
+        uses: [fleet-retirement-filter]
+        config: "electricity.powerplants_filter"
+        code: null
+        provenance: "scripts/build_powerplants.py:main_query"
+      - step: >
+          Where the matched fleet is thin or wrong, bring your own list. `custom_powerplants:
+          "merge"` appends it; `"replace"` bypasses pm.powerplants entirely. Supply real
+          DateIn/DateOut so fill_datein_dateout does not impute them, and real coordinates
+          so the KDTree can place the rows. This is the dominant real-world path outside
+          Europe and it is one config value plus a CSV.
+        uses: [fleet-retirement-filter, custom-data-overrides]
+        config: "electricity.custom_powerplants; costs.fill_values"
+        code: "data/custom_powerplants.csv (data, not code)"
+        provenance: "scripts/build_powerplants.py:add_custom_powerplants; scripts/add_electricity.py:fill_datein_dateout"
+      - step: >
+          Set the IRENA reference year for existing VRE and understand what it buys: the
+          national TOTAL becomes right and the within-country distribution becomes uniform
+          across buses. If the question is regional, that uniformity is the error — replace
+          it with sub-national data the way PyPSA-Spain does, which here is new code
+          (see `boundary`).
+        uses: [renewable-potentials-land-eligibility]
+        config: "electricity.estimate_renewable_capacities.{stats,year,technology_mapping}"
+        code: null
+        provenance: "scripts/add_electricity.py:get_irena_targets_for_carrier"
+      - step: >
+          Validate the result. Read the build_powerplants log for
+          "No powerplants known in: {...}", then compare resources/<run>/powerplants.csv
+          per (Country, carrier) against IRENA or the national TSO. earth's data_quality
+          book states the failure mode plainly — countries with no entries get no rows and
+          no warning downstream — so this check is the acceptance test the workflow does
+          not have.
+        uses: [summary-outputs]
+        config: null
+        code: "no existing script — pandas over resources/<run>/powerplants.csv"
+        provenance: "scripts/build_powerplants.py:cntries_without_ppl"
+    boundary:
+      - variant: multi-database-record-linkage
+        rung: L1
+        note: >
+          The matcher runs by default, so mechanically L0 — but rated L1 because the
+          shipped source list is three global registers and any serious study changes it.
+          Editing configs/powerplantmatching_config.yaml is a non-default config value in
+          a repo-tracked file, which is exactly what L1 means.
+      - variant: osm-extended-global-matching
+        rung: L1
+        note: >
+          Two commented lines to uncomment. Everything else — the OSM download, the
+          format conversion, the runtime filename injection — is already implemented. The
+          cheapest high-value intervention on this card, and it exists only in earth.
+      - variant: custom-powerplants-override
+        rung: L1
+        note: >
+          `custom_powerplants: "merge"` plus a canonical-schema CSV. The docstring
+          documents the tagging rules (Natural Gas must be tagged CCGT or OCGT, Reservoir
+          must become ror for generator treatment, alpha-2 country codes).
+      - variant: manual-fleet-assembly
+        rung: L1
+        note: >
+          `custom_powerplants: "replace"` — one config value bypasses the matcher entirely.
+          Earth is the model where full manual assembly is a first-class supported mode
+          rather than an idiom, which is the right design given the coverage picture.
+      - variant: hydro-only-fleet
+        rung: L1
+        note: >
+          A powerplants_filter clause, or trimming electricity.conventional_carriers. Note
+          earth's default source set has no JRC hydro database, so hydro here rests on
+          GEO/GPD/GEM rather than on the specialist register — adding JRC back is the
+          matching-config edit above.
+      - variant: statistics-scaling-for-vre
+        rung: L1
+        note: >
+          `stats: irena` is already the default; only `year` normally needs setting. Be
+          aware the two related keys p_nom_min and p_nom_max are DEAD at this ref, so the
+          bound and cap behaviour eur offers is not available by config here.
+      - variant: gross-to-net-rescaling
+        rung: L3
+        note: >
+          Same shape as eur but with one earth-specific wrinkle: because earth re-runs the
+          matcher, the per-source net_capacity flags in its OWN matching config are live —
+          so adding a gross-reporting source without flagging it correctly silently
+          inflates capacity. Fixing a custom CSV is a data preprocessing step
+          (df.powerplant.scale_to_net_capacities()); changing the factors is out of
+          workflow.
+      - variant: national-register-spatial-correction
+        rung: L5
+        note: >
+          For a plant list, L1. For sub-national TOTALS, L5: attach_wind_and_solar
+          distributes the IRENA gap uniformly across a country's buses and there is no hook
+          to substitute a regional key. PyPSA-Spain's proportional and additional
+          adjustment modes would be new code in attach_wind_and_solar's gap-filling block.
+      - variant: exogenous-capacity-harmonisation
+        rung: L5
+        note: >
+          No coupling harness exists in earth at all — eur at least has the corpus
+          precedent. Filtering by DateOut is L1; per-horizon proportional scaling against an
+          external model's capacities is a driver script. See `soft-linking-with-iam`.
+    where:
+      - change: "which registers are matched, their reliability order and pre-filters"
+        anchor: "configs/powerplantmatching_config.yaml (matching_sources / fully_included_sources / <SOURCE>.reliability_score), read by rule build_powerplants"
+        provenance: "scripts/build_powerplants.py:matching_sources; scripts/build_powerplants.py:pm_config"
+      - change: "enabling the OSM source"
+        anchor: "configs/powerplantmatching_config.yaml::EXTERNAL_DATABASE + its entries in matching_sources/fully_included_sources"
+        provenance: "scripts/build_powerplants.py:EXTERNAL_DATABASE; scripts/build_powerplants.py:convert_osm_to_pm"
+      - change: "fleet corrections, additions and full replacement"
+        anchor: "data/custom_powerplants.csv, consumed by add_custom_powerplants in rule build_powerplants"
+        provenance: "scripts/build_powerplants.py:add_custom_powerplants"
+      - change: "plant-to-bus assignment (KDTree over substation_lv buses; optional GADM region_id)"
+        anchor: "scripts/build_powerplants.py main block (KDTree) and locate_bus"
+        provenance: "scripts/build_powerplants.py:locate_bus; scripts/build_powerplants.py:substation_lv"
+      - change: "date imputation and vintage binning of the assembled fleet"
+        anchor: "scripts/add_electricity.py::load_powerplants -> fill_datein_dateout -> get_grouping_year"
+        provenance: "scripts/add_electricity.py:fill_datein_dateout; scripts/add_electricity.py:get_grouping_year"
+      - change: "existing VRE placement and the IRENA gap distribution"
+        anchor: "scripts/add_electricity.py::attach_wind_and_solar (gap-filling block) / get_irena_targets_for_carrier"
+        provenance: "scripts/add_electricity.py:attach_wind_and_solar; scripts/add_electricity.py:get_irena_targets_for_carrier"
+    data_dependencies:
+      - input: "source registers reachable at run time (GEO, GPD, GEM by default; each has a URL)"
+        required_for: multi-database-record-linkage
+        availability: >
+          region-dependent, and this is the binding constraint on this card outside Europe.
+          earth's data_quality book grades `powerplant-fleet` A for 99 countries (a
+          country-specific extract is staged) and B for 61 — B meaning only the global
+          registers cover it, with no C or D grade because the pipeline never
+          silently substitutes a proxy: a country with no entries simply gets no rows and
+          no warning. Expect Parzen's measured ~165 of 229 GW for a B-graded region. Read
+          cookbooks/pypsa-earth/data_quality/ (datasets.yaml:powerplant-fleet, MATRIX.csv,
+          countries/<ISO2>.yaml) BEFORE promising a brownfield study
+      - input: "Java Duke binaries + network access to every configured source URL"
+        required_for: multi-database-record-linkage
+        availability: >
+          exists by default — the binaries ship in powerplantmatching's package_data — but
+          note the consequence: because earth calls pm.powerplants(update=True), a
+          build_powerplants run is a live multi-source download, so it is neither offline
+          nor byte-reproducible the way eur's pinned artefact is
+      - input: "OSM power-plant extraction (resources/<run>/osm/clean/all_clean_generators.csv)"
+        required_for: osm-extended-global-matching
+        availability: >
+          exists by default as DATA (enable.download_osm_data is true and the conversion
+          runs), but is NOT USED — EXTERNAL_DATABASE is commented out of both source lists,
+          so the converted file is written and ignored
+      - input: "data/custom_powerplants.csv in the canonical schema"
+        required_for: manual-fleet-assembly
+        availability: >
+          must be built by the user; it is a declared rule input so the file must exist even
+          when the feature is off. For a B-graded region this is the realistic path, not the
+          fallback
+      - input: "IRENASTAT national capacity statistics for the chosen year"
+        required_for: statistics-scaling-for-vre
+        availability: >
+          exists by default via pm.data.IRENASTAT(), fetched at run time; coverage is
+          near-global but the log names the countries IRENA omits and those are simply not
+          scaled
+      - input: "sub-national installed-capacity statistics for VRE redistribution"
+        required_for: national-register-spatial-correction
+        availability: >
+          absent — no earth region ships one, and there is no hook to consume it. This is
+          why that variant is L5 here
+    cost_profile:
+      solves: >
+        Zero solves — an input pipeline. But unlike eur, rule build_powerplants is not
+        cheap: it re-runs the full matching (multi-source download, per-country Duke
+        comparisons) at mem_mb 500 and threads 1, and parallel_duke_processes is false in
+        the shipped config.
+      relative: >
+        Minutes to tens of minutes for a multi-country region, versus seconds for eur's
+        download — the one place on this card where earth is materially more expensive. It
+        runs once per run (not per cluster count, unlike eur), and pm caches the matched
+        frame, but update=True defeats the cache by design.
+      note: >
+        Two mitigations: set parallel_duke_processes true for a many-country study, and use
+        `custom_powerplants: "replace"` for iteration on a known fleet, which skips
+        pm.powerplants entirely and turns the rule into a CSV read. The wider point for an
+        interview is that earth pays compute for flexibility eur does not have.
+    verifies:
+      - variant: multi-database-record-linkage
+        check: "set(config['countries']) <= set(pd.read_csv(ppl_fn).Country.unique())"
+        over: run
+        note: >
+          A configured country absent from powerplants.csv means the registers had nothing
+          there. The run still succeeds with zero existing conventional capacity in that
+          country — the exact silent degradation earth's data_quality book warns about, and
+          the reason to check this before solving rather than after.
+      - variant: osm-extended-global-matching
+        check: "os.path.getsize(snakemake.output.powerplants_osm2pm) > 0"
+        over: run
+        note: >
+          A zero-byte powerplants_osm2pm.csv means EXTERNAL_DATABASE is not in
+          matching_sources, so build_powerplants took the branch that truncates the file
+          and the OSM data was not used. This is the default state, and it silently looks
+          identical to a run that used OSM.
+      - variant: manual-fleet-assembly
+        check: "len(pd.read_csv(ppl_fn)) == len(pd.read_csv('data/custom_powerplants.csv'))"
+        over: run
+        note: >
+          Under `custom_powerplants: "replace"` the output should be exactly your list
+          (before the powerplants_filter query). A larger count means the value was not the
+          literal string "replace" and the matched fleet was merged in instead.
+      - variant: statistics-scaling-for-vre
+        check: "(n.generators.query('carrier in @vre_carriers').p_nom >= n.generators.query('carrier in @vre_carriers').p_nom_min - 1e-6).all()"
+        over: run
+        note: >
+          p_nom below p_nom_min on existing VRE means the IRENA gap distribution and the
+          matched-capacity floor disagree — normally a country present in the matched fleet
+          but absent from IRENASTAT for the chosen year, which leaves the floor without a
+          matching target.

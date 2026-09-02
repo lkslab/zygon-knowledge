@@ -1,0 +1,60 @@
+id: power-market-reform-spot-markets
+title: Power market reform / spot markets
+rank: 54
+question: >
+  What would spot prices look like under a reformed market — bidding-zone
+  splits, cost-of-service to market transitions, provincial vs unified
+  designs — and how do dispatch, congestion, and investment signals change?
+  Market design as such, not just least-cost planning.
+when_to_use:
+  - "introduce a spot market / marginal pricing"
+  - "bidding-zone reconfiguration price outcomes"
+  - "what prices would a competitive market produce"
+  - "dispatch and price outcomes under market reform"
+  - "bidding, scarcity pricing, market power questions"
+recipes:
+  generation_conversion: [coal-power-plants, gas-power-plants,
+                          grid-scale-batteries]
+  demand: [electricity-load, demand-temporal-profiles]
+functionality:
+  - id: market-design-mechanisms
+    role: "the core ask is absent — no bids, no market-clearing sequence, no capacity remuneration, no product design"
+  - id: nodal-marginal-prices
+    role: "the usable proxy: duals of a cost-minimizing solve = competitive-benchmark spot prices (prices/weighted_prices/market_values tables)"
+  - id: bidding-zone-shapes
+    role: "real European bidding-zone geometries (DK1/DK2, NO/SE, IT zones) built by the workflow — the geometry side of zonal-design studies"
+  - id: administrative-clustering
+    role: "cluster to bidding zones (level 'bz') or NUTS units to compare market geometries without touching code"
+  - id: custom-busmap
+    role: "arbitrary zone splits for hypothetical bidding-zone reconfigurations"
+  - id: operations-only-solve
+    role: "dispatch-only re-solve with fixed capacities — production-cost-style price simulation, a dedicated rule earth lacks"
+  - id: linearized-unit-commitment
+    role: "start-up/min-load data per conventional carrier as LP relaxation (off by default) — spot-price spikes are still understated"
+  - id: dynamic-emission-pricing
+    role: "historical ETS daily prices in marginal costs (Ept) sharpen the competitive benchmark against observed markets"
+  - id: demand-elasticity
+    role: "price-responsive demand, central to reform arguments, is absent — loads are fixed profiles"
+  - id: autarky
+    role: "market-fragmentation counterfactual via electricity.autarky config (the ATK opts token is broken at this ref)"
+gap_assessment: >
+  Still a genuine gap, as in pypsa-earth: this is a social-planner
+  cost-minimization model, and what it produces is the competitive benchmark
+  — nodal shadow prices, congestion rents, dispatch under perfect
+  competition. For that benchmark pypsa-eur is better equipped than earth:
+  real bidding-zone shapes and administrative clustering make
+  zonal-reconfiguration studies (nodal vs zonal, zone splits) config-level
+  work; a dedicated operations-only rule re-solves dispatch with fixed
+  capacities like a production-cost model; linearized unit commitment and
+  dynamic ETS prices push simulated prices closer to observed ones. But
+  nothing represents market design itself: no bidding or strategic behavior,
+  no day-ahead/intraday/balancing sequence, no capacity remuneration or
+  contract layer, no price-responsive demand, and UC is an off-by-default LP
+  relaxation. Any question whose answer depends on imperfect competition,
+  market power, or design details beyond the efficient benchmark needs a
+  different tool class (agent-based or equilibrium models) or substantial
+  custom code on top of the solved networks.
+coverage: gap
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

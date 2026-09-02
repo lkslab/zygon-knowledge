@@ -1,0 +1,124 @@
+paper: "2023_Glaum_Offshore-Wind-North-Sea-Floating_EEM.pdf"
+tier: 1
+model_used: >
+  PyPSA-Eur-Sec, 64 onshore regions + 66 offshore regions, all sectors,
+  3-hourly temporal resolution, single target year 2050.
+scope: >
+  Pan-European capacity expansion study quantifying the cost benefit of a meshed
+  offshore HVDC grid in the North Sea and the role of floating wind turbines
+  across eight scenarios varying offshore grid topology, onshore transmission
+  expansion limits, and onshore wind potential caps.
+methods:
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "All scenarios represent overnight scenarios in the year 2050 considering a
+      fully decarbonized energy system taking cost assumptions for 2030."
+      (Sec. III Case Studies)
+    procedure_notes: >
+      Single-year greenfield overnight optimisation for 2050; no myopic pathway
+      or multi-period investment. Cost assumptions taken from 2030 projections.
+    variant: overnight
+    parameters: {target_year: 2050, cost_year: 2030}
+
+  - slug: transmission-expansion-cooptimisation
+    role: canonical-use
+    evidence: >
+      "The capacity of each connection option is a decision variable, such that
+      the model can endogenously decide for the most cost-effective options to
+      integrate offshore wind into the European energy system." (Sec. II-C).
+      Onshore transmission is also varied via a cap: "transmission limit specifies
+      the total expansion limit for transmission line relative to the current
+      transmission network measured in MWkm." (Sec. III)
+    procedure_notes: >
+      Offshore grid topology co-optimised from zero initial capacity; offshore
+      lines modelled as HVDC transport model. Onshore lines use linearised power
+      flow. Scenarios impose a cap of 100% or 150% of today's MWkm for overhead
+      onshore lines; underground/submarine cables are uncapped. Eight scenarios
+      cross offshore-grid-yes/no with two transmission limits and two onshore
+      wind potential levels.
+    variant: offshore-topology-endogenous
+    parameters: {transmission_cap_values: ["100%", "150%"], offshore_initial_capacity_GW: 0}
+
+  - slug: linearised-optimal-power-flow
+    role: routine-use
+    evidence: >
+      "power flows are represented as transport model, whereas linearized power
+      flow equations are applied to existing onshore transmission capacities."
+      (Sec. II-C). Limitations: "the optimization model used in this study is a
+      linear programming problem … we also do not consider transmission losses
+      and simplify nonlinear power flows." (Sec. V)
+    procedure_notes: >
+      Mixed formulation: LOPF for onshore AC network; transport model (no
+      Kirchhoff constraints) for new offshore HVDC links. LP throughout — no
+      integer investment decisions.
+    variant: mixed-lopf-transport
+    parameters: {}
+
+  - slug: land-eligibility-and-potentials
+    role: extends
+    evidence: >
+      "The third extension (3) improves the calculation of the areas eligible for
+      offshore wind park development … we now also exclude busy shipping lanes."
+      Extension (2) "increases the resolution of offshore regions based on the
+      countries' exclusive economic zones (EEZ)." (Sec. II-B)
+    procedure_notes: >
+      Extended PyPSA-Eur-Sec offshore eligibility to: exclude shipping lanes
+      (added to existing exclusion of nature reserves and water-depth limits for
+      fixed-bottom); subdivide offshore Voronoi cells by EEZ to give finer
+      near-shore/far-shore differentiation; applied separate depth thresholds
+      (<60 m fixed-bottom, >60 m floating). Capacity density fixed at 5 MW/km².
+      Uses NREL 12 MW reference turbine. Site-specific investment costs from
+      Danish Energy Agency model (water depth, rotor diameter, hub height,
+      specific power, farm size).
+    variant: offshore-eez-shipping-exclusion
+    parameters: {capacity_density_MW_per_km2: 5, fixed_bottom_depth_limit_m: 60, floating_depth_min_m: 60}
+
+  - slug: temporal-aggregation-and-segmentation
+    role: routine-use
+    evidence: >
+      "the model comprises 64 onshore regions and 66 offshore regions and has a
+      3-hourly temporal resolution across a full year." (Sec. III)
+    procedure_notes: >
+      3-hourly snapshots over a full year (2920 snapshots). No further TSAM
+      or typical-period reduction stated.
+    variant: n-hourly
+    parameters: {temporal_resolution_h: 3, snapshots: 2920}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      The model is described as "considering a fully decarbonized energy system"
+      (Sec. III) and PyPSA-Eur-Sec "taking into account … emission limits"
+      (Sec. II-A).
+    procedure_notes: >
+      Net-zero CO2 constraint for 2050; implemented via PyPSA-Eur-Sec's standard
+      CO2 cap. No explicit carbon price stated — constraint form only.
+    variant: annual-cap
+    parameters: {co2_target: "net-zero 2050"}
+
+  - slug: sector-coupled-network-assembly
+    role: routine-use
+    evidence: >
+      "Our analysis is based on the open European energy system model
+      PyPSA-Eur-Sec … The model encompasses all energy sectors, namely industry,
+      transport, energy, agriculture, and buildings." (Sec. II-A)
+    procedure_notes: >
+      Standard PyPSA-Eur-Sec v0.7.0 multi-sector assembly used without
+      modification to sector-coupling structure. Extensions are confined to
+      offshore wind potentials and offshore grid topology. Results show H2
+      electrolysers, fuel cells, gas-to-power/heat, power-to-gas, power-to-heat,
+      power-to-liquid components.
+    variant: standard-pypsa-eur-sec
+    parameters: {pypsa_eur_sec_version: "0.7.0"}
+
+unmatched_methods:
+  - name: "depth-dependent offshore wind cost model"
+    evidence: >
+      "we adopt the cost model developed by the Danish Energy Agency [17], which
+      considers the water depth, rotor diameter, hub height, specific power output
+      and wind farm size to determine site-specific investment costs for
+      fixed-bottom wind turbine installations." (Sec. II-B). This is a
+      site-specific capital cost function, not a general method covered by any
+      existing slug (land-eligibility-and-potentials covers area/exclusion logic,
+      not cost-as-function-of-depth).

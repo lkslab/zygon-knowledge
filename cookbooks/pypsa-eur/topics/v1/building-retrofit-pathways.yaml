@@ -1,0 +1,51 @@
+id: building-retrofit-pathways
+title: Building retrofit pathways
+rank: 48
+question: >
+  How much insulation/renovation should happen, on what trajectory, and what is
+  its system value against supply-side spending — does saving a unit of heat
+  demand beat building the heat pump and the grid behind it?
+when_to_use:
+  - "building renovation / insulation scenario"
+  - "retrofit rate trajectory to 2050"
+  - "system value of heat-demand efficiency"
+  - "retrofit vs heat pump vs district heating"
+  - "endogenous cost-optimal renovation depth"
+recipes:
+  generation_conversion: [building-retrofit, air-source-heat-pumps, district-heating]
+  demand: [residential-space-heating-demand, services-heat-demand, building-heat-dsm]
+functionality:
+  - id: building-retrofit-endogenous
+    role: "core — TABULA/hotmaps retrofit cost curves compete against heat supply when retro_endogen is enabled (off by default)"
+  - id: sector-master-switches
+    role: "carries the heat demand the retrofit acts on and the supply side it trades against"
+  - id: myopic-foresight
+    role: "per-horizon exogenous reduction factors (0.10 in 2020 to 0.29 by 2050) = the default renovation trajectory"
+  - id: residential-heat-dsm
+    role: "thermal-mass flexibility of the same building stock — the complementary demand-side lever"
+  - id: existing-baseyear-brownfield
+    role: "existing heating fleets in the base year make retrofit-vs-boiler-replacement pathways honest"
+  - id: scenario-matrix
+    role: "retrofit-depth and trajectory scenarios as parallel runs"
+gap_assessment: >
+  Both halves of the question are answerable — the decisive advance over
+  earth. Default path: sector.reduce_space_heat_exogenously scales space heat
+  (not water) down by a per-horizon factor, a costless uniform renovation
+  assumption good for trajectory scenarios. The real machinery is
+  sector.retrofitting.retro_endogen (off by default): build_retro_cost
+  computes per-country, per-sector space-heat savings and EUR/m2 costs for
+  eight insulation-thickness steps from EN ISO 13790 seasonal heat balances,
+  TABULA building typologies, hotmaps stock u-values and cluster-level
+  degree days, collapsed to "moderate" and "ambitious" strengths that enter
+  the network as investment options competing directly against heat pumps,
+  boilers and district heat — so "how much retrofit is optimal" is genuinely
+  endogenous, spatially differentiated, and prices the retrofit-vs-supply
+  trade-off inside one optimization. Caveats: off by default and it enlarges
+  the model noticeably (extra components per heat bus and strength); only two
+  discrete depths survive the collapse; space heating only (water heating
+  untouched); EU-focused building-stock data (fine here, non-transferable);
+  and no split-incentive/behavioural economics — pure cost optimality.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

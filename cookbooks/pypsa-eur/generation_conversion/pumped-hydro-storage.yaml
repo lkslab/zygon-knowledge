@@ -1,0 +1,132 @@
+id: pumped-hydro-storage
+title: Pumped hydro storage
+summary: Pumped hydroelectric storage plants that shift electricity by pumping water between reservoirs.
+when_to_use:
+  - "pumped hydro / pumped storage / PHS"
+  - "existing hydro storage fleet"
+  - "add or exclude pumped storage plants"
+  - "new-build pumped hydro expansion"
+  - "pumped hydro duration (hours of storage)"
+  - "hydro plants that can store energy"
+  - "pypsa-eur carrier names: PHS"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        The EXISTING pumped-hydro fleet, on by default. Plants with technology
+        "Pumped Storage" in the powerplantmatching table are relabelled to
+        carrier "PHS" (tech_dict in load_and_aggregate_powerplants) and attached
+        by attach_hydro as fixed StorageUnits with cyclic state of charge,
+        capital cost from the "PHS" cost row, round-trip efficiency split as
+        sqrt of that row's efficiency on store and dispatch, no natural inflow
+        ("assume no natural inflow due to lack of data"), and max_hours taken
+        from the plant data with zeros/NaNs filled from
+        renewable.hydro.PHS_max_hours (6 h). Active because "hydro" is in
+        electricity.renewable_carriers and "PHS" in renewable.hydro.carriers.
+        Sector runs KEEP the fleet: the pypsa_eur StorageUnit keep-list defaults
+        to [PHS, hydro], so patch_electricity_network carries PHS StorageUnits
+        into sector-coupled networks unchanged.
+      mechanism: >
+        rule build_powerplants creates the plant table (amendable via
+        data/custom_powerplants.csv + electricity.custom_powerplants and
+        filterable via electricity.powerplants_filter); rule add_electricity
+        runs scripts/add_electricity.py where attach_hydro splits the hydro
+        fleet into ror/PHS/hydro by carrier and adds the PHS block
+        (p_nom fixed, not extendable — no p_nom_extendable argument is set).
+        Costs come from rule process_cost_data.
+      not_covered: >
+        New-build/extendable PHS: "PHS" is not a key of the STORE_LOOKUP dict in
+        scripts/add_electricity.py, so putting it into
+        electricity.extendable_carriers.StorageUnit or .Store is silently
+        skipped with a warning by get_available_storage_carriers ("not
+        implemented as storage technologies in PyPSA-Eur"), and it has no
+        electricity.max_hours entry. Note the technology-data costs file does
+        ship "Pumped-Storage-Hydro-store" and "Pumped-Storage-Hydro-bicharger"
+        rows (verified in a locally built processed costs file), so wiring an
+        extendable PHS carrier is a code-only edit. No inflow to PHS units, no
+        site/topography-based potential assessment, no upper/lower reservoir or
+        open-loop/closed-loop distinction. Myopic runs do not add PHS vintages
+        (add_existing_baseyear drops fueltype "Hydro"); the fleet simply
+        persists from the electricity network.
+      provenance: "scripts/add_electricity.py:attach_hydro; scripts/add_electricity.py:tech_dict; scripts/add_electricity.py:get_available_storage_carriers; scripts/prepare_sector_network.py:remove_elec_base_techs; scripts/add_existing_baseyear.py:fueltype_to_drop"
+    levers:
+      - key: renewable.hydro.carriers
+        effect: "Include/exclude 'PHS' (alongside ror, hydro) — removing it drops the existing PHS fleet."
+        default: "[ror, PHS, hydro]"
+        provenance: "config/config.default.yaml:carriers; scripts/add_electricity.py:attach_hydro"
+      - key: renewable.hydro.PHS_max_hours
+        effect: "Storage duration (h) filled in for PHS plants whose max_hours is 0/missing in the plant data."
+        default: "6"
+        provenance: "config/config.default.yaml:PHS_max_hours; scripts/add_electricity.py:PHS_max_hours"
+      - key: electricity.renewable_carriers
+        effect: "Must contain 'hydro' for attach_hydro to run at all (the call is gated on it in the add_electricity main)."
+        default: "[solar, solar-hsat, onwind, offwind-ac, offwind-dc, offwind-float, hydro]"
+        provenance: "config/config.default.yaml:renewable_carriers; scripts/add_electricity.py:attach_hydro"
+      - key: electricity.custom_powerplants
+        effect: "Pandas query (or true) to inject user rows from data/custom_powerplants.csv — e.g. planned PHS plants (technology 'Pumped Storage')."
+        default: "false"
+        provenance: "config/config.default.yaml:custom_powerplants; scripts/build_powerplants.py:add_custom_powerplants"
+      - key: electricity.powerplants_filter
+        effect: "Pandas query on the fleet (DateIn/DateOut) — retire or exclude PHS units by year."
+        default: "(DateOut > 2025 or DateOut != DateOut) and (DateIn < 2026 or DateIn != DateIn)"
+        provenance: "config/config.default.yaml:powerplants_filter; scripts/build_powerplants.py:add_custom_powerplants"
+      - key: pypsa_eur.StorageUnit
+        effect: "Sector runs: which elec-network StorageUnit carriers survive into prepare_sector_network — PHS is kept by default."
+        default: "[PHS, hydro]"
+        provenance: "config/config.default.yaml:pypsa_eur; scripts/prepare_sector_network.py:remove_elec_base_techs"
+      - key: costs.overwrites
+        effect: "Override the 'PHS' row's investment/lifetime/FOM/efficiency (or use rows in data/custom_costs.csv via costs.custom_cost_fn)."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+    boundary:
+      - variant: "include the existing PHS fleet"
+        rung: L0
+        note: "default — 'hydro' in renewable_carriers, 'PHS' in renewable.hydro.carriers"
+      - variant: "change assumed PHS storage duration"
+        rung: L0
+        note: "renewable.hydro.PHS_max_hours (only fills plants with missing/zero max_hours; data-carried durations win)"
+      - variant: "exclude PHS"
+        rung: L1
+        note: "remove 'PHS' from renewable.hydro.carriers"
+      - variant: "add missing or planned PHS plants"
+        rung: L3
+        note: "rows in data/custom_powerplants.csv (technology 'Pumped Storage') + electricity.custom_powerplants: true"
+      - variant: "extendable new-build PHS at every bus"
+        rung: L2
+        note: "add a 'PHS' entry to STORE_LOOKUP in scripts/add_electricity.py pointing at the existing 'Pumped-Storage-Hydro-store'/'Pumped-Storage-Hydro-bicharger' cost rows, add 'PHS' to electricity.extendable_carriers.StorageUnit and an electricity.max_hours entry — no data work needed"
+      - variant: "make the existing fleet expandable in place"
+        rung: L2
+        note: "set p_nom_extendable/p_nom_min in the PHS n.add call of attach_hydro"
+      - variant: "site-constrained PHS potential (topography-based caps)"
+        rung: L4
+        note: "no potential assessment exists; needs a new data input + rule and plumbing into attach_hydro or the new extendable branch"
+      - variant: "natural inflow into PHS reservoirs"
+        rung: L2
+        note: "the PHS block sets no inflow; the reservoir-hydro block directly below it in attach_hydro (inflow_t from profile_hydro) is the template"
+    where:
+      - change: "existing PHS fleet attachment (duration fill, efficiency, extendability)"
+        anchor: "scripts/add_electricity.py::attach_hydro PHS block (rule add_electricity)"
+        provenance: "scripts/add_electricity.py:attach_hydro"
+      - change: "new-build PHS as extendable StorageUnit"
+        anchor: "scripts/add_electricity.py STORE_LOOKUP + ::attach_storageunits"
+        provenance: "scripts/add_electricity.py:STORE_LOOKUP; scripts/add_electricity.py:attach_storageunits"
+      - change: "plant data amendments and filters"
+        anchor: "rule build_powerplants (scripts/build_powerplants.py::add_custom_powerplants) + electricity.custom_powerplants / powerplants_filter"
+        provenance: "scripts/build_powerplants.py:add_custom_powerplants"
+      - change: "sector-run carry-over of the fleet"
+        anchor: "scripts/prepare_sector_network.py::remove_elec_base_techs (pypsa_eur.StorageUnit keep-list)"
+        provenance: "scripts/prepare_sector_network.py:remove_elec_base_techs"
+    data_dependencies:
+      - input: "powerplantmatching table with technology 'Pumped Storage' (incl. per-plant max_hours where known)"
+        required_for: "existing PHS fleet"
+        availability: "retrieved by the workflow (rule build_powerplants input); good European coverage"
+      - input: "cost row 'PHS' (capital cost, efficiency) in the technology-data costs file"
+        required_for: "fleet capital cost and round-trip efficiency"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "cost rows 'Pumped-Storage-Hydro-store' / 'Pumped-Storage-Hydro-bicharger'"
+        required_for: "the L2 extendable-PHS wiring"
+        availability: "exists by default in the technology-data costs file (verified in a locally built processed costs file); unconsumed by code at this ref"
+      - input: "data/custom_powerplants.csv"
+        required_for: "user-added PHS plants"
+        availability: "template exists by default; rows user-authored"

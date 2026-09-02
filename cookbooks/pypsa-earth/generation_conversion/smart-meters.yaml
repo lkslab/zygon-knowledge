@@ -1,0 +1,101 @@
+id: smart-meters
+title: Smart meters
+summary: Metering-enabled demand-side capability — time-of-use response, load shifting, and visibility of consumption at the customer level.
+when_to_use:
+  - "smart meter rollout"
+  - "demand response / load shifting from customers"
+  - "time-of-use tariffs"
+  - "flexible demand in the model"
+  - "AMI / advanced metering infrastructure"
+  - "can consumers react to prices"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        Not covered. Metering infrastructure has no representation, and electricity
+        demand is an exogenous, inelastic time series: rule build_demand_profiles
+        attaches load profiles (GEGIS or DemandCast per load_options.source)
+        disaggregated to buses by population/GDP, optionally scaled
+        (load_options.scale, applied per country in build_demand_profiles.py).
+        Load does not respond to prices and cannot shift between hours in the
+        electricity-only chain. The only endogenous demand-side flexibility in the
+        model family lives in the sector chain and is technology-specific, not
+        meter-specific: BEV smart charging / demand-side management
+        (sector.bev_dsm with sector.bev_availability = "How many cars do smart
+        charging", DSM state-of-charge restrictions in prepare_transport_data.py)
+        and vehicle-to-grid (sector.v2g), built in prepare_sector_network.py.
+      mechanism: >
+        Demand: build_demand_profiles (exogenous p_set). Flexibility stand-ins
+        (sector chain): bev_dsm / bev_availability / v2g options consumed in
+        prepare_sector_network.py, with DSM restriction profiles from
+        prepare_transport_data.py (bev_dsm_restriction_value/-_time).
+      not_covered: >
+        Generic price-responsive demand, shiftable household/industry load,
+        rollout costs or coverage of metering, and any consumer-behaviour
+        modelling.
+      provenance: "scripts/build_demand_profiles.py:scale"
+    levers:
+      - key: load_options.scale
+        effect: "Scales all load time series (scalar, or per-country dict with a DEFAULT entry) — blunt exogenous stand-in for efficiency/behaviour effects."
+        default: "1"
+        provenance: "scripts/build_demand_profiles.py:scale"
+      - key: load_options.source
+        effect: "Demand dataset: 'gegis' or 'demcast' — determines the shape of the (inelastic) profile."
+        default: "gegis"
+        provenance: "config.default.yaml:load_options"
+      - key: sector.bev_dsm
+        effect: "Sector chain: turns on BEV battery demand-side management (chargeable within availability/SOC restrictions) — the model's only shiftable demand."
+        default: "true"
+        provenance: "scripts/prepare_sector_network.py:bev_dsm"
+      - key: sector.bev_availability
+        effect: "Share of cars doing smart charging — effectively the 'smart-metered/controlled' fraction of the EV fleet."
+        default: "0.5"
+        provenance: "scripts/prepare_sector_network.py:bev_availability"
+      - key: sector.v2g
+        effect: "Allows feed-in to grid from EV batteries (V2G links)."
+        default: "true"
+        provenance: "scripts/prepare_sector_network.py:v2g"
+      - key: sector.bev_dsm_restriction_value
+        effect: "Required BEV state of charge at the restriction time (0 disables the DSM restriction)."
+        default: "0.75"
+        provenance: "scripts/prepare_transport_data.py:bev_dsm_restriction_value"
+    boundary:
+      - variant: "Assume smart-meter-driven efficiency/conservation as a demand haircut"
+        rung: L0
+        note: "load_options.scale (per-country dict supported) — exogenous, no temporal response."
+      - variant: "Smart charging share of EVs (sector chain)"
+        rung: L0
+        note: "sector.bev_availability / bev_dsm — the closest existing 'metered-and-controlled customer' lever."
+      - variant: "Reshaped load profile reflecting time-of-use response"
+        rung: L3
+        note: "Supply an alternative demand time series (load_options source/weather_year choose among built datasets; a bespoke profile means replacing the build_demand_profiles input data)."
+      - variant: "Generic shiftable load (a share of demand movable within a window)"
+        rung: L5
+        note: "No component or config exists; needs bespoke Python — e.g. adding store/link constructions per load or a custom constraint in solve_network's extra_functionality."
+      - variant: "Price-elastic demand"
+        rung: L5
+        note: "The LP minimises cost against fixed p_set; elasticity requires reformulation (piecewise demand bids) — bespoke."
+      - variant: "Metering rollout costs/coverage as a scenario dimension"
+        rung: L5
+        note: "No representation; only expressible indirectly through the levers above plus exogenous cost accounting."
+    where:
+      - change: "Demand profile construction and scaling"
+        anchor: "rule build_demand_profiles -> scripts/build_demand_profiles.py (load_options params)"
+        provenance: "Snakefile:build_demand_profiles"
+      - change: "EV smart charging / DSM / V2G"
+        anchor: "scripts/prepare_sector_network.py (bev_dsm/bev_availability/v2g handling) + scripts/prepare_transport_data.py DSM restriction profile"
+        provenance: "scripts/prepare_transport_data.py:bev_dsm_restriction_time"
+      - change: "Custom flexible-demand constraint"
+        anchor: "scripts/solve_network.py:extra_functionality"
+        provenance: "scripts/solve_network.py:extra_functionality"
+    data_dependencies:
+      - input: "GEGIS / DemandCast demand datasets (per load_options.source and weather_year)"
+        required_for: "baseline demand profiles"
+        availability: "exists by default (retrieved by the workflow); prediction years limited per source"
+      - input: "transport data (EV fleet, availability profiles) for the sector chain"
+        required_for: "BEV DSM / smart charging"
+        availability: "must be built (sector workflow rules prepare_transport_data)"
+      - input: "empirical time-of-use response profiles"
+        required_for: "reshaped-demand variant"
+        availability: "absent — user-provided"

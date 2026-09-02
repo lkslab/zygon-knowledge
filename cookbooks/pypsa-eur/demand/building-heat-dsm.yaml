@@ -1,0 +1,178 @@
+id: building-heat-dsm
+title: Building heat demand flexibility / DSM
+summary: Using building thermal mass to shift space-heating demand in time (pre-heating / coasting) as demand-side flexibility.
+
+when_to_use:
+  - "heat demand flexibility"
+  - "building thermal mass storage"
+  - "pre-heating buildings"
+  - "shift heating load"
+  - "demand side management for heating"
+  - "smart thermostats / flexible heat pumps"
+  - "heat DSM"
+  - "load shifting in buildings"
+  - "known in pypsa-eur as: rural heat dsm, urban central heat dsm, residential urban decentral heat dsm"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        NOTHING — grounded absence. Heat loads added by add_heat are fixed p_set time series
+        with no flexibility component; the only 'dsm' in the repository is EV battery DSM
+        (bev_dsm / bev_dsm_restriction_value / bev_dsm_restriction_time in the transport
+        sector). The closest heat-side flexibility is investable water-tank thermal storage
+        (sector.tes) on every heat bus, which the optimiser can size and cycle — supply-side
+        buffering, not building-mass demand shifting. Note: this is a claim about pypsa-earth
+        at this commit only.
+      mechanism: >
+        None. Heat loads: prepare_heat_data -> add_heat (fixed Loads); flexibility exists only
+        as optional water-tank Stores (options['tes'] block in add_heat).
+      not_covered: >
+        Thermal-mass Stores on heat buses, comfort-band (overheat/undercool) limits,
+        checkpoint/restriction profiles, participation shares — none exist.
+      provenance: "scripts/prepare_sector_network.py:add_heat; config.default.yaml:bev_dsm; scripts/prepare_sector_network.py:tes_tau"
+
+    levers:
+      - key: sector.tes
+        effect: "Enables water-tank thermal storage on heat buses — the only out-of-box heat-shifting mechanism (supply-side)."
+        default: "true"
+        provenance: "config.default.yaml:tes; scripts/prepare_sector_network.py:tes"
+      - key: sector.tes_tau
+        effect: "Time constant (days) of the water-tank standing losses, decentral/central."
+        default: "{decentral: 3, central: 180}"
+        provenance: "config.default.yaml:tes_tau; scripts/prepare_sector_network.py:tes_tau"
+
+    boundary:
+      - variant: "Approximate heat flexibility via storage"
+        rung: L0
+        note: "sector.tes water tanks are on by default; the optimiser buys and cycles them — but at tank costs, not free building mass."
+      - variant: "Free building-thermal-mass DSM (the pypsa-eur mechanism)"
+        rung: L5
+        note: "Port pypsa-eur's implementation: a DSM availability profile with daily checkpoint hours (built alongside the hourly heat demand) plus a cost-free Store on residential heat buses with e_nom tied to peak residential space heat, e_max_pu/e_min_pu from the profile and a per-year participation share. Requires code in prepare_heat_data (profile) and add_heat (Store) and new config keys — no rule/wildcard change strictly needed, so L5 driven by component logic."
+      - variant: "Comfort-band temperature modelling (building RC models)"
+        rung: L5
+        note: "Beyond either model; needs building thermal parameters and custom constraints."
+
+    where:
+      - change: "Where the DSM Store would be added"
+        anchor: "scripts/prepare_sector_network.py:add_heat (after the heat Load, before the tes block)"
+        provenance: "scripts/prepare_sector_network.py:add_heat"
+      - change: "Where the availability profile would be built"
+        anchor: "scripts/prepare_heat_data.py:generate_periodic_profiles (weekly-profile machinery already present)"
+        provenance: "scripts/prepare_heat_data.py:generate_periodic_profiles"
+      - change: "Existing DSM pattern in this repo (EV)"
+        anchor: "scripts/prepare_sector_network.py:add_land_transport (bev_dsm restriction profile usage)"
+        provenance: "scripts/prepare_sector_network.py:add_land_transport"
+
+    data_dependencies:
+      - input: "Participation / flexible-share assumptions per year"
+        required_for: "Any thermal-mass DSM"
+        availability: "absent (pypsa-eur ships smartEn/DNV-based values that could be reused)"
+      - input: "Residential space heat demand series"
+        required_for: "Sizing the DSM store (e_nom = peak)"
+        availability: "must be built (prepare_heat_data)"
+
+    demand_dimensions:
+      driver: "n/a — no DSM; would be the residential space-heat peak times a participation share"
+      spatial: "n/a; would follow the residential heat-system buses"
+      temporal: "n/a; would be a weekly checkpoint availability profile"
+      scenario: "n/a; would be a per-year participation dict"
+
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+
+    out_of_box:
+      covers: >
+        Residential building-thermal-mass DSM, disabled by default. build_hourly_heat_demand's
+        heat_dsm_profile builds a weekly availability profile that forces the storage level to
+        zero at checkpoint hours (sector.residential_heat.dsm.restriction_time, default hours
+        10 and 22), enforcing that heat consumption is met within ~12h windows (smartEn/DNV
+        methodology) and preventing seasonal abuse. In add_heat, for RESIDENTIAL_RURAL,
+        RESIDENTIAL_URBAN_DECENTRAL and URBAN_CENTRAL systems, a cost-free Store
+        '<heat_system> heat dsm' is added on the heat bus with e_nom = peak residential space
+        heat at the node (weighted by the heat-system share), e_max_pu/e_min_pu = the profile
+        scaled by the per-investment-year participation share
+        (sector.residential_heat.dsm.restriction_value, e.g. 0.06 in 2020 to 0.39 in 2045),
+        direction 'overheat' (store above target) and/or 'undercool' (borrow below target),
+        and standing losses equal to decentral water-tank losses.
+      mechanism: >
+        rule build_hourly_heat_demand (heat_dsm_profile -> residential_heat_dsm_profile csv)
+        -> rule prepare_sector_network: add_heat DSM block (Store per residential-serving heat
+        system, gated by sector.residential_heat.dsm.enable).
+      not_covered: >
+        Services-only heat systems get no DSM (SERVICES_RURAL / SERVICES_URBAN_DECENTRAL
+        excluded, though URBAN_CENTRAL mixes sectors); no explicit temperature/comfort model
+        (energy-bucket approximation); no DSM on water heating; participation shares are
+        EU-wide, not per country.
+      provenance: "scripts/build_hourly_heat_demand.py:heat_dsm_profile; scripts/prepare_sector_network.py:heat dsm; scripts/prepare_sector_network.py:restriction_value; scripts/definitions/heat_system.py:RESIDENTIAL_URBAN_DECENTRAL"
+
+    levers:
+      - key: sector.residential_heat.dsm.enable
+        effect: "Turns residential heat DSM Stores on."
+        default: "false"
+        provenance: "config/config.default.yaml:residential_heat; scripts/prepare_sector_network.py:residential_heat"
+      - key: sector.residential_heat.dsm.direction
+        effect: "List of allowed deviations: 'overheat' (e_max_pu > 0), 'undercool' (e_min_pu < 0), or both."
+        default: "[overheat, undercool]"
+        provenance: "config/config.default.yaml:residential_heat; scripts/prepare_sector_network.py:undercool"
+      - key: sector.residential_heat.dsm.restriction_value
+        effect: "Per-investment-year dict: share of residential space-heat peak available as flexible thermal mass."
+        default: "{2020: 0.06, 2025: 0.16, 2030: 0.27, 2035: 0.36, 2040: 0.38, 2045: 0.39}"
+        provenance: "config/config.default.yaml:restriction_value; scripts/prepare_sector_network.py:restriction_value"
+      - key: sector.residential_heat.dsm.restriction_time
+        effect: "Checkpoint hours (local) at which the DSM store must be empty — sets the shifting window length."
+        default: "[10, 22]"
+        provenance: "config/config.default.yaml:restriction_time; scripts/build_hourly_heat_demand.py:restriction_time"
+
+    boundary:
+      - variant: "Enable heat DSM"
+        rung: L0
+        note: "Flip sector.residential_heat.dsm.enable."
+      - variant: "More/less flexible participation, other years"
+        rung: L1
+        note: "Edit the restriction_value dict (keyed by investment year, .get(investment_year) — years missing from the dict yield None; keep keys aligned with planning horizons)."
+      - variant: "Longer/shorter shifting windows"
+        rung: L1
+        note: "restriction_time list of checkpoint hours (fewer checkpoints = longer windows)."
+      - variant: "One-directional flexibility (pre-heat only)"
+        rung: L1
+        note: "Set direction: [overheat]."
+      - variant: "DSM on services heat systems"
+        rung: L2
+        note: "The heat_system membership list in the add_heat DSM block hardcodes the three residential-serving systems; extend it (and decide the e_nom basis, currently 'residential space' only)."
+      - variant: "Country-specific participation shares"
+        rung: L2
+        note: "restriction_value is a scalar per year applied to all nodes; a per-country map needs a small edit where the profile is scaled."
+      - variant: "Physical building RC / comfort-temperature model"
+        rung: L5
+        note: "Energy-bucket Store is the modelling frontier here; an RC model needs new component logic and building-parameter data (L3)."
+
+    where:
+      - change: "Availability profile with checkpoints"
+        anchor: "scripts/build_hourly_heat_demand.py:heat_dsm_profile (output residential_heat_dsm_profile csv)"
+        provenance: "scripts/build_hourly_heat_demand.py:heat_dsm_profile; rules/build_sector.smk:heat_dsm_profile"
+      - change: "DSM Store construction, sizing and direction"
+        anchor: "scripts/prepare_sector_network.py:add_heat (residential_heat dsm block, Store suffix '<heat_system> heat dsm')"
+        provenance: "scripts/prepare_sector_network.py:heat dsm"
+      - change: "Which heat systems participate"
+        anchor: "HeatSystem membership list in that block (RESIDENTIAL_RURAL, RESIDENTIAL_URBAN_DECENTRAL, URBAN_CENTRAL)"
+        provenance: "scripts/prepare_sector_network.py:HeatSystem.RESIDENTIAL_RURAL"
+
+    data_dependencies:
+      - input: "Hourly residential space heat demand"
+        required_for: "Store sizing (e_nom = weighted peak)"
+        availability: "must be built (heat demand chain)"
+      - input: "Participation trajectory (smartEn/DNV-based defaults)"
+        required_for: "restriction_value scaling"
+        availability: "exists by default (config dict)"
+      - input: "Decentral water-tank standing-loss cost entry"
+        required_for: "Store standing losses"
+        availability: "exists by default (technology-data costs)"
+
+    demand_dimensions:
+      driver: "Peak residential space heat per node x per-year participation share (restriction_value)"
+      spatial: "Residential-serving HeatSystem buses (rural, urban decentral, urban central)"
+      temporal: "Weekly availability profile with zero-checkpoints at restriction_time hours (12h shifting windows by default)"
+      scenario: "restriction_value dict per investment year (2020-2045 ramp)"

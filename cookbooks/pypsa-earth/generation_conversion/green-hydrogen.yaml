@@ -1,0 +1,152 @@
+id: green-hydrogen
+title: Green hydrogen
+summary: Renewable-based hydrogen production, its origin accounting (colours), RES temporal-matching / additionality policy, and hydrogen export machinery.
+when_to_use:
+  - "green hydrogen production or export"
+  - "renewable hydrogen / RFNBO-style temporal matching"
+  - "hydrogen additionality constraint"
+  - "hydrogen colours (green/grey/blue/pink)"
+  - "export hydrogen by ship"
+  - "hydrogen export scenarios (X TWh per year)"
+  - "hourly/monthly/annual RES matching for electrolysis"
+  - "known in pypsa-eur as: H2, hydrogen"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        (1) H2 production per node via add_hydrogen (see electrolysers recipe). (2) Colour
+        accounting: with sector.hydrogen.hydrogen_colors, production is routed through per-node
+        colour buses — electrolysis -> "grid H2", biomass routes -> "green H2", unabated fossil ->
+        "grey H2", CC routes -> "blue H2", nuclear high-temp electrolysis -> "pink H2" (colour bus
+        connects to the main H2 bus by a zero-cost link). NOTE: grid electrolysis is tagged
+        "grid H2", not "green" — greenness of electrolytic H2 is enforced by the policy constraint,
+        not by the colour tag. (3) RES matching policy: policy_config.hydrogen.temporal_matching
+        (hour/month/year) adds a solver constraint that generation from
+        temporal_matching_carriers (plus storage dispatch of those carriers) must cover
+        allowed_excess x the electricity drawn by matching_technologies links in each period;
+        additionality mode compares against a pre-solved reference network (path_to_ref,
+        is_reference, remove_h2_load). (4) Export: the {h2export} wildcard (values from
+        export.h2export, TWh/a) drives rule add_export, which adds an "H2 export bus", links from
+        port-node H2 buses (ports from export_ports.csv, else all H2 buses), an optional export
+        Store, and either an exogenous Load with a "constant" or "ship" profile
+        (build_ship_profile) or an endogenous negative Generator remunerated at
+        export.endogenous_price.
+      mechanism: >
+        Colour buses in scripts/prepare_sector_network.py:add_hydrogen; matching constraint in
+        scripts/solve_network.py:hydrogen_temporal_constraint (invoked from extra_functionality
+        based on policy_config); export components in scripts/add_export.py:add_export with
+        profile from create_export_profile / scripts/build_ship_profile.py:build_ship_profile.
+      not_covered: >
+        policy_config.hydrogen.spatial_matching exists in config.default.yaml but no script or
+        Snakefile consumer was found — spatial/deliverability matching is NOT enforced.
+        policy_config.hydrogen.re_country_load likewise has no consumer found — its documented
+        behaviour is not implemented at this commit. No guarantee-of-origin tracking through
+        storage/pipelines (matching is a system-level energy balance per period, not bus-level);
+        export is hydrogen-only (no ammonia/derivative export bus); no export price curves beyond a
+        single constant endogenous_price.
+      provenance: "scripts/solve_network.py:hydrogen_temporal_constraint"
+    levers:
+      - key: policy_config.hydrogen.temporal_matching
+        effect: 'Matching period for the RES constraint: "hour", "month", "year", or "no_temporal_matching" (off).'
+        default: '"no_temporal_matching"'
+        provenance: "config.default.yaml:temporal_matching; scripts/solve_network.py:hydrogen_temporal_constraint"
+      - key: policy_config.hydrogen.temporal_matching_carriers
+        effect: Generator/StorageUnit carriers that count as renewable supply in the matching constraint.
+        default: "[csp, solar, onwind, offwind-ac, offwind-dc, ror, hydro]"
+        provenance: "config.default.yaml:temporal_matching_carriers; scripts/solve_network.py:hydrogen_temporal_constraint"
+      - key: policy_config.hydrogen.matching_technologies
+        effect: Electrolyser link carriers whose electricity draw must be matched.
+        default: '["H2 Electrolysis", "Alkaline electrolyzer large", "Alkaline electrolyzer medium", "Alkaline electrolyzer small", "PEM electrolyzer", "SOEC"]'
+        provenance: "config.default.yaml:matching_technologies; scripts/solve_network.py:hydrogen_temporal_constraint"
+      - key: policy_config.hydrogen.allowed_excess
+        effect: Multiplier on electrolysis draw in the matching inequality (1.0 = strict matching).
+        default: "1.0"
+        provenance: "config.default.yaml:allowed_excess; scripts/solve_network.py:hydrogen_temporal_constraint"
+      - key: policy_config.hydrogen.additionality
+        effect: Switches matching to additionality mode against a reference network (requires is_reference / path_to_ref bookkeeping across two runs).
+        default: "false"
+        provenance: "config.default.yaml:additionality; scripts/solve_network.py:extra_functionality"
+      - key: policy_config.hydrogen.path_to_ref
+        effect: Path to the solved reference-case network used for the additionality comparison.
+        default: '""'
+        provenance: "config.default.yaml:path_to_ref; scripts/solve_network.py:extra_functionality"
+      - key: sector.hydrogen.hydrogen_colors
+        effect: Enables colour-tagged intermediate H2 buses and (with a network) nuclear pink-H2 chain.
+        default: "false"
+        provenance: "config.default.yaml:hydrogen_colors; scripts/prepare_sector_network.py:add_hydrogen"
+      - key: export.h2export
+        effect: List of yearly export demands in TWh; each value becomes an {h2export} wildcard scenario.
+        default: "[10]"
+        provenance: "config.default.yaml:h2export; scripts/add_export.py:create_export_profile"
+      - key: export.export_profile
+        effect: '"constant" flat hourly export load or "ship" batch-loading profile from build_ship_profile.'
+        default: '"ship"'
+        provenance: "config.default.yaml:export_profile; scripts/add_export.py:create_export_profile"
+      - key: export.endogenous
+        effect: If true, export becomes an endogenous negative Generator selling at export.endogenous_price instead of a fixed Load.
+        default: "false"
+        provenance: "config.default.yaml:endogenous_price; scripts/add_export.py:add_export"
+      - key: export.store
+        effect: Adds an extendable Store on the export bus to buffer between production and ship departures.
+        default: "true"
+        provenance: "config.default.yaml:store_capital_costs; scripts/add_export.py:add_export"
+      - key: export.ship.ship_capacity
+        effect: Ship batch size (TWh) shaping the "ship" export profile (with travel/fill/unload times under export.ship).
+        default: "0.4"
+        provenance: "config.default.yaml:ship_capacity; scripts/build_ship_profile.py:build_ship_profile"
+      - key: custom_data.export_ports
+        effect: If true, export ports are read from data/custom/export_ports.csv instead of the derived world-ports file.
+        default: "false"
+        provenance: "config.default.yaml:export_ports; Snakefile:prepare_ports"
+    boundary:
+      - variant: "Export X TWh/a of hydrogen"
+        rung: L0
+        note: Set export.h2export; add_export wires bus/links/store/load automatically.
+      - variant: "Monthly or hourly RES-matched (green) hydrogen"
+        rung: L1
+        note: Set policy_config.hydrogen.temporal_matching to "month"/"hour"; tune carriers and allowed_excess.
+      - variant: "Additionality (RED-II style) green H2"
+        rung: L1
+        note: Two-run workflow — first run with is_reference true, then point path_to_ref at the solved reference network; config only, but operationally manual.
+      - variant: "Track colour shares of H2 supply"
+        rung: L1
+        note: hydrogen_colors true; optionally enforce shares via sector.hydrogen.set_color_shares (see blue-hydrogen recipe).
+      - variant: "Export from specific ports only"
+        rung: L3
+        note: Provide data/custom/export_ports.csv and set custom_data.export_ports true; otherwise largest port per country from the world port index (prepare_ports), and if none found ALL H2 buses become export nodes (select_ports fallback).
+      - variant: "Spatial matching / bus-level guarantee of origin"
+        rung: L5
+        note: Config key exists but is unenforced; needs a bespoke constraint in solve_network.
+      - variant: "Export ammonia or other derivatives instead of H2"
+        rung: L5
+        note: Export bus is hard-wired to H2 buses in add_export; a derivative export needs new buses/links (see green-ammonia recipe).
+      - variant: "Time-varying export price"
+        rung: L2
+        note: endogenous_price is a scalar passed to Generator marginal_cost in add_export; replace with a series there.
+    where:
+      - change: "Matching/additionality constraint logic"
+        anchor: "scripts/solve_network.py:hydrogen_temporal_constraint (called from extra_functionality)"
+        provenance: "scripts/solve_network.py:hydrogen_temporal_constraint"
+      - change: "Export bus/links/store/load topology and pricing"
+        anchor: "scripts/add_export.py:add_export and select_ports; Snakefile rule add_export"
+        provenance: "scripts/add_export.py:add_export"
+      - change: "Export demand profile shape"
+        anchor: "scripts/build_ship_profile.py:build_ship_profile; scripts/add_export.py:create_export_profile"
+        provenance: "scripts/build_ship_profile.py:build_ship_profile"
+      - change: "Colour bus wiring"
+        anchor: "scripts/prepare_sector_network.py:add_hydrogen (color_techs mapping)"
+        provenance: "scripts/prepare_sector_network.py:add_hydrogen"
+    data_dependencies:
+      - input: "resources/<run>/export_ports.csv (from rule prepare_ports, world port index download) or data/custom/export_ports.csv"
+        required_for: "locating export nodes"
+        availability: "must be built (auto-download); region-dependent — countries without a listed port fall back to all H2 buses"
+      - input: "resources/<run>/ship_profile_{h2export}TWh.csv"
+        required_for: "export_profile: ship"
+        availability: "must be built (rule build_ship_profile, no external data)"
+      - input: "solved reference network (.nc) at policy_config.hydrogen.path_to_ref"
+        required_for: "additionality mode"
+        availability: "must be built by a prior is_reference run"
+      - input: "technology-data costs csv (rows: electrolysis variants, hydrogen storage tank type 1 including compressor)"
+        required_for: "production and export store costs"
+        availability: "must be built (rule retrieve_cost_data)"

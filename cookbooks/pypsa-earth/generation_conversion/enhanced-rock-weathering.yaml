@@ -1,0 +1,71 @@
+id: enhanced-rock-weathering
+title: Enhanced rock weathering
+summary: >-
+  Spreading crushed silicate rock (e.g. basalt) on land so it reacts with
+  atmospheric CO2 — an open-system carbon removal pathway whose energy demand is
+  mostly grinding and transport.
+when_to_use:
+  - "enhanced weathering / enhanced rock weathering"
+  - "ERW"
+  - "basalt spreading for carbon removal"
+  - "mineral carbonation on farmland"
+  - "olivine carbon removal"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >-
+        Nothing — no mention of weathering, basalt, or mineralisation anywhere in the
+        workflow, config, or cost data. Grounded absence. The CO2/CDR machinery it is
+        absent from exists: add_co2 ("co2 atmosphere" Bus+Store that may go negative,
+        "co2 stored" Buses/Stores under the sequestration budget) and add_dac (the
+        only atmosphere-removal Link in the model, and the pattern to copy).
+      mechanism: >-
+        None. Structurally, ERW is an electricity-consuming Link from
+        "co2 atmosphere" like DAC, but its carbon does NOT belong in the geological
+        "co2 stored" budget — removal is permanent-by-dispersal, so a faithful
+        implementation sinks the CO2 into a new dedicated store (or directly retires
+        it), leaving sector.co2_sequestration_potential to geological storage.
+      not_covered: >-
+        Everything: no grinding/transport energy demand, no application-rate or land
+        limits, no weathering-rate dynamics, no MRV discount, no cost row.
+      provenance: "scripts/prepare_sector_network.py:add_co2"
+    levers:
+      - key: sector.dac
+        effect: "Not ERW, but the closest existing removal option a study could use as a stand-in; toggles the only atmosphere-removal links in the model."
+        default: "true"
+        provenance: "config.default.yaml:dac ; scripts/prepare_sector_network.py:add_dac"
+      - key: sector.co2_sequestration_potential
+        effect: "Bounds removals only if ERW carbon is (crudely) routed into 'co2 stored'; a faithful ERW store sits outside this cap."
+        default: "200"
+        provenance: "config.default.yaml:co2_sequestration_potential ; scripts/solve_network.py:add_co2_sequestration_limit"
+    boundary:
+      - variant: "Any ERW representation at all"
+        rung: L5
+        note: >-
+          Bespoke Python: a new Link in prepare_sector_network with bus0
+          "co2 atmosphere" and electricity input (grinding/logistics), sinking into a
+          new ERW store with its own annual-rate cap (new e_nom / p_nom bound —
+          possibly a new constraint in solve_network extra_functionality). Nearest
+          template: the add_dac Link. Plus an L3 cost row (none exists) and a
+          removal-potential estimate for the target region.
+      - variant: "Crude stand-in: generic removal backstop at a fixed cost"
+        rung: L2
+        note: >-
+          Small localised edit: clone the add_dac link with ERW cost/energy numbers
+          and no heat input — acceptable only if lumping ERW into the geological
+          storage budget is tolerable.
+    where:
+      - change: "New removal link / dedicated ERW store"
+        anchor: "scripts/prepare_sector_network.py functions add_dac (link template) and add_co2 (bus/store patterns)"
+        provenance: "scripts/prepare_sector_network.py:add_dac"
+      - change: "Annual removal-rate constraint"
+        anchor: "scripts/solve_network.py function extra_functionality (alongside add_co2_sequestration_limit)"
+        provenance: "scripts/solve_network.py:extra_functionality"
+    data_dependencies:
+      - input: "ERW techno-economics (EUR/tCO2, kWh electricity per tCO2, rock logistics)"
+        required_for: "The L5/L2 pathway"
+        availability: "absent — must be supplied"
+      - input: "Regional deployment potential (suitable cropland, basalt availability)"
+        required_for: "A defensible removal cap"
+        availability: "absent — must be supplied"

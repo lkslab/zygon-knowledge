@@ -1,0 +1,59 @@
+id: coal-early-retirement
+title: Coal early retirement
+rank: 21
+question: >
+  Can plant X (or the fleet) retire early while the system stays adequate,
+  what replaces it, and what does the accelerated schedule cost? In Europe
+  this is the national coal-phase-out question (Germany 2030/2038, Poland's
+  timeline, Western Balkans) rather than an ETM/JETP financing deal — but the
+  system half is identical.
+when_to_use:
+  - "retire coal plants early / phase-out schedule"
+  - "coal exit 2030 vs 2038 system cost"
+  - "does the system stay adequate without plant X"
+  - "clean replacement portfolio for retiring coal"
+  - "cost of accelerating vs delaying coal exit"
+recipes:
+  generation_conversion: [coal-power-plants, gas-power-plants, grid-scale-batteries, utility-scale-solar-pv]
+  demand: [electricity-load, demand-scenarios-and-growth]
+functionality:
+  - id: fleet-retirement-filter
+    role: "core — powerplants_filter query on DateIn/DateOut retires units by date; custom_powerplants injects known closures"
+  - id: existing-baseyear-brownfield
+    role: "seeds the existing coal fleet with build years so ageing and phase-out interact correctly in pathways"
+  - id: perfect-foresight
+    role: "prepare_perfect_foresight's set_all_phase_outs hardcodes national coal/lignite exit years (DE/ES/FR/GB/IT/... to 2030) — announced schedules are in by default"
+  - id: myopic-foresight
+    role: "staged retirement across planning_horizons with capacity carry-forward and per-horizon cost vintages"
+  - id: country-carrier-capacity-limits
+    role: "CCL caps coal per country per horizon to a shrinking trajectory (or floors it for delay counterfactuals)"
+  - id: co2-cap
+    role: "budget-driven retirement — let Co2L / the co2_budget pathway force coal out instead of dating it"
+  - id: safe-reserve-margin
+    role: "the adequacy check every schedule must pass — but electricity.SAFE_reservemargin has no default entry, add the key yourself"
+  - id: load-shedding-voll
+    role: "unserved-energy diagnosis when a schedule is too aggressive"
+  - id: scenario-matrix
+    role: "retirement-date sweeps as parallel runs (early vs late vs reference)"
+  - id: probabilistic-adequacy
+    role: "reviewers increasingly want LOLE with forced outages — absent, adequacy stays deterministic"
+gap_assessment: >
+  Ready, and better-provisioned than in pypsa-earth: the powerplantmatching
+  fleet carries commissioning/retirement dates for powerplants_filter
+  one-liners; add_existing_baseyear vintages the brownfield fleet; and —
+  unique to eur — announced national coal/lignite (and nuclear) phase-out
+  years are hardcoded in prepare_perfect_foresight.set_all_phase_outs, so a
+  perfect-foresight pathway retires them without any user wiring (though the
+  list is code, not config — deviating from it means editing the script or
+  using CCL/powerplants_filter instead). The replacement portfolio (VRE +
+  storage + gas + grid) is co-optimized in the same solve, with Co2L/co2_budget
+  for policy-driven exit and VOLL diagnostics. Caveats: SAFE and BAU
+  constraints need user-added config keys (no defaults ship); adequacy is a
+  deterministic reserve margin, not probabilistic LOLE with forced outages;
+  and the transaction layer — stranded value, owner compensation, refinancing
+  — is out of scope (single social planner), so the model prices the system,
+  not the deal.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

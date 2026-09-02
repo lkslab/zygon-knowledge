@@ -1,0 +1,53 @@
+id: regional-power-pool-modelling
+title: "Regional power pool modelling"
+rank: 71
+question: >
+  What is a power pool worth — EAPP/WAPP/SAPP, the ASEAN grid, SIEPAC — which
+  cross-border corridors should be built, and how do costs and benefits split
+  across member countries? The core question of Africa's power pools and the
+  development-bank layer (World Bank/AfDB/IRENA regional planning).
+when_to_use:
+  - "model an African power pool (EAPP / WAPP / SAPP)"
+  - "value of regional integration vs national self-build"
+  - "which cross-border interconnectors first"
+  - "who wins and who loses from pooling"
+  - "hydro trade across borders (Inga, Ethiopian dams)"
+recipes:
+  generation_conversion: [hv-transmission-lines, hvdc-interconnectors,
+                          conventional-hydropower]
+  demand: [electricity-load, demand-spatial-disaggregation,
+           demand-scenarios-and-growth]
+functionality:
+  - id: spatial-clustering
+    role: "multi-country networks at any resolution — pool-wide runs are just a longer countries list"
+  - id: gadm-admin-clustering
+    role: "country/admin zoning so results map onto member states"
+  - id: transmission-expansion-limits
+    role: "cross-border corridor expansion co-optimized with generation"
+  - id: autarky
+    role: "ATK/ATKc islanding is the no-pool counterfactual — pool value = cost delta"
+  - id: equity-self-sufficiency
+    role: "EQ constraint encodes political self-sufficiency floors members demand"
+  - id: augmented-line-connection
+    role: "candidate interconnectors beyond the existing OSM topology"
+  - id: nodal-marginal-prices
+    role: "price convergence and per-country trade value from duals"
+  - id: scenario-matrix
+    role: "sweep pool configurations, EQ levels, and demand growth"
+gap_assessment: >
+  Home turf: pypsa-earth was built for exactly this — any country set becomes
+  one co-optimized network on the real OSM grid, and the canonical pool study
+  (pooled run vs ATK-islanded and EQ-constrained counterfactuals, corridor
+  expansion under lv/lc caps, per-country benefit read from nodal duals and
+  cross-border flows) runs out of the box. Caveats, not gaps: grid data
+  quality is fragmented per country — check the data_quality scorecard
+  (osm-grid) before trusting corridor-level results, especially where OSM
+  coverage is thin; trade is planner-optimal, so bilateral contracts, wheeling
+  charges, and pool market rules are outside the model (single social planner,
+  no market layer); and benefit *allocation* between members is
+  post-processing on duals, not a built-in output. None of these block the
+  headline what-is-pooling-worth study.
+coverage: ready
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

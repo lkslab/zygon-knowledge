@@ -1,0 +1,29 @@
+--- a/config.default.yaml
++++ b/config.default.yaml
+@@ -1126,3 +1126,26 @@
+     H2: H2
+     lines: Transmission Lines
+     ror: Run of River
++
++# Zygon methods payload `multi-scenario` — declarative variant fan-out.
++# Consumed by rules/zygon_scenarios.smk -> scripts/build_scenario_network.py;
++# docs in cookbooks/methods/multi-scenario/spec.yaml. Each variant is an
++# ordered list of operations applied to the prepared electricity network:
++#   {component, where: {column-or-index: value|list}, attr,
++#    op: set|scale|add, value}
++# An empty list is an untouched reference copy; an empty selection is a
++# hard error (a silently unchanged variant is the dead-key failure class).
++zygon_scenarios:
++  variants: {}
++
++# Zygon methods payload `multi-scenario` — harmonised collection.
++# Consumed by rules/zygon_collect.smk -> scripts/zygon_collect.py. Applies
++# every hook function in `hooks` (one per entry in `quantities`, agent-
++# authored, at the workflow root) to every network in `networks` (explicit
++# paths — ANY solvable network set composes) and writes one long-format CSV
++# per quantity under results/zygon_collect/.
++zygon_collect:
++  networks: []
++  labels: []
++  quantities: []
++  hooks: zygon_hooks.py

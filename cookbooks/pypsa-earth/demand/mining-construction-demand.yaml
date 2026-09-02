@@ -1,0 +1,291 @@
+id: mining-construction-demand
+title: "Mining, quarrying & construction demand"
+summary: >
+  Industrial energy demand of the extractive and building-activity sectors — mining
+  & quarrying and construction, dominated by motive power (diesel/electricity) and
+  some process heat — and how it is quantified, located, projected and served in the
+  model.
+
+when_to_use:
+  - "add or change mining energy demand"
+  - "quarrying / extraction industry load"
+  - "construction sector energy"
+  - "mine electrification"
+  - "diesel use in mining and construction"
+  - "electricity demand of mines"
+  - "grow the mining sector in a scenario"
+  - "critical minerals mining load"
+  - "building sites energy demand"
+  - "decarbonise mining and construction"
+
+models:
+
+  - model: pypsa-earth
+    version_anchor: { ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08" }
+
+    out_of_box:
+      covers: >
+        Country-level final energy of two separate UNSD subsectors — 'mining and
+        quarrying' and 'construction' — (electricity, gas, oil, coal, biomass, heat),
+        each grown by its own per-country CAGR, distributed to nodes and served as
+        annual-constant loads.
+      mechanism: >
+        Rule build_base_industry_totals parses the UNSD txt exports in
+        data/demand/unsd/data, maps 'consumption by mining and quarrying' and
+        'consumption by construction' transactions via data/unsd_transactions.csv and
+        pivots to country x carrier totals (MWh); 'consumption by other
+        manufacturing, construction and non-fuel' maps to 'other'. Rule
+        build_industry_demand scales a unit production index by
+        (1+CAGR)^(planning_horizon-base_year) using the 'mining and quarrying' and
+        'construction' columns of data/demand/industry_growth_cagr.csv, distributes
+        to nodes via the industrial distribution key — the plant database has no
+        mining or construction technologies, so the GDP-share key applies —
+        multiplies with the country carrier totals and sums over all subsectors into
+        industrial_energy_demand_per_node (nodes x carriers). In
+        prepare_sector_network, add_industry turns each carrier column into constant
+        loads: 'industry electricity', 'gas for industry', 'solid biomass for
+        industry', 'naphtha for industry', 'H2 for industry', 'low-temperature heat
+        for industry' (p_set = annual energy / 8760); oil ends up as 'naphtha for
+        industry' with its combustion CO2 booked via 'industry oil emissions'.
+      not_covered: >
+        No activity variable (tonnes of ore, construction output — energy only); no
+        machinery detail (haul trucks, excavators, crushers are not distinguished);
+        no link to any mineral-supply or commodity modelling; subsector identity is
+        lost after build_industry_demand (energy pooled per carrier with all other
+        industry); no process emissions for these subsectors (emission factors 0,
+        'mining and quarrying' explicitly '# assumed'); loads are annual-constant;
+        no config lever to switch the fuel mix (e.g. electrify mining diesel).
+      provenance: "scripts/build_base_industry_totals.py:create_industry_base_totals; data/unsd_transactions.csv:mining and quarrying; data/unsd_transactions.csv:construction; scripts/build_industry_demand.py:clean_industry_list; scripts/prepare_sector_network.py:add_industry"
+
+    levers:
+      - key: sector.enable.industry
+        effect: "Gates the whole industry demand block (add_industry) in prepare_sector_network; false removes all industrial loads including mining & construction."
+        default: "true"
+        provenance: "config.default.yaml:enable; scripts/prepare_sector_network.py:enable[\"industry\"]"
+      - key: demand_data.base_year
+        effect: "UNSD energy-balance year used as base and as start year of the CAGR growth exponent."
+        default: "2019"
+        provenance: "config.default.yaml:base_year; scripts/build_base_industry_totals.py:base_year; Snakefile:build_base_industry_totals"
+      - key: demand_data.update_data
+        effect: "Re-downloads the UNSD energy balances into data/demand/unsd/data (needed on first run)."
+        default: "true"
+        provenance: "config.default.yaml:update_data; Snakefile:unsd_paths"
+      - key: demand_data.other_industries
+        effect: "Intended toggle for the unspecified 'other' aggregate — which absorbs 'other manufacturing, construction and non-fuel' balances (note: in create_industry_base_totals the drop call's result is not assigned, so the 'other' column persists regardless)."
+        default: "false"
+        provenance: "config.default.yaml:other_industries; scripts/build_base_industry_totals.py:include_other"
+      - key: custom_data.industry_demand
+        effect: "Replaces the whole UNSD+CAGR chain with a user file data/custom/industry_demand_{demand}_{planning_horizons}.csv (country x carrier x subsector), letting you set mining/construction energy and carrier split directly."
+        default: "false"
+        provenance: "config.default.yaml:industry_demand; scripts/build_industry_demand.py:snakemake.params.industry_demand"
+      - key: custom_data.industry_database
+        effect: "Uses data/custom/industrial_database.csv instead of the built default plant database for the spatial distribution keys — the only way to allocate demand to actual mine sites."
+        default: "false"
+        provenance: "config.default.yaml:industry_database; scripts/build_industrial_distribution_key.py:snakemake.params.industry_database"
+
+    boundary:
+      - variant: "Turn industrial (incl. mining & construction) demand on/off"
+        rung: L0
+        note: "sector.enable.industry."
+      - variant: "Change base year of the demand data"
+        rung: L1
+        note: "demand_data.base_year (must exist in the UNSD data)."
+      - variant: "Change mining or construction growth separately (e.g. mining boom scenario)"
+        rung: L3
+        note: "No config key — edit the 'mining and quarrying' and 'construction' columns (per country or DEFAULT row) in data/demand/industry_growth_cagr.csv."
+      - variant: "Electrify mining/construction (diesel-to-electric) / set demand level or carrier split directly"
+        rung: L3
+        note: >
+          There is no route-switching or electrification lever for these subsectors;
+          the carrier split is fixed by the UNSD base data (diesel sits in the oil
+          rows). The functional path is custom_data.industry_demand: true plus an
+          authored data/custom/industry_demand_{demand}_{planning_horizons}.csv in
+          which the mining/construction oil rows are shifted to electricity.
+      - variant: "Locate mining demand at mine sites instead of GDP-weighting"
+        rung: L3
+        note: "custom_data.industry_database: true + data/custom/industrial_database.csv with mine rows; the default database maps no mining technology."
+      - variant: "Tie mining demand to a commodity production forecast (tonnes of ore)"
+        rung: L5
+        note: "No activity variable exists; bespoke — would need a production dataset and new intensity logic upstream of build_industry_demand."
+      - variant: "Model mining as its own flexible/interruptible load"
+        rung: L4
+        note: "Requires keeping the subsector separate through build_industry_demand (it is summed away), new columns in industrial_energy_demand_per_node and new buses/loads/links in add_industry."
+
+    where:
+      - change: "Override demand level / carrier split"
+        anchor: "custom_data.industry_demand + data/custom/industry_demand_{demand}_{planning_horizons}.csv, read in build_industry_demand"
+        provenance: "scripts/build_industry_demand.py:snakemake.params.industry_demand"
+      - change: "Growth trajectory"
+        anchor: "data/demand/industry_growth_cagr.csv columns 'mining and quarrying', 'construction'"
+        provenance: "Snakefile:industry_growth_cagr; data/demand/industry_growth_cagr.csv:mining and quarrying"
+      - change: "Spatial allocation keys"
+        anchor: "build_nodal_distribution_key in build_industrial_distribution_key.py (GDP fallback — no mining/construction facilities in default database)"
+        provenance: "scripts/build_industrial_distribution_key.py:build_nodal_distribution_key"
+      - change: "Subsector aggregation / carrier totals"
+        anchor: "create_industry_base_totals in build_base_industry_totals.py and the nodal dot-product in build_industry_demand.py"
+        provenance: "scripts/build_base_industry_totals.py:create_industry_base_totals; scripts/build_industry_demand.py:country_to_nodal"
+      - change: "Load construction"
+        anchor: "add_industry in prepare_sector_network.py"
+        provenance: "scripts/prepare_sector_network.py:add_industry"
+
+    data_dependencies:
+      - input: "UNSD energy balances (data/demand/unsd/data, downloaded when demand_data.update_data)"
+        required_for: "default base totals"
+        availability: "must be built; subsector coverage region-dependent, missing subsector columns filled 0"
+      - input: "data/unsd_transactions.csv transaction-to-subsector mapping"
+        required_for: "default base totals"
+        availability: "exists by default"
+      - input: "data/demand/industry_growth_cagr.csv"
+        required_for: "growth to planning horizon"
+        availability: "exists by default; DEFAULT row fallback for missing countries"
+      - input: "Clustered population and GDP layouts"
+        required_for: "GDP-share spatial keys"
+        availability: "built by the workflow"
+      - input: "data/custom/industry_demand_{demand}_{planning_horizons}.csv"
+        required_for: "custom demand override / electrification scenarios"
+        availability: "absent; user-authored"
+      - input: "data/custom/industrial_database.csv"
+        required_for: "mine-site spatial allocation"
+        availability: "absent; user-authored"
+
+    demand_dimensions:
+      driver: "National subsector final energy from UNSD balances (no tonnage or output measure), scaled per subsector by (1+CAGR)^years from industry_growth_cagr.csv"
+      spatial: "GDP-share key per country (no mine or construction sites in the default industrial database)"
+      temporal: "Annual-constant: p_set = annual energy / 8760, no profile"
+      scenario: "{demand} wildcard tags the scenario files; 'mining and quarrying' and 'construction' CAGR columns and demand_data.base_year set the growth path"
+
+  - model: pypsa-eur
+    version_anchor: { ref: "3e32e3c619f6ab79ada87759d6b915e9d5f3ff56", date: "2026-06-16" }
+
+    out_of_box:
+      covers: >
+        Mining & quarrying and construction energy is included, but NOT as separate
+        subsectors: their JRC-IDEES energy balances are read and then folded together
+        with 'Non-specified' into the aggregate 'Other industrial sectors', which
+        carries an output index, country energy intensities, population-based spatial
+        allocation and optional endogenous temperature-banded process heat.
+      mechanism: >
+        build_industrial_energy_demand_per_country_today reads JRC-IDEES sheets
+        FC_IND_MQ_E (Mining and quarrying) and FC_IND_CON_E (Construction), then sums
+        them with FC_IND_NSP_E (Non-specified) into 'Other industrial sectors' and
+        drops the individual columns. From there the OIS aggregate follows the
+        standard chain: build_industrial_production_per_country reads 'Physical
+        output (index)' from the OIS Industry sheet;
+        build_industry_sector_ratios.other_industrial_sectors builds the future
+        best-in-class intensity (process heating, drying, cooling and diesel motors
+        electrified, steam to biomass); build_industry_sector_ratios_intermediate
+        blends via industry.sector_ratios_fraction_future;
+        build_industry_sector_ratios_endogenous splits OIS heat into temperature
+        bands via backup_temperature_band_shares (10/65/25% in <100/100-200/200-500C).
+        Production is unchanged into the future. OIS is not in the hotmaps
+        sector_mapping, so it is population-distributed, and add_industry turns it
+        into constant loads or, with sector.industry_t.endogen, band demands with
+        competing supply links at must_run p_min_pu.
+      not_covered: >
+        Mining and construction cannot be steered individually — no per-subsector
+        production, growth, intensity or spatial handle exists once they are folded
+        into 'Other industrial sectors'; no mine-site or commodity representation;
+        diesel motors are only visible inside the future OIS ratio (electrified by
+        assumption); no route-switching key — fuel switching runs through the
+        cross-cutting sector.industry_t machinery at OIS granularity; loads are
+        annual-constant.
+      provenance: "scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_MQ_E; scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_CON_E; scripts/build_industrial_energy_demand_per_country_today.py:Other industrial sectors; scripts/build_industry_sector_ratios.py:other_industrial_sectors; scripts/build_industry_sector_ratios_endogenous.py:backup_temperature_band_shares"
+
+    levers:
+      - key: sector.industry
+        effect: "Master switch for industrial demand incl. the OIS aggregate holding mining & construction."
+        default: "true"
+        provenance: "config/config.default.yaml:industry; scripts/prepare_sector_network.py:options[\"industry\"]"
+      - key: sector.industry_t.endogen
+        effect: "Switches from fixed-carrier exogenous industry loads to temperature-banded process-heat demand with endogenous supply-technology choice (applies to mining/construction only at OIS granularity)."
+        default: "false"
+        provenance: "config/config.default.yaml:endogen; scripts/prepare_sector_network.py:options[\"industry_t\"][\"endogen\"]"
+      - key: sector.industry_t.endogenise_sectors.Other industrial sectors
+        effect: "Per-sector opt-out for the OIS aggregate: false keeps its heat as flat fuels even when endogen is on."
+        default: "true"
+        provenance: "config/config.default.yaml:endogenise_sectors; scripts/build_industry_sector_ratios_endogenous.py:endogenise_sectors"
+      - key: sector.industry_t.must_run
+        effect: "p_min_pu of the band supply links."
+        default: "0.8"
+        provenance: "config/config.default.yaml:must_run; scripts/prepare_sector_network.py:must_run"
+      - key: industry.sector_ratios_fraction_future
+        effect: "Per-year blend between today's OIS energy intensities and the electrified best-in-class ratio (which already electrifies diesel motors)."
+        default: "{2020: 0.0, 2025: 0.05, 2030: 0.2, 2035: 0.45, 2040: 0.7, 2045: 0.85, 2050: 1.0}"
+        provenance: "config/config.default.yaml:sector_ratios_fraction_future; scripts/build_industry_sector_ratios_intermediate.py:sector_ratios_fraction_future"
+      - key: industry.reference_year
+        effect: "JRC-IDEES year for today's energy demand and production index."
+        default: "2023"
+        provenance: "config/config.default.yaml:reference_year; scripts/build_industrial_production_per_country.py:reference_year"
+
+    boundary:
+      - variant: "Endogenise process-heat supply of the OIS aggregate (incl. mining & construction share)"
+        rung: L0
+        note: "Flip sector.industry_t.endogen: true — 'Other industrial sectors' is in endogenise_sectors by default; only at aggregate granularity."
+      - variant: "Tune band technologies / must_run / transformation speed"
+        rung: L1
+        note: "sector.industry_t band tech flags, must_run, industry.sector_ratios_fraction_future."
+      - variant: "Scale the OIS aggregate (rough proxy for mining/construction growth)"
+        rung: L2
+        note: "No config key — add a scaling for the 'Other industrial sectors' column in build_industrial_production_per_country_tomorrow.py; mining cannot be scaled separately from construction and non-specified."
+      - variant: "Keep mining & quarrying and construction as separate subsectors"
+        rung: L4
+        note: >
+          The fold happens in build_industrial_energy_demand_per_country_today (sel =
+          Mining and quarrying + Construction + Non-specified summed into Other
+          industrial sectors and dropped); undoing it means carrying the new
+          subsector names through production (sect2sub/fields), sector ratios (both
+          exogenous and endogenous incl. band shares), endogenise_sectors config, and
+          the nodal scripts — multi-script plumbing, not a localised edit.
+      - variant: "Change the OIS temperature-band shares"
+        rung: L2
+        note: "Edit the 'Other industrial sectors' entry of backup_temperature_band_shares in build_industry_sector_ratios_endogenous.py."
+      - variant: "Mine-site spatial allocation or commodity-linked mining demand"
+        rung: L5
+        note: "Absent at any granularity; needs new data plus new subsector plumbing (see L4 entry) — no anchor exists today."
+
+    where:
+      - change: "The mining/construction fold into OIS"
+        anchor: "industrial_energy_demand_per_country in build_industrial_energy_demand_per_country_today.py (sel list summed into 'Other industrial sectors')"
+        provenance: "scripts/build_industrial_energy_demand_per_country_today.py:Other industrial sectors; scripts/build_industrial_energy_demand_per_country_today.py:sector_sheets"
+      - change: "OIS production trajectory"
+        anchor: "rule build_industrial_production_per_country_tomorrow / its script"
+        provenance: "scripts/build_industrial_production_per_country_tomorrow.py:industrial_production_per_country_tomorrow"
+      - change: "OIS future intensity (incl. diesel-motor electrification assumption)"
+        anchor: "other_industrial_sectors() in build_industry_sector_ratios.py"
+        provenance: "scripts/build_industry_sector_ratios.py:other_industrial_sectors"
+      - change: "OIS temperature-band shares"
+        anchor: "backup_temperature_band_shares in build_industry_sector_ratios_endogenous.py"
+        provenance: "scripts/build_industry_sector_ratios_endogenous.py:backup_temperature_band_shares"
+      - change: "Spatial allocation"
+        anchor: "sector_mapping fallback to 'population' in build_industrial_production_per_node.py and build_industrial_energy_demand_per_node_today.py"
+        provenance: "scripts/build_industrial_production_per_node.py:sector_mapping; scripts/build_industrial_energy_demand_per_node_today.py:population"
+
+    data_dependencies:
+      - input: "JRC-IDEES 2021/2023 EnergyBalance + Industry workbooks (rule retrieve_jrc_idees)"
+        required_for: "today's demand (MQ/CON sheets), OIS production and ratios"
+        availability: "exists by default via retrieval; EU27 detail, non-EU27 scaled by Eurostat ratios"
+      - input: "Eurostat energy balances"
+        required_for: "non-EU27 country scaling"
+        availability: "exists by default via retrieval"
+      - input: "Clustered population layout"
+        required_for: "population-based spatial key"
+        availability: "built by the workflow"
+      - input: "Mine-site / commodity production data"
+        required_for: "any subsector-resolved mining variant"
+        availability: "absent"
+
+    demand_dimensions:
+      driver: "OIS physical output index x MWh/t OIS ratio (mining & construction energy embedded in the aggregate)"
+      spatial: "Population key (OIS absent from hotmaps sector_mapping)"
+      temporal: "Annual-constant loads (p_set = annual/nhours); endogenous bands add constant heat demand served by dispatchable links with must_run floor"
+      scenario: "planning_horizons drives sector_ratios_fraction_future interpolation; OIS production constant across horizons"
+
+reference_taxonomy:
+  framework: "FORECAST (Fraunhofer ISI)"
+  concepts:
+    - "Mining/quarrying and construction as own subsectors rather than a non-specified aggregate"
+    - "Cross-cutting technologies (motors, mobile machinery) as the dominant demand category"
+    - "Temperature-banded process heat where present (e.g. asphalt, drying)"
+    - "Efficiency-measure diffusion over time instead of a single best-in-class blend factor"
+  sources:
+    - "https://www.forecast-model.eu/"

@@ -1,0 +1,1655 @@
+id: sector-coupled-network-assembly
+title: "Sector-coupled multi-carrier network assembly (bus-per-carrier / link-as-converter)"
+summary: >
+  Represent every energy carrier as its own bus, every conversion process as a link
+  with an efficiency, every carrier inventory as a store, and every emission as a
+  flow on one shared CO2 bus — so that all sectors are one linear programme.
+question: >
+  How do I build a single optimisation that spans electricity, heat, transport,
+  industry and fuels, with consistent conversion losses and one emissions account?
+aliases:
+  - "sector coupling"
+  - "sector-coupled energy system model"
+  - "multi-carrier network"
+  - "multi-energy system"
+  - "integrated energy system model"
+  - "energy system optimisation model (ESOM)"
+  - "cross-sector coupling"
+  - "bus-per-carrier formulation"
+  - "link with efficiency / multi-link / multi-port link"
+  - "energy hub"
+  - "whole-system modelling"
+when_to_use:
+  - "model electricity and heat and transport together, not just power"
+  - "what does electrifying heating do to the power system"
+  - "I need a whole-energy-system model, not a power-sector model"
+  - "how do hydrogen, methane and electricity trade off against each other"
+  - "where should the carbon come from for synthetic fuels"
+  - "net-zero for the whole economy, not just the grid"
+  - "does it make sense to build electrolysers here rather than import fuel"
+  - "I want emissions from industry and transport counted in the same budget"
+  - "add a new conversion technology to an existing energy system model"
+  - "should I use the electricity-only model or the sector-coupled one"
+family: sector-coupling
+prevalence:
+  papers: 44
+  tier1: 31
+  tier2: 13
+  sweep_hits: 79
+  basis: >
+    Hand-coded pass 1 over all 100 PDFs (2026-07-25) found 44 papers that actually
+    build or run a multi-carrier network — the fourth-largest method in the corpus and
+    the largest one that is a MECHANISM rather than a setting. The regex screen returned
+    79, so it over-counts by ~35: "sector coupling" and "integrated energy system" are
+    boilerplate in the introductions of electricity-only studies. No paper in this slice
+    is flagged in EVIDENCE_INDEX.md's mention-only list, because the discriminator used
+    was concrete (does the paper name its carrier buses / conversion links), not
+    vocabulary. The role split is the tell: 2 `defines`, 4 `extends`, 8 `canonical-use`
+    and 30 `routine-use`. The mechanism was settled by 2018 and is now infrastructure —
+    30 papers assemble a sector-coupled network without contributing a word of method to
+    it. That is why this card documents the mechanism and delegates the technologies.
+procedure:
+  - step: >
+      Decide the carrier set and the spatial resolution PER CARRIER. This is the first
+      and least reversible choice: each (carrier, location) pair becomes one Bus. The
+      corpus never resolves every carrier nodally — electricity, heat and hydrogen are
+      typically nodal while gas, oil, biomass, methanol, ammonia and CO2 are
+      "copperplated" onto a single EU-wide bus to keep the LP tractable.
+    handle: "define_spatial(nodes, options) — one SimpleNamespace per carrier, nodal or single-node per config flag"
+    provenance: "scripts/prepare_sector_network.py:define_spatial"
+  - step: >
+      Start from a solved-shaped electricity network and strip it back to a carrier
+      substrate: keep only the AC/DC buses and the generator/storage carriers that the
+      sector layer will NOT re-add as links, because conventional plants must become
+      links (they need a fuel bus and a CO2 port) rather than generators.
+    handle: "patch_electricity_network -> remove_elec_base_techs(n, carriers_to_keep) driven by the `pypsa_eur:` carrier lists"
+    provenance: "scripts/prepare_sector_network.py:remove_elec_base_techs; scripts/prepare_sector_network.py:patch_electricity_network"
+  - step: >
+      Add one Bus per carrier per location, plus a Store on each fuel bus so depletable
+      resources have an inventory and a price rather than an infinite tap. Units are
+      per-carrier (MWh_LHV for gas, MWh_th for other fuels, t_co2 for carbon).
+    handle: "add_carrier_buses(n, carrier, ...) — adds Carrier + Bus + Store (+ Generator for fossil supply)"
+    provenance: "scripts/prepare_sector_network.py:add_carrier_buses"
+  - step: >
+      Create ONE global CO2 accounting layer: a `co2 atmosphere` Bus with an unbounded
+      Store that may go negative, a per-location `co2 stored` Bus+Store for captured
+      carbon, and a `co2 sequestered` Bus+Store for permanent storage. Every combustion
+      link debits the atmosphere bus and every capture link credits the stored bus. This
+      single structure is what makes emissions accounting consistent across sectors:
+      there is no per-sector emissions bookkeeping to reconcile.
+    handle: "add_co2_tracking(n, costs, options, sequestration_potential_file, co2_price)"
+    provenance: "scripts/prepare_sector_network.py:add_co2_tracking"
+  - step: >
+      Express every conversion process as a Link. The Link carries ONE decision variable
+      p (the bus0 withdrawal) and each further port bus1..busN is a linear function of
+      it with coefficient efficiencyN. A gas CHP is therefore bus0=gas, bus1=electricity
+      (efficiency), bus2=heat (efficiency2), bus3=co2 atmosphere (efficiency3 = the fuel's
+      CO2 intensity); adding capture makes it bus4=co2 stored with efficiency4 = the
+      captured fraction and efficiency3 = the escaping fraction. Negative efficiencyN is
+      a second INPUT (electricity consumed by a capture train), positive is an output.
+      This is the single most reusable idea in the book: any multi-input, multi-output,
+      emitting process is one Link plus a table of coefficients — no new component type,
+      no new constraint.
+    handle: "n.add('Link', ..., bus2=, bus3=, bus4=, efficiency2=, efficiency3=, efficiency4=) — e.g. the `urban central {fuel} CHP CC` link in add_heat"
+    provenance: "scripts/prepare_sector_network.py:add_heat"
+  - step: >
+      Add each sector's demand and its supply menu, gated on that sector's master switch,
+      in an order that respects the dependencies: fuels and CO2 first, then heat,
+      biomass, industry, transport, shipping, aviation, agriculture. Every sector's
+      add_* function assumes the carrier buses it consumes already exist.
+    handle: "add_heat / add_land_transport / add_industry / add_biomass / add_shipping / add_aviation / add_agriculture, each behind `if options[<sector>]`"
+    provenance: "scripts/prepare_sector_network.py:add_land_transport; scripts/prepare_sector_network.py:add_industry"
+  - step: >
+      Wire the cross-sector by-products that are the actual point of coupling — waste heat
+      from PtX into district heating, captured CO2 into synthetic fuels, EV batteries into
+      the electricity bus. Waste heat is added by MUTATING an already-built link's next
+      free port rather than by adding a component, which is why it must run last.
+    handle: "add_waste_heat(n, costs, options, cf_industry) — sets bus2/bus3/bus4 + efficiency2/3/4 on existing Fischer-Tropsch, Sabatier, Haber-Bosch, methanolisation, electrolysis and fuel-cell links"
+    provenance: "scripts/prepare_sector_network.py:add_waste_heat"
+  - step: >
+      Close the system with a single global emissions constraint over the CO2 carrier,
+      whose historical baseline is derived from exactly the sectors that were switched on.
+      Optionally insert transport/distribution layers (H2 and gas pipelines, an LV bus
+      per node) and split bidirectional carrier links into lossy forward/reverse pairs.
+    handle: "add_co2limit -> GlobalConstraint(type='co2_atmosphere'), with determine_emission_sectors(options) choosing the baseline"
+    provenance: "scripts/prepare_sector_network.py:add_co2limit; scripts/prepare_sector_network.py:determine_emission_sectors"
+  - step: >
+      (extension) Make a coupling that is exogenous by default endogenous: let the model
+      choose the drivetrain mix, the industrial process route, or the retrofit depth
+      instead of imposing a share pathway. This is the live research frontier in the
+      corpus and always means new Links plus a share/turnover constraint, never a config
+      key alone.
+    handle: null
+    provenance: null
+variants:
+  - id: carrier-buses-with-conversion-links
+    what: >
+      The base mechanism: one Bus per (carrier, location), Links with efficiency as the
+      universal converter, Stores for inventories, one shared CO2 bus. Everything else in
+      this card is this plus a choice. Cite this variant when the question is "how is the
+      model built", not "which sectors are in it".
+    papers:
+      - "2018_Brown_PyPSA-Python-for-Power-System-Analysis_JORS.pdf"
+      - "2018_Brown_Synergies-sector-coupling-transmission_Energy.pdf"
+      - "2024_Alamia_hydrogen-emethanol-power-to-x-biogas.pdf"
+      - "2025_Franken_Power-system-benefits-transport-heating-flexibility-GB_ApplEnergy.pdf"
+      - "2026_Geis_Price-Formation-Sector-Coupled_EnergyEcon.pdf"
+  - id: electricity-heat-only
+    what: >
+      The cheapest useful coupling: electricity plus one or two heat buses per node
+      (urban central / decentral, rural) joined by heat pumps, resistive heaters, boilers
+      and CHP. Buys the power-to-heat flexibility and thermal storage story at a fraction
+      of the full model's solve time, and is the entry point the corpus used first.
+    papers:
+      - "2018_Zhu_CO2-prices-electricity-heating_ApplEnergy.pdf"
+      - "2025_Lopez-Ceballos_power-to-heat-to-power-storage.pdf"
+      - "2026_Schauss_Pit-Thermal-Energy-Storage.pdf"
+  - id: electricity-heat-transport
+    what: >
+      The classic three-bus-per-node PyPSA-Eur-Sec-30 configuration: electricity, heat and
+      a land-transport bus, with BEV batteries providing demand-shifting and V2G. The
+      configuration most of the 2018-2022 corpus reports, and the one whose headline
+      finding is that sector-coupling flexibility substitutes for transmission.
+    papers:
+      - "2018_Brown_Synergies-sector-coupling-transmission_Energy.pdf"
+      - "2019_Victoria_Photovoltaics-European-energy-system_ProgPV.pdf"
+      - "2019_Victoria_Storage-technologies-decarbonisation_EnConvMgmt.pdf"
+      - "2020_Victoria_Early-decarbonisation-pays-off_NatComms.pdf"
+      - "2021_Zeyen_Mitigating-heat-demand-peaks_Energy.pdf"
+      - "2024_Xie_direct-indirect-hydrogen-storage-renewable-europe.pdf"
+  - id: full-sector-coupling-with-carbon-management
+    what: >
+      All sectors on (power, heat, land transport, shipping, aviation, industry and
+      feedstocks, agriculture) plus the carbon cycle as first-class structure: capture on
+      point sources, DAC, CO2 transport, utilisation into synthetic fuels, and geological
+      sequestration with a regional potential and a budget. This is the default shape of
+      a 2023+ study and the most expensive to solve.
+    papers:
+      - "2022_Victoria_Speed-technological-transformations_Joule.pdf"
+      - "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+      - "2025_Hofmann_H2-CO2-Network-Strategies_NatEnergy.pdf"
+      - "2026_Fernandes_carbon-dioxide-removal-decarbonise.pdf"
+      - "2026_Glaum_Minimal-Methanol-Backstop_Joule.pdf"
+      - "2026_Xiong_Projects-of-Common-Interest_ERL.pdf"
+      - "2026_Kalweit_near-optimal-carbon-capture-conversion-storage.pdf"
+  - id: single-node-ptx-hub
+    what: >
+      The same primitives at plant scale: one location, many carriers (two electricity
+      voltages, three heat temperature levels, H2, CO2, biomethane, biochar), multi-port
+      links for each synthesis unit, and storage-unit components deliberately replaced by
+      store+link pairs so charge and discharge can be sized independently. Shows the
+      mechanism is scale-free, and is the cheapest way to prototype a new conversion
+      chain before putting it in a continental model.
+    papers:
+      - "2024_Alamia_hydrogen-emethanol-power-to-x-biogas.pdf"
+      - "2023_Tries_Islanding-Green-Hydrogen.pdf"
+  - id: endogenous-end-use-technology-choice
+    what: >
+      Replace an exogenous share pathway with a competition between Links: drivetrains
+      (BEV/FCEV/ICE) per node, industrial process routes (BF-BOF, NG-DRI, H2-DRI,
+      scrap-EAF), or industrial heat bands choosing between biomass/methane/H2/heat
+      pumps. Requires fleet-turnover or minimum-part-load constraints to stop the model
+      swapping the whole fleet in one horizon. The corpus's `extends` papers are almost
+      all here.
+    papers:
+      - "2025_Kalweit_endogenous-transformation-land-transport-europe.pdf"
+      - "2025_Zeyen_Shifting-burdens-road-transport_ERL.pdf"
+      - "2025_DiBella_European-green-industrial-transformation.pdf"
+      - "2025_Burghardt_material-needs-energy-technologies.pdf"
+      - "2021_Zeyen_Mitigating-heat-demand-peaks_Energy.pdf"
+  - id: new-conversion-chain-extension
+    what: >
+      Leave the assembly alone and add conversion links for a technology it lacks:
+      bioenergy portfolios, capture solvents, e-biofuels, EGS in heat-and-power modes,
+      alternative CDR sinks, methanol pathways. The most common intervention in the
+      corpus by a wide margin, and the one the generation_conversion recipe book exists
+      to parameterise — this card only owns where the new link attaches.
+    papers:
+      - "2022_Millinger_Biofuel-mandates-cost-effective_ApplEnergy.pdf"
+      - "2024_Chanal_carbon-capture-solvent-cost-energy-system.pdf"
+      - "2026_Zhang_E-biofuels-hard-to-electrify.pdf"
+      - "2025_Franken_Geothermal-Market-Integration.pdf"
+      - "2026_Fernandes_carbon-dioxide-removal-decarbonise.pdf"
+  - id: power-sector-extraction-from-sector-model
+    what: >
+      Run the assembly backwards: build the sector-coupled model, then extract the power
+      system alone while RETAINING the sectoral demand buses (EV, heat pump, resistive
+      heating, electrolysis) as flexible loads. Gives the power-sector detail of an
+      electricity-only model with sector-coupled flexibility, at electricity-only cost —
+      the pragmatic answer when the full model will not fit the compute budget.
+    papers:
+      - "2026_Odenweller_REMIND-PyPSA-Eur_ProgEnergy.pdf"
+literature:
+  - paper: "2018_Brown_Synergies-sector-coupling-transmission_Energy.pdf"
+    tier: 1
+    role: defines
+    note: >
+      THE defining paper for this card. Introduces PyPSA-Eur-Sec-30 as "the first open,
+      spatially-resolved, temporally-resolved and sector-coupled energy model of Europe"
+      and states the mechanism in one sentence: each of 30 country nodes "consists of
+      individual 'buses' for electricity, heat, transport, hydrogen and methane. The
+      electric buses are connected together with transmission represented by HVDC lines;
+      the buses of the different sectors are connected within a node with energy
+      converters." Five carrier buses per node; converters are heat pumps with
+      temperature-dependent COP, resistive heaters, gas boilers, extraction-condensing
+      CHP, solar thermal, electrolysis, methanation+DAC and fuel cells; stores are
+      batteries, H2 tanks, hot-water TES at two time constants (tau=3 d and tau=180 d) and
+      a methane store. Investment co-optimised with dispatch over all 8760 hours. The
+      headline result to quote to users is that sector-coupling flexibility and
+      transmission reinforcement are substitutes, not complements.
+  - paper: "2018_Brown_PyPSA-Python-for-Power-System-Analysis_JORS.pdf"
+    tier: 1
+    role: defines
+    note: >
+      Defines the PRIMITIVE the other paper defines the model with, and is the citation to
+      use when justifying the formulation rather than the study: "These sectors can be
+      modelled using a network of links with efficiencies for energy conversion losses."
+      Fixes the three facts this card rests on — KCL is enforced at every bus regardless
+      of carrier while KVL applies only to passive-branch subnetworks (so non-electric
+      carriers need no impedance); link efficiencies may be time-varying eta_{l,t} (which
+      is how a heat-pump COP enters); and depletable resources such as gas are Stores, not
+      infinite generators. Notes that CHPs need extra back-pressure and fuel-consumption
+      constraints beyond the bare link.
+  - paper: "2018_Zhu_CO2-prices-electricity-heating_ApplEnergy.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The reference application for the electricity-heat-only variant: 30 country nodes,
+      one electricity bus and TWO heat buses each (urban and rural), with ground- and
+      air-source heat pumps, resistive heaters and CHP as the coupling links, plus
+      tau=180 d tanks on urban heat and tau=3 d tanks on rural. Transport excluded, hydro
+      fixed exogenously. Useful as the worked example of the urban/rural split being a
+      DEMAND-side partition that determines which supply technologies are even eligible.
+  - paper: "2020_Victoria_Early-decarbonisation-pays-off_NatComms.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The canonical electricity-heat-transport pathway study and the source of the
+      urban/rural heat framing most later papers inherit: heat demand split into urban
+      (district-heating-eligible by population density) and rural (individual solutions
+      only), transport as a lumped per-country demand with exogenous BEV penetration,
+      half of BEVs smart-charging and a quarter offering V2G. Carriers: electricity, heat
+      (urban/rural), hydrogen, synthetic methane, transport. Demonstrates the assembly
+      surviving 5-year myopic steps 2020-2050 rather than a single target year.
+  - paper: "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The clearest statement of the per-carrier spatial-resolution decision that this
+      card's step 1 is about: at 181 regions, "gas, oil, biomass, CO2 carriers
+      copperplated (no explicit transport) to reduce problem size; electricity, hydrogen
+      and heat nodally resolved". Also the reference for the shared CO2 accounting bus
+      tracking capture, usage, sequestration and emissions together. Read it before
+      promising a user a nodally-resolved gas or biomass answer.
+  - paper: "2025_Franken_Power-system-benefits-transport-heating-flexibility-GB_ApplEnergy.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The most quotable justification for the mechanism's central discipline: "each
+      carrier bus is explicitly separated to prevent unphysical cross-sector storage
+      arbitrage". Splits electricity demand into four end-uses (baseload, EV, heat
+      pumps/resistive, electrolysis) on separate buses precisely so that an EV battery
+      cannot silently serve a heat load. This is the argument to give a user who asks why
+      they cannot just add flexible load to the electricity bus.
+  - paper: "2025_Lindner_PyPSA-DE_EEM.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The reference for FORKING the assembly to a national model rather than using it as
+      shipped: PyPSA-DE keeps PyPSA-Eur's carrier/link structure and swaps in national
+      data (grid development plan, Marktstammdatenregister power and gas unit registers),
+      49 regions with 30 in Germany, and adds waste as a sector. The pattern to point a
+      user at when they want one country in detail inside a European boundary.
+  - paper: "2025_Kalweit_endogenous-transformation-land-transport-europe.pdf"
+    tier: 2
+    role: canonical-use
+    note: >
+      The reference implementation of the endogenous-end-use-technology-choice variant:
+      three additional per-node links (EV, FCEV, ICE) converting their respective carriers
+      into a shared land-transport demand bus, so the drivetrain mix becomes an investment
+      variable instead of the exogenous share pathway the config imposes. Names the
+      pattern this card recommends for any exogenous share you want to endogenise — a
+      demand bus for the SERVICE, competing links into it.
+  - paper: "2024_Alamia_hydrogen-emethanol-power-to-x-biogas.pdf"
+    tier: 2
+    role: canonical-use
+    note: >
+      The best evidence that the mechanism is scale-free, and the corpus's most explicit
+      statement of the multi-port link: "only generator, load, bus, store and link
+      components are used; storage unit components are replaced by store + link pairs",
+      with multilink components carrying efficiency coefficients alpha_{n,l,t} across
+      multiple input and output buses. Eight carriers on one site (two electricity
+      voltages, three heat temperature levels, H2, CO2, biomethane, biochar). Also the
+      source of the deliberate two-electricity-bus trick used to make RFNBO-eligible
+      electricity distinguishable from grid electricity.
+  - paper: "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The reference pypsa-earth sector-coupled study, and the honest picture of what
+      earth's chain does deliver: a 14-node Morocco model with electricity buses, gas
+      pipeline buses, hydrogen pipelines, a CO2 network and a shared CO2 accounting bus;
+      V2G, air heat pumps, DAC, Fischer-Tropsch, BEV chargers and resistive heaters all as
+      conversion links. Demand distributed spatially by GDP or production sites over GADM
+      level-1 regions. 264 scenario runs, so the chain is demonstrably robust enough to
+      sweep — the caveat is data, not code.
+  - paper: "2025_DiBella_European-green-industrial-transformation.pdf"
+    tier: 1
+    role: extends
+    note: >
+      Extends the industry module from exogenous fuel mix to endogenous process-route
+      choice for five subsectors (iron/steel, cement, ammonia, methanol, HVCs), adding
+      BF-BOF, NG-DRI-EAF, H2-DRI-EAF, scrap-EAF and BF-BOF+TGR retrofit as competing
+      links with published efficiencies, emission factors and minimum part loads, plus
+      end-of-life emissions on methanol and HVCs in the CO2 balance. The template for
+      "make a sector's technology choice a decision variable" and the paper to cite for
+      why minimum part load is not optional once processes compete.
+  - paper: "2025_Burghardt_material-needs-energy-technologies.pdf"
+    tier: 2
+    role: extends
+    note: >
+      Extends the assembly in the one direction that breaks its usual one-way logic: bulk
+      material demand (steel, cement, HVC) is linked back to energy-infrastructure
+      expansion, so building wind turbines consumes steel the model must also produce.
+      Material balances sit alongside carrier balances; material demand from technology
+      expansion is annualised over technology lifetimes; capital costs of energy
+      technologies must exclude domestically produced materials to avoid double-counting.
+      The clearest example of an extension that is NOT expressible as another link.
+  - paper: "2022_Millinger_Biofuel-mandates-cost-effective_ApplEnergy.pdf"
+    tier: 1
+    role: extends
+    note: >
+      The template for the new-conversion-chain-extension variant done properly: adds
+      solid and digestible biomass categories with JRC ENSPRESO supply-cost curves,
+      conversion routes to BtL/CHP/BioSNG/biogas upgrading, OPTIONAL carbon capture on
+      each process, and a biomass import link with a step supply-cost curve. Shows that a
+      "technology" addition is usually a resource bus + a supply curve + several links,
+      not one link. The blending mandate itself is a minimum-share constraint on liquid
+      hydrocarbon production, i.e. custom-constraints work, not assembly work.
+  - paper: "2021_Zeyen_Mitigating-heat-demand-peaks_Energy.pdf"
+    tier: 1
+    role: extends
+    note: >
+      Extends the assembly by adding a demand REDUCTION as a supply-like technology:
+      building renovation modelled as a generator that removes a constant fraction of the
+      time-varying heat demand, linearised over two cost steps (moderate 40% savings at
+      157 EUR/m2, ambitious to 20% of unrenovated demand at 224 EUR/m2) with
+      country-specific cost curves. The trick to reach for when a user wants efficiency
+      measures co-optimised rather than assumed. 48 nodes with electricity (transmission
+      and distribution), heat (district and individual, rural/urban), transport, hydrogen,
+      methane and biomass buses.
+  - paper: "2022_Victoria_Speed-technological-transformations_Joule.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Routine full-sector assembly, cited here as the point at which the carrier list
+      stabilises into what later papers assume: electricity, hydrogen, methane, liquid
+      hydrocarbons, heating (district/individual) and a CO2 atmosphere bus, with
+      electrolysers, fuel cells, heat pumps, SMR, Fischer-Tropsch, methanation, DAC and
+      CHPs as links, all carrier balances and the CO2 cycle tracked jointly per time step.
+      37 nodes, 3-hourly, myopic 2020-2050.
+  - paper: "2019_Victoria_Photovoltaics-European-energy-system_ProgPV.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Routine three-bus-per-node PyPSA-Eur-Sec-30 use (electricity, heating, transport;
+      30 nodes; heat pumps, electrolysers, fuel cells and CHP as the conversion links).
+      Contributes no mechanism, but is useful as evidence that the same assembly answers a
+      single-technology question (the role of solar PV) without modification.
+  - paper: "2019_Victoria_Storage-technologies-decarbonisation_EnConvMgmt.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Runs the assembly at FOUR levels of coupling (electricity only, +heating,
+      +transport, +both) as the study design, which makes it the corpus's best evidence
+      for what each sector switch actually buys. Confirms the shared CO2 constraint is
+      applied across all active sectors jointly, and that the urban/rural split governs
+      district-heating eligibility.
+  - paper: "2023_Zeyen_Endogenous-learning-green-hydrogen_NatComms.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Routine sector-coupled use, cited for the hydrogen supply menu it assembles on the
+      H2 bus (grey SMR, blue SMR+CC at 90% capture, green AEC electrolysis) feeding
+      methanation, boilers, fuel cells, retrofitted OCGTs, industry and shipping, with
+      OCGTs and gas boilers able to run on either gas or hydrogen. Also models the
+      distribution grid explicitly with a co-optimised transfer capacity between voltage
+      levels at 500 EUR/kW_elec.
+  - paper: "2023_Glaum_Offshore-Wind-North-Sea-Floating_EEM.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Explicitly uses the standard sector-coupling structure "without modification",
+      confining its extensions to offshore potentials and grid topology. The cleanest
+      corpus example of the boundary this card draws: a study can be substantial while
+      touching none of the assembly.
+  - paper: "2024_Glaum_Offshore-power-hydrogen-North-Sea_ApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Routine full-sector assembly with bespoke offshore nodes bolted on (64 onshore + 66
+      offshore, 33 countries, 3-hourly). Evidence that adding nodes for a subsystem does
+      not require touching the carrier/link structure — the offshore extension is spatial,
+      the assembly is unchanged.
+  - paper: "2025_Hofmann_H2-CO2-Network-Strategies_NatEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Routine use of the full carbon-management assembly, and the corpus's clearest
+      separation of the three carbon operations as distinct technology classes: capture
+      (CC), utilisation (CU, via methanation / methanolisation / Fischer-Tropsch) and
+      sequestration (CS), plus DAC. Carriers include electricity, heat, hydrogen, methane,
+      methanol, liquid hydrocarbons, biomass and CO2 over 90 nodes.
+  - paper: "2025_Neumann_Green-energy-steel-imports-net-zero_NatComms.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Routine all-sector assembly at 110 nodes, cited for the density of PtX links it
+      exercises at once (electrolysis, methanation, methanolisation, Haber-Bosch,
+      Fischer-Tropsch, methanol-to-olefins/aromatics, methanol-to-power, steam reforming
+      +/- CCS), with PtX waste heat routed into district heating and steel/ammonia
+      industry allowed to relocate within Europe. The upper bound on how much conversion
+      machinery one network carries in practice.
+  - paper: "2025_Zeyen_Shifting-burdens-road-transport_ERL.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Cited for its endogenous drivetrain investment (BEV/FCEV/ICE, light- and heavy-duty
+      separately) with fleet-turnover rates anchored to country-specific JRC-IDEES car
+      registration data, over five investment periods. Confirms the pattern of the
+      endogenous variant and supplies the constraint type — turnover, not just share —
+      that keeps it physically sensible.
+  - paper: "2025_Seibold_Germany-Industry-Transformation.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Routine PyPSA-DE sector-coupled use with HBI, ammonia and methanol as traded
+      intermediates alongside electricity, hydrogen and CO2. Notable for a deliberate
+      assembly OMISSION stated as a method choice: synthesis exhaust heat is not
+      integrated into district heating, in order to isolate input procurement costs. A
+      good illustration that waste-heat coupling is a modelling decision with a magnitude.
+  - paper: "2025_Franken_Geothermal-Market-Integration.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Standard assembly plus one technology in three link configurations (electricity-only
+      ORC, combined heat and power, heat-only exchanger) attached to district-heating and
+      low-temperature industrial-heat buses. The compact worked example of "where does a
+      new technology attach", including Fischer-Tropsch waste heat as a competing district
+      heat source.
+  - paper: "2025_Rahdan_high-impact-consumers-behavioural-flexibility.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Routine seven-sector assembly, valuable for reporting the full bus inventory
+      explicitly (HV and LV electricity, heat urban/rural and district, land transport,
+      hydrogen, gas, CO2, methanol, oil) together with the numbers that make it concrete:
+      distribution grid as an HV-to-LV link at 97% efficiency, 60% of urban heat via
+      district heating with seasonal tanks. The demand-side mechanisms it compares belong
+      to demand-side-flexibility-representation, not here.
+  - paper: "2026_Geis_Price-Formation-Sector-Coupled_EnergyEcon.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Cited for stating the assembly ALGEBRAICALLY: carriers connected via a lossy
+      incidence matrix M_{ikt}, which is exactly what the multi-port link with
+      efficiency2..N is. The most compact formal description of the mechanism in the
+      corpus, and the bridge to shadow-prices-and-marginal-values, where that matrix is
+      what makes a heat price and an electricity price commensurable.
+  - paper: "2026_Geis_Managing-the-Mismatch-Flexibility_AdvApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Routine PyPSA-DE assembly, cited for two structural details worth reusing: PtX
+      processes (electrolysis, methanolisation, methanation, Fischer-Tropsch) share the CO2
+      accounting bus, and waste heat from conversion is fed into district heating. Also
+      exogenously switches 2035-vintage gas turbines to hydrogen in 2045 — the manoeuvre
+      for fuel-switching an existing asset without a new component.
+  - paper: "2026_Glaum_Minimal-Methanol-Backstop_Joule.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Runs five scenarios that toggle hydrogen and methane transmission AND distribution
+      networks on and off, which makes it the corpus's best demonstration that carrier
+      TRANSPORT is separable from carrier CONVERSION in this assembly — you can keep every
+      conversion link and delete the pipelines. The routing content itself belongs to
+      carrier-network-routing-h2-co2.
+  - paper: "2026_Xiong_Projects-of-Common-Interest_ERL.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Routine full-sector assembly whose per-carrier resolution choice is stated plainly —
+      gas copperplated to reduce computational burden while H2 and CO2 networks are
+      explicitly routed. Corroborates step 1's claim that the corpus resolves carriers
+      selectively, and that the choice is made on solve time.
+  - paper: "2026_Zhang_E-biofuels-hard-to-electrify.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Adds four e-biofuel conversion links (e-biomass-to-liquid, e-biomethanol,
+      e-biogas-methanol, e-bioSNG) to the existing multi-carrier network, and had to
+      formulate a new carbon-energy allocation framework to do it. The instructive case
+      where a "just add a link" extension turned out to need new constraint algebra
+      because carbon and energy must be allocated consistently across co-products.
+  - paper: "2024_Chanal_carbon-capture-solvent-cost-energy-system.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Adds solvent and sorbent production chains (MEA, KOH, PEI-silica) as explicit
+      conversion links with their own energy inputs, deliberately isolated from other
+      CAPEX/VOM so their contribution is separable. The pattern for making a cost
+      component auditable: give it its own link rather than folding it into an existing
+      technology's capital cost.
+  - paper: "2026_Fernandes_carbon-dioxide-removal-decarbonise.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Extends the carbon side with four non-geological CDR strategies (afforestation,
+      perennialisation, biochar, enhanced rock weathering) as additional sequestration
+      sinks on the existing CO2 structure. Evidence that the single shared CO2 bus
+      absorbs entirely new removal classes without restructuring — the payoff of step 4.
+  - paper: "2026_Kalweit_near-optimal-carbon-capture-conversion-storage.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Runs a 39-node sector-coupled fork with CO2 hydrogenation (Sabatier,
+      Fischer-Tropsch, methanol synthesis), CHP, SMR, DAC and biogas upgrading on a shared
+      CO2 accounting bus at a uniform 90% point-source capture rate. Useful for the list of
+      demands it sets exogenously (aviation oil, agricultural machinery oil, naphtha
+      feedstock, shipping methanol, industrial biomass/gas heat, process emissions) —
+      i.e. what the assembly does NOT decide by default.
+  - paper: "2023_vanGreevenbroek_regional-overall-energy-system-flexibility.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Routine use, cited for two reusable structural facts: CO2 is modelled endogenously
+      across atmosphere, temporary storage and underground sequestration buses, and a
+      SINGLE link per node represents the whole distribution grid connecting HV
+      transmission to LV demand. The latter is the honest description of what the
+      distribution layer in this assembly is — a cost proxy, not a network.
+  - paper: "2024_vanGreevenbroek_robust-european-green-hydrogen-strategy.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Useful for stating the per-carrier resolution split as a design table: electricity,
+      heat, hydrogen and gas spatially resolved; oil, biomass, ammonia and methanol on
+      model-wide buses; CO2 tracked through temporary and permanent storage. Also
+      endogenises industrial process heat into low/medium/high temperature segments via a
+      modification tracking PyPSA-Eur PR #611 — a concrete precedent for the heat-band
+      structure that is now `sector.industry_t`.
+  - paper: "2024_Xie_direct-indirect-hydrogen-storage-renewable-europe.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Routine four-carrier assembly (electricity, heating with urban/rural sub-buses,
+      hydrogen, methane) with electrolysers, Sabatier, fuel cells, heat pumps, CHP, OCGT,
+      CCGT, gas boilers and resistive heaters as links. Cited for a per-node eligibility
+      detail that generalises: Italy is excluded from underground H2 storage on geological
+      grounds, so a store's availability is a regional data question, not a switch.
+  - paper: "2023_Tries_Islanding-Green-Hydrogen.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      A deliberately minimal bespoke assembly — two electricity buses and two hydrogen
+      buses per country (mainland and island) joined by electrolysers, a pipeline, battery
+      and cavern storage. The proof that the mechanism scales DOWN usefully: a four-bus
+      model answers a real siting question, and duplicating a carrier bus is how you make
+      "grid-connected" versus "off-grid" a distinguishable choice.
+  - paper: "2025_Lopez-Ceballos_power-to-heat-to-power-storage.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      The smallest coupling in the corpus: two buses (AC electrical, heating) per
+      single-node country, heat pumps and resistive heaters as the links, CTES/ITES stores
+      on the heat bus, and Carnot-battery waste heat as an additional heat input at a fixed
+      heat-to-power ratio. The example to hand a user who wants a power-to-heat answer in
+      a day rather than a week.
+  - paper: "2026_Schauss_Pit-Thermal-Energy-Storage.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Extends the district-heating side of the assembly with explicit forward and return
+      network temperatures, PTES discharge-boosting constraints and multiple heat sources
+      (geothermal, river, sea, electrolyser waste heat), sub-regionalising the 40 largest
+      German DH systems. Evidence that heat is the carrier where the assembly's
+      constant-efficiency assumption breaks first and temperature must become a variable.
+  - paper: "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      The second pypsa-earth sector-coupled study, and the honest read on extending
+      earth's chain: five new PtX conversion chains (Haber-Bosch ammonia, green methanol,
+      DRI/HBI green steel, shipping defossilisation) had to be ADDED for a 14-node Morocco
+      2035 study, several of which pypsa-eur ships by default. Uses earth's modular custom
+      constraint and data channels to do it.
+  - paper: "2026_Barnes_near-term-emission-targets.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      The mechanism transplanted outside both models: PyPSA-USA extended to multi-sector
+      with 134 electricity load zones, state-level gas buses and service/industrial/
+      transport demand buses, ASHP/GSHP with ERA5 temperature-dependent COP, and a
+      CO2/CH4 accounting bus that also tracks upstream and downstream FUGITIVE methane.
+      The one corpus example of extending the shared-emissions-bus idea beyond CO2, which
+      is the natural next step for a user asking about methane leakage.
+  - paper: "2026_Odenweller_REMIND-PyPSA-Eur_ProgEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The source of the power-sector-extraction variant: extracts the power system from
+      the full sector-coupled model "while also using sectoral demand profiles and
+      flexibility settings from the full model", retaining hydrogen, battery, EV, heat-pump
+      and resistive-heating buses linked to the main electricity bus with sector demands
+      supplied exogenously. 4 nodes, hourly, 14 single-year networks per coupling
+      iteration — the shape to propose when the full assembly will not fit the budget.
+  - paper: "2018_Weber_Counter-intuitive-CO2-caps_Energy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Contributes the CONTRAST rather than an application: its full-national-energy-system
+      comparator (IKARUS, "some thousand technologies" spanning primary energy through
+      conversion and transport to final demand, at representative time slices) is the
+      technology-rich, time-poor alternative to this card's time-rich, technology-lean
+      assembly. Applies a cross-sectoral CO2 price uniformly rather than only to ETS
+      sectors. Its counter-intuitive-cap findings are cited in `pitfalls`.
+pitfalls:
+  - pitfall: >
+      Turning a sector switch OFF silently moves the CO2 cap's baseline, because the
+      historical 1990 emission sectors summed into the limit are chosen from the same
+      switches. An electricity+heat run and an all-sector run at "the same" 5%-of-1990 cap
+      are enforcing two different absolute budgets, so their costs and emissions are not
+      comparable.
+    evidence: "2019_Victoria_Storage-technologies-decarbonisation_EnConvMgmt.pdf"
+    note: >
+      determine_emission_sectors(options) is the mechanism; read the resulting absolute tCO2
+      out of the GlobalConstraint and report it, not the fraction. When comparing coupling
+      levels, either fix the absolute cap by hand or state that the baseline moved. The
+      corpus's four-coupling-level study is the template for doing this deliberately.
+  - pitfall: >
+      A cross-sector cap plus a technology-forcing constraint can produce genuinely
+      counter-intuitive optima — tightening a CO2 cap increasing the use of a dirtier fuel
+      (Giffen-like behaviour), or an emission-minimising budget run behaving unlike a
+      cost-minimising cap run. This is a property of the coupled LP, not a bug.
+    evidence: "2018_Weber_Counter-intuitive-CO2-caps_Energy.pdf"
+    note: >
+      Whenever a coupled result is counter-intuitive, check the cap/price duality before
+      believing the story: re-run with an emissions PRICE at the cap's shadow price and see
+      whether the artefact survives. Never present a single cap run's sectoral shift as a
+      policy finding without that check.
+  - pitfall: >
+      Putting several end-uses on one bus lets the model arbitrage between them
+      unphysically — an EV battery serving a heat load, or thermal storage discharging into
+      the grid — inflating apparent flexibility. The bus is the boundary of substitutability,
+      and merging buses to "simplify" quietly deletes a physical constraint.
+    evidence: "2025_Franken_Power-system-benefits-transport-heating-flexibility-GB_ApplEnergy.pdf"
+    note: >
+      Give each end-use service its own bus and connect it with a link whose direction and
+      efficiency you can defend. If a user asks for a simplification that merges buses,
+      quantify what it makes fungible before agreeing.
+  - pitfall: >
+      Per-carrier copperplating is invisible in the results but decides the answer. With gas,
+      biomass, oil, methanol or CO2 on one EU-wide bus, the model may site an electrolyser or
+      a synthesis plant anywhere and move the feedstock for free — so "optimal siting"
+      conclusions for those carriers are artefacts of the resolution choice.
+    evidence: "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+    note: >
+      Read define_spatial's flags (co2_spatial, biomass_spatial, gas_network,
+      regional_oil_demand, regional_coal_demand, methanol.regional_methanol_demand) and state
+      which carriers are copperplated alongside any siting result. If the question IS siting
+      for one of those carriers, resolving it is an L1 config change with a real solve-time
+      cost — quote both.
+  - pitfall: >
+      Waste-heat coupling works by writing into an existing link's next free port, so it
+      depends on both ordering and port availability. A conversion technology you add that
+      already uses bus2/bus3/bus4 for CO2 will collide with the hardcoded port index, and a
+      run with heating switched off drops all PtX waste heat silently — changing the
+      economics of Fischer-Tropsch and electrolysis without any warning.
+    evidence: "2025_Seibold_Germany-Industry-Transformation.pdf"
+    note: >
+      add_waste_heat runs last and only under `if options["heating"]`. When adding a
+      multi-output link, leave a free port or extend add_waste_heat explicitly, and check
+      n.links.loc[..., "bus3"] after the build. The corpus paper that excluded synthesis
+      exhaust heat did so deliberately and said so — treat it as a stated assumption either
+      way.
+  - pitfall: >
+      Constant link efficiencies are a poor model of heat. A district-heating network's
+      achievable output depends on forward/return temperatures, and a heat pump's COP on
+      source and sink temperature; a fixed-efficiency link overstates both, and overstates
+      pit-storage capacity that is temperature-limited.
+    evidence: "2026_Schauss_Pit-Thermal-Energy-Storage.pdf"
+    note: >
+      Use the time-varying efficiency path (time_dep_hp_cop, the COP profiles, the
+      district-heating supply-temperature approximation) rather than a scalar, and treat
+      temperature-dependent storage boosting as L5 work if the study turns on it. pypsa-eur
+      has this machinery; pypsa-earth has a scalar heat_pump_sink_T instead.
+  - pitfall: >
+      Exogenous share pathways look like assumptions but behave like results. The land
+      transport electric/fuel-cell/ICE split, the shipping methanol share and the
+      district-heating progress factor are all imposed per horizon, so any conclusion about
+      "how much electrification is optimal" for those end-uses is circular.
+    evidence: "2025_Kalweit_endogenous-transformation-land-transport-europe.pdf"
+    note: >
+      Say out loud which shares are imposed before promising an answer. If the user's
+      question is the share itself, the honest route is the
+      endogenous-end-use-technology-choice variant (competing links into a service demand
+      bus plus a turnover constraint), not a sweep over the exogenous value.
+  - pitfall: >
+      Adding a co-product conversion link is not always just a link. When a process yields
+      both fuel and carbon (or fuel and heat) from a shared feedstock, energy and carbon must
+      be allocated consistently or the CO2 balance leaks — which needs new constraint algebra
+      on top of the efficiency table.
+    evidence: "2026_Zhang_E-biofuels-hard-to-electrify.pdf"
+    note: >
+      For any new link with more than one useful output, verify the carbon closes: sum the
+      CO2-carrying ports against the feedstock's CO2 intensity. If it does not close by
+      construction, budget for a custom constraint (see custom-constraints-with-linopy)
+      rather than tuning efficiencies until the totals look right.
+  - pitfall: >
+      Bidirectional carrier links are SPLIT into a forward link and a `-reversed` twin when
+      transmission_efficiency is enabled, with the reverse copy carrying zero capital cost and
+      zero length. Any post-processing that sums link capacities, lengths or flows by carrier
+      double-counts unless it filters on the `reversed` column.
+    evidence: "2026_Glaum_Minimal-Methanol-Backstop_Joule.pdf"
+    note: >
+      lossy_bidirectional_links does the split for every carrier listed under
+      sector.transmission_efficiency.enable (DC, H2 pipeline, H2 pipeline retrofitted, gas
+      pipeline, electricity distribution grid by default). Filter `~n.links.reversed` in any
+      extraction script, and use length_original rather than length.
+  - pitfall: >
+      The distribution grid in this assembly is one link per node with a reinforcement cost,
+      not a network. It produces a plausible-looking "distribution cost" and hosting decision
+      with no power flow, no feeder, and no voltage behind it.
+    evidence: "2023_vanGreevenbroek_regional-overall-energy-system-flexibility.pdf"
+    note: >
+      Never present an LV result as a hosting-capacity or feeder-level finding. The registry
+      is explicit that distribution-power-flow is absent in both models; route those questions
+      to a distribution tool and use this layer only as a cost proxy.
+requires_methods:
+  - linearised-optimal-power-flow
+combines_with:
+  - carrier-network-routing-h2-co2
+  - demand-side-flexibility-representation
+  - import-and-trade-representation
+  - carbon-constraints-and-pricing
+  - foresight-and-planning-horizons
+  - spatial-clustering-and-resolution
+  - temporal-aggregation-and-segmentation
+  - shadow-prices-and-marginal-values
+  - custom-constraints-with-linopy
+  - storage-sizing-and-duration
+topics:
+  - sector-coupling
+  - multi-sector-model-coupling
+  - net-zero-pathways
+  - demand-electrification-pathways
+  - industrial-cluster-decarbonization
+  - direct-electrification-vs-h2
+  - waste-heat-recovery
+pypsa_primitive:
+  symbol: "pypsa/optimization/constraints.py:define_nodal_balance_constraints"
+  pypsa_version: "0.30.3"
+  exposed_by: "both — every sector-coupled build in either model relies on it, and neither has to ask for it"
+  reachable_via: >
+    Nothing: it is unconditional. The function assembles the per-bus energy balance from a
+    fixed argument list plus, for every column matching `bus<i>` beyond bus0/bus1 discovered
+    by descriptors.py:additional_linkports, one extra term
+    ["Link", "p", f"bus{i}", efficiency{i}]. A Link therefore has exactly ONE decision
+    variable p and each additional port contributes efficiency{i} * p to that bus's balance,
+    with empty-string bus columns dropped. Adding bus5/efficiency5 to n.links needs no
+    library change at all.
+  note: >
+    This is why the whole method is `assemble` rather than `absent` in both models: the
+    multi-carrier, multi-output conversion primitive is not a feature either workflow
+    implements — it falls out of the nodal balance being carrier-agnostic and the Link being
+    arbitrarily many-ported. Everything above it (which buses, which efficiencies, which
+    switches) is bookkeeping in prepare_sector_network.py. Soft anchor: pypsa is a conda
+    dependency, not a submodule, so this claim is pinned to a version string.
+models:
+  - model: pypsa-eur
+    version_anchor:
+      ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d"
+      date: "2026-07-25"
+    functionality:
+      - id: sector-master-switches
+        role: >
+          the entry point: eight flat booleans (sector.transport/heating/biomass/industry/
+          shipping/aviation/agriculture/fossil_fuels) each gating one add_* call, all TRUE by
+          default — so a sector run is all-sectors-on unless you switch things off
+      - id: co2-network-sequestration
+        role: >
+          the shared carbon layer this card's step 4 is about: captured-carbon buses, CO2
+          pipelines, CO2Stop-derived regional storage potentials, DAC
+      - id: co2-atmosphere-constraint
+        role: >
+          closes the CO2 store's final state against the global budget in single-period
+          solves; without it the atmosphere store is a free sink
+      - id: district-heating-suite
+        role: "the heat carrier's structure — GIS DH areas, dynamic temperatures, PTES"
+      - id: exogenous-transport-shares
+        role: "the transport carrier's demand split; imposed, not optimised (see pitfalls)"
+      - id: industry-t-endogenous
+        role: >
+          the one shipped example of endogenising an end-use technology choice inside the
+          assembly (industrial heat bands), off by default
+      - id: h2-network-retrofit
+        role: "the H2 carrier's transport layer; routing content belongs to the sibling card"
+      - id: gas-network-links
+        role: "the methane carrier's transport layer — real clustered pipelines, unlike earth"
+      - id: methanol-suite
+        role: "an entire carrier chain that exists in eur and has no earth counterpart"
+      - id: ammonia-value-chain
+        role: "NH3 as a first-class carrier with Haber-Bosch and cracker links"
+      - id: distribution-grid-lv
+        role: "the LV layer that EV, heat-pump and rooftop-PV coupling attaches to"
+      - id: heat-systems-param
+        role: >
+          registry status `dead-key` — a cautionary entry: the param is plumbed through the
+          rule but the key exists nowhere and the script never reads it
+    available:
+      verdict: turnkey
+      how: >
+        A config flip runs the method. `foresight` selects the solve chain and the
+        `solve_sector_networks` collect target builds
+        base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}.nc through
+        prepare_sector_network, which assembles the entire multi-carrier network — carrier
+        buses per define_spatial, the CO2 atmosphere/stored/sequestered layer per
+        add_co2_tracking, conventional plants re-expressed as CO2-debiting links per
+        add_generation, then every sector's add_* function behind its master switch. All
+        eight switches default to true, so the out-of-box sector run is the full assembly.
+        The electricity-only entry point is a genuinely different target
+        (base_s_{clusters}_elec_{opts}.nc via solve_elec_networks) which never touches this
+        script, so choosing between them is choosing a rule, not a flag.
+      missing: >
+        Only procedure step 9 has no handle: endogenising a coupling that ships as an
+        exogenous share. sector.industry_t.endogen is the single shipped exception (industrial
+        heat bands); drivetrain choice, process-route choice and renovation depth are all
+        `retro_endogen: false`-style stubs or absent, and every corpus paper that did them
+        used a fork. Everything in steps 1-8 is config-reachable.
+      provenance: "scripts/prepare_sector_network.py:define_spatial; scripts/prepare_sector_network.py:add_co2_tracking; rules/build_sector.smk:prepare_sector_network"
+    levers:
+      - key: "sector.heating"
+        effect: >
+          Gates add_heat AND add_waste_heat. Turning it off removes every heat bus, so PtX
+          waste heat has nowhere to go and the CO2 baseline loses the residential/services
+          non-elec sectors.
+        default: "true"
+        provenance: "config/config.default.yaml:heating; scripts/prepare_sector_network.py:add_heat"
+      - key: "sector.transport"
+        effect: >
+          Gates add_land_transport (EV/FCEV/ICE links plus BEV DSM and V2G) and adds rail and
+          road non-elec to the CO2 cap baseline.
+        default: "true"
+        provenance: "config/config.default.yaml:transport; scripts/prepare_sector_network.py:add_land_transport"
+      - key: "sector.industry"
+        effect: >
+          Gates add_industry and pulls industrial non-elec, industrial processes, and domestic
+          and international aviation and navigation into the CO2 baseline — the largest single
+          jump in the emissions denominator.
+        default: "true"
+        provenance: "config/config.default.yaml:industry; scripts/prepare_sector_network.py:add_industry"
+      - key: "sector.biomass"
+        effect: "Gates add_biomass: the solid/digestible biomass buses, supply curves and bioenergy links."
+        default: "true"
+        provenance: "config/config.default.yaml:biomass; scripts/prepare_sector_network.py:add_biomass"
+      - key: "sector.shipping"
+        effect: "Gates add_shipping (methanol/H2/oil shares into a shipping demand)."
+        default: "true"
+        provenance: "config/config.default.yaml:shipping; scripts/prepare_sector_network.py:add_shipping"
+      - key: "sector.aviation"
+        effect: "Gates add_aviation (kerosene demand on the oil bus)."
+        default: "true"
+        provenance: "config/config.default.yaml:aviation; scripts/prepare_sector_network.py:add_aviation"
+      - key: "sector.agriculture"
+        effect: >
+          Gates add_agriculture; the docstring notes it requires heating and industry to be on,
+          so it is the one switch with an undeclared dependency.
+        default: "true"
+        provenance: "config/config.default.yaml:agriculture; scripts/prepare_sector_network.py:add_agriculture"
+      - key: "sector.fossil_fuels"
+        effect: >
+          Read inside add_carrier_buses: decides whether fossil supply Generators are attached
+          to the fuel buses at all. Off means the carrier bus exists but has no primary source.
+        default: "true"
+        provenance: "config/config.default.yaml:fossil_fuels; scripts/prepare_sector_network.py:add_carrier_buses"
+      - key: "sector.co2_spatial"
+        effect: >
+          Nodal captured-CO2 buses versus one EU bus. The single most consequential
+          copperplating flag for any carbon-management siting question.
+        default: "true"
+        provenance: "config/config.default.yaml:co2_spatial; scripts/prepare_sector_network.py:define_spatial"
+      - key: "sector.co2_network"
+        effect: "Adds CO2 pipeline links between the stored-CO2 buses (add_co2_network)."
+        default: "true"
+        provenance: "config/config.default.yaml:co2_network; scripts/prepare_sector_network.py:add_co2_network"
+      - key: "sector.biomass_spatial"
+        effect: >
+          Nodal biomass buses versus one EU biomass bus. Falls back to biomass_transport when
+          unset, so the two keys interact.
+        default: "true"
+        provenance: "config/config.default.yaml:biomass_spatial; scripts/prepare_sector_network.py:define_spatial"
+      - key: "sector.gas_network"
+        effect: >
+          Both a spatial flag (nodal gas buses in define_spatial) and the switch for real
+          SciGRID_gas-derived pipeline links. Unlike earth's dead equivalent, this is live.
+        default: "true"
+        provenance: "config/config.default.yaml:gas_network; scripts/prepare_sector_network.py:add_h2_gas_infrastructure"
+      - key: "sector.dac"
+        effect: "Adds the DAC link (electricity + heat in, co2 stored out) — the atmospheric carbon source for synthetic fuels."
+        default: "true"
+        provenance: "config/config.default.yaml:dac; scripts/prepare_sector_network.py:add_dac"
+      - key: "sector.electricity_distribution_grid"
+        effect: >
+          Inserts an LV bus and reinforcement link per node and REROUTES electricity demand,
+          EV chargers, heat pumps, resistive heaters and micro-CHP onto it. A cost proxy, not
+          a network.
+        default: "true"
+        provenance: "config/config.default.yaml:electricity_distribution_grid; scripts/prepare_sector_network.py:insert_electricity_distribution_grid"
+      - key: "sector.use_fischer_tropsch_waste_heat"
+        effect: >
+          Fraction of Fischer-Tropsch waste heat routed into district heating by mutating the
+          link's bus3/efficiency3. The template for all six use_*_waste_heat keys.
+        default: "0.25"
+        provenance: "config/config.default.yaml:use_fischer_tropsch_waste_heat; scripts/prepare_sector_network.py:add_waste_heat"
+      - key: "sector.industry_t.endogen"
+        effect: >
+          Switches industrial process heat from an exogenous fuel mix to competing links per
+          temperature band (heat100-200, heat200-500, heat>500). The only shipped
+          endogenous-technology-choice lever.
+        default: "false"
+        provenance: "config/config.default.yaml:endogen; scripts/prepare_sector_network.py:add_t_industry100_200"
+      - key: "sector.transmission_efficiency"
+        effect: >
+          Per-carrier static/per-1000km efficiency and compression. Listing a carrier under
+          `enable` causes its bidirectional links to be split into forward and `-reversed`
+          pairs — the double-counting trap in pitfalls.
+        default: "enable: [DC, H2 pipeline, H2 pipeline retrofitted, gas pipeline, electricity distribution grid]"
+        provenance: "config/config.default.yaml:transmission_efficiency; scripts/prepare_sector_network.py:lossy_bidirectional_links"
+      - key: "pypsa_eur"
+        effect: >
+          The Bus/Link/Generator/StorageUnit/Store carrier allow-lists that seed the sector
+          network: remove_elec_base_techs deletes every carrier NOT listed, so OCGT and
+          battery/H2 storage units are stripped from the electricity-only network and re-added
+          as links. Editing this list is how you keep an electricity-layer technology alive
+          into the sector network.
+        default: "Bus: [AC]; Link: [DC]; Generator: [onwind, offwind-ac, offwind-dc, offwind-float, solar-hsat, solar, ror, nuclear]; StorageUnit: [PHS, hydro]; Store: []"
+        provenance: "config/config.default.yaml:pypsa_eur; scripts/prepare_sector_network.py:remove_elec_base_techs"
+      - key: "scenario.sector_opts"
+        effect: >
+          The sector wildcard. Tokens T/H/B/I/A force the corresponding master switch to True
+          (one-way only — there is no token that switches a sector off), and nH sets temporal
+          resolution. Default empty, so config alone decides the sector set.
+        default: "['']"
+        provenance: "config/config.default.yaml:sector_opts; scripts/_helpers.py:update_config_from_wildcards"
+    assembly:
+      - step: >
+          Choose the entry point first. `solve_elec_networks` builds
+          base_s_{clusters}_elec_{opts}.nc and never runs prepare_sector_network;
+          `solve_sector_networks` builds
+          base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}.nc and does. This is a
+          different target, not a flag — an electricity-only run cannot be "upgraded" by
+          setting sector keys.
+        uses: [sector-master-switches]
+        config: "foresight (overnight|myopic|perfect) selects the solve rules; the collect target selects the chain"
+        code: null
+        provenance: "rules/collect.smk:solve_sector_networks; rules/solve_overnight.smk:solve_sector_network"
+      - step: >
+          Set the carrier set and per-carrier resolution BEFORE anything else, because
+          define_spatial's flags decide bus names that every later add_* function indexes by
+          string. co2_spatial, biomass_spatial, gas_network, regional_oil_demand,
+          regional_coal_demand and methanol.regional_methanol_demand are the levers; each
+          `false` copperplates that carrier onto one EU bus.
+        uses: [co2-network-sequestration, gas-network-links, methanol-suite]
+        config: "sector.co2_spatial; sector.biomass_spatial; sector.gas_network; sector.regional_oil_demand"
+        code: null
+        provenance: "scripts/prepare_sector_network.py:define_spatial"
+      - step: >
+          Decide which electricity-layer carriers survive into the sector network via the
+          `pypsa_eur:` allow-lists. Anything not listed is deleted by remove_elec_base_techs on
+          the assumption the sector layer re-adds it as a link. Forgetting to add a custom
+          electricity-layer technology here makes it vanish with only a log line.
+        uses: [sector-master-switches]
+        config: "pypsa_eur.{Bus,Link,Generator,StorageUnit,Store}"
+        code: null
+        provenance: "scripts/prepare_sector_network.py:remove_elec_base_techs; scripts/prepare_sector_network.py:patch_electricity_network"
+      - step: >
+          Select the sector set with the eight master switches, and immediately read the
+          absolute CO2 limit back out, because determine_emission_sectors makes the cap's
+          baseline a function of exactly those switches.
+        uses: [sector-master-switches, co2-atmosphere-constraint]
+        config: "sector.{transport,heating,biomass,industry,shipping,aviation,agriculture,fossil_fuels}; co2_budget"
+        code: null
+        provenance: "scripts/prepare_sector_network.py:determine_emission_sectors; scripts/prepare_sector_network.py:add_co2limit"
+      - step: >
+          To ADD a conversion technology, write one n.add("Link", ...) inside the add_* function
+          that owns the carrier it consumes, with bus0 as the input, bus1..busN as outputs, and
+          a CO2 port whenever combustion or capture is involved. Sign convention: positive
+          efficiencyN is an output at busN, negative is a second input. Match the existing
+          `urban central {fuel} CHP CC` pattern for the four-port emitting-plus-capturing case.
+          The efficiencies, costs and lifetimes themselves come from technology-data and belong
+          to the generation_conversion recipe book — this card only owns where the link attaches.
+        uses: [co2-network-sequestration, district-heating-suite]
+        config: null
+        code: "scripts/prepare_sector_network.py — the add_* function owning the input carrier"
+        provenance: "scripts/prepare_sector_network.py:add_heat; scripts/prepare_sector_network.py:add_carrier_buses"
+      - step: >
+          If the new technology emits usable waste heat, extend add_waste_heat rather than
+          hardcoding a heat port, and check which port index is still free — the function
+          writes bus2, bus3 or bus4 depending on the technology, and runs last and only when
+          sector.heating is on.
+        uses: [district-heating-suite]
+        config: "sector.use_*_waste_heat"
+        code: "scripts/prepare_sector_network.py:add_waste_heat"
+        provenance: "scripts/prepare_sector_network.py:add_waste_heat"
+      - step: >
+          To ENDOGENISE an exogenous share, add a demand Bus for the SERVICE (as land transport
+          already does) and one competing Link per technology into it, then add a turnover or
+          share constraint so the fleet cannot flip in one horizon. industry_t is the shipped
+          worked example; drivetrain and process-route choice are forks in the corpus.
+        uses: [industry-t-endogenous, exogenous-transport-shares]
+        config: "sector.industry_t.endogen for the shipped case; nothing for the others"
+        code: "scripts/prepare_sector_network.py:add_t_industry100_200 as the pattern; a new/extended add_* plus solve-time constraint otherwise"
+        provenance: "scripts/prepare_sector_network.py:add_t_industry100_200; scripts/prepare_sector_network.py:add_land_transport"
+      - step: >
+          If the extension needs a new data input (a potential map, a demand series, a cost
+          curve), add the build rule in rules/build_sector.smk and wire it into
+          prepare_sector_network's input block, which is where every sector resource is
+          declared.
+        uses: [co2-network-sequestration]
+        config: null
+        code: "rules/build_sector.smk — a new build_* rule plus an input line on prepare_sector_network"
+        provenance: "rules/build_sector.smk:prepare_sector_network"
+      - step: >
+          Verify the build before solving: confirm the buses and links you expect exist by
+          carrier, that every emitting link has a CO2 port, and that the absolute CO2 limit
+          matches what you intended.
+        uses: [summary-outputs]
+        config: null
+        code: "scripts/make_summary.py for the cross-run view"
+        provenance: "scripts/make_summary.py:calculate_capacities"
+    boundary:
+      - variant: carrier-buses-with-conversion-links
+        rung: L0
+        note: >
+          The default sector run IS this. All eight master switches default true, so
+          `snakemake solve_sector_networks` produces the full multi-carrier network with the
+          shared CO2 layer and no edits at all.
+      - variant: electricity-heat-only
+        rung: L1
+        note: >
+          Switch off transport, industry, biomass, shipping, aviation and agriculture. Non-default
+          combination rather than a flip, and note the CO2 baseline shrinks with them — the
+          comparison to an all-sector run is not like-for-like unless you fix the absolute cap.
+      - variant: electricity-heat-transport
+        rung: L1
+        note: >
+          heating + transport on, industry/shipping/aviation/agriculture off. Also the
+          combination the sector_opts tokens T and H express, though the tokens can only turn
+          switches ON.
+      - variant: full-sector-coupling-with-carbon-management
+        rung: L0
+        note: >
+          The out-of-box configuration: co2_spatial, co2_network, dac, ammonia, H2_network and
+          gas_network are all true by default and regional sequestration potentials are enabled.
+          Nothing to change; the work is affording it.
+      - variant: single-node-ptx-hub
+        rung: L5
+        note: >
+          Not what this workflow builds. pypsa-eur assembles a continental network from clustered
+          regions; a plant-scale hub with three heat temperature levels and two electricity buses
+          is a bespoke script against the pypsa library, reusing this card's primitives but none
+          of its rules. The corpus papers that did it wrote standalone models.
+      - variant: endogenous-end-use-technology-choice
+        rung: L5
+        note: >
+          L1 for the one shipped case (sector.industry_t.endogen, off by default). Everything else
+          — drivetrain choice, industrial process routes, renovation depth beyond the
+          retro_endogen stub — is new Links plus a turnover/share constraint, which is exactly
+          what every corpus `extends` paper forked to do.
+      - variant: new-conversion-chain-extension
+        rung: L2
+        note: >
+          The common case and cheaper than it looks: one n.add("Link", ...) in the add_* function
+          owning the input carrier, following the existing multi-port pattern. Rises to L3 when
+          the technology needs a new potential or demand input, and to L4 when that input needs
+          its own build rule and wildcard.
+      - variant: power-sector-extraction-from-sector-model
+        rung: L5
+        note: >
+          No supported path. The two entry points are separate targets, and retaining sectoral
+          demand buses while deleting the rest of the sector network is a post-processing script
+          on a prepared sector network. Cheap to write, but nothing in the repo does it.
+    where:
+      - change: "add or modify a conversion link"
+        anchor: "scripts/prepare_sector_network.py — the add_* function owning the input carrier (add_heat, add_industry, add_biomass, add_land_transport, ...)"
+        provenance: "scripts/prepare_sector_network.py:add_heat"
+      - change: "add or change a carrier bus / its spatial resolution"
+        anchor: "scripts/prepare_sector_network.py::define_spatial plus the matching sector.*_spatial config key"
+        provenance: "scripts/prepare_sector_network.py:define_spatial"
+      - change: "change the carbon accounting structure (new sink, new store, vent behaviour)"
+        anchor: "scripts/prepare_sector_network.py::add_co2_tracking (and add_co2_network for transport)"
+        provenance: "scripts/prepare_sector_network.py:add_co2_tracking"
+      - change: "route a new process's waste heat into district heating"
+        anchor: "scripts/prepare_sector_network.py::add_waste_heat — pick the next free bus index"
+        provenance: "scripts/prepare_sector_network.py:add_waste_heat"
+      - change: "keep an electricity-layer technology alive into the sector network"
+        anchor: "config pypsa_eur.{Generator,StorageUnit,Store} allow-lists read by remove_elec_base_techs"
+        provenance: "scripts/prepare_sector_network.py:remove_elec_base_techs"
+      - change: "change which sectors the CO2 cap baseline covers"
+        anchor: "scripts/prepare_sector_network.py::determine_emission_sectors"
+        provenance: "scripts/prepare_sector_network.py:determine_emission_sectors"
+      - change: "add a new sector data input"
+        anchor: "rules/build_sector.smk — a new build_* rule plus an input line on rule prepare_sector_network"
+        provenance: "rules/build_sector.smk:prepare_sector_network"
+      - change: "endogenise an exogenous end-use share"
+        anchor: "scripts/prepare_sector_network.py::add_t_industry100_200 as the in-repo pattern; a service demand bus plus competing links elsewhere"
+        provenance: "scripts/prepare_sector_network.py:add_t_industry100_200"
+    data_dependencies:
+      - input: "a new technology's potential / demand / cost-curve input (e.g. a sequestration or resource map)"
+        required_for: new-conversion-chain-extension
+        availability: >
+          must be built — rules/build_sector.smk owns ~60 build_* rules and a new resource means a
+          new rule plus an input line on prepare_sector_network
+      - input: "regional CO2 sequestration potentials (CO2Stop-derived)"
+        required_for: full-sector-coupling-with-carbon-management
+        availability: "exists by default (sector.regional_co2_sequestration_potential.enable is true), Europe-only"
+      - input: "JRC-IDEES / eurostat energy balances for the sector demand split and the CO2 baseline"
+        required_for: carrier-buses-with-conversion-links
+        availability: "exists by default, European countries only — this is the hard geographic boundary of the eur chain"
+    cost_profile:
+      solves: >
+        One solve per (clusters, opts, sector_opts, planning_horizons) combination; the sector
+        network is roughly an order of magnitude more variables than the electricity-only network
+        at the same clustering, because each node carries buses for heat (up to three systems),
+        H2, gas, oil, methanol, ammonia, biomass, CO2 and low voltage rather than one AC bus.
+      relative: >
+        The corpus's practical envelope: 30-181 nodes at 1-4 hourly, or 750-2190 TSAM segments when
+        nodes go up. Full-sector 100+ node hourly runs are not routine in the corpus; every study
+        above ~90 nodes coarsened time (3-hourly or segmentation) to pay for it.
+      note: >
+        The affordability levers are all L0/L1 and orthogonal to the assembly: fewer clusters,
+        coarser resolution, TSAM segmentation, and copperplating carriers you are not asking about
+        (co2_spatial/biomass_spatial/gas_network false). Switching sectors off is the crudest lever
+        and the one with a hidden cost — it moves the CO2 baseline. Prefer coarsening time to
+        deleting sectors when the question is cross-sectoral.
+    verifies:
+      - variant: carrier-buses-with-conversion-links
+        check: "{'AC','H2','co2','co2 stored','urban central heat'}.issubset(set(n.buses.carrier))"
+        over: run
+        note: >
+          A missing carrier bus means the corresponding add_* function did not run — almost always
+          a master switch left off, or an exception swallowed upstream. The solve still succeeds and
+          simply answers a different question.
+      - variant: carrier-buses-with-conversion-links
+        check: "(n.links.carrier.str.contains('CHP').sum() == 0) or (n.links.loc[n.links.carrier.str.contains('CHP'), 'bus2'] != '').all()"
+        over: run
+        note: >
+          A CHP link without a second output port is a boiler that was billed as a CHP. This is the
+          canonical multi-port failure: the link builds, solves and silently discards the heat.
+      - variant: full-sector-coupling-with-carbon-management
+        check: "'co2 atmosphere' in n.stores.index and (n.stores.at['co2 atmosphere','e_min_pu'] < 0)"
+        over: run
+        note: >
+          If the atmosphere store cannot go negative, net-negative emissions are structurally
+          impossible and any CDR technology in the network is dead weight — the run will succeed
+          and just never remove carbon.
+      - variant: new-conversion-chain-extension
+        check: "n.links.query(\"carrier == @new_carrier\").filter(like='bus').ne('').sum(axis=1).ge(2).all()"
+        over: run
+        note: >
+          A newly added conversion link with fewer than two connected ports is not converting
+          anything. Catches the most common extension typo — a bus name string that does not match
+          any bus in the network, which pypsa leaves as an empty port.
+      - variant: full-sector-coupling-with-carbon-management
+        check: "n.global_constraints.query(\"type == 'co2_atmosphere'\").shape[0] == 1"
+        over: run
+        note: >
+          No CO2 global constraint means the assembly is unconstrained on emissions and the answer
+          is a fossil least-cost system. Two means a cap was added twice and the tighter one silently
+          wins.
+  - model: pypsa-earth
+    version_anchor:
+      ref: "8435f4c8cc05f30088933b37b7db497ff860dc53"
+      date: "2026-07-25"
+    functionality:
+      - id: sector-coupled-workflow
+        role: >
+          the entry point, and the whole story: ONE umbrella registry entry covers what eur
+          splits across sector-master-switches, district-heating-suite,
+          exogenous-transport-shares, industry-t-endogenous and methanol-suite. The registry
+          asymmetry is not an oversight — earth's sector tree genuinely has less to enumerate.
+      - id: co2-network-sequestration
+        role: >
+          the shared carbon layer: co2 atmosphere bus, per-location co2 stored bus+store,
+          vents, optional CO2 pipelines, DAC. Status `working`, but flatter than eur's — there
+          is no separate `co2 sequestered` bus/store tier and no regional potential map
+      - id: h2-pipeline-routing
+        role: "the H2 carrier's transport layer, routed along the clustered GGIT gas network or greenfield"
+      - id: gas-network-links
+        role: >
+          registry status `dead-key` and the sharpest single difference from eur: the config
+          comment reads 'ALWAYS FALSE for now (NOT USED)', pipelines are clustered but no gas
+          Links are ever built, so methane is nodally unlimited
+      - id: ammonia-value-chain
+        role: "NH3 as a first-class carrier — one of the few sector chains earth matches eur on"
+      - id: end-use-fuel-share-switches
+        role: >
+          the transport/shipping electrification levers, keyed by {demand}_{horizon} rather
+          than by horizon alone — the `{demand}` wildcard IS the pathway selector
+      - id: h2-export-chain
+        role: >
+          earth-only, and structurally load-bearing here: the sector target filename ends in
+          `_{h2export}export.nc`, so every sector run passes through add_export whether or not
+          it is an export study
+      - id: distribution-grid-lv
+        role: "registry status `partial` — the LV cost-proxy layer that heat/EV/rooftop coupling attaches to"
+      - id: bev-dsm-v2g
+        role: "the transport carrier's flexibility; the flexibility content itself belongs to the sibling card"
+      - id: custom-data-overrides
+        role: >
+          the sanctioned 'impose it in data, optimise the response' channel (industry demand,
+          pipelines, heat, export) — earth's answer to extensions that eur does in code
+      - id: myopic-foresight
+        role: >
+          registry status `partial`; the sector+myopic combination is the least battle-tested
+          part of this chain and the honest answer to a pathway request here is 'expect to debug'
+      - id: discount-rate-dimension
+        role: >
+          registry status `partial`; the `{discountrate}` filename token that labels sector runs
+          without any script reading it — see pitfalls
+    available:
+      verdict: assemble
+      how: >
+        The sector chain exists and works: `solve_sector_networks` expands to
+        postnetworks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{sopts}_{planning_horizons}_
+        {discountrate}_{demand}_{h2export}export.nc and prepare_sector_network.py assembles the
+        multi-carrier network with the same primitives — define_spatial per carrier, add_co2 for
+        the shared atmosphere/stored layer, and ten `sector.enable` flags gating add_heat,
+        add_biomass, add_industry, add_shipping, add_aviation, add_land_transport,
+        add_rail_transport, add_agriculture, add_residential and add_services. Earth has TWO
+        add_* functions eur lacks (add_residential, add_services split the buildings demand
+        explicitly) and one structurally better idea: convert_conventional_generators_to_links
+        CONVERTS the existing electricity-layer generators in place, preserving p_nom, build_year,
+        lifetime and extendability while attaching a fuel bus and a co2 atmosphere port — where
+        eur deletes them via remove_elec_base_techs and rebuilds greenfield. For a brownfield
+        non-European fleet that is the right primitive.
+        It is `assemble` rather than `turnkey` because the pieces do not compose without work:
+        the sector chain and the electricity chain use DIFFERENT wildcard sets, several carrier
+        chains eur ships are absent, gas transport is a dead key, and the demand/horizon share
+        dictionaries must be filled in for any combination outside the shipped ones.
+      missing: >
+        Procedure step 9 as in eur, plus real gaps in steps 1-8 that eur does not have.
+        No methanol carrier at all (no add_methanol, no `methanol` in the config or the script) —
+        so the entire methanol economy, methanol shipping fuel and methanol-to-power are absent
+        and every corpus earth study that wanted them added the chains itself. No separate
+        `co2 sequestered` tier: sequestration is the `co2 stored` Store with a scalar
+        co2_sequestration_potential and no regional map, so spatially-explicit storage siting is
+        not available. Gas transport is a dead key. District heating is a population-fraction
+        share rather than GIS-derived areas, with no dynamic supply temperatures and no PTES/ATES
+        machinery. Industrial process-heat technology choice is exogenous only — there is no
+        industry_t equivalent. The CO2 cap is a flat scalar from electricity.co2limit/co2base and
+        is NOT sector-scoped, so eur's baseline-moves-with-switches behaviour has no analogue here
+        (which removes one pitfall and adds another: the cap does not track the sector set at all).
+      provenance: "scripts/prepare_sector_network.py:convert_conventional_generators_to_links; scripts/prepare_sector_network.py:add_co2; scripts/prepare_sector_network.py:add_services"
+    levers:
+      - key: "sector.enable.heat"
+        effect: >
+          Gates add_heat: residential/services rural, urban decentral and urban central heat
+          buses plus heat pumps, resistive heaters, boilers, CHP and TES.
+        default: "true"
+        provenance: "config.default.yaml:heat; scripts/prepare_sector_network.py:add_heat"
+      - key: "sector.enable.land_transport"
+        effect: "Gates add_land_transport: EV/FCEV/ICE links, BEV DSM and V2G."
+        default: "true"
+        provenance: "config.default.yaml:land_transport; scripts/prepare_sector_network.py:add_land_transport"
+      - key: "sector.enable.industry"
+        effect: "Gates add_industry: industrial demand per carrier with exogenous fuel mix."
+        default: "true"
+        provenance: "config.default.yaml:industry; scripts/prepare_sector_network.py:add_industry"
+      - key: "sector.enable.biomass"
+        effect: "Gates add_biomass: solid biomass and biogas buses and their conversion links."
+        default: "true"
+        provenance: "config.default.yaml:biomass; scripts/prepare_sector_network.py:add_biomass"
+      - key: "sector.enable.residential"
+        effect: >
+          Gates add_residential — an earth-only split that eur folds into heat and industry.
+          Gives residential demand its own carriers, which is the right shape for a country
+          where cooking and non-electric residential fuels dominate.
+        default: "true"
+        provenance: "config.default.yaml:residential; scripts/prepare_sector_network.py:add_residential"
+      - key: "sector.enable.services"
+        effect: "Gates add_services — the second earth-only demand split, paired with residential."
+        default: "true"
+        provenance: "config.default.yaml:services; scripts/prepare_sector_network.py:add_services"
+      - key: "sector.enable.rail_transport"
+        effect: >
+          Gates add_rail_transport — earth models rail as its own sector where eur folds rail
+          non-electric into the transport CO2 baseline only.
+        default: "true"
+        provenance: "config.default.yaml:rail_transport; scripts/prepare_sector_network.py:add_rail_transport"
+      - key: "sector.enable.agriculture"
+        effect: "Gates add_agriculture (machinery fuel and electricity demand)."
+        default: "true"
+        provenance: "config.default.yaml:agriculture; scripts/prepare_sector_network.py:add_agriculture"
+      - key: "sector.enable.shipping"
+        effect: "Gates add_shipping (H2/oil shares at ports; no methanol route exists here)."
+        default: "true"
+        provenance: "config.default.yaml:shipping; scripts/prepare_sector_network.py:add_shipping"
+      - key: "sector.enable.aviation"
+        effect: >
+          Gates add_aviation. The in-script comment states plainly that aviation 'runs with
+          dummy data' — treat any aviation result here as structural, not quantitative.
+        default: "true"
+        provenance: "config.default.yaml:aviation; scripts/prepare_sector_network.py:add_aviation"
+      - key: "sector.gas.spatial_gas"
+        effect: >
+          Nodal gas buses versus one bus. Config comment says 'ALWAYS TRUE'. Note that nodal gas
+          BUSES exist while gas transport LINKS do not, so gas is nodal in name and copperplated
+          in effect.
+        default: "true"
+        provenance: "config.default.yaml:spatial_gas; scripts/prepare_sector_network.py:define_spatial"
+      - key: "sector.gas.network"
+        effect: >
+          DEAD KEY. Config comment: 'ALWAYS FALSE for now (NOT USED)'. Pipelines are clustered by
+          prepare_gas_network but no gas Links are built. Setting it true does not create a gas
+          network — the worst silent failure in this chain.
+        default: "false"
+        provenance: "config.default.yaml:network; scripts/prepare_sector_network.py:define_spatial"
+      - key: "sector.co2_network"
+        effect: "Adds CO2 pipeline links between the stored-CO2 buses inside add_co2."
+        default: "true"
+        provenance: "config.default.yaml:co2_network; scripts/prepare_sector_network.py:add_co2"
+      - key: "sector.co2_sequestration_potential"
+        effect: >
+          A single scalar (MtCO2) for the whole model, not a regional map — so sequestration is
+          available uniformly wherever a co2 stored bus exists. eur's regional CO2Stop potentials
+          have no counterpart.
+        default: "200"
+        provenance: "config.default.yaml:co2_sequestration_potential; scripts/prepare_sector_network.py:add_co2"
+      - key: "sector.dac"
+        effect: "Adds the DAC link — the atmospheric carbon source for synthetic fuels."
+        default: "true"
+        provenance: "config.default.yaml:dac; scripts/prepare_sector_network.py:add_dac"
+      - key: "sector.land_transport_electric_share"
+        effect: >
+          The electrification pathway, keyed by "{demand}_{planning_horizons}" (e.g. AB_2030).
+          The `{demand}` scenario wildcard therefore selects the transport pathway, which is a
+          coupling eur does not have.
+        default: "{BU_2030: 0.0, AP_2030: 0.075, NZ_2030: 0.13, DF_2030: 0.01, AB_2030: 0.01, BU_2050: 0.0, AP_2050: 0.42, NZ_2050: ..., DF_2050: ...} — note NO AB_2050"
+        provenance: "config.default.yaml:land_transport_electric_share; scripts/prepare_sector_network.py:add_land_transport"
+      - key: "sector.electricity_distribution_grid"
+        effect: >
+          Inserts LV buses and reinforcement links per node hosting rooftop PV, home batteries,
+          EVs and heat. Registry rates the capability `partial`; a cost proxy, not a network.
+        default: "true"
+        provenance: "config.default.yaml:electricity_distribution_grid; scripts/prepare_sector_network.py:add_electricity_distribution_grid"
+      - key: "sector.district_heating.potential"
+        effect: >
+          The maximum urban heat fraction served by district heating, combined with a population
+          urban/rural split and a `progress` factor. This is the whole DH representation — there
+          are no GIS-derived DH areas and no supply temperatures.
+        default: "0.3"
+        provenance: "config.default.yaml:potential; scripts/prepare_sector_network.py:create_nodes_for_heat_sector"
+      - key: "sector.hydrogen.network"
+        effect: >
+          Builds H2 pipeline links, routed along the clustered gas network or greenfield along the
+          power topology, with an optional repurposing cap.
+        default: "true"
+        provenance: "config.default.yaml:network; scripts/prepare_sector_network.py:add_hydrogen"
+      - key: "scenario.demand"
+        effect: >
+          The demand-scenario wildcard. Selects both the demand projection and, via the
+          "{demand}_{horizon}" dictionary keys, the transport and shipping fuel shares. Has no
+          pypsa-eur counterpart.
+        default: "['AB']"
+        provenance: "config.default.yaml:demand; scripts/prepare_sector_network.py:add_land_transport"
+      - key: "scenario.sopts"
+        effect: >
+          The sector wildcard — but ONLY temporal resolution (an `nh` token consumed by
+          average_every_nhours). Unlike eur's sector_opts there are no sector on/off tokens; the
+          sector set lives entirely in sector.enable.
+        default: "['144h']"
+        provenance: "config.default.yaml:sopts; scripts/prepare_sector_network.py:average_every_nhours"
+      - key: "export.h2export"
+        effect: >
+          Supplies the `{h2export}` wildcard that terminates every sector target filename, so
+          add_export runs on every sector network. Set to 0 for a non-export study rather than
+          trying to remove the stage.
+        default: "[10]"
+        provenance: "config.default.yaml:h2export; scripts/add_export.py:export_profile"
+      - key: "costs.discountrate"
+        effect: >
+          Supplies the `{discountrate}` filename token. No script reads wildcards.discountrate —
+          annuities come from the costs table — so the token labels runs without changing them.
+        default: "[0.071]"
+        provenance: "config.default.yaml:discountrate; scripts/prepare_sector_network.py:discountrate"
+    assembly:
+      - step: >
+          Check the country's data grades before anything else. The sector-side columns of the
+          data-quality matrix are uniformly C for fuel-shares, district-heating-share and
+          industry-growth-cagr and D for ammonia-plants across essentially every country, while
+          the electricity-side columns (gadm-boundaries, osm-grid, era5-cutout, powerplant-fleet)
+          are A/B. The chain runs anywhere; the sector INPUTS are the constraint, and this gate
+          decides whether the study is answerable before any config is written.
+        uses: [sector-coupled-workflow, custom-data-overrides]
+        config: "countries; custom_data.* if you are supplying your own demand or industry data"
+        code: null
+        provenance: "scripts/prepare_sector_network.py:add_industry"
+      - step: >
+          Pick the sector target, and accept its wildcard set. The sector chain is
+          `..._{sopts}_{planning_horizons}_{discountrate}_{demand}_{h2export}export.nc`; the
+          electricity chain is `elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.nc`. There is no shared
+          target, and solve_network.py discriminates on `"sopts" in snakemake.wildcards`. Set
+          export.h2export to 0 rather than attempting to bypass add_export.
+        uses: [sector-coupled-workflow, h2-export-chain]
+        config: "scenario.sopts; scenario.demand; export.h2export; costs.discountrate"
+        code: null
+        provenance: "scripts/prepare_sector_network.py:add_co2; scripts/add_export.py:export_profile"
+      - step: >
+          Fill the demand/horizon share dictionaries for the combination you actually intend to
+          run. The shipped defaults cover AB_2030 and AP/BU/NZ/DF at 2030 and 2050 — the default
+          `demand: [AB]` has NO 2050 entry, so `demand: AB` with `planning_horizons: 2050`
+          raises a KeyError inside get(). Add the key rather than switching scenario.
+        uses: [end-use-fuel-share-switches]
+        config: "sector.land_transport_electric_share; sector.land_transport_fuel_cell_share; sector.shipping_hydrogen_share"
+        code: null
+        provenance: "scripts/prepare_sector_network.py:add_land_transport"
+      - step: >
+          Set the carrier resolution. define_spatial's flags are per-carrier as in eur
+          (gas.spatial_gas, coal.spatial_coal, lignite.spatial_lignite, oil.spatial_oil,
+          ammonia.spatial_ammonia), but note that nodal gas BUSES with no gas transport LINKS is
+          copperplating with extra bus names — do not read a gas siting result off it.
+        uses: [gas-network-links]
+        config: "sector.gas.spatial_gas; sector.oil.spatial_oil; sector.ammonia.spatial_ammonia"
+        code: null
+        provenance: "scripts/prepare_sector_network.py:define_spatial"
+      - step: >
+          Select the sector set with the ten `sector.enable` flags. Unlike eur, this does NOT
+          move the CO2 baseline: add_co2_budget takes a flat scalar from electricity.co2limit or
+          co2base and is off by default (co2_budget.enable: false), so a sector run with no
+          emissions constraint at all is the shipped state. Turn it on deliberately.
+        uses: [sector-coupled-workflow, co2-cap]
+        config: "sector.enable.*; co2_budget.enable; co2_budget.co2base_value"
+        code: null
+        provenance: "scripts/prepare_sector_network.py:add_co2_budget"
+      - step: >
+          Add missing carrier chains. This is the step that makes the verdict `assemble`: methanol
+          does not exist here at all, and the corpus's two earth sector studies both had to add
+          chains (Haber-Bosch ammonia is shipped; green methanol, DRI/HBI green steel and shipping
+          defossilisation were not). Follow the eur pattern — one Link per process, bus0 the input,
+          bus2/bus3 for co2 atmosphere and co2 stored — placed in the add_* function owning the
+          input carrier, or supply it as data through custom_data.
+        uses: [ammonia-value-chain, custom-data-overrides]
+        config: "custom_data.industry_demand and friends where a data channel suffices"
+        code: "scripts/prepare_sector_network.py — new n.madd('Link', ...) in the owning add_* function"
+        provenance: "scripts/prepare_sector_network.py:add_ammonia; scripts/prepare_sector_network.py:h2_hc_conversions"
+      - step: >
+          Decide how the existing fleet enters. convert_conventional_generators_to_links is the
+          better primitive of the two models for this: it preserves p_nom, p_nom_extendable,
+          efficiency, build_year and lifetime from the electricity-layer generators while adding a
+          fuel bus0 and a co2 atmosphere bus2, and zeroes the carrier's co2_emissions so emissions
+          are counted once on the link. Reuse it rather than writing a brownfield conversion.
+        uses: [sector-coupled-workflow]
+        config: "sector.conventional_generation mapping (defaults to {OCGT: gas, CCGT: gas})"
+        code: "scripts/prepare_sector_network.py:convert_conventional_generators_to_links"
+        provenance: "scripts/prepare_sector_network.py:convert_conventional_generators_to_links"
+      - step: >
+          If a pathway is needed, budget for debugging before results. The registry rates
+          myopic-foresight and existing-baseyear-brownfield `partial` here, and the sector+myopic
+          combination is the least exercised path in this chain — both corpus earth studies are
+          single-horizon overnight runs.
+        uses: [myopic-foresight, existing-baseyear-brownfield]
+        config: "foresight: myopic; scenario.planning_horizons; existing_capacities.*"
+        code: "scripts/add_brownfield.py"
+        provenance: "scripts/add_brownfield.py:add_brownfield"
+    boundary:
+      - variant: carrier-buses-with-conversion-links
+        rung: L1
+        note: >
+          The chain builds it, but not from defaults alone: you must pick the sector target, keep
+          the {demand}/{planning_horizons} share keys consistent, and turn co2_budget on if you
+          want an emissions constraint. L1 rather than eur's L0 because the shipped combination is
+          not a complete study.
+      - variant: electricity-heat-only
+        rung: L1
+        note: >
+          Set sector.enable.heat true and the other nine false. Cheaper here than in eur and a
+          genuinely good use of this model — heat is the sector where earth's representation is
+          simplest but least wrong for a region with little district heating.
+      - variant: electricity-heat-transport
+        rung: L1
+        note: >
+          heat + land_transport (+ rail_transport) on. Requires the transport share dictionary to
+          have a key for your {demand}_{horizon} pair — the most common first failure.
+      - variant: full-sector-coupling-with-carbon-management
+        rung: L3
+        note: >
+          Not reachable by config: gas transport is a dead key, there is no regional sequestration
+          potential map, and methanol as a utilisation route does not exist. Rung L3 because the
+          binding gaps are DATA-shaped (a regional storage-potential input, a country's industry
+          and fuel-share data at grade C) rather than formulation-shaped. Delivering eur-equivalent
+          carbon management here also needs the methanol chain written (L5).
+      - variant: single-node-ptx-hub
+        rung: L5
+        note: >
+          As in eur, not what this workflow builds — a bespoke pypsa script. Worth noting that the
+          corpus's export-oriented earth studies are conceptually close to a hub study wrapped in a
+          national network, so h2-export-chain is the nearer starting point here than in eur.
+      - variant: endogenous-end-use-technology-choice
+        rung: L5
+        note: >
+          Nothing shipped: no industry_t equivalent, and the transport shares are hard exogenous
+          dictionary lookups. Every endogenous end-use choice is new Links plus a turnover
+          constraint through custom-constraint-hook. Strictly more work than in eur, which at least
+          has one worked example in-repo.
+      - variant: new-conversion-chain-extension
+        rung: L2
+        note: >
+          The realistic intervention here and the one both corpus earth studies performed. One
+          n.madd("Link", ...) in the owning add_* function, following the same multi-port pattern.
+          Rises to L3 whenever the new chain needs country data that the matrix grades C or D —
+          which for industry and fuel shares is essentially always.
+      - variant: power-sector-extraction-from-sector-model
+        rung: L5
+        note: >
+          No path, and harder than in eur because the two chains' wildcard sets differ more:
+          extracting the power system from a sector network means rebuilding the electricity-chain
+          filename contract by hand. solve_network.py's `"sopts" in wildcards` discriminator is the
+          seam to work against.
+    where:
+      - change: "add or modify a conversion link"
+        anchor: "scripts/prepare_sector_network.py — the add_* function owning the input carrier (add_heat, add_industry, add_hydrogen, h2_hc_conversions, ...)"
+        provenance: "scripts/prepare_sector_network.py:h2_hc_conversions"
+      - change: "add or change a carrier bus / its spatial resolution"
+        anchor: "scripts/prepare_sector_network.py::define_spatial plus the matching sector.<carrier>.spatial_<carrier> key"
+        provenance: "scripts/prepare_sector_network.py:define_spatial"
+      - change: "change the carbon accounting structure"
+        anchor: "scripts/prepare_sector_network.py::add_co2 (atmosphere store, stored buses, vents, pipelines all in one function)"
+        provenance: "scripts/prepare_sector_network.py:add_co2"
+      - change: "bring the existing thermal fleet into the sector network as emitting links"
+        anchor: "scripts/prepare_sector_network.py::convert_conventional_generators_to_links"
+        provenance: "scripts/prepare_sector_network.py:convert_conventional_generators_to_links"
+      - change: "add the missing methanol carrier chain"
+        anchor: "scripts/prepare_sector_network.py — a new add_methanol alongside add_ammonia, plus a spatial.methanol namespace in define_spatial"
+        provenance: "scripts/prepare_sector_network.py:add_ammonia"
+      - change: "supply demand / industry / pipeline data instead of deriving it"
+        anchor: "custom_data.* config keys and data/custom/*"
+        provenance: "scripts/prepare_sector_network.py:custom_data"
+      - change: "add a new sector data input or rule"
+        anchor: "Snakefile — a new rule plus an input line on rule prepare_sector_network (earth has no rules/ split)"
+        provenance: "scripts/prepare_sector_network.py:add_industry"
+      - change: "constrain the emissions of the coupled system"
+        anchor: "scripts/prepare_sector_network.py::add_co2_budget, gated on the top-level co2_budget.enable"
+        provenance: "scripts/prepare_sector_network.py:add_co2_budget"
+    data_dependencies:
+      - input: "country fuel shares, district-heating share and industry growth for the sector demand split"
+        required_for: carrier-buses-with-conversion-links
+        availability: >
+          region-dependent and the binding constraint — data_quality/MATRIX.csv grades fuel-shares,
+          district-heating-share, industry-growth-cagr and demand-growth-cagr as C for essentially
+          every country. The chain will run; the numbers are assumptions to sign off with the user.
+      - input: "regional CO2 sequestration potential map"
+        required_for: full-sector-coupling-with-carbon-management
+        availability: >
+          absent — only a single scalar sector.co2_sequestration_potential exists, so any
+          spatially-explicit storage-siting question needs a new input and a new consumer
+      - input: "industrial plant and ammonia-plant locations"
+        required_for: new-conversion-chain-extension
+        availability: >
+          region-dependent: industrial-plant-database grades A/D by country and ammonia-plants is D
+          almost everywhere — supply your own via custom_data for any industry-sited study
+      - input: "a {demand}_{planning_horizons} entry in the fuel-share dictionaries"
+        required_for: electricity-heat-transport
+        availability: >
+          must be built (by hand, in config) — the shipped set omits AB_2050, and any custom demand
+          scenario label needs its own keys or add_land_transport raises KeyError
+    cost_profile:
+      solves: >
+        One solve per (simpl, clusters, ll, opts, sopts, planning_horizons, discountrate, demand,
+        h2export) combination — nine wildcard dimensions against eur's four, so a careless scenario
+        block multiplies out much faster here. The default 144h sopts is already a heavy temporal
+        aggregation, which is the chain's implicit admission of the cost.
+      relative: >
+        Cheaper than eur in absolute terms for the same ambition: the corpus's earth sector studies
+        are 14-node single-country models at 1-3 hourly, where eur's are 30-181 nodes continental.
+        Fewer carriers also means a smaller LP — no methanol chain, no sequestration tier, no gas
+        network links.
+      note: >
+        The affordability levers are the same and mostly L0/L1 (clusters, the sopts nh token, TSAM
+        segmentation). The real cost here is not solve time, it is the data and debugging budget:
+        expect to spend more effort getting a defensible sector demand and a working myopic pathway
+        than waiting for the solver. Price that into the estimate honestly.
+    verifies:
+      - variant: carrier-buses-with-conversion-links
+        check: "{'AC','H2','co2','co2 stored'}.issubset(set(n.buses.carrier))"
+        over: run
+        note: >
+          A missing carrier bus means the corresponding add_* function did not run — usually a
+          sector.enable flag left false. The solve succeeds and answers a narrower question.
+      - variant: carrier-buses-with-conversion-links
+        check: "(n.links.bus2 == 'co2 atmosphere').sum() > 0"
+        over: run
+        note: >
+          No link debiting the atmosphere means either no fossil conversion was built or
+          convert_conventional_generators_to_links found nothing to convert. Emissions are then
+          structurally zero and any CO2 target is trivially met.
+      - variant: carrier-buses-with-conversion-links
+        check: "n.carriers.loc[[c for c in ['gas','coal','oil'] if c in n.carriers.index], 'co2_emissions'].eq(0).all()"
+        over: run
+        note: >
+          convert_conventional_generators_to_links zeroes the fuel carrier's co2_emissions because
+          the link now carries them. If a fuel carrier still has a non-zero co2_emissions AND an
+          emitting link exists, emissions are double-counted and the cap is twice as tight as intended.
+      - variant: electricity-heat-transport
+        check: "n.links.carrier.str.contains('BEV|EV|land transport').any()"
+        over: run
+        note: >
+          No transport links after enabling land_transport almost always means the
+          {demand}_{planning_horizons} share lookup returned zero shares rather than failing —
+          check the dictionary key before trusting a 'no electrification is optimal' result.
+      - variant: full-sector-coupling-with-carbon-management
+        check: "n.links.query(\"carrier == 'gas pipeline'\").empty"
+        over: run
+        note: >
+          Asserted the OTHER way round deliberately: this check PASSES on a correct earth run,
+          documenting that sector.gas.network is dead and no gas transport links exist. If it ever
+          fails, the dead key has been fixed upstream and this card's gas claims need re-grepping.

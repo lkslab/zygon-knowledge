@@ -1,0 +1,1428 @@
+id: sensitivity-and-uncertainty-sweeps
+title: "Sensitivity and uncertainty sweeps over perturbed inputs (OAT, scenario matrix, Monte-Carlo/LHS, GSA)"
+summary: >
+  Re-run the same model many times over PERTURBED INPUTS — one parameter at a time, a
+  structured grid of overrides, or a sampled ensemble — and report how the answer moves.
+question: >
+  How much does the answer depend on the assumptions I fed in, and which assumption is
+  doing the most work?
+aliases:
+  - "sensitivity analysis"
+  - "one-at-a-time sensitivity"
+  - "OAT"
+  - "parameter sweep"
+  - "scenario matrix"
+  - "scenario tree"
+  - "full-factorial design"
+  - "design of experiments"
+  - "Monte-Carlo simulation"
+  - "Latin hypercube sampling"
+  - "LHS"
+  - "global sensitivity analysis"
+  - "GSA"
+  - "Method of Morris"
+  - "elementary effects"
+  - "Sobol indices"
+  - "variance-based sensitivity"
+  - "uncertainty quantification"
+  - "robustness check"
+when_to_use:
+  - "how sensitive is this result to the cost assumptions"
+  - "what if solar / batteries / electrolysers turn out cheaper than assumed"
+  - "which input matters most for the answer"
+  - "sweep the CO2 price / the transmission cap / the import volume"
+  - "run a grid of scenarios and compare them"
+  - "test whether my conclusion survives plausible assumption changes"
+  - "put error bars / a range on the model output"
+  - "do a Monte-Carlo over the uncertain parameters"
+  - "rank the uncertainties so I know what to nail down"
+  - "the model gave one number — how much should I trust it"
+family: uncertainty-and-robustness
+prevalence:
+  papers: 48
+  tier1: 30
+  tier2: 18
+  sweep_hits: 46
+  basis: >
+    Hand-coded pass 1 over all 100 PDFs (2026-07-25) found 48 papers that actually
+    perturb inputs and re-solve — the third most prevalent method in the corpus after
+    foresight and carbon constraints, and by far the most prevalent method in this
+    family (48 vs MGA's 6 and stochastic optimisation's 1). Effectively every applied
+    paper does it: 40 of the 48 carry role `routine-use`. The regex screen returned 46,
+    and the two counts overlap on only 40 — 6 sweep-only hits are papers whose
+    "near-optimal"/"Monte Carlo" language belongs to `mga-near-optimal-space` or to a
+    surrogate-model discussion (2020_Neumann, 2022_Grochowicz), or that merely describe
+    the framework's capability (2021_Kirli, 2022_Parzen PyPSA-Earth, 2022_Neumann,
+    2026_Geis); 8 hand-only papers ran a sweep the regex missed because they described
+    it as a "scenario space", "scenario tree" or "combinations" rather than a
+    "sensitivity analysis" (2018_Zhu, 2023_Tries, 2024_Chanal, 2024_Riepin load-shifting,
+    2025_Burghardt, 2025_Hofmann, 2019_Neumann, 2017_Groissbock). No paper in this slice
+    is flagged as mention-only in _qa/EVIDENCE_INDEX.md. Two papers (2019_Neumann,
+    2024_Gallego-Castillo) sweep MODEL-SIZE parameters (nodes, snapshots) rather than
+    economic inputs; they are kept because the machinery is identical and the interview
+    reaches them through the same request, but their variant is called out separately.
+procedure:
+  - step: >
+      Fix the base case: one config that solves, at the resolution you can afford to
+      multiply. Everything below is reported RELATIVE to it, so the base run must be the
+      run you would otherwise have published.
+    handle: "the standard workflow solve"
+    provenance: "scripts/solve_network.py:solve_network"
+  - step: >
+      Enumerate the uncertain inputs and their ranges. The corpus is remarkably
+      consistent here: capital costs at 25-200% of reference (or +-20%), WACC 3-12%,
+      CO2 cap 0-100% of 1990, transmission cap today-to-unconstrained, sequestration
+      potential 200-800 Mt/a, biomass/import availability in three tiers. Ranges come
+      from a projection source (Danish Energy Agency, JRC ENSPRESO, technology-data),
+      not from the modeller's intuition — that provenance is what makes the sweep
+      defensible.
+    handle: null
+    provenance: null
+  - step: >
+      Choose the design. OAT (n+1 runs, one input moved per run) is what 30+ of the 48
+      papers do; a structured grid / full factorial (prod n_i runs) is what you do when
+      interactions matter; LHS/Monte-Carlo (fixed sample budget, all inputs moved at
+      once) is what you do when you want a distribution rather than a slope; a
+      screening GSA (Morris) is what you do when there are hundreds of inputs and you
+      must first find the ten that matter.
+    handle: null
+    provenance: null
+  - step: >
+      Materialise each design point as a config override — the single most important
+      mechanical decision, because it determines whether snakemake can fan the runs out
+      for you or you write a loop. In pypsa-eur this is a scenario file entry or a
+      wildcard token; in pypsa-earth it is a scenario-list element, an opts token, or a
+      monte_carlo.uncertainties expression.
+    handle: "run.scenarios.file / config/create_scenarios.py"
+    provenance: "scripts/_helpers.py:get_scenarios; config/create_scenarios.py:itertools"
+  - step: >
+      Solve every design point independently. There is no coupling between points — this
+      is embarrassingly parallel, which is why sweeps are the cheapest of the three
+      uncertainty methods per unit of insight and the one that scales with your cluster
+      rather than with your solver.
+    handle: "snakemake fan-out over the run/unc wildcard"
+    provenance: "rules/common.smk:config_provider"
+  - step: >
+      Collect the ensemble into one table keyed by design point, and report: the
+      response curve (OAT), a heatmap or violin plot (grid), a distribution with
+      percentiles (MC), or a sensitivity ranking. The corpus's standard outputs are
+      total system cost, per-carrier capacity, and one policy metric.
+    handle: "rule make_summary / make_global_summary"
+    provenance: "scripts/make_summary.py:calculate_metrics; rules/postprocess.smk:make_global_summary"
+  - step: >
+      (GSA only) Reduce the ensemble to per-input sensitivity indices: Morris elementary
+      effects and mu* for screening, or Sobol first-order/total indices for variance
+      decomposition. Sobol indices can be read off a polynomial-chaos surrogate fitted to
+      the ensemble instead of costing extra solves.
+    handle: null
+    provenance: null
+  - step: >
+      (optional) Fit a cheap surrogate — a polynomial chaos expansion or an OLS
+      regression on the design dummies — so that the sensitivity ranking and any further
+      interrogation cost zero extra solves. This is how the corpus gets 50,000 effective
+      samples out of ~500 real ones.
+    handle: null
+    provenance: null
+variants:
+  - id: one-at-a-time-perturbation
+    what: >
+      Move one input, hold the rest at base, re-solve; repeat. n+1 solves for n inputs.
+      Gives an interpretable response curve or slope per input and is the corpus
+      workhorse (30+ of 48 papers). Buys nothing about interactions: by construction it
+      cannot see that cheap solar only matters when storage is also cheap, and it
+      explores a vanishing fraction of a high-dimensional input space.
+    papers:
+      - "2017_Eriksen_Optimal-heterogeneity-renewable_Energy.pdf"
+      - "2017_Groissbock_high-renewable-penetration-scenarios.pdf"
+      - "2017_Schlachtberger_Benefits-Cooperation-Renewable-Network_Energy.pdf"
+      - "2018_Schlachtberger_Cost-optimal-scenarios-weather_Energy.pdf"
+      - "2019_Victoria_Photovoltaics-European-energy-system_ProgPV.pdf"
+      - "2019_Victoria_Storage-technologies-decarbonisation_EnConvMgmt.pdf"
+      - "2021_Gazafroudi_N-1-Contingency-Topology_IJEPES.pdf"
+      - "2021_Gazafroudi_Network-Boosters-Corrective-Grid-Security.pdf"
+      - "2021_Zeyen_Mitigating-heat-demand-peaks_Energy.pdf"
+      - "2022_Victoria_Speed-technological-transformations_Joule.pdf"
+      - "2023_Hampp_Import-chemical-energy-carriers-Germany_PLOSONE.pdf"
+      - "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+      - "2023_Zeyen_Endogenous-learning-green-hydrogen_NatComms.pdf"
+      - "2024_JRC_Future-proofing-power-market-redispatch-congestion.pdf"
+      - "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+      - "2025_Che_space-based-solar-power-european-decarbonization.pdf"
+      - "2025_Franken_Geothermal-Market-Integration.pdf"
+      - "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+      - "2025_Hofmann_H2-CO2-Network-Strategies_NatEnergy.pdf"
+      - "2025_Kalweit_endogenous-transformation-land-transport-europe.pdf"
+      - "2025_Lopez-Ceballos_power-to-heat-to-power-storage.pdf"
+      - "2025_Neumann_Green-energy-steel-imports-net-zero_NatComms.pdf"
+      - "2025_Seibold_Germany-Industry-Transformation.pdf"
+      - "2025_Thomassen_JRC_Locational-Price-Signals-Europe_nodal-zonal-national.pdf"
+      - "2025_Zeyen_Shifting-burdens-road-transport_ERL.pdf"
+      - "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+      - "2026_Fernandes_carbon-dioxide-removal-decarbonise.pdf"
+      - "2026_Glaum_Minimal-Methanol-Backstop_Joule.pdf"
+  - id: structured-scenario-matrix
+    what: >
+      Enumerate a grid of config overrides — the cartesian product of a few dimensions,
+      or a full 2^k factorial over optimistic/pessimistic parameter GROUPS. Sees
+      interactions, which OAT cannot, and is the only variant both models fan out
+      natively: a scenario file expands combinatorially into managed parallel runs.
+      Corpus sizes: 8 (2x2x2), 10, 27, 40, 64 (2^6), 216 (6 categories), 264 (3-D),
+      1800 (4 countries x 25 x 6 x 3). THE WORKHORSE for anything above one dimension.
+    papers:
+      - "2018_Zhu_CO2-prices-electricity-heating_ApplEnergy.pdf"
+      - "2022_Millinger_Biofuel-mandates-cost-effective_ApplEnergy.pdf"
+      - "2023_Parzen_value-competing-energy-storage-decarbonized.pdf"
+      - "2023_Tries_Islanding-Green-Hydrogen.pdf"
+      - "2023_vanGreevenbroek_regional-overall-energy-system-flexibility.pdf"
+      - "2024_Alamia_hydrogen-emethanol-power-to-x-biogas.pdf"
+      - "2024_Chanal_carbon-capture-solvent-cost-energy-system.pdf"
+      - "2024_Glaum_Offshore-power-hydrogen-North-Sea_ApplEnergy.pdf"
+      - "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+      - "2024_Riepin_Spatio-temporal-load-shifting-clean-computing_AdvApplEnergy.pdf"
+      - "2024_vanGreevenbroek_robust-european-green-hydrogen-strategy.pdf"
+      - "2025_Burghardt_material-needs-energy-technologies.pdf"
+      - "2025_DiBella_European-green-industrial-transformation.pdf"
+      - "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+      - "2026_Zhang_E-biofuels-hard-to-electrify.pdf"
+  - id: monte-carlo-lhs-sampling
+    what: >
+      Draw a fixed budget of samples from joint input DISTRIBUTIONS (uniform, lognormal,
+      beta, triangular) rather than from a grid, using Latin hypercube or another
+      low-discrepancy rule, and report the OUTPUT DISTRIBUTION — percentiles and boxplots
+      rather than a slope. Decouples cost from dimensionality: 500 samples cover 5 inputs
+      as well as they cover 50. The only variant either model ships a module for, and
+      only pypsa-earth does.
+    papers:
+      - "2023_Neumann_Broad-Ranges-Investment-Robust_iScience.pdf"
+      - "2026_Barnes_near-term-emission-targets.pdf"
+  - id: global-sensitivity
+    what: >
+      Compute variance-attributing sensitivity indices over the whole input space rather
+      than local slopes: Morris elementary effects with Campolongo's mu* for SCREENING
+      hundreds of inputs down to the influential handful, or Sobol first-order/total
+      indices for variance DECOMPOSITION. Sobol indices can be derived analytically from a
+      polynomial-chaos surrogate, so the marginal cost after the ensemble exists is zero.
+      The only variant that answers "which input matters most" defensibly.
+    papers:
+      - "2023_Neumann_Broad-Ranges-Investment-Robust_iScience.pdf"
+      - "2026_Barnes_near-term-emission-targets.pdf"
+      - "2024_vanGreevenbroek_robust-european-green-hydrogen-strategy.pdf"
+  - id: resolution-sweep
+    what: >
+      Sweep MODEL-SIZE parameters — node count, snapshot count, temporal resolution —
+      instead of economic inputs, to establish where the answer stops moving and pick a
+      defensible resolution. Same machinery, different meaning: the "uncertainty" is
+      numerical, not physical, so the result is a convergence statement, not a range.
+      Cross-reference spatial-clustering-and-resolution and
+      temporal-aggregation-and-segmentation for what the aggregation destroys.
+    papers:
+      - "2019_Neumann_Heuristics-Transmission-Expansion_EEM.pdf"
+      - "2020_Schyska_sensitivity-power-system-expansion-models.pdf"
+      - "2024_Gallego-Castillo_PyPSA-Spain-extension-PyPSA-Eur_ESR.pdf"
+      - "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+      - "2026_Fernandes_carbon-dioxide-removal-decarbonise.pdf"
+literature:
+  - paper: "2020_Schyska_sensitivity-power-system-expansion-models.pdf"
+    tier: 2
+    role: critiques
+    note: >
+      The corpus's methodological warning and the strongest single argument for doing this
+      method at all. Introduces a misallocation pseudometric M: solve scenario i and j
+      unconstrained, then re-solve each with the OTHER's optimal capacity vector imposed
+      as a lower bound on the investment variables, and sum the extra cost. Because the
+      objective near the optimum is flat, the cost PENALTY of using the wrong capacity
+      allocation is small while the ALLOCATION itself moves a lot — so a cost-based
+      robustness claim systematically understates how much the answer depends on the
+      inputs. Applied to homogeneous vs regional cost of capital, four CNRM/EURO-CORDEX
+      climate periods (1970-76, 2000-06, 2038-44, 2094-2101), and a 45/64/90/128-node x
+      1/3/6/12/24-h resolution grid (20 combinations). Coded `critiques` here rather than
+      `defines` because what the card needs from it is the warning, not the metric.
+  - paper: "2023_Neumann_Broad-Ranges-Investment-Robust_iScience.pdf"
+    tier: 1
+    role: extends
+    note: >
+      The corpus's only variance-based GSA on a European model, and the template for doing
+      it affordably. Five cost annuities (onshore, offshore, solar, battery, H2 storage)
+      given independent uniform distributions over Danish Energy Agency 2050
+      optimistic/pessimistic ranges; a sparse polynomial chaos expansion is fitted by LASSO
+      on low-discrepancy Halton samples with a multi-fidelity correction (500 low-fidelity
+      draws x 101 optimisations plus 15 high-fidelity draws), and first-order and total
+      Sobol indices for eight outputs are then read ANALYTICALLY off the PCE coefficients —
+      no extra solves. 1-D self-sensitivity sweeps are shown alongside. The surrogate step
+      is what makes GSA affordable and is the piece neither model has.
+  - paper: "2026_Barnes_near-term-emission-targets.pdf"
+    tier: 2
+    role: extends
+    note: >
+      The corpus's only screening GSA, and the reference for what to do when there are
+      hundreds of uncertain inputs. Characterises 342 individual uncertainties (~350
+      parameters, uniform) across CONUS at 3-hourly resolution, 134 load zones, 48 states
+      solved independently; runs the Method of Morris (Morris 1991) via SALib with Scaled
+      Elementary Effects (Sin et al. 2009) so parameters in different units are
+      comparable, and Campolongo's mu* to rank them; then propagates only the top five
+      parameters per metric per state through a Latin-hypercube Monte-Carlo stage for the
+      actual uncertainty bands. The two-stage screen-then-propagate structure is the
+      transferable contribution — it is what makes 350 uncertainties tractable at all.
+  - paper: "2017_Schlachtberger_Benefits-Cooperation-Renewable-Network_Energy.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The house pattern for a one-dimensional policy sweep: continuously vary the allowed
+      transmission volume cap CAPLV from 0 to ~500 TWkm on a 30-node hourly European model
+      at a 95% CO2 target, one independent full LP per point, and read the non-linear cost
+      benefit of interconnection off the resulting curve. The sweep IS the paper's result,
+      not a robustness appendix — the canonical demonstration that a single well-chosen
+      swept parameter can be the finding.
+  - paper: "2018_Schlachtberger_Cost-optimal-scenarios-weather_Energy.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The corpus's widest OAT ranges and the source of the 25-200% convention: solar,
+      onshore and offshore wind capital cost from ~10% to 120% of base, battery and H2
+      storage from 25% to 200%, onshore wind potential 0-100% of geographic potential, CO2
+      cap 0-60% of 1990, plus weather-year and 1h-vs-3h resolution. States the assumption
+      OAT rests on explicitly — that multi-parameter interactions can be linearly
+      superposed for small changes — which is exactly the assumption the structured-matrix
+      and GSA variants exist to avoid.
+  - paper: "2018_Zhu_CO2-prices-electricity-heating_ApplEnergy.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The canonical three-dimensional grid: gross VRES penetration (0.1-1.0) x wind/solar
+      mix (0.1-0.9) x CO2 price (13 levels, 0-500 EUR/tCO2) on PyPSA-Eur-Sec-30, each
+      combination a separate optimisation, results read as 2-D LCOE heatmaps per CO2 price
+      with iso-emission contours extracted post-hoc. The reference for how to present a
+      grid sweep as a decision surface rather than a table.
+  - paper: "2023_Parzen_value-competing-energy-storage-decarbonized.pdf"
+    tier: 2
+    role: canonical-use
+    note: >
+      The "lonely optimist" design, worth naming to users because it isolates a
+      technology's value under competition rather than in isolation: 20 single-storage runs
+      (one technology available per run, BAU costs) plus 20 runs where all technologies are
+      available but exactly one is optimistic at 70% of BAU capex while every other is
+      pessimistic at 130%. 40 runs total. Turns a cost sweep into a ranking of which
+      technology assumptions are worth arguing about.
+  - paper: "2025_Che_space-based-solar-power-european-decarbonization.pdf"
+    tier: 2
+    role: canonical-use
+    note: >
+      The reference pattern for a technology whose cost is genuinely unknown: rather than
+      assume one capex, sweep SBSP capital cost from 100 to 450 EUR/kW.yr (+-65% of the
+      heliostat baseline) against three terrestrial-renewable cost scenario classes, and
+      report the COST THRESHOLD at which the technology enters the optimal mix. Inverts the
+      usual question from "what does the model build" to "how cheap would it have to be".
+  - paper: "2017_Eriksen_Optimal-heterogeneity-renewable_Energy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      OAT sweeps on a pre-PyPSA 30-node European model: solar capex reduced 25/50/75% and
+      gas backup fuel price raised to 150/200% of a 56 EUR/MWh baseline, each re-run at
+      K=1,2,3 heterogeneity levels with LCOE re-evaluated at the optimal alpha_EU. Notable
+      only as the earliest instance of the corpus's standard shape.
+  - paper: "2017_Groissbock_high-renewable-penetration-scenarios.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Deterministic OAT inside an Excel-driven expansion framework calling PyPSA for
+      dispatch: capex +-25% for two Saudi mini-grids, fuel price on a $10-100/bbl grid at
+      two discount rates, discount rate 0/6/15%. The example of a sweep where the swept
+      parameters are financial rather than technical, and of results presented as LCoE
+      crossover charts.
+  - paper: "2019_Neumann_Heuristics-Transmission-Expansion_EEM.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      A resolution sweep with a computational purpose: nodes in {20,40,60,80,100} x
+      snapshots in {100,200,300,400} for every heuristic variant plus the exact big-M
+      MILP, to characterise how solve time and cost deviation scale. The swept quantities
+      are model-size parameters, not inputs — the clearest example of variant
+      resolution-sweep and of why it is kept separate from the cost sweeps.
+  - paper: "2019_Victoria_Photovoltaics-European-energy-system_ProgPV.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Six-panel OAT on PyPSA-Eur-Sec-30: CO2 cap 5-95% of 1990, transmission from today's
+      volume to unconstrained, and PV / wind / battery / H2 storage cost each at 25-200% of
+      reference, reported as optimal wind-PV shares and total annualised cost. The
+      six-panel figure is the corpus's default presentation of an OAT set.
+  - paper: "2019_Victoria_Storage-technologies-decarbonisation_EnConvMgmt.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      OAT at 25-200% of reference on transmission cap, battery, hydrogen, solar and wind
+      cost, anchored at a fixed 5% CO2 cap and 62 TWkm transmission, with cost-effective
+      storage ENERGY capacity as the reported output. Shows the pattern of holding the
+      policy constraint fixed while sweeping economics, so the response is attributable.
+  - paper: "2021_Gazafroudi_N-1-Contingency-Topology_IJEPES.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Sweep of a single scalar heuristic parameter — the N-1 buffer capacity factor c over
+      [0,1] on a 50-bus German network — reporting annual operational cost, N-1 overloaded
+      line count and overloaded-snapshot count. The archetype of sweeping a modelling
+      approximation's own tuning knob to show where it becomes safe.
+  - paper: "2021_Gazafroudi_Network-Boosters-Corrective-Grid-Security.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Three OAT dimensions on a 50-bus German expansion model: CO2 reduction target
+      10-90% as a renewable-share proxy, TATL overload factor 1.0-1.5, and network-booster
+      flexibility cost across four orders of magnitude (10-23000 EUR/MW/a). The wide
+      cost range is the honest response to a technology with no established price.
+  - paper: "2021_Zeyen_Mitigating-heat-demand-peaks_Energy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      SI-only OAT on a 48-node sector-coupled net-zero model: weather year, renovation
+      cost level, transmission expansion on/off, district-heating share, and heat-pump sink
+      temperature. Representative of the corpus's most common posture — main text is one
+      run, the sensitivity set lives in the SI and is what makes the claim defensible.
+  - paper: "2022_Millinger_Biofuel-mandates-cost-effective_ApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The corpus's cleanest full factorial: six PARAMETER GROUPS (Fischer-Tropsch, biomass
+      to liquid, electrolyser, carbon capture, sequestration cost, fossil+biomass import
+      price) each toggled optimistic/pessimistic gives 2^6 = 64 combinations, run for each
+      of four base 2060 scenarios at 237 representative time-steps, with results as violin
+      plots of per-parameter cost difference. Grouping parameters before factorialising is
+      the trick that keeps 2^k affordable, and the 237-step temporal reduction is the other
+      half of the budget.
+  - paper: "2022_Victoria_Speed-technological-transformations_Joule.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      OAT plus STRUCTURAL sensitivities, a distinction worth relaying: +-20% cost variation
+      on eight technologies run across all six carbon budgets, alongside qualitatively
+      different model variants (costs frozen at 2020 values, no H2 network, no biomass with
+      CCS, endogenous building retrofitting) and sequestration cost/potential over 0.1-100x
+      and 1-100x. A structural sensitivity is a different config, not a different number.
+  - paper: "2023_Hampp_Import-chemical-energy-carriers-Germany_PLOSONE.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Textbook local OAT on two import chains (H2 pipeline and MeOH ship, ES->DE 2030):
+      WACC, RES capex, electrolysis capex, pipeline/synthesis capex, import volume,
+      domestic demand and battery capex each +-20%, reported as percentage change in LCoE
+      — a tornado-plot design. Also distinguishes a full lower-WACC SCENARIO from the local
+      +-20% WACC sensitivity, which is the right way to handle a parameter that changes
+      other things too.
+  - paper: "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Six supplementary sensitivity dimensions around four main scenarios: restricted
+      onshore wind potential (25-100%), 2030-vs-2050 technology projections, importing all
+      liquid hydrocarbons at 115 EUR/MWh, liquid H2 shipping fuel, spatial resolution
+      37-181 nodes and temporal resolution 1h-6h. The resolution dimensions make this a
+      resolution-sweep paper as well as an OAT one.
+  - paper: "2023_Tries_Islanding-Green-Hydrogen.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      A two-dimensional grid used to locate a regime transition rather than to bound an
+      answer: hydrogen share of final energy demand in 25 steps from 0 to 100% x islanded
+      balance-of-plant capex advantage at six levels (0-25%), crossed with three scenario
+      types and four countries = 1800 runs, post-processed to extract a "Competitiveness
+      Point" and a "Winout Point". The largest run count in the corpus outside the surrogate
+      studies, and evidence that a fine grid is affordable on a small model.
+  - paper: "2023_Zeyen_Endogenous-learning-green-hydrogen_NatComms.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Extreme-case-only sensitivity, and the honest way to sweep a parameter you cannot
+      afford to sweep properly: learning rates moved +-10% for ALL learning technologies
+      simultaneously (two runs, not 2n), plus blue-hydrogen capture rate / SMR capex /
+      sequestration potential and an expansion-rate limit. When each run is a full
+      endogenous-learning pathway, two bracketing runs is the whole budget.
+  - paper: "2023_vanGreevenbroek_regional-overall-energy-system-flexibility.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      A small structured matrix around a near-optimal-space study: three cost variants
+      (baseline, solar +39%, wind +24%, from Danish Energy Agency projections) plus a
+      land-use restriction (utility solar density cut from 5.1 to 1.7 MW/km2) crossed with
+      three weather years = 12 scenarios, and a 125% transmission-cap check in SI. Shows
+      the sweep as the OUTER loop around a more expensive inner method.
+  - paper: "2024_Alamia_hydrogen-emethanol-power-to-x-biogas.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Full factorial over six mixed-type parameters — energy price year (2 levels), max
+      renewable share (3), CO2 recovery to methanol (5), CO2 tax (3), district heating
+      (2), biochar credits (2) — for two scenarios, each combination one LP, presented as
+      pairwise scatter plots and uncertainty bands. Demonstrates factorialising over
+      BOOLEAN structural switches alongside continuous parameters, which is what a config
+      matrix does naturally and an LHS design does badly.
+  - paper: "2024_Chanal_carbon-capture-solvent-cost-energy-system.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      A 2x2x2 factorial on structural dimensions (fossil use x biomass import x net-zero
+      vs net-negative) = 8 main scenarios, each re-run with optimistic and pessimistic
+      solvent consumption bounds (MEA 0.27-3.98, KOH 0.4-38, PEI 2.3-14 kg/tCO2) and with
+      L-DAC in or out. The nested "structural grid x parameter bounds" shape is the most
+      transferable design in the corpus for a technology with order-of-magnitude data
+      uncertainty.
+  - paper: "2024_Gallego-Castillo_PyPSA-Spain-extension-PyPSA-Eur_ESR.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      A resolution sweep used as a functionality ablation: nine node counts
+      (2,8,15,24,35,50,65,80,100) crossed with three new capabilities (Q2Q renewable
+      profiles, improved demand, interconnections) switched on one at a time, concluding
+      that at least 35-50 nodes are needed to capture onshore wind potential. The
+      reference for "how coarse can I go" as an answerable question.
+  - paper: "2024_Glaum_Offshore-power-hydrogen-North-Sea_ApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      A 3x4 grid of physical and permitting constraints — onshore wind potential at 2.2 /
+      4.4 / 8.8 TW (25/50/100% of technical) x onshore transmission expansion at 100 /
+      110 / 130% / unconstrained — run for all four offshore network topologies, reported
+      as cost difference against the most-constrained base. The pattern for sweeping
+      FEASIBILITY assumptions rather than costs.
+  - paper: "2024_JRC_Future-proofing-power-market-redispatch-congestion.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      A single targeted OAT (cross-zonal redispatch share at 10 / 30 / 50%) on top of a
+      six-point structured scenario sweep (three grid-expansion scenarios BAU/AGE/XGE x
+      two target years). Illustrates the common institutional pattern: the scenario matrix
+      is the study, and the sensitivity is one modelling assumption the authors were
+      challenged on.
+  - paper: "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      A scenario sweep whose purpose is generalisation rather than error bars: technology
+      palette (3) x zone (IE, DK1, DE, PL) x year (2025, 2030) with the CFE target swept
+      80-100% inside each, so the finding is stated as a mechanism that holds across eight
+      background grids. Adds a MECHANISM-ISOLATION run — re-solve with excess export fixed
+      to zero and attribute the difference — which is a sweep design worth naming: perturb
+      the model's structure to decompose an effect.
+  - paper: "2024_Riepin_Spatio-temporal-load-shifting-clean-computing_AdvApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Enumerates all C(8,3) = 56 datacenter-location combinations x five flexibility
+      levels (0-40%) and regresses cost against flexibility across the whole ensemble,
+      yielding 1.29 +- 0.07 EUR/MWh per percent flexible load with a low standard error.
+      The corpus's clearest example of using a sweep to fit a transferable coefficient
+      instead of reporting a range.
+  - paper: "2024_vanGreevenbroek_robust-european-green-hydrogen-strategy.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      216 exhaustive combinations of six scenario categories (CCS, biomass, imports,
+      electrolyser cost, transport electrification, weather year) at 2-3 levels each,
+      over three horizons = 648 data points, with sensitivity coefficients obtained as OLS
+      regression coefficients of total H2 production on category DUMMY VARIABLES, plus a
+      separate 27-run decomposition of the CCS category. Regression-on-dummies is the
+      cheapest defensible way to get a global sensitivity ranking out of a factorial
+      ensemble you already ran — no surrogate, no extra solves.
+  - paper: "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Perturbs the SOLUTION rather than the inputs: all generation and storage capacities
+      moved +-5% away from the long-term equilibrium, then dispatch re-solved at fixed
+      capacity to expose how sensitive prices are away from equilibrium. Also sweeps demand
+      elasticity (-2.5/-5/-10%) and foresight horizon (48h vs 96h). A distinct and useful
+      design — the perturbation target is a decision variable, not a parameter.
+  - paper: "2025_Burghardt_material-needs-energy-technologies.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Single-parameter structured sweep — domestic bulk-material production share at
+      0/25/50/75/100% — plus a deliberately DE-LINKED 100% run that separates the effect of
+      higher material demand from the effect of the material-cost feedback. The extra
+      control run is the design detail worth copying: it makes the sweep attributable.
+  - paper: "2025_DiBella_European-green-industrial-transformation.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      A pruned scenario matrix: climate policy (2) x industrial trajectory (3) x
+      relocation (2) x intermediate imports (2) reduced to 10 meaningful scenarios rather
+      than the full 24, plus one H2-infrastructure robustness check. The example of a
+      matrix trimmed by judgement — worth flagging to users because it breaks the clean
+      factorial that regression-based sensitivity attribution needs.
+  - paper: "2025_Franken_Geothermal-Market-Integration.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Five OAT dimensions around a geothermal base case: renewable capex +-20%, district
+      heating rollout at four levels, waste-heat utilisation disabled, flexible EGS
+      operation enabled, and transmission expansion at +12.5% / +25% line volume. Mixes
+      parameter perturbations with capability on/off switches in one sensitivity table.
+  - paper: "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      A 3x3x3 = 27 combination design over transmission volume (0 / 125 / 200% of
+      current), CO2 reduction (95 / 99 / 100% vs 1990) and national self-sufficiency
+      (none / 70 / 90%), each repeated across weather years, but only the OAT slices are
+      reported. Honest about running the full grid and presenting the margins — and notes
+      that the event-detection threshold had to be adjusted for low-CO2 scenarios because
+      shadow prices shrink, a real hazard when a swept parameter changes the metric's own
+      scale.
+  - paper: "2025_Hofmann_H2-CO2-Network-Strategies_NatEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Three appendix OAT runs with a quotable magnitude: relaxing the sequestration limit
+      from 200 to 800 Mt/a cuts system cost by 9.1% in the hybrid scenario; CO2 pipeline
+      capex halved; electrolysis capex +50%. Useful as the reference for how large a single
+      policy-potential assumption can be relative to the differences between scenarios.
+  - paper: "2025_Kalweit_endogenous-transformation-land-transport-europe.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      OAT where every sensitivity run is a full myopic 2025-2050 pathway: FCEV capex
+      -50/-25%, EV capex +25/+50%, reduced FCEV efficiency, no carbon budget, no DSM, no
+      V2G, 100% DSM participation. The cost profile that results (each design point is a
+      six-horizon pathway) is why the sweep is small and extreme-valued.
+  - paper: "2025_Lopez-Ceballos_power-to-heat-to-power-storage.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Six-parameter OAT on a single technology's own techno-economics (cost per energy
+      capacity, standing losses, charge and discharge power cost, H2P efficiency, competing
+      Li-ion cost) across four scenario lines, in a wind-dominated system with a
+      solar-dominated replication in the appendix. Yields a viability THRESHOLD (cost per
+      energy capacity must be <=10 EUR/kWh, or <=~3 when competing with thermal storage) —
+      the most decision-useful output shape a sweep can produce.
+  - paper: "2025_Neumann_Green-energy-steel-imports-net-zero_NatComms.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Three sweep dimensions with distinct purposes: import volume interpolated 0-7500
+      TWh, import cost varied +-10/+-20% (uniformly and for carbonaceous fuels only), and
+      subsets of import vectors excluded one at a time and in combination. Explicitly
+      frames the exercise as probing the FLATNESS of the solution space, which is the
+      bridge between this method and mga-near-optimal-space. A separate OAT table sweeps the
+      supply-chain model's own parameters (WACC 3-12%, DAC capex +25 to +200%).
+  - paper: "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      264 runs from a clean three-dimensional grid: domestic mitigation 0-100% x hydrogen
+      export 1-120 TWh/a x four temporal matching regimes, with an SI extension to 200
+      TWh/a. Stated in the paper as necessary "to grasp the full extent of the interaction
+      between various parameters" — the explicit argument for a grid over OAT.
+  - paper: "2025_Seibold_Germany-Industry-Transformation.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Four named OAT runs (sequestration doubled to 400 MtCO2/a; electrolysis capex halved
+      1000->500 EUR/kW; non-European importer WACC 7->10%; solar density 5.1->25 MW/km2),
+      each repeated across all five import scenarios so the sensitivity is evaluated
+      inside every scenario rather than only at the base. Reports that conclusions hold but
+      the WACC run narrows the key gap — the model answer for what a useful negative
+      sensitivity result looks like.
+  - paper: "2025_Thomassen_JRC_Locational-Price-Signals-Europe_nodal-zonal-national.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Two sweeps: three grid-expansion levels (system-optimal, 40% cap, 20% cap) x three
+      market designs x two target years (~18 combinations), and an institutional-parameter
+      sweep of auction effectiveness in 20% steps from 0 to 80% around a 60% assumption.
+      The second is a good example of sweeping a parameter that exists only in the
+      modeller's representation of a policy instrument.
+  - paper: "2025_Zeyen_Shifting-burdens-road-transport_ERL.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Six main scenarios plus vehicle capital cost varied +-10/+-20% ANTI-CORRELATED (BEV
+      up while FCEV down and vice versa) rather than independently, and road transport
+      demand swept +-5% per period up to +-30% by 2050. Anti-correlated perturbation is
+      the right design when the decision is a choice between two competing technologies
+      and independent draws would waste the budget on irrelevant corners.
+  - paper: "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      A three-parameter OAT (CO2 constraint stringency, WACC 7.8% -> 6%, low-wind ERA5
+      2016 weather year) whose finding is a RANKING: WACC dominates both the emissions
+      constraint and weather variability for green-commodity marginal prices. Worth quoting
+      because the cost of capital is the parameter users least expect to matter most and
+      the one most often left at its default.
+  - paper: "2026_Fernandes_carbon-dioxide-removal-decarbonise.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      The corpus's largest OAT set — over 30 sensitivity figures across sequestration
+      potential (200 vs 600 MtCO2/a) and cost, afforestation land and cost, biochar
+      application rate and heat integration, enhanced rock weathering potential/VOM/power
+      use, perennialisation rate, JRC ENSPRESO biomass tiers, spatial resolution (90 vs 39
+      nodes), temporal resolution (3-hourly vs annual), and four transport-network
+      switches. Demonstrates the practical ceiling of OAT: exhaustive one-dimensional
+      coverage of a whole technology family, with no interaction information whatsoever.
+  - paper: "2026_Glaum_Minimal-Methanol-Backstop_Joule.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      15 OAT settings around one scenario (low electrification, no transmission, +30%
+      demand, biomass potential 840 vs 3320 TWh/a, no biomass backup, no CO2 transport,
+      relocation, imports, sequestration at 400 Mt/a and infinite, 2050 techno-economics,
+      90/95% CO2 targets, and one deliberately COMBINED high-biomass + infinite-sequestration
+      run), each reporting the cost premium of the constrained design. The single combined
+      run is a minimal, cheap hedge against OAT's blindness to interactions.
+  - paper: "2026_Zhang_E-biofuels-hard-to-electrify.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      A 3x3x3 = 27 grid over electrolyser capacity limit (1800/2500/3500 TWh/a), biomass
+      import (0/1390/2500 TWh/a) and CO2 sequestration (200/300/500 Mt/a), plus OAT sweeps
+      on emissions target (-80 to -110%), CO2/H2 network availability, domestic biomass
+      tier and +20% e-biofuel capex. The typical modern shape: a small grid on the
+      dimensions believed to interact, OAT on the rest.
+pitfalls:
+  - pitfall: >
+      A small cost penalty is NOT a small change in the answer. Because the objective is
+      flat near the optimum, re-solving with a perturbed input moves the capacity
+      ALLOCATION a great deal while moving total system cost hardly at all — so reporting
+      "system cost changed by 0.4%" as a robustness result systematically understates how
+      input-dependent the design is. This is the corpus's central warning about this method
+      and the strongest argument for doing it properly rather than as a cost-only appendix.
+    evidence: "2020_Schyska_sensitivity-power-system-expansion-models.pdf"
+    note: >
+      Report the sensitivity of the QUANTITIES the user will act on (per-carrier capacity,
+      per-region siting, transmission volume), never total cost alone. Schyska's
+      misallocation metric is the principled version: impose scenario i's optimal
+      capacities as lower bounds inside scenario j's LP and read the extra cost — the same
+      cross-constraining trick works as a cheap two-run diagnostic, and it is L5 in both
+      models (custom bounds on investment variables plus a driver).
+  - pitfall: >
+      OAT explores a vanishing fraction of the input space and cannot see interactions.
+      With n inputs at two levels, OAT visits n+1 of 2^n corners; every reported slope is
+      conditional on all other inputs sitting at base. 2018_Schlachtberger states the
+      hidden assumption outright — that effects superpose linearly for small changes —
+      which is exactly what fails for the interactions users care about (cheap storage
+      changes what cheap solar is worth).
+    evidence: "2018_Schlachtberger_Cost-optimal-scenarios-weather_Energy.pdf"
+    note: >
+      Present OAT results as "response to this input, others held at base", never as an
+      uncertainty range on the answer. If two inputs plausibly interact, spend the runs on
+      a 3x3 grid over those two rather than five more OAT dimensions; 2026_Glaum's single
+      combined high-biomass-plus-infinite-sequestration run is the minimum viable hedge.
+  - pitfall: >
+      Degeneracy-breaking noise is on by default in BOTH models and perturbs marginal costs
+      at ~1e-2 EUR/MWh, so two runs of the SAME config can differ in which of several
+      equally-optimal solutions is returned. A sweep whose per-step effect is smaller than
+      that noise reports solver arbitrariness as sensitivity. pypsa-eur seeds it from a
+      config key that a scenario override can silently change; pypsa-earth hardcodes the
+      seed inside the function, so it cannot be varied at all.
+    evidence: "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+    note: >
+      Before believing a small response, re-run the base case twice and measure the noise
+      floor. Keep solving.options.seed fixed across every design point (eur), and treat
+      any reported effect within a few times the noise floor as unresolved. Brown's +-5%
+      capacity perturbation study is the corpus example of a design deliberately larger
+      than the noise; prices are the most noise-exposed output of all.
+  - pitfall: >
+      A swept parameter can change the scale of the metric you are reading, so the
+      comparison across design points is not like-for-like. Grochowicz had to adjust an
+      event-detection threshold across CO2 scenarios because tightening the cap shrinks the
+      shadow prices the threshold was calibrated on.
+    evidence: "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+    note: >
+      For any dual-derived or threshold-derived output (shadow prices, scarcity hours,
+      market values), check whether the swept input moves the metric's own denominator, and
+      normalise or re-calibrate per design point. See shadow-prices-and-marginal-values.
+  - pitfall: >
+      Trimming the matrix by judgement breaks the attribution. A pruned scenario set (10
+      of 24 combinations) is cheaper and more readable but is no longer a factorial design,
+      so regression-on-dummies and variance decomposition are no longer valid on it and the
+      remaining differences confound the dimensions that were dropped together.
+    evidence: "2025_DiBella_European-green-industrial-transformation.pdf"
+    note: >
+      Decide up front whether the sweep is a NARRATIVE (prune freely, report scenarios
+      individually) or a MEASUREMENT (keep the design balanced, then
+      2024_vanGreevenbroek's OLS-on-dummies gives a sensitivity ranking for free). Do not
+      prune and then regress.
+  - pitfall: >
+      Sweep ranges taken from the modeller's intuition rather than a cited projection make
+      the whole exercise unfalsifiable, and the choice of range does more work than the
+      model. The corpus's defensible studies anchor ranges to a named source — Danish
+      Energy Agency optimistic/pessimistic bands, JRC ENSPRESO biomass tiers, PNNL
+      projections — and the notable finding of 2026_Duque-Perez is that WACC, the parameter
+      most often left at its default, dominated both the emissions constraint and weather
+      variability.
+    evidence: "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+    note: >
+      Cite the range source alongside every swept parameter, and always include cost of
+      capital in the sweep even when the user did not ask — see
+      discounting-and-cost-of-capital.
+requires_methods: []
+combines_with:
+  - mga-near-optimal-space
+  - stochastic-and-robust-optimisation
+  - weather-year-ensembles
+  - temporal-aggregation-and-segmentation
+  - spatial-clustering-and-resolution
+  - carbon-constraints-and-pricing
+  - discounting-and-cost-of-capital
+  - foresight-and-planning-horizons
+  - extreme-event-and-dunkelflaute-analysis
+topics:
+  - robust-decision-making
+  - carbon-pricing-sensitivity
+  - uncertainty-near-optimal-mga
+  - capacity-expansion
+  - model-reproducibility
+  - solver-speed-scalability
+pypsa_primitive: null
+models:
+  - model: pypsa-eur
+    version_anchor:
+      ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d"
+      date: "2026-07-25"
+    functionality:
+      - id: scenario-matrix
+        role: >
+          THE surface for this method here — registry status `working`. A scenarios yaml
+          whose top-level keys are run names and whose bodies are arbitrary config
+          overrides, expanded via the {run} wildcard into fully independent managed runs.
+          Any config key is sweepable, and config/create_scenarios.py is the shipped
+          cartesian-product generator.
+      - id: config-schema-validation
+        role: >
+          the quiet reason eur is the better sweep host: EVERY merged scenario config is
+          validated against a typed schema before the DAG is built, so a typo in one of 216
+          overrides fails at parse time instead of silently running the base value. A
+          capability pypsa-earth entirely lacks.
+      - id: cf-config-injection
+        role: >
+          the eur-only escape hatch for one-off design points: the CF+<section>+<key>+<value>
+          sector_opts token rewrites any config key from the wildcard, so a sweep dimension
+          needs neither a scenario file nor a dedicated token
+      - id: wildcard-opts-grammar
+        role: >
+          eur-only sugar for the most-swept parameters — Co2L (CO2 cap), Ep/Ept (emission
+          price), lv/lc (transmission limit), seq (sequestration potential), sdr (social
+          discount rate), nH/nseg — each a wildcard token that becomes a design dimension
+          in the scenario matrix without touching a config file
+      - id: cost-data-pipeline
+        role: >
+          the sanctioned route for cost sweeps: costs.custom_cost_fn points at a CSV that
+          overwrites any parameter per planning horizon and can add new technology rows;
+          config-based costs.overwrites still works but logs a deprecation warning
+      - id: carrier-attribute-scaling
+        role: >
+          the cheapest cost/potential perturbation — a factor or absolute override on
+          capital_cost / marginal_cost / p_nom_max / e_nom_max per component+carrier,
+          reachable from either the adjustments config block or a wildcard token
+      - id: shared-resources-caching
+        role: >
+          the cost lever that makes large matrices affordable: wildcard-independent inputs
+          (shapes, cutout-derived resources) are computed once and shared across every
+          design point rather than rebuilt per run
+      - id: global-summary
+        role: >
+          eur-only ensemble collection — make_global_summary concatenates per-run csvs
+          across the whole scenario matrix, which is the sweep's reporting step already
+          implemented
+      - id: monte-carlo-sampling
+        role: >
+          registry status `absent`, and the sharpest asymmetry in this book: there is NO
+          Monte-Carlo module in pypsa-eur. No sampler, no distribution config, no `unc`
+          wildcard. The nearest thing is scenario-matrix plus a hand-written sampler that
+          writes scenarios.yaml.
+      - id: numeric-stability-options
+        role: >
+          the noise floor a sweep must clear: solving.options.noisy_costs is TRUE by
+          default and perturbs marginal costs, seeded from solving.options.seed
+      - id: temporal-resolution-nh
+        role: "the affordability lever — coarsen before multiplying the run count"
+      - id: time-segmentation-tsam
+        role: >
+          the better affordability lever: segmentation keeps extremes that nH averaging
+          destroys, which matters when a swept parameter's effect shows up in peak hours
+    available:
+      verdict: turnkey
+      how: >
+        Set run.name and run.scenarios.enable: true, point run.scenarios.file at a yaml
+        whose top-level keys are design-point names and whose bodies are arbitrary config
+        overrides, and the workflow fans out one fully independent run per design point
+        under the {run} wildcard. config_provider resolves every rule's parameters through
+        the scenario overrides, and each merged config is schema-validated before the DAG is
+        built. config/create_scenarios.py is a shipped, editable itertools.product generator
+        for the matrix, and make_global_summary concatenates the per-run csvs afterwards.
+        That is one-at-a-time, structured-scenario-matrix and resolution-sweep complete, at
+        L0/L1, with no Python written.
+      missing: >
+        Procedure steps 3 (design choice), 7 (sensitivity indices) and 8 (surrogate) have no
+        handle, and step 4 has no handle for a SAMPLED design: there is no distribution
+        specification, no LHS/QMC sampler, no seed management across samples, and no
+        variance-decomposition or Morris code anywhere in the repo. So
+        monte-carlo-lhs-sampling and global-sensitivity are L5 — but only in the sampler and
+        the post-processing, because the fan-out and collection they need already work. A
+        driver that writes scenarios.yaml from scipy.stats.qmc and a post-processor that
+        reads the global summary is the whole gap.
+      provenance: "scripts/_helpers.py:get_scenarios; Snakefile:validate_config; rules/common.smk:config_provider"
+    levers:
+      - key: "run.scenarios.enable"
+        effect: >
+          Turns on scenario-file expansion. With run.name set (or 'all'), every top-level
+          key in the scenario file becomes an independent run under the {run} wildcard —
+          this single flip is the method for the OAT and matrix variants.
+        default: "false"
+        provenance: "config/config.default.yaml:scenarios; scripts/_helpers.py:get_scenarios"
+      - key: "run.scenarios.file"
+        effect: >
+          Where the design matrix is read from. config/scenarios.template.yaml shows the
+          shape (scenario name -> arbitrary config override subtree); rule create_scenarios
+          regenerates this file from config/create_scenarios.py.
+        default: "'config/scenarios.yaml'"
+        provenance: "config/config.default.yaml:scenarios; Snakefile:create_scenarios"
+      - key: "run.name"
+        effect: >
+          The run name, or 'all' to expand every scenario in the file. Must be non-empty for
+          scenario expansion to activate at all — get_scenarios returns {} when it is blank,
+          which is the classic silent no-op: enable: true alone does nothing.
+        default: "''"
+        provenance: "config/config.default.yaml:name; scripts/_helpers.py:get_scenarios"
+      - key: "run.shared_resources.policy"
+        effect: >
+          Shares wildcard-independent resources across design points instead of rebuilding
+          them per run. On a 200-point matrix this is the difference between one cutout
+          aggregation and 200; set to 'base' or a dirname when the sweep does not perturb
+          the upstream data.
+        default: "false"
+        provenance: "config/config.default.yaml:shared_resources; scripts/_helpers.py:get_run_path"
+      - key: "costs.custom_cost_fn"
+        effect: >
+          CSV of cost overwrites per technology and planning horizon — the current
+          sanctioned channel for cost sweeps. Can also add technology rows that are not in
+          technology-data at all. Per design point this is an L3 lever (a new data file per
+          scenario) unless the override is expressed in the scenario yaml instead.
+        default: "'data/custom_costs.csv'"
+        provenance: "config/config.default.yaml:custom_cost_fn; scripts/process_cost_data.py:overwrite_costs"
+      - key: "costs.overwrites"
+        effect: >
+          Config-native cost overwrites, per attribute and technology — the cheapest way to
+          put a cost perturbation directly in a scenario override, at the price of a
+          deprecation warning steering you to custom_cost_fn.
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+      - key: "adjustments.sector.factor"
+        effect: >
+          Multiplicative factor on a component's attribute per carrier (and per investment
+          year in the sector chain) — the corpus's 25-200% capex sweep expressed as one
+          number in a scenario override, with an `absolute` sibling for level overrides.
+        default: "{Link: {electricity distribution grid: {capital_cost: 1.0}}}"
+        provenance: "config/config.default.yaml:adjustments; scripts/prepare_network.py:maybe_adjust_costs_and_potentials"
+      - key: "scenario.sector_opts"
+        effect: >
+          Wildcard list expanded combinatorially with clusters and planning_horizons. Tokens
+          carry the most-swept parameters directly (Co2L, Ep, seq, sdr, lv/lc, nH/nseg), and
+          CF+<section>+<key>+<value> injects ANY config key — so a whole sweep dimension can
+          live in this one list without a scenario file.
+        default: "['']"
+        provenance: "config/config.default.yaml:sector_opts; scripts/_helpers.py:update_config_from_wildcards"
+      - key: "solving.options.seed"
+        effect: >
+          Seeds the degeneracy-breaking noise. Hold it fixed across every design point, or
+          the sweep's smallest responses are solver arbitrariness rather than sensitivity.
+        default: "123"
+        provenance: "config/config.default.yaml:seed; scripts/solve_network.py:noisy_costs"
+      - key: "clustering.temporal.resolution_elec"
+        effect: >
+          Coarsens snapshots (nH averaging) or segments them (nSEG via TSAM) — with cluster
+          count the primary way to buy back the run multiplier a matrix imposes.
+        default: "false (hourly)"
+        provenance: "config/config.default.yaml:resolution_elec; scripts/prepare_network.py:apply_time_segmentation"
+    assembly:
+      - step: >
+          Write the design matrix. For a hand-listed OAT or small grid, edit the scenario
+          file directly (config/scenarios.template.yaml shows the shape). For a factorial,
+          edit config/create_scenarios.py — it is a template plus an itertools.product over
+          a config_values dict, and rule create_scenarios regenerates the file from it.
+        uses: [scenario-matrix]
+        config: "run.scenarios.file"
+        code: "config/create_scenarios.py (edit the template and config_values dict)"
+        provenance: "config/create_scenarios.py:itertools; Snakefile:create_scenarios"
+      - step: >
+          Enable expansion: run.name (or 'all') plus run.scenarios.enable. Every merged
+          config is schema-validated at DAG build, so a mistyped override in any design
+          point fails loudly with the scenario name attached rather than silently reverting
+          to the default — the single most valuable property of doing this in eur.
+        uses: [scenario-matrix, config-schema-validation]
+        config: "run.name; run.scenarios.enable"
+        code: null
+        provenance: "scripts/_helpers.py:get_scenarios; Snakefile:validate_config"
+      - step: >
+          Turn on shared resources so upstream data is built once, not once per design
+          point, and exclude any resource the sweep actually perturbs.
+        uses: [shared-resources-caching]
+        config: "run.shared_resources.policy; run.shared_resources.exclude"
+        code: null
+        provenance: "scripts/_helpers.py:get_run_path"
+      - step: >
+          Express each perturbation at the cheapest layer: a wildcard token or CF+ injection
+          for one-offs, an adjustments factor for per-carrier cost/potential scaling, a
+          costs.overwrites entry or a custom_costs.csv for the cost table proper.
+        uses: [wildcard-opts-grammar, cf-config-injection, carrier-attribute-scaling, cost-data-pipeline]
+        config: "scenario.sector_opts; adjustments.*; costs.overwrites; costs.custom_cost_fn"
+        code: null
+        provenance: "scripts/_helpers.py:update_config_from_wildcards; scripts/prepare_network.py:maybe_adjust_costs_and_potentials"
+      - step: >
+          Collect the ensemble: make_summary writes per-run tables and make_global_summary
+          concatenates them across the whole matrix, which is the sweep's reporting step
+          already built. Read the response curve, heatmap or distribution off the
+          concatenated csv.
+        uses: [summary-outputs, global-summary]
+        config: null
+        code: "scripts/make_summary.py"
+        provenance: "scripts/make_summary.py:calculate_metrics; rules/postprocess.smk:make_global_summary"
+      - step: >
+          (sampled and GSA variants only, L5) Write the sampler and the analyser. The
+          sampler is a script that draws from the input distributions — scipy.stats.qmc
+          gives LatinHypercube directly, SALib gives Morris — and EMITS A SCENARIO FILE, so
+          it plugs into the existing fan-out with no DAG changes. The analyser reads the
+          global summary and computes mu*, Sobol indices or a PCE fit. Neither exists in the
+          repo; both are ordinary Python against files, not model surgery.
+        uses: [scenario-matrix, monte-carlo-sampling]
+        config: "run.scenarios.file (written by, not read into, the sampler)"
+        code: "new scripts/ driver emitting config/scenarios.yaml + a post-processor over results/*/csvs"
+        provenance: "config/create_scenarios.py:itertools; scripts/_helpers.py:get_scenarios"
+    boundary:
+      - variant: one-at-a-time-perturbation
+        rung: L1
+        note: >
+          Pure config. One scenario-file entry per perturbed input, or one wildcard token
+          per design point; enable expansion and run. L1 rather than L0 only because
+          run.name must be non-empty as well as enable: true — the two-key combination is
+          the whole trick, and enable alone is a silent no-op.
+      - variant: structured-scenario-matrix
+        rung: L1
+        note: >
+          The variant the machinery was built for. Combinatorial expansion is native, in two
+          independent places: scenario lists (clusters x sector_opts x planning_horizons)
+          and the scenario file. config/create_scenarios.py is a shipped itertools.product
+          generator — editing its template and config_values dict is authoring data, not
+          code, so it stays L1.
+      - variant: resolution-sweep
+        rung: L1
+        note: >
+          scenario.clusters is already a list and resolution_elec / the nH-nseg tokens are
+          config, so a nodes x hours grid is a two-line scenario file. Turn shared_resources
+          OFF for the clustering resources here — this is the one sweep whose upstream
+          resources legitimately differ per design point.
+      - variant: monte-carlo-lhs-sampling
+        rung: L5
+        note: >
+          Nothing samples in pypsa-eur — registry status for monte-carlo-sampling is
+          `absent`, and there is no distribution config, no sampler and no `unc` wildcard.
+          But the L5 is small and confined: a script that draws from scipy.stats.qmc and
+          writes scenarios.yaml reuses the entire existing fan-out, validation and
+          collection chain. Days of work, and it never touches a rule. Compare pypsa-earth,
+          which ships exactly this sampler and lacks the scenario machinery around it.
+      - variant: global-sensitivity
+        rung: L5
+        note: >
+          Sampler as above plus an analyser: Morris/mu* screening (SALib) or Sobol indices,
+          the latter cheapest via a polynomial-chaos surrogate fitted to the ensemble as
+          2023_Neumann does. Both are post-processing over the global summary csv, so the
+          rung is L5 for the code but the compute is whatever the sampled ensemble already
+          cost. The genuinely cheap route, if the design is a balanced factorial, is
+          2024_vanGreevenbroek's OLS-on-dummies — a dozen lines of statsmodels over runs you
+          already have.
+    where:
+      - change: "the design matrix itself (factorial generation)"
+        anchor: "config/create_scenarios.py -> the `template` string and the `config_values` dict; rule create_scenarios"
+        provenance: "config/create_scenarios.py:config_values; Snakefile:create_scenarios"
+      - change: "a sampler for LHS / Morris designs, emitting a scenario file"
+        anchor: "new script under scripts/, output config/scenarios.yaml — no rule owns this; model on config/create_scenarios.py"
+        provenance: "config/create_scenarios.py:itertools"
+      - change: "sensitivity indices / surrogate fit over the ensemble"
+        anchor: "rule make_global_summary output (results/<prefix>/csvs) -> a new post-processing script"
+        provenance: "rules/postprocess.smk:make_global_summary"
+      - change: "cost perturbation as a data file rather than a config override"
+        anchor: "costs.custom_cost_fn -> data/custom_costs.csv, consumed by rule process_cost_data"
+        provenance: "scripts/process_cost_data.py:overwrite_costs"
+    cost_profile:
+      solves: >
+        n+1 for one-at-a-time-perturbation over n inputs (the corpus's OAT sets run 3-15
+        dimensions, sometimes at 2-25 levels each, so 6-90 solves; 2026_Fernandes reached
+        >30 dimensions). prod(n_i) for structured-scenario-matrix — corpus sizes 8, 10, 27,
+        40, 64, 216, 264, 1800. A fixed sample budget for monte-carlo-lhs-sampling
+        (2023_Neumann: 500 low-fidelity + 15 high-fidelity). For global-sensitivity, Morris
+        costs r*(k+1) solves for k parameters and r trajectories, which is why
+        2026_Barnes screened ~350 parameters first and only then propagated the top five.
+      relative: >
+        Directly multiplicative in the design size: 10-100x a single solve is the ordinary
+        case, 200-2000x for a fine grid. Unlike MGA and stochastic optimisation the solves
+        are fully independent, so wall-clock scales with cluster width rather than with the
+        design — this is the cheapest of the three uncertainty methods per unit of insight.
+      note: >
+        The corpus's mitigations are all L0/L1 here and should be applied before promising a
+        matrix: shared_resources so upstream data is built once rather than once per design
+        point (the single biggest saving on a wide matrix); nH averaging or, better, TSAM
+        segmentation — 2022_Millinger ran its 64-point factorial at 237 representative
+        time-steps rather than 8760; fewer clusters; group parameters before factorialising
+        (2^6 groups, not 2^30 parameters); and sweep at low fidelity with a small
+        high-fidelity spot check. Cutting the sample budget by fitting a surrogate is the
+        one mitigation neither model supports.
+    verifies:
+      - variant: structured-scenario-matrix
+        check: "len(ns) == prod(len(v) for v in design.values())"
+        over: ensemble
+        note: >
+          A short ensemble means design points were dropped by wildcard expansion rather
+          than solved — the classic silent failure of a matrix, and it biases the reported
+          response because the dropped points are usually the hardest (most constrained)
+          ones.
+      - variant: one-at-a-time-perturbation
+        check: "all(abs(n.objective - base.objective) > noise_floor for n in ns)"
+        over: ensemble
+        note: >
+          A design point whose objective is indistinguishable from the base run means the
+          override never reached a consumer — either the key was mistyped in a way the
+          schema accepted, or run.name was left blank so expansion silently did not happen
+          and every 'design point' is the same run. Both make the sweep report zero
+          sensitivity for a parameter that matters.
+      - variant: one-at-a-time-perturbation
+        check: "base_a.objective == base_b.objective"
+        over: ensemble
+        note: >
+          Two runs of the identical base config must return the identical objective. If they
+          do not, noisy_costs is unseeded across design points and the sweep's small
+          responses are solver noise. Measure this noise floor before interpreting anything.
+  - model: pypsa-earth
+    version_anchor:
+      ref: "8435f4c8cc05f30088933b37b7db497ff860dc53"
+      date: "2026-07-25"
+    functionality:
+      - id: monte-carlo-sampling
+        role: >
+          THE asymmetry: registry status `partial`, and pypsa-earth is the only one of the
+          two models that SHIPS a sampler. monte_carlo.options.{add_to_snakefile,samples,
+          sampling_strategy,seed} plus monte_carlo.uncertainties (a distribution per PyPSA
+          object expression) drive scripts/monte_carlo.py, which builds a Latin hypercube via
+          chaospy, pyDOE2 or scipy.stats.qmc, rescales each column to the requested
+          distribution, and emits one perturbed network per sample under an `unc` wildcard —
+          one solve per sample, DAG-managed. pypsa-eur has none of this.
+      - id: scenario-matrix
+        role: >
+          the other fan-out, and weaker than eur's: scenario.{simpl,clusters,ll,opts,sopts,
+          planning_horizons,demand,h2export} expand combinatorially, but there is no
+          arbitrary-config-override scenario FILE in the main workflow — the equivalent is
+          the run_scenario / run_all_scenarios rules, which shell out to a fresh snakemake
+          invocation per config diff file
+      - id: carrier-attribute-scaling
+        role: >
+          the config-level cost/potential perturbation: opts tokens like solar+c0.5,
+          onwind+p2, AC+m1.1 scale capital_cost, marginal_cost or p_nom_max per carrier.
+          Narrower than eur's — three attributes, no per-investment-year form, no
+          adjustments config block.
+      - id: technology-cost-year
+        role: >
+          the coarse cost lever: costs.year and costs.version select a technology-data
+          vintage, sweepable through the scenario lists
+      - id: custom-data-overrides
+        role: >
+          the sanctioned data-side perturbation channel for the sector chain (industry
+          demand, gas network, heat/export) — the route for a sweep dimension that is a
+          dataset rather than a number
+      - id: summary-outputs
+        role: >
+          per-run collection, and the point at which the monte-carlo fan-out stops being
+          plumbed: make_summary's input function does not carry the `unc` wildcard
+      - id: numeric-stability-options
+        role: >
+          the noise floor. noisy_costs is true by default here too, and the seed is
+          HARDCODED inside solve_network rather than exposed in config — reproducible across
+          design points, but not controllable.
+      - id: temporal-resolution-nh
+        role: "the affordability lever; earth's default opts already carry a 3h token"
+      - id: time-segmentation-tsam
+        role: "the better affordability lever, as in eur"
+    available:
+      verdict: assemble
+      how: >
+        Two independent surfaces exist and neither alone is the method. (1) The scenario
+        lists (scenario.{simpl,clusters,ll,opts,sopts,planning_horizons,demand,h2export})
+        expand combinatorially into parallel runs, and opts tokens carry the common
+        perturbations (Co2L, carrier+c/p/m, nH), which covers OAT and a matrix over those
+        specific dimensions at L1. For an arbitrary config key, configs/scenarios/config.*.yaml
+        diff files plus rule run_all_scenarios shell out to one full snakemake invocation per
+        scenario. (2) monte_carlo.options.add_to_snakefile: true inserts a real sampling rule:
+        scripts/monte_carlo.py draws a Latin hypercube (chaospy / pyDOE2 / scipy.stats.qmc),
+        rescales columns to the per-quantity distributions in monte_carlo.uncertainties, and
+        writes one perturbed network per sample, which solve_network then solves under the
+        `unc` wildcard. So the sampled variant is nearly turnkey — the only variant either
+        model ships a sampler for — and the wiring you do is joining it to reporting.
+      missing: >
+        The Monte-Carlo module is `partial` for three concrete reasons, all worth stating to
+        a user before promising it. First, it perturbs by MULTIPLICATION on a solved-network
+        attribute expression (`n.{key} = n.{key} * factor`, evaluated with exec), so it can
+        scale loads and capacity factors but cannot sweep a CONFIG value — a capital-cost
+        sweep must go through capital_cost on the built network, and anything that changes
+        upstream data or the DAG is out of reach. Second, it attaches only to the
+        ELECTRICITY chain rule (elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}); the sector
+        chain has no `unc` wildcard. Third, make_summary's input function does not include
+        `{unc}`, so nothing collects the ensemble — the samples are recorded in n.meta and
+        the aggregation is yours to write. Procedure steps 6 (for the sampled variant), 7
+        (indices) and 8 (surrogate) have no handle: no Morris, no Sobol, no PCE. There is
+        also no config-schema validation anywhere, so a mistyped override in a scenario diff
+        runs the default silently — the opposite of eur.
+      provenance: "scripts/monte_carlo.py:monte_carlo_sampling_chaospy; Snakefile:rule monte_carlo; Snakefile:input_make_summary"
+    levers:
+      - key: "monte_carlo.options.add_to_snakefile"
+        effect: >
+          Inserts rule monte_carlo into the DAG and rewrites solve_network to consume the
+          per-sample network, adding the `unc` wildcard to the electricity chain. The single
+          flip that turns on a sampled sweep — and the flip pypsa-eur has no equivalent of.
+        default: "false"
+        provenance: "config.default.yaml:add_to_snakefile; Snakefile:rule monte_carlo"
+      - key: "monte_carlo.options.samples"
+        effect: >
+          Number of samples, hence solves; also sets scenario['unc'] = [m0..m{samples-1}] at
+          Snakefile parse time, so it IS the fan-out width. Must be an integer, and must be
+          the square of a prime when sampling_strategy is scipy (orthogonal LHS).
+        default: "9"
+        provenance: "config.default.yaml:samples; scripts/monte_carlo.py:validate_parameters"
+      - key: "monte_carlo.options.sampling_strategy"
+        effect: >
+          chaospy | pydoe2 | scipy — selects monte_carlo_sampling_chaospy (chaospy.J of
+          uniforms, rule='latin_hypercube'), monte_carlo_sampling_pydoe2, or
+          monte_carlo_sampling_scipy (scipy.stats.qmc.LatinHypercube, strength=2 orthogonal).
+          validate_parameters rejects anything else.
+        default: "'chaospy'"
+        provenance: "config.default.yaml:sampling_strategy; scripts/monte_carlo.py:monte_carlo_sampling_scipy"
+      - key: "monte_carlo.options.seed"
+        effect: >
+          Seeds the sampler so the design is reproducible across invocations. Distinct from
+          the degeneracy noise seed, which is hardcoded in solve_network and cannot be set.
+        default: "42"
+        provenance: "config.default.yaml:seed; scripts/monte_carlo.py:monte_carlo_sampling_chaospy"
+      - key: "monte_carlo.uncertainties"
+        effect: >
+          THE distribution specification, and the field with no counterpart in pypsa-eur:
+          keys are PyPSA attribute expressions evaluated against the network (e.g.
+          `loads_t.p_set`, or `generators_t.p_max_pu.loc[:, n.generators.carrier ==
+          "onwind"]`), values are {type, args} over uniform | normal | lognormal | triangle |
+          beta | gamma. rescale_distribution maps the unit hypercube onto each; the sampled
+          factor MULTIPLIES the attribute, so ranges are relative, not absolute.
+        default: >
+          three entries shipped as an example — loads_t.p_set uniform[0.5,1], onwind
+          p_max_pu lognormal[1.5], solar p_max_pu beta[0.5,2]
+        provenance: "config.default.yaml:uncertainties; scripts/monte_carlo.py:rescale_distribution"
+      - key: "scenario.opts"
+        effect: >
+          Wildcard list expanded combinatorially. Tokens carry the common perturbations —
+          Co2L, Ep, nH, and carrier+c/p/m for per-carrier cost/potential scaling — so an OAT
+          or small matrix over those dimensions is one list.
+        default: "['Co2L-3h']"
+        provenance: "config.default.yaml:opts; scripts/prepare_network.py:attr_lookup"
+      - key: "scenario.clusters"
+        effect: >
+          Node counts as a list — the resolution-sweep dimension, expanded combinatorially
+          with every other scenario list.
+        default: "[10]"
+        provenance: "config.default.yaml:clusters; Snakefile:scenario"
+      - key: "costs.year"
+        effect: >
+          Technology-data cost vintage; the coarse-grained cost sweep dimension when
+          per-technology overrides are not needed.
+        default: "2030"
+        provenance: "config.default.yaml:year; scripts/process_cost_data.py:load_costs"
+      - key: "run.allow_scenario_failure"
+        effect: >
+          When rule run_all_scenarios shells out per scenario diff file, this decides whether
+          one failing design point aborts the whole sweep or is skipped. Set it true for a
+          wide matrix, then check which points actually produced results — a silently skipped
+          point is a hole in the design.
+        default: "false"
+        provenance: "config.default.yaml:allow_scenario_failure; Snakefile:run_all_scenarios"
+    assembly:
+      - step: >
+          Decide which fan-out the design needs. If every dimension is expressible as a
+          scenario-list element or an opts token, use the scenario lists — combinatorial
+          expansion is native and free. If a dimension is an arbitrary config key, write one
+          configs/scenarios/config.<name>.yaml diff per design point; rule run_all_scenarios
+          globs them and shells out a full snakemake run each, merging the diff onto
+          config.default.yaml via create_test_config.
+        uses: [scenario-matrix]
+        config: "scenario.*; run.allow_scenario_failure"
+        code: "configs/scenarios/config.<name>.yaml (data, one per design point)"
+        provenance: "Snakefile:run_all_scenarios; scripts/build_test_configs.py:create_test_config"
+      - step: >
+          Express perturbations at the cheapest available layer. Per-carrier cost or
+          potential scaling goes in an opts token (solar+c0.5); a cost vintage goes in
+          costs.year; a dataset-shaped perturbation goes through the custom_data channels.
+        uses: [carrier-attribute-scaling, technology-cost-year, custom-data-overrides]
+        config: "scenario.opts; costs.year; custom_data.*"
+        code: null
+        provenance: "scripts/prepare_network.py:attr_lookup; scripts/prepare_sector_network.py:custom_data"
+      - step: >
+          For the sampled variant, declare the input distributions in
+          monte_carlo.uncertainties as PyPSA attribute expressions, set samples and
+          sampling_strategy, and flip add_to_snakefile. The `unc` wildcard appears on the
+          electricity chain and solve_network consumes one perturbed network per sample. Note
+          the factors are MULTIPLICATIVE on network attributes — translate the study's
+          parameter ranges into relative factors on quantities that exist on the built
+          network before promising a mapping.
+        uses: [monte-carlo-sampling]
+        config: "monte_carlo.options.{add_to_snakefile,samples,sampling_strategy,seed}; monte_carlo.uncertainties"
+        code: null
+        provenance: "scripts/monte_carlo.py:rescale_distribution; Snakefile:rule monte_carlo"
+      - step: >
+          Wire up collection, which is the actual assembly work: input_make_summary does not
+          carry `{unc}`, so make_summary sees none of the samples. Either extend that input
+          function and make_summary's wildcards to include `unc`, or write a standalone
+          post-processor over results/<run>/networks/*_{unc}.nc. The sample factors are
+          already stored in each network's n.meta by monte_carlo.py, so the ensemble is
+          self-describing.
+        uses: [summary-outputs, monte-carlo-sampling]
+        config: null
+        code: "Snakefile:input_make_summary + rule make_summary wildcards, or a new post-processor"
+        provenance: "Snakefile:input_make_summary; scripts/make_summary.py:make_summaries"
+      - step: >
+          (GSA only) Compute indices over the collected ensemble — Morris/mu* via SALib, or
+          Sobol via a PCE surrogate. Nothing in the repo does this; it is post-processing over
+          netCDFs and csvs, and the design must come from the sampler, so a Morris design
+          means bypassing monte_carlo.py's LHS and writing the trajectory design yourself.
+        uses: [monte-carlo-sampling]
+        config: null
+        code: "new post-processor; and a new sampling function alongside monte_carlo_sampling_scipy for Morris designs"
+        provenance: "scripts/monte_carlo.py:monte_carlo_sampling_scipy"
+    boundary:
+      - variant: one-at-a-time-perturbation
+        rung: L1
+        note: >
+          Config, as long as the perturbed quantity has an opts token (carrier+c/p/m, Co2L,
+          Ep, nH) or is a scenario-list key. For any other config key it is still L1 but via
+          a different mechanism — one config.<name>.yaml diff file per design point under
+          configs/scenarios/, driven by rule run_all_scenarios. Weaker than eur: no schema
+          validation means a mistyped override runs the default silently.
+      - variant: structured-scenario-matrix
+        rung: L1
+        note: >
+          Scenario lists expand combinatorially and cover eight dimensions natively
+          (simpl, clusters, ll, opts, sopts, planning_horizons, demand, h2export) — more
+          named dimensions than eur exposes. Beyond those, the run_all_scenarios diff-file
+          route is L1-with-more-typing and no cartesian-product generator (there is no
+          create_scenarios.py here), so a 64-point factorial means writing or scripting 64
+          yaml files.
+      - variant: resolution-sweep
+        rung: L1
+        note: >
+          scenario.clusters and scenario.simpl are already lists and the nH token is in opts,
+          so the grid is a config edit. In practice the binding constraint for earth is data,
+          not config — see data_dependencies; a node-count sweep is only meaningful where the
+          underlying OSM network and cutout support the finer resolution.
+      - variant: monte-carlo-lhs-sampling
+        rung: L1
+        note: >
+          THE one place pypsa-earth is decisively ahead of pypsa-eur, and the sharpest
+          asymmetry in this book: a real LHS sampler with six distribution families and three
+          backends, wired into the DAG by one boolean. L1 rather than L0 because
+          monte_carlo.uncertainties must be written as PyPSA attribute expressions and
+          samples/sampling_strategy set to non-defaults. The caveats are real (multiplicative
+          factors on network attributes only, electricity chain only, no ensemble collection)
+          but the sampler itself — the piece that is L5 in eur — is a config flip here.
+      - variant: global-sensitivity
+        rung: L5
+        note: >
+          No Morris, no Sobol, no surrogate. The LHS sampler is the right starting point for
+          Sobol-via-PCE (2023_Neumann's route: fit the surrogate to the LHS ensemble, read
+          indices off the coefficients analytically) but a Morris screen needs a trajectory
+          design, not a hypercube, so it means a new sampling function next to
+          monte_carlo_sampling_scipy plus the elementary-effects analyser. Ensemble collection
+          must be built first regardless, since input_make_summary drops `{unc}`.
+    where:
+      - change: "insert the sampling stage into the DAG"
+        anchor: "config flag monte_carlo.options.add_to_snakefile -> rule monte_carlo and the {unc}-carrying rule solve_network"
+        provenance: "Snakefile:rule monte_carlo"
+      - change: "collect the sampled ensemble (the assembly gap)"
+        anchor: "Snakefile:input_make_summary — add {unc} to the expand and to rule make_summary's wildcards"
+        provenance: "Snakefile:input_make_summary; scripts/make_summary.py:make_summaries"
+      - change: "a new design type (Morris trajectories, or a factorial) inside the sampler"
+        anchor: "scripts/monte_carlo.py — a new sampling function alongside monte_carlo_sampling_scipy, selected by monte_carlo.options.sampling_strategy, and its entry in validate_parameters' valid_strategy list"
+        provenance: "scripts/monte_carlo.py:validate_parameters"
+      - change: "arbitrary-config-key design points (no scenario file in the main workflow)"
+        anchor: "configs/scenarios/config.<name>.yaml diff files + rule run_all_scenarios"
+        provenance: "Snakefile:run_all_scenarios; scripts/build_test_configs.py:create_test_config"
+      - change: "extend the sampled sweep to the sector chain"
+        anchor: "rule monte_carlo's output pattern — the sector prenetworks/postnetworks paths carry no {unc} wildcard"
+        provenance: "Snakefile:prepare_sector_networks"
+    data_dependencies:
+      - input: "region cutout and OSM-derived base network at the finest swept resolution"
+        required_for: resolution-sweep
+        availability: >
+          region-dependent — cutouts are built per region (enable.build_cutout) and the base
+          topology comes from OSM extraction, so a node-count sweep is only meaningful up to
+          the resolution the extracted network actually resolves. Check
+          cookbooks/pypsa-earth/data_quality before promising the upper end of a resolution
+          grid.
+      - input: "regional cost assumptions for the swept parameter ranges"
+        required_for: one-at-a-time-perturbation
+        availability: >
+          exists by default via technology-data at costs.year, but country-specific cost data
+          is limited; a +-20% band around a European default is an assumption to sign off
+          with the user explicitly, not a data-grounded range
+      - input: "per-quantity distributions expressible as PyPSA attribute expressions"
+        required_for: monte-carlo-lhs-sampling
+        availability: >
+          exists by default (three worked examples ship in config.default.yaml), but only for
+          quantities present on the built network — a distribution over a CONFIG value or an
+          upstream dataset has no expression and is absent
+    cost_profile:
+      solves: >
+        n+1 for one-at-a-time-perturbation; prod of the scenario list lengths for
+        structured-scenario-matrix; exactly monte_carlo.options.samples for
+        monte-carlo-lhs-sampling (default 9, and the scipy backend requires the square of a
+        prime — 9, 25, 49, 121 — which is a real constraint on the budget). Morris would cost
+        r*(k+1) once written.
+      relative: >
+        Multiplicative in the design size, as in eur, but from a cheaper base: earth studies
+        are usually one or a few countries, electricity-only, with a small cluster count, so
+        a 100-point matrix is often tractable where the same matrix on a sector-coupled
+        European eur run is not. The model-choice tradeoff runs in earth's favour for this
+        method — the opposite of most cards in this book.
+      note: >
+        There is no shared-resources mechanism here (shared-resources-caching is absent from
+        earth's registry; run.shared_cutouts shares only the cutout), so upstream resources
+        are rebuilt per run name and a wide matrix pays for that repeatedly — the largest
+        avoidable cost on this side. run_all_scenarios is worse still: it shells out a
+        SEPARATE snakemake invocation per design point, so there is no cross-point DAG
+        deduplication at all. Mitigations that do work: nH averaging (the default opts
+        already carry 3h), TSAM segmentation, and a small cluster count. Solve failures on a
+        wide matrix are common enough that run.allow_scenario_failure exists — set it, then
+        verify the design is complete rather than assuming it.
+    verifies:
+      - variant: monte-carlo-lhs-sampling
+        check: "len(ns) == config['monte_carlo']['options']['samples']"
+        over: ensemble
+        note: >
+          Fewer solved networks than samples means design points failed or were never
+          expanded. Because nothing collects the ensemble automatically, a missing sample is
+          invisible unless counted — and a truncated Monte-Carlo sample reports a narrower
+          output distribution, which is the wrong direction for an uncertainty claim.
+      - variant: monte-carlo-lhs-sampling
+        check: "all(any(k.endswith('_feature') for k in n.meta) for n in ns)"
+        over: ensemble
+        note: >
+          monte_carlo.py writes the sampled factors into n.meta as *_feature columns. Their
+          absence means the network came from the plain (non-sampled) chain, so the
+          'perturbed' ensemble is a set of identical runs — the exact silent failure that
+          makes a sweep report zero uncertainty.
+      - variant: structured-scenario-matrix
+        check: "len(ns) == prod(len(config['scenario'][k]) for k in dims)"
+        over: ensemble
+        note: >
+          Short ensembles are routine here because run_all_scenarios can be told to continue
+          past failures (run.allow_scenario_failure) and because there is no config-schema
+          validation to catch a bad override. Count the design points before reading any
+          response.
+      - variant: one-at-a-time-perturbation
+        check: "abs(n_perturbed.objective - n_base.objective) > 0"
+        over: ensemble
+        note: >
+          An unchanged objective means the opts token or config diff never reached a
+          consumer. With no schema validation on this side, a mistyped key silently runs the
+          default — so this check is doing more work in earth than in eur.

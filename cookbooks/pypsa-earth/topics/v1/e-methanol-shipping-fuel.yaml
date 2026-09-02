@@ -1,0 +1,47 @@
+id: e-methanol-shipping-fuel
+title: E-methanol / shipping fuel
+rank: 42
+question: >
+  What does e-methanol really cost delivered as a marine fuel, and when does it
+  beat ammonia, hydrogen or fossil bunkers? IMO decarbonization targets and
+  methanol-dual-fuel orderbooks make this the sharpest P2X fuel-competition
+  question after the hype correction.
+when_to_use:
+  - "e-methanol production cost / power-to-methanol"
+  - "green shipping fuel choice (MeOH vs NH3 vs H2)"
+  - "methanol bunkering demand at ports"
+  - "IMO-compliant marine fuel scenarios"
+  - "methanolisation of captured CO2"
+recipes:
+  generation_conversion: [e-methanol, methanol-ships, ammonia-ships, e-diesel-fischer-tropsch]
+  demand: [shipping-demand]
+functionality:
+  - id: sector-coupled-workflow
+    role: "shipping demand chain (UNSD navigation totals, port-weighted loads, H2-share split)"
+  - id: co2-network-sequestration
+    role: "captured-CO2 buses / DAC — the carbon feedstock any methanolisation link needs"
+  - id: co2-cap
+    role: "the pressure that makes synthetic fuels enter at all"
+  - id: h2-export-chain
+    role: "H2-only export machinery — no methanol export vector"
+  - id: scenario-matrix
+    role: "fuel-share and carbon-price sweeps once a methanol share key exists"
+gap_assessment: >
+  Grounded absence: methanol is not in the model at all — no carrier, bus,
+  link, demand or config key anywhere (e-methanol recipe, repo-wide grep at
+  this commit), even though technology-data already ships the cost rows
+  (methanolisation, shipping fuel methanol, methanol-to-kerosene). Shipping
+  demand splits only into an H2 share (sector.shipping_hydrogen_share) and an
+  oil remainder, so the only out-of-box proxy is Fischer-Tropsch e-fuel feeding
+  the generic oil bus that ships burn — not methanol-specific, no dedicated
+  tracking. Building the real thing is L4-L5: a methanol carrier + per-node
+  buses + methanolisation Link (H2 + co2 stored + AC, pattern
+  H2_liquid_fossil_conversions), then an add_shipping demand carve-out
+  mirroring the H2 share. Contrast ammonia, where the supply chain exists and
+  only the shipping hookup is missing (L2). If the question is "which green
+  fuel wins shipping", pypsa-earth today can price H2-share scenarios and
+  FT-oil, not a three-way MeOH/NH3/H2 competition.
+coverage: gap
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

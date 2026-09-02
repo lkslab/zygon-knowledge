@@ -1,0 +1,28 @@
+--- a/scripts/solve_network.py
++++ b/scripts/solve_network.py
+@@ -159,7 +159,11 @@
+             carrier="load shedding",
+             sign=1,
+             marginal_cost=solve_opts.get("load_shedding") * 1000,  # convert to Eur/MWh
+-            p_nom=required_p_nom.reindex(n.buses.index, fill_value=0.5e6),
++            # clip: emission-accounting buses carry negative net loads,
++            # and a negative shedding p_nom is instantly infeasible
++            p_nom=required_p_nom.reindex(n.buses.index, fill_value=0.5e6).clip(
++                lower=0
++            ),
+         )
+ 
+     if solve_opts.get("noisy_costs"):
+@@ -1135,6 +1139,12 @@
+     n.config = config
+     n.opts = opts
+ 
++    # perfect foresight: co-optimise all investment periods in one LP
++    # (pypsa <= 0.30.3 supports multi_investment_periods natively);
++    # single-period networks take the unchanged path below
++    if len(n.investment_periods) > 0:
++        kwargs["multi_investment_periods"] = True
++
+     if skip_iterations:
+         status, condition = n.optimize(**kwargs)
+     else:

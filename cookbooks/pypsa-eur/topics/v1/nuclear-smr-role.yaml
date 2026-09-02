@@ -1,0 +1,58 @@
+id: nuclear-smr-role
+title: Nuclear / SMR role
+rank: 55
+question: >
+  What role does nuclear — existing fleets, new large builds, and small
+  modular reactors — play in a decarbonizing system: how much firm low-carbon
+  capacity is it worth, and at what cost does new nuclear or an SMR beat
+  renewables plus storage?
+when_to_use:
+  - "value of nuclear in the future mix"
+  - "new nuclear build vs renewables + storage"
+  - "SMR deployment scenarios"
+  - "nuclear phase-out or lifetime extension"
+  - "nuclear as firm capacity for adequacy"
+recipes:
+  generation_conversion: [conventional-nuclear, small-modular-reactors]
+  demand: [electricity-load]
+functionality:
+  - id: fleet-retirement-filter
+    role: "retire or extend the existing fleet by DateIn/DateOut query; custom_powerplants injects known new-build projects"
+  - id: country-carrier-capacity-limits
+    role: "CCL floors/caps encode national nuclear policy (build programs, phase-out ceilings)"
+  - id: safe-reserve-margin
+    role: "SAFE makes firm capacity bind — but electricity.SAFE_reservemargin must be user-added to config (no default entry)"
+  - id: bau-minimum-capacities
+    role: "system-wide nuclear capacity floors — electricity.BAU_mincapacities likewise needs a user-added config key"
+  - id: co2-cap
+    role: "tight Co2L / carbon budgets create the firm-low-carbon niche nuclear competes for"
+  - id: linearized-unit-commitment
+    role: "min-load/ramp/start-up data per conventional carrier exist (unit_commitment.csv, LP relaxation, off by default) — nuclear inflexibility is representable, unlike earth"
+  - id: existing-baseyear-brownfield
+    role: "fleet vintages and lifetimes carried through myopic/perfect pathways"
+  - id: carrier-attribute-scaling
+    role: "nuclear+c sweeps trace the capex breakeven vs VRE+storage"
+  - id: cost-data-pipeline
+    role: "custom_costs.csv can CREATE a distinct SMR-reactor cost row — the supported no-code route for the proxy ladder"
+gap_assessment: >
+  Conventional nuclear is solid: the fleet loads from powerplantmatching with
+  per-country availability derating (nuclear_p_max_pu), retirement/extension
+  is a one-line powerplants_filter query, new builds become investable by
+  adding nuclear to extendable_carriers, and everywhere_powerplants seeds
+  zero-capacity candidates at ALL substations — lifting earth's
+  existing-sites-only restriction without code. Operational inflexibility is
+  representable via the shipped unit-commitment data (LP relaxation, off by
+  default), and pathways carry fleet vintages properly. SMRs remain a
+  documented proxy, not a technology: there is no SMR-reactor carrier, and
+  the carrier named "SMR" in pypsa-eur is steam methane reforming (hydrogen)
+  — a live retrieval trap. The small-modular-reactors recipe walks the
+  ladder from "extendable nuclear with SMR-like costs" (config only) to a
+  distinct carrier with its own custom cost row and custom_powerplants sites.
+  What no rung reaches: modular integer builds / unit-size economics (no
+  MILP investment logic) and nuclear-to-heat coupling (no reactor heat
+  offtake in the sector chain). Adequacy framing via SAFE/BAU works but both
+  config keys are absent from the default config and must be added by hand.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

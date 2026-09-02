@@ -1,0 +1,48 @@
+id: synthetic-natural-gas-e-sng
+title: Synthetic natural gas (e-SNG)
+rank: 98
+question: >
+  Can synthetic methane from hydrogen or electricity plus captured CO2 keep
+  existing gas users decarbonized — and when does e-SNG beat direct
+  electrification or H2 conversion? Niche but concrete: gas utilities and
+  countries with large sunk gas infrastructure.
+when_to_use:
+  - "e-SNG / e-methane in the mix"
+  - "methanation of green hydrogen"
+  - "power-to-gas (methane) economics"
+  - "green gas for existing gas demand"
+  - "Sabatier vs direct H2 use"
+recipes:
+  generation_conversion: [e-sng, electrolysers, green-hydrogen,
+                          direct-air-capture, biogas-anaerobic-digestion]
+  demand: []
+functionality:
+  - id: sector-coupled-workflow
+    role: "core — the gas bus, synthesis links, and all gas demands live in the sector chain"
+  - id: co2-network-sequestration
+    role: "stored-CO2 feedstock: point-source capture and DAC supply the carbon, nodal or pooled"
+  - id: co2-cap
+    role: "the driver — a tight cap is what makes e-SNG displace fossil gas economically"
+  - id: h2-pipeline-routing
+    role: "delivers H2 feedstock to methanation sites when the H2 network is on"
+  - id: gas-network-links
+    role: "dead key — no gas transport, so SNG competes at each node against unlimited nodal supply"
+gap_assessment: >
+  Runs out of the box: two synthesis routes are default-on in the sector
+  chain — Sabatier (node H2 bus + stored CO2 -> gas) and HELMETH (direct
+  electricity -> gas), each one extendable link per gas node with costs
+  from technology-data. Output is ordinary gas, so e-SNG serves every gas
+  demand (converted gas power links, boilers, gas for industry, SMR
+  feedstock) and displaces fossil gas whenever CO2 constraints or prices
+  bite; downstream combustion re-emits, netting against the stored CO2 the
+  synthesis draws. Biogas upgrading is the parallel biogenic route into the
+  same bus. The e-sng recipe documents the real limits: no green-gas quota
+  constraint on gas demand, no injection or gas-quality limits, no SNG
+  export (the export chain is H2-only), and the CO2 feedstock is the pooled
+  stored-CO2 carrier with no biogenic-only restriction — all bespoke-code
+  territory. Also note gas transport is absent (dead key), so SNG siting
+  logic is nodal, not network-driven.
+coverage: ready
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

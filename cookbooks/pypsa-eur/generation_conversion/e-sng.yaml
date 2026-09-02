@@ -1,0 +1,129 @@
+id: e-sng
+title: E-SNG / synthetic methane (Sabatier methanation)
+summary: >
+  Synthetic natural gas from hydrogen and captured CO2 via Sabatier
+  methanation, injected into the modelled gas grid as a drop-in
+  substitute for fossil methane.
+when_to_use:
+  - "e-SNG / synthetic natural gas"
+  - "methanation / Sabatier"
+  - "power-to-gas / P2G methane"
+  - "green gas / renewable methane injection"
+  - "CO2 + H2 to methane"
+  - "green gas quota"
+  - "pypsa-eur carrier names: Sabatier, gas, BioSNG"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        ON by default (sector.methanation: true). add_h2_gas_infrastructure
+        adds an extendable "Sabatier" Link at every node: bus0 = nodal H2,
+        bus1 = the nodal gas bus (real gas grid, sector.gas_network true),
+        bus2 = co2 stored as an INPUT (efficiency2 = -efficiency x gas CO2
+        intensity — the methane's carbon is withdrawn from captured CO2, so
+        downstream combustion accounting nets out). Efficiency, lifetime and
+        capital cost (given per kW gas output, converted accordingly) come
+        from the "methanation" cost row; p_min_pu =
+        sector.min_part_load_methanation (0.3 — built capacity must run at
+        >= 30% every snapshot). The product is indistinguishable from
+        fossil gas: it flows through the pipeline network into CHPs,
+        boilers, OCGT/CCGT, industry and SMR, competing with entry-point-
+        limited fossil supply, biogas upgrading and (if enabled) gas
+        imports. 25% of waste heat can serve district heating
+        (sector.use_methanation_waste_heat, bus3 in add_waste_heat).
+        Myopic runs carry built Sabatier capacity forward via
+        add_brownfield.
+      mechanism: >
+        rule prepare_sector_network -> add_h2_gas_infrastructure (methanation
+        block, before coal_cc/SMR); CO2 feedstock from the co2 stored buses;
+        gas destination nodes resolved by define_spatial (nodal with
+        gas_network, otherwise a single EU gas bus). Sabatier is the ONLY
+        power-to-methane route at this ref — there is no HELMETH
+        (direct electrolytic methanation) technology in the code.
+      not_covered: >
+        No green-gas quota or SNG-share constraint on gas consumption (SNG
+        and fossil molecules are fungible on the gas buses). No restriction
+        of the CO2 feedstock to biogenic/DAC sources (pooled co2 stored).
+        No injection limits separate from pipeline capacities, no gas
+        quality/Wobbe considerations. No SNG export machinery. Biomass
+        gasification to SNG ("BioSNG", sector.biosng, default false) is a
+        different feedstock route covered in advanced-biofuels; biogas
+        upgrading is covered there too.
+      provenance: "scripts/prepare_sector_network.py:Sabatier; scripts/prepare_sector_network.py:add_h2_gas_infrastructure; scripts/prepare_sector_network.py:min_part_load_methanation; scripts/prepare_sector_network.py:add_waste_heat; scripts/add_brownfield.py:add_brownfield"
+    levers:
+      - key: sector.methanation
+        effect: "Master switch for the Sabatier links."
+        default: "true"
+        provenance: "config/config.default.yaml:methanation; scripts/prepare_sector_network.py:add_h2_gas_infrastructure"
+      - key: sector.min_part_load_methanation
+        effect: "p_min_pu of the Sabatier links — must-run floor; 0 for fully flexible operation."
+        default: "0.3"
+        provenance: "config/config.default.yaml:min_part_load_methanation; scripts/prepare_sector_network.py:min_part_load_methanation"
+      - key: sector.use_methanation_waste_heat
+        effect: "Fraction of Sabatier waste heat (0.95 minus efficiency) delivered to urban central heat buses."
+        default: "0.25"
+        provenance: "config/config.default.yaml:use_methanation_waste_heat; scripts/prepare_sector_network.py:add_waste_heat"
+      - key: sector.gas_network
+        effect: "Decides whether SNG is injected into nodal grid buses (siting matters for pipeline flows) or a single EU gas bus."
+        default: "true"
+        provenance: "config/config.default.yaml:gas_network; scripts/prepare_sector_network.py:define_spatial"
+      - key: sector.fossil_fuels
+        effect: "false removes fossil gas supply — gas demand must then be met by Sabatier SNG, biogas upgrading or imports."
+        default: "true"
+        provenance: "config/config.default.yaml:fossil_fuels; scripts/prepare_sector_network.py:add_carrier_buses"
+      - key: costs.overwrites
+        effect: "Override the 'methanation' cost row (investment/efficiency/lifetime) from config or data/custom_costs.csv."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+    boundary:
+      - variant: "e-SNG as an investment option at every node"
+        rung: L0
+        note: "default (sector.methanation: true)"
+      - variant: "remove methanation"
+        rung: L0
+        note: "sector.methanation: false"
+      - variant: "flexible (load-following) methanation"
+        rung: L1
+        note: "sector.min_part_load_methanation: 0"
+      - variant: "all-renewable gas supply"
+        rung: L1
+        note: "sector.fossil_fuels: false (system-wide fossil removal) — leaves SNG + biogas + optional imports"
+      - variant: "green-gas quota (minimum SNG share of gas consumption)"
+        rung: L5
+        note: "molecules are fungible on the gas buses; needs a custom constraint over Sabatier dispatch vs gas demand via the custom_extra_functionality hook"
+      - variant: "restrict methanation CO2 to biogenic/DAC sources"
+        rung: L5
+        note: "co2 stored pools all capture sources — needs source-resolved CO2 buses or bespoke constraints"
+      - variant: "per-node SNG capacity or injection caps"
+        rung: L2
+        note: "no config key — set p_nom_max on the Sabatier n.add call in add_h2_gas_infrastructure"
+      - variant: "SNG export outside the system"
+        rung: L2
+        note: "no export machinery; add a Load or negative-cost sink on chosen gas buses (add_import_options is the accounting template)"
+      - variant: "HELMETH-style direct electrolytic methanation"
+        rung: L3
+        note: "technology absent at this ref (no HELMETH anywhere in the code) — clone the Sabatier block with an electricity bus0 plus a user cost row"
+    where:
+      - change: "Sabatier link creation (siting, part load, CO2 coefficient, caps)"
+        anchor: "scripts/prepare_sector_network.py::add_h2_gas_infrastructure (methanation block)"
+        provenance: "scripts/prepare_sector_network.py:Sabatier"
+      - change: "waste heat delivery"
+        anchor: "scripts/prepare_sector_network.py::add_waste_heat (use_methanation_waste_heat branch)"
+        provenance: "scripts/prepare_sector_network.py:add_waste_heat"
+      - change: "gas-side destination buses and competing fossil supply"
+        anchor: "scripts/prepare_sector_network.py::define_spatial (spatial.gas) and ::add_carrier_buses (gas branch)"
+        provenance: "scripts/prepare_sector_network.py:define_spatial; scripts/prepare_sector_network.py:add_carrier_buses"
+      - change: "custom quota/CO2-source constraints"
+        anchor: "solve_network.py::extra_functionality custom_extra_functionality hook"
+        provenance: "scripts/solve_network.py:custom_extra_functionality"
+    data_dependencies:
+      - input: "cost rows 'methanation' and 'gas' (CO2 intensity sets the carbon withdrawal coefficient)"
+        required_for: "Sabatier economics and carbon accounting"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "co2 stored buses with captured CO2 supply"
+        required_for: "the CO2 feedstock"
+        availability: "exists by default (add_co2_tracking + capture chain)"
+      - input: "nodal H2 buses and nodal gas buses (gas network chain)"
+        required_for: "feedstock input and product injection"
+        availability: "exists by default in sector runs"

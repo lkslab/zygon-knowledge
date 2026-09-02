@@ -1,0 +1,11 @@
+--- a/Snakefile	2026-08-02 15:24:10.224879162 +0200
++++ b/Snakefile	2026-08-02 15:24:10.255764342 +0200
+@@ -59,6 +59,8 @@
+ run = config.get("run", {})
+ RDIR = run["name"] + "/" if run.get("name") else ""
+ CDIR = RDIR if not run.get("shared_cutouts") else ""
++
++include: "rules/investment_geography.smk"
+ SECDIR = run["sector_name"] + "/" if run.get("sector_name") else ""
+ SDIR = config["summary_dir"].strip("/") + f"/{SECDIR}"
+ RESDIR = config["results_dir"].strip("/") + f"/{SECDIR}"

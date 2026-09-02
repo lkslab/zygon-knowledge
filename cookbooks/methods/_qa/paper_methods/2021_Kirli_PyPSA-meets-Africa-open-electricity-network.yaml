@@ -1,0 +1,64 @@
+paper: "2021_Kirli_PyPSA-meets-Africa-open-electricity-network.pdf"
+tier: 2
+model_used: >
+  No model run. This is a roadmap/review paper describing the planned PyPSA-Earth
+  model (then called "PyPSA meets Africa"). No capacity expansion or dispatch
+  optimisation is executed; the only implemented result shown is an OSM substation
+  extraction (Fig. 3, 2721 substations).
+scope: >
+  Reviews open electricity system models for Africa, identifies the gap (no
+  high-resolution continent-level capacity-expansion model), and lays out the
+  planned methodology and work packages for the PyPSA meets Africa project.
+methods:
+  - slug: powerplant-matching-and-fleet-assembly
+    role: routine-use
+    evidence: >
+      Sec. 3.2 states: "The database [GPPD] can be integrated with PyPSA using the
+      powerplantmatching tool [30]. The latter also enables integration with other
+      databases." powerplantmatching is chosen as the fleet-assembly layer for the
+      planned model.
+    procedure_notes: >
+      Planned use of powerplantmatching to reconcile GPPD (Global Power Plant
+      Database) with other sources for conventional generation (coal, gas, oil,
+      hydro). Coverage of GPPD quoted as 80-100% by installed capacity for
+      conventional categories. No actual run shown — tool selection is announced
+      in the roadmap.
+    variant: null
+    parameters: {}
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      Sec. 3.3–3.4 describe using atlite for spatially resolved wind/solar
+      potentials and ERA5 + SARAH2 weather data; Sec. 3.4 adds land cover
+      constraints (Corine Land Cover, protected areas, bathymetry from GEBCO for
+      offshore). "Different types of land use, extreme terrain conditions and
+      protected areas constrain the eligible areas for RES development."
+    procedure_notes: >
+      Planned approach: atlite computes hourly generation time-series and
+      installable potentials; exclusion zones derived from Corine Land Cover
+      (high-population, farmland, extreme terrain), national parks, and GEBCO
+      water depth for marine/offshore. No results from this step are shown in
+      the paper — it is a methodology plan.
+    variant: null
+    parameters: {}
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      Sec. 3.5: "The spatial model resolution can be changed by aggregating the
+      cells by k-means clustering. Altering the spatial resolution is beneficial
+      for reducing the computational expense... while a high resolution optimisation
+      for Africa with up to 1000 nodes/regions might be required for a detailed
+      continental study, a one-node per country resolution can be sufficient for
+      simplified tests."
+    procedure_notes: >
+      Planned use of Voronoi cells anchored at substations (extracted from OSM)
+      as the base spatial unit, with k-means aggregation to reduce node count.
+      Range cited: up to 1000 nodes for detailed study, down to 1 per country.
+      Fig. 3 shows the OSM substation extraction (2721 points) as an initial
+      implemented result, but no clustering run is shown.
+    variant: voronoi-plus-kmeans
+    parameters: {node_range: "1 per country to ~1000"}
+
+unmatched_methods: []

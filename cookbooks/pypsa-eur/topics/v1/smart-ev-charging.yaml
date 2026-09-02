@@ -1,0 +1,56 @@
+id: smart-ev-charging
+title: "Smart EV charging"
+rank: 20
+question: >
+  What is smart/managed charging worth as distributed flexibility — how much
+  peak does it shave, how much VRE does it absorb, and where do networks
+  bind under mass EV adoption? A top applied theme with a well-funded
+  DSO/utility/charging-startup buyer ecosystem; overlaps flexibility (#2)
+  and distribution grids (#4).
+when_to_use:
+  - "value of smart vs dumb (uncontrolled) EV charging"
+  - "EV charging load shape and peak impact"
+  - "EVs soaking up midday solar / cheap wind hours"
+  - "managed charging as an alternative to grid reinforcement"
+  - "V2G upside on top of smart charging"
+recipes:
+  generation_conversion: [smart-ev-chargers, battery-electric-cars,
+                          vehicle-to-grid]
+  demand: [land-transport-demand, demand-temporal-profiles]
+functionality:
+  - id: bev-dsm-v2g
+    role: "core — BEV DSM shifts charging within mobility-data availability windows; V2G adds discharge to grid"
+  - id: sector-master-switches
+    role: "EV fleets, charging, and the power system co-optimized only with the transport layer on"
+  - id: exogenous-transport-shares
+    role: "EV adoption per horizon is the imposed pathway lever — uptake is not endogenous"
+  - id: distribution-grid-lv
+    role: "charging sits behind the LV cost link — reinforcement savings from smart charging priced linearly"
+  - id: distribution-power-flow
+    role: "where local networks actually bind is absent — no feeder model"
+  - id: demand-elasticity
+    role: "no tariff response — shifting is planner-optimal, not price- or behaviour-driven"
+  - id: nodal-marginal-prices
+    role: "value of shifted charging read from system shadow prices"
+  - id: summary-outputs
+    role: "compare system cost and peak with bev_dsm on vs off"
+gap_assessment: >
+  The headline comparison runs out of the box: sector runs with land
+  transport electrified give an uncontrolled-charging baseline (fixed
+  profile), and switching on BEV DSM lets the planner shift charging
+  within availability windows derived from European mobility data — with
+  V2G as a further step — so the system value of smart charging (cost,
+  peak, curtailment uptake) is a clean on/off experiment, and the EV share
+  itself is swept via the exogenous transport-share pathway. Limits, same
+  in kind as pypsa-earth's: fleets are aggregated per node with a single
+  availability profile, so charger siting, home-vs-public split, and
+  charging-behaviour heterogeneity are not represented; shifting is
+  perfect-foresight planner control, not a tariff or aggregator mechanism
+  (demand elasticity and market products absent); and distribution-level
+  binding is only a linear LV cost proxy, so "where networks bind" needs
+  an external distribution tool. Partial: system value yes, local grid
+  impact and program design no.
+coverage: partial
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

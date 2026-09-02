@@ -1,0 +1,48 @@
+id: geospatial-electrification-mini-grid-vs-grid
+title: Geospatial electrification (mini-grid vs grid)
+rank: 23
+question: >
+  For each unelectrified settlement, is grid extension, a solar mini-grid, or
+  standalone solar (SHS) cheapest? The OnSSET/GEP per-settlement least-cost
+  question — empirically mini-grid PV then standalone PV win for most unserved
+  settlements (Nigeria, Zambia, Kenya studies).
+when_to_use:
+  - "grid extension vs mini-grid vs solar home system"
+  - "per-settlement least-cost electrification"
+  - "OnSSET / GEP style geospatial analysis"
+  - "where do mini-grids beat the grid"
+  - "connection cost by settlement distance and density"
+recipes:
+  generation_conversion: [solar-mini-grids, solar-home-systems, behind-the-meter-der]
+  demand: [demand-spatial-disaggregation, residential-electricity-demand, electricity-load]
+functionality:
+  - id: geospatial-access-electrification
+    role: "the question itself — absent; no settlement layer, tiers, or technology-choice logic"
+  - id: distribution-power-flow
+    role: "absent — grid-extension cost needs MV/LV feeder build-out the model never sees"
+  - id: distribution-grid-lv
+    role: "nearest surface: aggregate LV bus + linear reinforcement cost per cluster node"
+  - id: spatial-clustering
+    role: "even at maximum resolution, buses are >51 kV OSM substations, not settlements"
+  - id: gadm-admin-clustering
+    role: "admin zoning gets results to district level — still orders of magnitude above settlements"
+gap_assessment: >
+  Not what PyPSA-Earth does, and no configuration reaches it. The
+  mini-grid-vs-grid choice is a raster/settlement problem — population
+  clusters, distance to grid, MV line cost per km, per-tier demand — and the
+  model's smallest spatial object is an OSM substation region; small isolated
+  networks in the data are dropped or merged by simplify_network
+  (p_threshold_drop_isolated), not treated as candidate mini-grids. The
+  solar-mini-grids and solar-home-systems recipes document the technology-side
+  version of the same hole: decentralised solar exists only as an aggregate
+  grid-connected LV proxy in the sector chain, never islanded, never sited.
+  The workable division of labour: run OnSSET/GEP (or national GIS plans) for
+  the settlement layer, then feed the resulting grid-connected demand and
+  off-grid share into PyPSA-Earth via demand-spatial-disaggregation to size
+  the upstream system — WorldPop rasters are already in the workflow, so both
+  tools can share the same population base. Building a native settlement tier
+  would be new code, not configuration.
+coverage: gap
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

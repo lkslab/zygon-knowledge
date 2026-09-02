@@ -1,0 +1,279 @@
+id: industrial-feedstocks-nonenergy
+title: Industrial feedstocks and non-energy demand (naphtha/HVC, ammonia)
+summary: >
+  Fuels consumed as raw material rather than for energy — naphtha for high-value
+  chemicals (plastics), natural gas / hydrogen for ammonia synthesis, methanol
+  and chlorine chemistry — where the carbon/hydrogen ends up in products, not
+  (immediately) in the flue gas.
+
+when_to_use:
+  - "naphtha demand for plastics"
+  - "high value chemicals HVC"
+  - "non-energy use of fuels"
+  - "ammonia feedstock / fertilizer industry demand"
+  - "green ammonia for industry"
+  - "petrochemical feedstock"
+  - "plastics recycling impact on oil demand"
+  - "methanol or chlorine industry demand"
+  - "where does industrial oil demand go"
+  - "known in pypsa-eur as: H2 for industry, naphtha for industry"
+
+reference_taxonomy:
+  framework: "FORECAST (Fraunhofer ISI)"
+  concepts:
+    - "FORECAST resolves feedstock-heavy products explicitly among its 60+ products/processes — ammonia, adipic acid, chlorine — driven by physical production tonnages (PRODCOM/UN statistics)."
+    - "Non-energy/feedstock use is separated from energetic use per process, so route switches (e.g. green ammonia) change feedstock and energy demand consistently."
+    - "More than 10 energy carriers are tracked, letting naphtha, methane-as-feedstock and hydrogen be distinct."
+    - "Process-specific technologies (e.g. steam crackers, Haber-Bosch) are distinguished from cross-cutting ones, with data from IPPC BREF studies."
+  sources:
+    - "https://www.forecast-model.eu/forecast-en/content/methodology.php"
+    - "https://www.sciencedirect.com/science/article/pii/S2211467X18300890"
+    - "https://irees.de/wp-content/uploads/2020/06/1-031-16_Rehfeldt.pdf"
+    - "https://github.com/fraunhofer-isi/forecast-sites"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        Partially. (1) Oil: the entire industrial oil column is attached as a
+        "naphtha for industry" Load on the oil bus — i.e. ALL industrial oil is
+        labelled naphtha; its CO2 is booked wholesale via a negative "industry
+        oil emissions" load on the co2 atmosphere bus (no feedstock/energetic
+        split, the feedstock-retention line is commented out). (2) Ammonia:
+        with sector.ammonia.enable, build_industry_demand carves ammonia out of
+        "chemical and petrochemical" using USGS production tonnages (kt/a per
+        country) times gas/electricity intensities, and add_ammonia attaches an
+        NH3 demand Load supplied by endogenous Haber-Bosch links (H2 +
+        electricity), with ammonia crackers and NH3 stores — so green ammonia
+        competition is genuinely endogenous.
+      mechanism: >
+        add_industry: n.madd Load "naphtha for industry" from
+        industrial_demand["oil"], plus "industry oil emissions" /
+        "industry coal emissions" negative loads on co2 atmosphere.
+        build_industry_demand: ammonia_enable branch reads
+        resources/ammonia_production.csv (built by build_ammonia_production
+        from the USGS Minerals Yearbook), converts kt to MWh gas/elec/NH3 and
+        subtracts the feedstock from chemical and petrochemical.
+        add_ammonia: NH3 bus/Load + Haber-Bosch + ammonia cracker + store.
+      not_covered: >
+        No HVC production chain, no HVC_demand_factor-style scaler, no
+        recycling routes, no methanol/chlorine carve-out, no separation of
+        energetic vs non-energy oil use, no process-emission retention in
+        products (all oil CO2 goes to atmosphere). sector.ammonia.co2_t_per_tNH3
+        exists in config but no consumer of it was found in scripts or
+        Snakefile.
+      provenance: "scripts/prepare_sector_network.py:naphtha for industry; scripts/prepare_sector_network.py:industry oil emissions; scripts/prepare_sector_network.py:add_ammonia; scripts/build_industry_demand.py:ammonia_prod; scripts/build_ammonia_production.py:extract_country_level_production"
+
+    levers:
+      - key: sector.ammonia.enable
+        effect: "Carves ammonia out of chemicals as an explicit NH3 demand with endogenous Haber-Bosch supply; false leaves it embedded in chemical and petrochemical fuel totals."
+        default: "true"
+        provenance: "config.default.yaml:ammonia; Snakefile:ammonia_enable=config[\"sector\"][\"ammonia\"][\"enable\"]"
+      - key: sector.ammonia.production_year
+        effect: "USGS production year (2019-2023) used for the ammonia tonnage baseline."
+        default: "2019"
+        provenance: "config.default.yaml:production_year; scripts/build_industry_demand.py:ammonia_prod"
+      - key: sector.ammonia.gas_MWh_per_tNH3
+        effect: "Gas feedstock+fuel intensity subtracted from chemicals when ammonia is explicit."
+        default: "7.81"
+        provenance: "config.default.yaml:gas_MWh_per_tNH3; scripts/build_industry_demand.py:ammonia_gas_mwh_per_t"
+      - key: sector.ammonia.elec_MWh_per_tNH3
+        effect: "Electricity intensity subtracted from chemicals for explicit ammonia."
+        default: "1.278"
+        provenance: "config.default.yaml:elec_MWh_per_tNH3; scripts/build_industry_demand.py:ammonia_elec_mwh_per_t"
+      - key: custom_data.industry_demand
+        effect: "Custom (country x carrier) x industry csv — the route to impose a different oil/feedstock split."
+        default: "false"
+        provenance: "config.default.yaml:industry_demand; scripts/build_industry_demand.py:country_to_nodal"
+
+    boundary:
+      - variant: "toggle explicit ammonia demand + green ammonia competition"
+        rung: L0
+        note: "sector.ammonia.enable."
+      - variant: "change ammonia baseline year / intensities"
+        rung: L1
+        note: "sector.ammonia.production_year and the MWh_per_tNH3 keys."
+      - variant: "scale naphtha/HVC demand"
+        rung: L3
+        note: "no HVC_demand_factor equivalent; scale the oil rows of chemical and petrochemical via a custom industry demand csv (or L2: factor the oil column in add_industry)."
+      - variant: "split energetic vs non-energy oil use"
+        rung: L3
+        note: "UNSD balances would need the non-energy transactions mapped separately in build_base_industry_totals (data/unsd_transactions.csv mapping edit + code)."
+      - variant: "HVC recycling routes / plastic carbon accounting (waste-to-energy, sequestered plastics)"
+        rung: L5
+        note: "no HVC store or waste chain exists; pypsa-eur's non-sequestered HVC structure is the template to port."
+      - variant: "ammonia production tonnage override for a country"
+        rung: L3
+        note: "resources/ammonia_production.csv is built by build_ammonia_production from data/industry/USGS_ammonia_dataset.xlsx; override the built csv or the plant list data/industry/ammonia_plants.csv."
+
+    where:
+      - change: "naphtha load and oil CO2 booking"
+        anchor: "add_industry in prepare_sector_network (naphtha for industry load; industry oil emissions negative load)"
+        provenance: "scripts/prepare_sector_network.py:naphtha for industry; scripts/prepare_sector_network.py:co2_release"
+      - change: "ammonia carve-out from chemicals"
+        anchor: "ammonia_enable branch in build_industry_demand"
+        provenance: "scripts/build_industry_demand.py:snakemake.params.ammonia_enable"
+      - change: "NH3 demand + Haber-Bosch / cracker / store components"
+        anchor: "add_ammonia in prepare_sector_network"
+        provenance: "scripts/prepare_sector_network.py:add_ammonia; scripts/prepare_sector_network.py:ammonia cracker"
+      - change: "ammonia production data build"
+        anchor: "rule build_ammonia_production (USGS Minerals Yearbook -> resources/ammonia_production.csv)"
+        provenance: "Snakefile:rule build_ammonia_production; scripts/build_ammonia_production.py:extract_country_level_production"
+      - change: "UNSD transaction mapping (where a non-energy split would start)"
+        anchor: "rule build_base_industry_totals, create_industry_base_totals"
+        provenance: "scripts/build_base_industry_totals.py:create_industry_base_totals"
+
+    data_dependencies:
+      - input: "data/industry/USGS_ammonia_dataset.xlsx (retrieve_ammonia_dataset)"
+        required_for: "ammonia production baseline"
+        availability: "must be built (remote download); global country coverage from USGS"
+      - input: "data/industry/ammonia_plants.csv"
+        required_for: "ammonia plant locations (distribution)"
+        availability: "exists by default"
+      - input: "data/demand/unsd/data (UNSD energy balances)"
+        required_for: "oil-in-industry baseline that becomes the naphtha load"
+        availability: "must be built; country coverage varies"
+      - input: "data/custom/industry_demand_{demand}_{planning_horizons}.csv"
+        required_for: "custom feedstock splits"
+        availability: "absent — user-supplied"
+
+    demand_dimensions:
+      driver: "oil: UNSD energy totals + CAGR growth; ammonia: USGS production tonnes x MWh/t intensities"
+      spatial: "industrial database keys (refineries/HVC plants, Haber-Bosch plants via create_ammonia_db), GDP fallback"
+      temporal: "flat annual/8760 constant loads; ammonia supply optimised hourly against the flat NH3 load"
+      scenario: "{demand} + planning_horizons CAGRs; ammonia via production_year choice"
+
+  - model: pypsa-eur
+    version_anchor: {ref: "3e32e3c619f6ab79ada87759d6b915e9d5f3ff56", date: "2026-06-16"}
+
+    out_of_box:
+      covers: >
+        Covered end-to-end. Naphtha: per-node "naphtha for industry" load
+        (HVC production x MWh naphtha/t from JRC-IDEES), scaled by
+        sector.HVC_demand_factor; the supply link books steam-cracker feedstock
+        emissions (process emission from feedstock / naphtha ratio) to the
+        process-emissions bus, while the product carbon fills a
+        "non-sequestered HVC" Store that must be emptied by last snapshot via
+        "HVC to air" or (optionally) waste CHP / waste CHP CC
+        (industry.waste_to_energy*), with HVC_environment_sequestration_fraction
+        withholding landfilled plastic carbon. Ammonia: with sector.ammonia,
+        demand is an NH3 carrier load, supplied by endogenous Haber-Bosch /
+        cracked or imported ammonia; intensities via industry.MWh_* keys.
+        Chlorine and methanol are carved out of basic chemicals with their own
+        MWh_elec/MWh_H2/MWh_CH4 intensities; industrial coal+coke and
+        "industry methanol" loads complete the non-energy picture.
+      mechanism: >
+        build_industrial_production_per_country separates basic chemicals into
+        ammonia (USGS tonnages), chlorine, methanol, HVC
+        (separate_basic_chemicals); _tomorrow applies HVC primary/mechanical/
+        chemical recycling fractions; build_industry_sector_ratios sets
+        naphtha/ammonia/methanol intensity rows per tonne;
+        prepare_sector_network.add_industry builds the loads, feedstock
+        emission link, HVC waste chain and NH3 load.
+      not_covered: >
+        Plastic waste trade and cascading recycling quality are not modelled;
+        feedstock demand follows exogenous production tonnages (no endogenous
+        HVC production relocation); naphtha is a single commodity (no
+        LPG/ethane split).
+      provenance: "scripts/prepare_sector_network.py:naphtha for industry; scripts/prepare_sector_network.py:process emission from feedstock; scripts/prepare_sector_network.py:non-sequestered HVC; scripts/build_industrial_production_per_country.py:separate_basic_chemicals; scripts/build_industry_sector_ratios.py:MWh_CH4_per_tNH3_SMR"
+
+    levers:
+      - key: sector.HVC_demand_factor
+        effect: "Directly scales the naphtha-for-industry load (warning logged when != 1)."
+        default: "1.0"
+        provenance: "config/config.default.yaml:HVC_demand_factor; scripts/prepare_sector_network.py:HVC_demand_factor"
+      - key: industry.HVC_primary_fraction
+        effect: "Per-year share of HVC from primary (naphtha) route — the main naphtha-demand decarbonisation lever."
+        default: "0.88 (2020) falling to 0.4 (2050)"
+        provenance: "config/config.default.yaml:HVC_primary_fraction; scripts/build_industrial_production_per_country_tomorrow.py:HVC_primary_fraction"
+      - key: industry.HVC_mechanical_recycling_fraction
+        effect: "Share of HVC via mechanical recycling (electricity at MWh_elec_per_tHVC_mechanical_recycling)."
+        default: "0.12 (2020) rising to 0.3 (2050)"
+        provenance: "config/config.default.yaml:HVC_mechanical_recycling_fraction; scripts/build_industrial_production_per_country_tomorrow.py:HVC_mechanical_recycling_fraction"
+      - key: industry.HVC_chemical_recycling_fraction
+        effect: "Share of HVC via chemical recycling."
+        default: "0.0 (2020) rising to 0.2 (2050)"
+        provenance: "config/config.default.yaml:HVC_chemical_recycling_fraction; scripts/build_industrial_production_per_country_tomorrow.py:HVC_chemical_recycling_fraction"
+      - key: industry.HVC_environment_sequestration_fraction
+        effect: "Fraction of plastic carbon never returning to the atmosphere (landfill) — shrinks the non-sequestered HVC store."
+        default: "0.0"
+        provenance: "config/config.default.yaml:HVC_environment_sequestration_fraction; scripts/prepare_sector_network.py:HVC_environment_sequestration_fraction"
+      - key: industry.waste_to_energy
+        effect: "Adds waste CHP links burning non-sequestered HVC for power+district heat (waste_to_energy_cc adds the CC variant)."
+        default: "false"
+        provenance: "config/config.default.yaml:waste_to_energy; scripts/prepare_sector_network.py:waste CHP"
+      - key: sector.ammonia
+        effect: "true/'regional' = explicit NH3 carrier demand + Haber-Bosch economy; false = ammonia energy folded into chemicals as H2+electricity."
+        default: "true"
+        provenance: "config/config.default.yaml:ammonia; scripts/build_industrial_energy_demand_per_country_today.py:endogenous_ammonia"
+      - key: industry.MWh_NH3_per_tNH3
+        effect: "NH3 energy content converting ammonia tonnage to the NH3 load (siblings: MWh_CH4_per_tNH3_SMR, MWh_elec_per_tNH3_SMR, MWh_H2_per_tNH3_electrolysis, MWh_elec_per_tNH3_electrolysis)."
+        default: "5.166"
+        provenance: "config/config.default.yaml:MWh_NH3_per_tNH3; scripts/build_industrial_energy_demand_per_country_today.py:MWh_NH3_per_tNH3"
+      - key: sector.regional_oil_demand
+        effect: "Nodal vs single-EU naphtha (and other oil) demand buses."
+        default: "true"
+        provenance: "config/config.default.yaml:regional_oil_demand; scripts/prepare_sector_network.py:regional_oil_demand"
+      - key: industry.HVC_production_today
+        effect: "MtHVC/a baseline used when separating basic chemicals (siblings: basic_chemicals_without_NH3_production_today, chlorine_production_today, methanol_production_today)."
+        default: "52.0"
+        provenance: "config/config.default.yaml:HVC_production_today; scripts/build_industrial_production_per_country.py:HVC_production_today"
+
+    boundary:
+      - variant: "scale HVC/naphtha demand"
+        rung: L0
+        note: "sector.HVC_demand_factor."
+      - variant: "shift plastics to recycling routes across years"
+        rung: L1
+        note: "the three HVC route-fraction dicts."
+      - variant: "green vs grey ammonia competition"
+        rung: L0
+        note: "endogenous already — Haber-Bosch vs SMR routes compete given sector.ammonia: true."
+      - variant: "country-specific HVC production baseline"
+        rung: L3
+        note: "production separation uses EU-level *_production_today totals distributed proportionally; per-country overrides need edited production data (or L2 in separate_basic_chemicals)."
+      - variant: "bio-naphtha or e-naphtha supply routes"
+        rung: L2
+        note: "supply-side: the naphtha bus already exists; add links from biomass/FT — several exist via Fischer-Tropsch feeding spatial.oil."
+      - variant: "endogenous HVC production siting/relocation"
+        rung: L5
+        note: "production tonnages are exogenous inputs; endogenising means new production components and re-expressing demand in tonnes."
+
+    where:
+      - change: "naphtha load, feedstock-emission link, HVC waste chain"
+        anchor: "add_industry in prepare_sector_network (naphtha for industry; non-sequestered HVC store; HVC to air; waste CHP)"
+        provenance: "scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:HVC to air"
+      - change: "basic-chemicals separation (ammonia/chlorine/methanol/HVC)"
+        anchor: "separate_basic_chemicals in build_industrial_production_per_country"
+        provenance: "scripts/build_industrial_production_per_country.py:separate_basic_chemicals"
+      - change: "future route fractions"
+        anchor: "rule build_industrial_production_per_country_tomorrow"
+        provenance: "rules/build_sector.smk:rule build_industrial_production_per_country_tomorrow; scripts/build_industrial_production_per_country_tomorrow.py:HVC_primary_fraction"
+      - change: "feedstock intensities per tonne"
+        anchor: "chemicals_industry in build_industry_sector_ratios"
+        provenance: "scripts/build_industry_sector_ratios.py:chemicals_industry"
+      - change: "ammonia production data"
+        anchor: "rule build_ammonia_production (USGS)"
+        provenance: "rules/build_sector.smk:rule build_ammonia_production; scripts/build_ammonia_production.py:usgs"
+
+    data_dependencies:
+      - input: "USGS ammonia production (ammonia_production.csv)"
+        required_for: "ammonia tonnage baseline"
+        availability: "must be built (retrieved)"
+      - input: "JRC-IDEES chemicals sheets"
+        required_for: "naphtha/HVC intensities"
+        availability: "must be built (retrieved); EU-focused"
+      - input: "Hotmaps industrial sites + data/ammonia_plants.csv"
+        required_for: "nodal placement of chemicals/ammonia demand"
+        availability: "exists by default / retrieved; EU coverage"
+      - input: "technology-data rows (Fischer-Tropsch, waste CHP, Haber-Bosch, ammonia cracker)"
+        required_for: "feedstock supply and waste chain"
+        availability: "exists by default via costs pipeline"
+
+    demand_dimensions:
+      driver: "kt/a HVC/ammonia/chlorine/methanol production (JRC-IDEES + USGS) x MWh-feedstock/t intensities; route fractions reshape it per year"
+      spatial: "Hotmaps/GEM/ammonia-plant distribution keys; regional_oil_demand toggles nodal vs EU-wide naphtha buses"
+      temporal: "flat annual/nhours loads; HVC waste store enforces carbon closure by the last snapshot"
+      scenario: "per-year dicts (HVC fractions, sector_ratios_fraction_future) keyed by planning_horizons"

@@ -1,0 +1,53 @@
+id: e-methanol-shipping-fuel
+title: E-methanol / shipping fuel
+rank: 42
+question: >
+  What does e-methanol really cost delivered as a marine fuel, and when does it
+  beat ammonia, hydrogen or fossil bunkers? IMO decarbonization targets and
+  methanol-dual-fuel orderbooks make this the sharpest P2X fuel-competition
+  question after the hype correction.
+when_to_use:
+  - "e-methanol production cost / power-to-methanol"
+  - "green shipping fuel choice (MeOH vs NH3 vs H2)"
+  - "methanol bunkering demand at ports"
+  - "IMO-compliant marine fuel scenarios"
+  - "methanolisation of captured CO2"
+recipes:
+  generation_conversion: [e-methanol, methanol-ships, biomass-to-methanol, methanol-to-power, ammonia-ships, e-diesel-fischer-tropsch]
+  demand: [shipping-demand]
+functionality:
+  - id: methanol-suite
+    role: "core — methanolisation plus methanol-to-power/kerosene/reforming paths, individually switchable"
+  - id: sector-master-switches
+    role: "shipping demand chain: port-weighted international + population-weighted domestic navigation, three-way fuel split"
+  - id: co2-network-sequestration
+    role: "captured-CO2 buses / DAC — methanolisation consumes 'co2 stored' as its carbon feedstock"
+  - id: co2-budget-pathway
+    role: "the tightening budget that makes synthetic fuels enter at all"
+  - id: green-energy-imports
+    role: "priced methanol imports — the competing supply route to domestic methanolisation"
+  - id: scenario-matrix
+    role: "fuel-share and carbon-price sweeps; the MeOH-vs-H2-vs-oil race is run as share scenarios"
+gap_assessment: >
+  Methanol is the model's DEFAULT deep-decarbonization shipping fuel — the
+  full chain runs out of the box. sector.shipping_methanol_share ramps 0
+  (2025) to 1.0 (2050) while oil falls to zero; add_shipping builds "shipping
+  methanol" loads with an engine-efficiency conversion, fed from the methanol
+  bus with combustion CO2 booked to the atmosphere at the methanolisation
+  carbon content (carbon-neutral overall). Supply is genuinely optimized:
+  extendable methanolisation links at every H2 location (H2 + electricity +
+  co2 stored, must-run floor 0.3), biomass-to-methanol (+CC), methanol
+  storage, and priced imports as the competing route. Delivered cost falls
+  out of the methanol bus dual and market_values summaries. Caveats: the fuel
+  COMPETITION is exogenous — shares per config, so "when does MeOH beat H2"
+  is a scenario comparison, not an endogenous fuel choice; there is no
+  shipping_ammonia_share at this ref, so the three-way MeOH/NH3/H2 race needs
+  a user-added share key even though the NH3 supply chain exists (L2);
+  and methanol is copperplated on one "EU methanol" bus (define_spatial
+  hardcodes it — only demand regionalises via regional_methanol_demand), so
+  no port-level methanol siting or transport. Contrast pypsa-earth, where
+  methanol is absent entirely.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

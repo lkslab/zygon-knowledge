@@ -1,0 +1,55 @@
+id: peak-demand-forecasting
+title: Peak demand forecasting
+rank: 26
+question: >
+  How high does peak demand go, when does it bind, and what drives it —
+  cooling (India's brutal AC peaks), electrification, data centers (US ~166 GW
+  five-year peak growth)? The forecast feeds every adequacy and buildout
+  decision downstream.
+when_to_use:
+  - "peak load forecast to 2030 / 2050"
+  - "what drives the evening / winter peak"
+  - "electrification-driven peak growth"
+  - "peak vs energy demand growth divergence"
+  - "coincident peak across regions"
+recipes:
+  generation_conversion: [gas-power-plants, grid-scale-batteries]
+  demand: [demand-scenarios-and-growth, demand-temporal-profiles, electricity-load, space-cooling-demand, residential-electricity-demand]
+functionality:
+  - id: demand-elasticity
+    role: "demand is fixed exogenous profiles — no behavioural or price response, absent"
+  - id: weather-year-selection
+    role: "peak height is weather-year-dependent; 85 selectable ERA5 years let you pick the cold snap deliberately"
+  - id: exogenous-transport-shares
+    role: "EV shares per horizon are the main exogenous dial that moves the future peak"
+  - id: residential-heat-dsm
+    role: "building thermal inertia shaves the modelled heating peak — a flexibility earth cannot represent"
+  - id: safe-reserve-margin
+    role: "SAFE anchors firm capacity to the modelled peak — but the config key ships empty, add it yourself"
+  - id: scenario-matrix
+    role: "demand and electrification variants as parallel runs span forecast uncertainty"
+  - id: temporal-resolution-nh
+    role: "caution: nH averaging shaves the peak — keep hourly (or TSAM) for peak questions"
+  - id: load-shedding-voll
+    role: "shows where an underestimated peak actually breaks the system"
+gap_assessment: >
+  Peak demand is an input here, not an output: pypsa-eur is not a forecasting
+  tool, and unlike earth it does not even carry per-country demand-growth
+  CAGR machinery — the electricity chain starts from measured ENTSO-E/OPSD
+  hourly load (optionally scaled by a single factor), so a 2035 power-only
+  peak is whatever scaling the user imposes. Where eur is stronger is the
+  ENDOGENOUS peak drivers in the sector chain: heating electrification adds
+  temperature-driven heat-pump load with time-varying COP, EV shares add
+  charging (shiftable via BEV DSM), and residential heat DSM plus building
+  retrofit can shave the resulting winter peak — so "what does the 2040
+  electrified winter peak look like under my exogenous shares" is a solid
+  scenario run with weather-year control across 85 ERA5 years. What does not
+  exist: econometric or bottom-up appliance forecasting, a data-center load
+  category (the rank's US driver — add it as custom loads), price-elastic
+  demand, and probabilistic peak distributions. Europe's peak question is
+  winter-heating-shaped rather than cooling-shaped; space cooling is a thin
+  demand layer, so hot-climate AC-peak studies are better served elsewhere.
+coverage: partial
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

@@ -1,0 +1,63 @@
+id: net-zero-pathways
+title: Net-zero pathways
+rank: 9
+question: >
+  What is the least-cost path to net zero by 2040/2050 — which scenario
+  family (electrification-led, hydrogen-led, efficiency-led) wins, what
+  gets built when, and what is robust across deep uncertainty? The umbrella
+  deliverable most governments, TSOs, and consultancies ultimately buy.
+when_to_use:
+  - "net-zero pathway for [country] by [year]"
+  - "decarbonization scenario study / NDC analysis"
+  - "electrification-led vs hydrogen-led contrast"
+  - "carbon budget or carbon price trajectory runs"
+  - "what to build this decade vs next"
+recipes:
+  generation_conversion: [green-hydrogen, coal-power-plants, beccs, direct-air-capture,
+                          co2-transport-and-sequestration, building-retrofit]
+  demand: [demand-scenarios-and-growth, electricity-load, land-transport-demand,
+           residential-space-heating-demand]
+functionality:
+  - id: co2-budget-pathway
+    role: "core — per-horizon emission shares or a total GtCO2 budget (cb token)"
+  - id: perfect-foresight
+    role: "all horizons co-optimized with inter-period carbon budget — 'what to build when' answered without myopia"
+  - id: myopic-foresight
+    role: "sequential horizons with carry-forward, ageing, land-use accounting — battle-tested here"
+  - id: existing-baseyear-brownfield
+    role: "today's power AND heating fleets seeded with build years"
+  - id: sector-master-switches
+    role: "net zero is a whole-economy claim — heat/transport/industry/shipping/aviation in one network"
+  - id: co2-sequestration-limit
+    role: "sequestration budget (seq token) bounds the CCS/CDR crutch"
+  - id: emission-pricing
+    role: "carbon-price runs (Ep) as the policy-sensitivity axis"
+  - id: scenario-matrix
+    role: "scenario families as per-run yaml overrides with schema validation"
+  - id: global-summary
+    role: "cross-scenario summaries and cumulative discounted pathway costs"
+  - id: mga-near-optimal
+    role: "robustness across near-optimal alternatives — absent"
+gap_assessment: >
+  The flagship pypsa-eur use case, and the clearest upgrade over earth's
+  verdict. Overnight net-zero snapshots are standard, and the TRANSITION
+  itself — earth's weak half — is first-class here: a battle-tested myopic
+  chain with brownfield carry-forward for both power and heating fleets,
+  AND true perfect-foresight multi-period optimization with inter-period
+  carbon budgets and technology growth limits, so "what to build this
+  decade vs next" can be answered with and without myopia's distortions.
+  Carbon budgets are native (per-horizon shares or total GtCO2 via the cb
+  token), CO2 sequestration is bounded and spatially resolved with a real
+  CO2 pipeline network, and cumulative discounted pathway costs come out
+  of make_cumulative_costs. Scenario families are managed yaml overrides
+  validated against a schema. Remaining honesty: robustness language
+  should stay modest — scenario sweeps only, no MGA/near-optimal
+  exploration and no Monte Carlo (earth has the latter); demand-side
+  transformation is largely exogenous (transport fuel shares, space-heat
+  reduction per horizon, though building retrofit and industrial heat
+  choice CAN be endogenised); and distributional/equity questions are out
+  of scope (single planner, one social discount rate).
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

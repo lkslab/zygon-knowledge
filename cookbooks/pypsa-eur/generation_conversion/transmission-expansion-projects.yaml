@@ -1,0 +1,172 @@
+id: transmission-expansion-projects
+title: Transmission expansion projects (TYNDP / NEP / manual)
+summary: The candidate-project pipeline — named planned grid reinforcements and interconnectors that are matched onto the base network as new or upgraded lines and links.
+when_to_use:
+  - "include TYNDP projects in the grid"
+  - "German NEP grid development plan"
+  - "add a planned line or interconnector project"
+  - "filter projects by permitting status"
+  - "why is this planned link in/not in my network"
+  - "upgrade an existing corridor as a project"
+  - "candidate transmission investments with build years"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Fully covered and ON by default (transmission_projects.enable: true).
+        Project catalogues live as CSVs under data/transmission_projects/ in
+        three shipped families gated by transmission_projects.include:
+        tyndp2020 (new_lines, new_links, upgraded_lines, upgraded_links), nep
+        (new_lines, new_links) and manual (new_links — hand-curated
+        interconnectors, e.g. TYNDP2024 entries). rule
+        build_transmission_projects processes each family (add_projects):
+        rows are kept only if their geometry lies inside the modelled area
+        (remove_projects_outside_countries) and their project_status is in
+        transmission_projects.status (default [under_construction,
+        in_permitting, confirmed]; the status key also accepts a per-plan
+        dict); file kinds matching transmission_projects.skip (default
+        [upgraded_lines, upgraded_links] — upgrades are SKIPPED by default)
+        are ignored. Endpoints given as raw coordinates are snapped to the
+        nearest existing bus of matching carrier via a KDTree
+        (connect_new_lines); offshore endpoints beyond the snap distance
+        spawn NEW offshore buses (e.g. North Sea Wind Power Hub pattern), and
+        projects duplicating an existing or already-added branch are dropped
+        (find_closest_lines). New AC lines get type
+        "Al/St 240/40 4-bundle 380.0" and num_parallel 2 where unspecified,
+        s_nom derived from the type, and lines.s_max_pu; new DC links get
+        carrier "DC", an underwater_fraction against the offshore shapes, and
+        p_nom 0 under the default new_link_capacity: zero ('keep' preserves
+        the file's p_nom). Upgraded lines/links (when un-skipped) reuse the
+        matched existing branch's endpoints and capacity with adjusted
+        attributes, plus adjust_lines/adjust_links CSVs that decommission the
+        replaced branch (adjust_decommissioning). rule
+        add_transmission_projects_and_dlr then adds the five output CSVs onto
+        base.nc (n.add for new buses/lines/links, n.lines.update /
+        n.links.update for adjustments) producing base_extended.nc. build_year
+        is carried on every project row: cluster_network keeps different
+        build_years in separate clustered branches
+        (custom_line_groupers=["build_year"]) and myopic runs
+        retire/activate by build_year + lifetime in add_brownfield.
+      mechanism: >
+        data/transmission_projects/{tyndp2020,nep,manual}/*.csv -> rule
+        build_transmission_projects (status/skip filters, bus snapping,
+        dedup) -> resources transmission_projects/{new_buses,new_lines,
+        new_links,adjust_lines,adjust_links}.csv -> rule
+        add_transmission_projects_and_dlr (attach_transmission_projects; DLR
+        attached in the same rule when lines.dynamic_line_rating.activate) ->
+        networks/base_extended.nc -> simplify/cluster/solve. Whether a project
+        is actually BUILT is then decided by the expansion optimisation:
+        under electricity.transmission_limit vopt project links start at
+        p_nom 0 and are extendable like any DC link.
+      not_covered: >
+        No per-project include/exclude switch — filtering is by status, plan
+        family, and the skip list only (dropping one named project means
+        editing its CSV row). New project LINES enter at full type-derived
+        s_nom regardless of build_year (new_link_capacity only zeroes LINKS),
+        so in a single-horizon overnight run an AC project passing the status
+        filter is present at capacity rather than being a zero-start
+        candidate. The include list is validated against exactly the three
+        shipped family names (scripts/lib/validation/config/
+        transmission_projects.py), so a fourth catalogue is not a pure-config
+        addition — new user projects belong in the manual folder. No project
+        costs beyond the generic HVAC/HVDC length-based costing; no
+        interaction with powerplant or storage projects.
+      provenance: "scripts/build_transmission_projects.py:add_projects; scripts/build_transmission_projects.py:connect_new_lines; scripts/build_transmission_projects.py:find_closest_lines; scripts/build_transmission_projects.py:adjust_decommissioning; scripts/add_transmission_projects_and_dlr.py:attach_transmission_projects; scripts/cluster_network.py:custom_line_groupers"
+    levers:
+      - key: transmission_projects.enable
+        effect: "Master switch: false drops the whole project overlay (base_extended.nc becomes base.nc plus DLR only)."
+        default: "true"
+        provenance: "config/config.default.yaml:transmission_projects; rules/build_electricity.smk:add_transmission_projects_and_dlr"
+      - key: transmission_projects.include.tyndp2020
+        effect: "Include the TYNDP 2020 project catalogue (new + upgraded lines and links)."
+        default: "true"
+        provenance: "config/config.default.yaml:tyndp2020; scripts/build_transmission_projects.py:get_project_files"
+      - key: transmission_projects.include.nep
+        effect: "Include the German Netzentwicklungsplan catalogue (new lines with HTLS types, new links)."
+        default: "true"
+        provenance: "config/config.default.yaml:nep; scripts/build_transmission_projects.py:get_project_files"
+      - key: transmission_projects.include.manual
+        effect: "Include the hand-curated project list (data/transmission_projects/manual/new_links.csv) — the folder to extend with user projects."
+        default: "true"
+        provenance: "config/config.default.yaml:manual; scripts/build_transmission_projects.py:get_project_files"
+      - key: transmission_projects.status
+        effect: "Permitting-status filter (project_status column): list applied to all plans, or a dict keyed by plan name; possible values include under_construction, in_permitting, confirmed, planned_not_yet_permitted, under_consideration."
+        default: "[under_construction, in_permitting, confirmed]"
+        provenance: "config/config.default.yaml:transmission_projects; scripts/build_transmission_projects.py:add_projects"
+      - key: transmission_projects.skip
+        effect: "File kinds ignored per plan folder; default skips upgraded_lines and upgraded_links, i.e. only NEW branches are added out of the box."
+        default: "[upgraded_lines, upgraded_links]"
+        provenance: "config/config.default.yaml:transmission_projects; scripts/build_transmission_projects.py:get_project_files"
+      - key: transmission_projects.new_link_capacity
+        effect: "'zero': new project links enter with p_nom 0 (pure candidates, built only if cost-optimal); 'keep': they enter at the p_nom in the project file (exogenously forced capacity)."
+        default: "zero"
+        provenance: "config/config.default.yaml:new_link_capacity; scripts/build_transmission_projects.py:new_link_capacity"
+      - key: lines.dynamic_line_rating.activate
+        effect: "Shares the attach rule: with DLR active, ratings are computed on base.nc lines only, so project lines keep static ratings (see dynamic-line-rating-facts recipe)."
+        default: "false"
+        provenance: "config/config.default.yaml:dynamic_line_rating; scripts/add_transmission_projects_and_dlr.py:attach_line_rating"
+      - key: electricity.transmission_limit
+        effect: "Decides whether zero-capacity project links can actually be built (vopt/copt make DC links extendable) and bounds joint AC+DC growth."
+        default: "vopt"
+        provenance: "config/config.default.yaml:transmission_limit; scripts/prepare_network.py:set_transmission_limit"
+    boundary:
+      - variant: "TYNDP2020 + NEP + manual projects as expansion candidates"
+        rung: L0
+        note: "default — enable true, all three families included, status filter at confirmed-or-better"
+      - variant: "also admit less mature projects (planned / under consideration)"
+        rung: L1
+        note: "extend transmission_projects.status, e.g. add planned_not_yet_permitted and under_consideration; a per-plan dict allows different strictness per catalogue"
+      - variant: "include corridor upgrades (replacing existing branches)"
+        rung: L1
+        note: "empty transmission_projects.skip so upgraded_lines/upgraded_links are processed (adds the upgraded branch and decommissions the matched existing one via adjust CSVs)"
+      - variant: "force project links to exist at rated capacity"
+        rung: L1
+        note: "transmission_projects.new_link_capacity: keep — applies to all included new links"
+      - variant: "add a user project (line or interconnector)"
+        rung: L3
+        note: "append a row to data/transmission_projects/manual/new_links.csv (or add new_lines.csv there) following data/transmission_projects/template — endpoint coords, p_nom or v_nom/num_parallel, build_year, project_status matching the status filter"
+      - variant: "a fourth named project catalogue"
+        rung: L3
+        note: "put files in the manual folder instead; a genuinely separate include key fails config validation (the include schema fixes tyndp2020/nep/manual) — extending it means editing scripts/lib/validation/config/transmission_projects.py (L2) plus the data folder (L3)"
+      - variant: "remove one specific unwanted project"
+        rung: L3
+        note: "no per-project config switch — delete/edit its CSV row (or tighten status so it drops out)"
+      - variant: "project-specific capital costs (instead of generic length-based HVAC/HVDC costing)"
+        rung: L2
+        note: "costs are assigned later by set_transmission_costs uniformly; per-project costs need a localised edit there or capital_cost columns wired through attach_transmission_projects"
+      - variant: "make future-build_year AC project lines unavailable in an overnight run"
+        rung: L2
+        note: "no mechanism zeroes project LINES (only links via new_link_capacity); filter new_lines by build_year in build_transmission_projects.py or set their num_parallel/s_nom to 0 downstream"
+    where:
+      - change: "project parsing, status filter, bus snapping, dedup, upgrades"
+        anchor: "scripts/build_transmission_projects.py::add_projects / connect_new_lines / find_closest_lines / get_upgraded_lines (rule build_transmission_projects)"
+        provenance: "scripts/build_transmission_projects.py:add_projects; scripts/build_transmission_projects.py:get_upgraded_lines; rules/build_electricity.smk:build_transmission_projects"
+      - change: "attaching projects (and DLR) onto the base network"
+        anchor: "scripts/add_transmission_projects_and_dlr.py::attach_transmission_projects (rule add_transmission_projects_and_dlr -> base_extended.nc)"
+        provenance: "scripts/add_transmission_projects_and_dlr.py:attach_transmission_projects; rules/build_electricity.smk:add_transmission_projects_and_dlr"
+      - change: "line defaults for new project lines (type, num_parallel, s_nom, s_max_pu) and link capacity zeroing"
+        anchor: "scripts/build_transmission_projects.py __main__ block (fill_length_from_geometry, s_nom from line type, new_link_capacity branch)"
+        provenance: "scripts/build_transmission_projects.py:fill_length_from_geometry; scripts/build_transmission_projects.py:new_link_capacity"
+      - change: "vintage survival through clustering and myopic retirement"
+        anchor: "scripts/cluster_network.py::clustering_for_n_clusters (custom_line_groupers=['build_year']); scripts/add_brownfield.py (build_year + lifetime filter)"
+        provenance: "scripts/cluster_network.py:custom_line_groupers; scripts/add_brownfield.py:build_year"
+      - change: "allowed include names (config validation)"
+        anchor: "scripts/lib/validation/config/transmission_projects.py (include schema tyndp2020/nep/manual)"
+        provenance: "scripts/lib/validation/config/transmission_projects.py:tyndp2020"
+    data_dependencies:
+      - input: "data/transmission_projects/tyndp2020/ (new_lines, new_links, upgraded_lines, upgraded_links CSVs)"
+        required_for: "TYNDP 2020 catalogue"
+        availability: "exists by default in the repo"
+      - input: "data/transmission_projects/nep/ (new_lines, new_links CSVs)"
+        required_for: "German NEP catalogue"
+        availability: "exists by default in the repo"
+      - input: "data/transmission_projects/manual/new_links.csv"
+        required_for: "hand-curated and user-added projects"
+        availability: "exists by default; user-extendable (template in data/transmission_projects/template)"
+      - input: "europe_shape.geojson / offshore_shapes.geojson (rule build_shapes)"
+        required_for: "in-area filtering, offshore bus creation, underwater_fraction of new links"
+        availability: "must be built (standard workflow)"
+      - input: "networks/base.nc (rule base_network)"
+        required_for: "bus snapping and duplicate detection"
+        availability: "exists by default (standard workflow)"

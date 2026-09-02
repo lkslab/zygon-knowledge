@@ -1,0 +1,47 @@
+# Zygon baseline reference config — pypsa-eur (see fixtures/BASELINE.md).
+# The ONE configuration the template is prebuilt for: GB-only, 5 clusters,
+# 2013 weather year, sector-coupled overnight 2050, weekly (168H) resolution
+# set the canonical way via scenario.sector_opts so it lands in filenames.
+# Installed as models/pypsa-eur/config/config.yaml; this copy is the tracked
+# source of truth. Every key validated against config.default.yaml @ 3e32e3c6.
+
+run:
+  name: baseline
+
+# GB + IE, not GB alone: JRC-IDEES is EU-27 scoped, and build_energy_totals
+# crashes on an empty IDEES country list (verified 2026-07-23). Ireland is
+# the smallest natural companion and keeps the model tiny.
+countries:
+- GB
+- IE
+
+atlite:
+  default_cutout: europe-2013-sarah3-era5
+
+scenario:
+  clusters:
+  - 5
+  sector_opts:
+  - 168H
+  planning_horizons:
+  - 2050
+
+# PR #1943 (the fork's flagship): optimiser chooses industry process-heat
+# fuel. Needs fork commit 849c8858 (partial-scope fixes: skip endogenised
+# sectors with zero in-scope production; mean-ratio fallback for countries
+# absent from JRC-IDEES). KNOWN DATA GAP (2026-07-23): GB industrial energy
+# demand is ~zero in the model's data chain (~1.9 TWh even Europe-wide vs
+# ~250 TWh real — GB not in IDEES, eurostat fallback near-empty), so the
+# baseline's GB industry is effectively unmodelled; likely also affects UK
+# industry-heat research runs. Fixing needs a real GB data source (DESNZ).
+sector:
+  industry_t:
+    endogen: true
+
+# the default hook is a no-op stub, and the rule resolves it to an ABSOLUTE
+# path inside solve params — which differs in every runspace clone and marks
+# the solve "params changed" forever, breaking the settledness oracle. The
+# baseline must carry no path-dependent params.
+solving:
+  options:
+    custom_extra_functionality: ""

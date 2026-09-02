@@ -1,0 +1,226 @@
+paper: "2026_Barnes_near-term-emission-targets.pdf"
+tier: 2
+model_used: >
+  PyPSA-USA (bespoke PyPSA model), extended to multi-sector (power, natural gas,
+  service, industrial, transport), 134 load zones across CONUS, 3-hour temporal
+  resolution, 2030 overnight planning horizon. Each US state is solved independently.
+scope: >
+  Global sensitivity analysis (Method of Morris) plus Monte Carlo propagation over
+  ~350 uncertain parameters to identify primary drivers of marginal electricity/energy
+  costs and CO2/CO2e emissions in a 2030 USA multi-sector energy system, then
+  assess near-term decarbonisation potential and IRA vs OBBBA policy implications.
+methods:
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: extends
+    evidence: >
+      "We systematically perform a Global Sensitivity Analysis (GSA) across the
+      Continental United States (CONUS) to identify the primary drivers of five key
+      metrics… We characterize 342 individual uncertainties to identify the most
+      sensitive drivers in the model." (Introduction). The Method of Morris (Morris
+      1991) is used for GSA screening, followed by Latin Hypercube Monte Carlo
+      propagation of the top-5 influential parameters per state per metric (Sec. S7.2,
+      S7.3).
+    procedure_notes: >
+      Uses the Method of Morris (screening GSA) via SALib, computing Scaled
+      Elementary Effects (SEE) to normalise across different parameter units (Eqs.
+      27-36, SI Sec. S7.2). ~350 parameters with uniform distributions. Campolongo
+      et al.'s mu* metric used for ranking. A second Monte Carlo stage propagates
+      the identified top-5 sensitive parameter groups using Latin Hypercube Sampling
+      (LHS) for uncertainty quantification per state (SI Sec. S7.3). Results reported
+      as boxplots over state-level outcomes.
+    variant: morris-method-plus-monte-carlo
+    parameters:
+      num_parameters: "~350 (342 individual uncertainties characterised)"
+      temporal_resolution: "3-hour"
+      spatial_resolution: "134 load zones, 48 states run independently"
+      gsa_method: "Method of Morris (screening) + Latin Hypercube Monte Carlo (propagation)"
+      propagation_top_k: "top 5 parameters per metric per state"
+
+  - slug: sector-coupled-network-assembly
+    role: routine-use
+    evidence: >
+      "We extend PyPSA-USA… to include multiple energy sectors and energy carriers.
+      We explicitly represent the residential, commercial, industrial, and transport
+      sectors, including granular end-use demands for electricity, heating, and cooling.
+      Additionally, we integrate state-level natural gas representation." (Introduction).
+      SI Sec. S1.1 lists power, natural gas, service, industrial, and transport sectors.
+    procedure_notes: >
+      Multi-carrier network with electricity buses (134 load zones), state-level natural
+      gas buses, and sector demand buses for service (residential/commercial),
+      industrial, and transport. Conversion links include CCGT, OCGT, CCS-CCGT,
+      heat pumps (ASHP, GSHP with temperature-dependent COP from ERA5), furnaces
+      (gas/oil/electric), EV charging links. A CO2/CH4 accounting bus tracks emissions
+      including fugitive methane upstream and downstream (Eq. 22, SI Sec. S3).
+    variant: null
+    parameters:
+      sectors: "power, natural gas, service (residential+commercial), industrial, transport"
+      planning_year: "2030"
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "We model a future 2030 energy system of the USA. Formulated as a linear cost
+      optimization, PyPSA-USA minimizes net-present capital and investment costs."
+      (Model Description). Capital costs are discounted via an annuity formula (Eqs.
+      14-15, SI Sec. S1.6).
+    procedure_notes: >
+      Single target-year (overnight) capacity expansion for 2030. Greenfield for new
+      investment; existing fleet represented as brownfield stock (existing capacities
+      for generators, furnaces, EVs ingested as starting stock). Each state solved
+      independently for tractability. Near-term focus deliberately excludes
+      technologies not commercialised by 2030 (hydrogen, deep industrial
+      decarbonisation, DAC).
+    variant: overnight
+    parameters:
+      target_year: "2030"
+      temporal_resolution: "3-hour (8760/3 = 2920 snapshots)"
+
+  - slug: discounting-and-cost-of-capital
+    role: routine-use
+    evidence: >
+      "Capital costs of new technologies are discounted to present value following
+      equation (14), where occ is the Overnight Capital Cost, fom is the Fixed
+      Operation and Maintenance cost… and a is the annuity given in Equation (15),
+      where r is the discount rate and n is the lifetime. Each power generation
+      technology has a unique discount rate, while all other sectors have a single
+      discount rate." (SI Sec. S1.6).
+    procedure_notes: >
+      Standard annuity discounting. Technology-specific discount rates for power
+      sector (from NLR Annual Technology Baseline); single sector-wide discount rate
+      for service, industrial, and transport sectors. Salvage value calculated for
+      economic retirement before technical lifetime. Discount rate is among the ~350
+      uncertain parameters swept in the GSA (referenced in SI Sec. S7.1).
+    variant: null
+    parameters: {}
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      "There are a total of 135 load zones modelled across the states… The number of
+      renewable potential zones is three times the number of load zones… Renewable
+      potential zones are clustered following a k-medoids algorithm on the weather
+      time-series data." (SI Sec. S1.3). Zonal electrical transmission modelled as
+      transport model with pre-calculated interface transmission limits.
+    procedure_notes: >
+      134 load zones matching the NLR ReEDS model spatial resolution. k-medoids
+      clustering on ERA5 weather time-series for renewable potential zones (3× load
+      zones). State-level granularity for natural gas sector. Service and transport
+      demand disaggregated to load zones via population; industrial demand via
+      county-level CLIU dataset. Authors note this state-level scope yields
+      conservative emission-reduction estimates as it omits interregional cooperation.
+    variant: null
+    parameters:
+      load_zones: "134 (CONUS, 48 states)"
+      renewable_potential_zones: "~3× load zones per state"
+      clustering_method: "k-medoids on weather time-series"
+
+  - slug: temporal-aggregation-and-segmentation
+    role: routine-use
+    evidence: >
+      "To maintain tractability, we model at 3hr resolution. Temporal aggregation is
+      done by averaging sequential timesteps (ie. all timesteps are weighted equally)."
+      (SI Sec. S1.4). The Limitations section notes: "the 3-hour resolutions smooth
+      demand peaks, potentially underrepresenting the value of capacity serving
+      technologies."
+    procedure_notes: >
+      3-hour averaging of sequential timesteps; equal snapshot weights. Full year
+      represented. Authors acknowledge this smooths demand peaks and may
+      undervalue firm capacity (OCGT, demand response).
+    variant: n-hourly-averaging
+    parameters:
+      resolution: "3-hour"
+      weighting: "equal (averaging)"
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      The GSA is run over five metrics including "Carbon Dioxide (CO2) emissions" and
+      "total emissions (CO2 plus methane (CH4))" (Introduction). RPS constraints
+      (Eq. 9), Clean Energy Standard constraints, and carbon accounting via CO2e
+      with GWP (Eq. 22) are all implemented. CO2e = GWP × Leakage Rate × NG
+      production (Eq. 22, SI Sec. S3).
+    procedure_notes: >
+      No explicit CO2 cap or price in the optimisation; carbon is tracked as a
+      reporting metric via shadow prices of the emission accounting bus. RPS
+      constraints (Eq. 9) and Technology Capacity Targets (Eq. 13) are the binding
+      policy instruments. Methane leakage (upstream and downstream) converted to
+      CO2e via configurable GWP (both 20-year and 100-year GWP explored in GSA).
+      GWP and leakage rate are among the highest-impact uncertain parameters for
+      total emission outcomes.
+    variant: null
+    parameters:
+      gwp_range_20yr: "81-83"
+      gwp_range_100yr: "27-30"
+      leakage_upstream_range: "<1% to 20%"
+      leakage_downstream_range: "<1% to 3.5%"
+
+  - slug: demand-side-flexibility-representation
+    role: routine-use
+    evidence: >
+      "We use PyPSA-USA's price-based demand response system for electrical load.
+      Demand can be shifted, either forward or backwards, and stored for any period
+      of time. For each hour energy is stored, a cost is incurred to the system at a
+      per-unit level (ie. $/MWh)." (SI Sec. S2.2, with reference to Barnes et al. 2026
+      companion paper). EV charging is also represented with must-run EV links and
+      capacity targets (SI Sec. S6.2).
+    procedure_notes: >
+      Price-based electrical demand response: load can shift forward or backward in
+      time at a per-MWh storage cost. EVs modelled as must-run links with min/max
+      equal to EV load profile; petrol vehicles fill remaining transport demand. EV
+      adoption limits are among the top-5 sensitive parameters for carbon emissions
+      in 18 states (Results). GSHP deployment constrained by urban/rural ratio
+      (Eq. 25). Service-sector heating (heat pumps vs. furnaces) shifts are implicit in
+      the capacity expansion result.
+    variant: null
+    parameters: {}
+
+  - slug: import-and-trade-representation
+    role: routine-use
+    evidence: >
+      "Natural gas export costs… natural gas import costs… and petrol costs emerged
+      as a top three sensitivity in 43, 32, and 24 of the 48 modeled states" (Results).
+      State-to-state natural gas trade is endogenously solved (pipeline links); trade
+      with regions outside CONUS is exogenous boundary condition constrained to
+      historical monthly flows (Eqs. 18-21, SI Sec. S3).
+    procedure_notes: >
+      Electrical trade: capacity-constrained transport model with pre-calculated
+      interface limits between load zones. Natural gas trade: pipeline links with linear
+      efficiency between states; expansion not allowed for 2030 near-term scope.
+      Imports/exports to non-CONUS regions constrained monthly to historical flows
+      with configurable multipliers (Eqs. 18-21). Import and export costs are swept as
+      uncertain parameters in the GSA and emerge as dominant sensitivity drivers.
+    variant: null
+    parameters: {}
+
+  - slug: shadow-prices-and-marginal-values
+    role: routine-use
+    evidence: >
+      "Our GSA reveals five key metrics; objective cost, average marginal cost of
+      electricity and energy separately, Carbon Dioxide (CO2) emissions, and total
+      emissions (CO2 plus methane (CH4))." (Introduction). Marginal costs are
+      obtained as dual variables of the nodal balance constraint and used as the
+      primary result metric alongside which the GSA is performed.
+    procedure_notes: >
+      State-level average marginal costs of electricity and energy are computed from
+      dual variables of the linear optimisation. These are the key result metrics for
+      the GSA — not just reported post-hoc but used as GSA outputs to rank parameter
+      sensitivities. The paper cites Schweppe et al. (spot pricing) and Harvey & Hogan
+      (LMPs) as theoretical grounding for using marginal costs as welfare-relevant
+      price signals.
+    variant: null
+    parameters: {}
+
+unmatched_methods:
+  - name: "method-of-morris-global-sensitivity-analysis"
+    evidence: >
+      The Method of Morris (Morris 1991, Campolongo et al. 2007) is the core
+      algorithmic contribution of the paper applied to an ESOM context — it is a
+      specific GSA screening algorithm distinct from general sensitivity sweeps or
+      Monte Carlo analysis. The paper extends its application by using Scaled
+      Elementary Effects (Sin et al. 2009) for unit-normalisation and combining
+      Morris screening with a subsequent Monte Carlo propagation stage. This is
+      closer to a methodological paper on *how to do* GSA on ESOMs than a paper
+      that routinely uses it. The existing slug sensitivity-and-uncertainty-sweeps
+      captures the broad family, but the specific Morris/SEE/two-stage procedure is
+      the central novel contribution and deserves an entry here. No slug in
+      SLUGS.yaml specifically names the Method of Morris or ESOM-GSA workflows.

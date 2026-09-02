@@ -1,0 +1,63 @@
+id: security-of-supply-imports
+title: "Security of supply / imports"
+rank: 65
+question: >
+  How exposed is the system to import dependence — fuels, electricity,
+  future H2 — and what does reducing that exposure cost? The post-2022
+  gas-crisis legacy question for Europe, and a standing one anywhere that
+  imports fuel or power across borders.
+when_to_use:
+  - "import dependence of the power/energy system"
+  - "cost of a self-sufficiency target"
+  - "fuel supply shock / gas phase-down scenario"
+  - "energy independence vs cheapest-system trade-off"
+  - "reliance on cross-border electricity imports"
+recipes:
+  generation_conversion: [fossil-fuel-supply, natural-gas-pipelines,
+                          green-energy-imports, gas-power-plants,
+                          methanol-reforming]
+  demand: [electricity-load, demand-scenarios-and-growth,
+           hydrogen-export-demand]
+functionality:
+  - id: gas-network-links
+    role: "core difference from earth — real SciGRID_gas pipelines with capacitated LNG/pipeline/production entry points (Russian/Belarusian entries excluded), so physical gas-import exposure is modelled, not implicit"
+  - id: green-energy-imports
+    role: "priced H2/NH3/methanol/gas/oil import routes at entry points — the green-import side of the dependence question"
+  - id: import-limit-constraint
+    role: "system-wide cap on green import volumes — sweep it to price import reliance"
+  - id: equity-self-sufficiency
+    role: "EQ<f>c forces each country to supply >= f of its consumption (electricity-only; always give a value — bare EQ crashes)"
+  - id: autarky
+    role: "full electricity independence via electricity.autarky config (ATK token broken at this ref)"
+  - id: gas-usage-limit
+    role: "CH4L caps gas burn — the fuel phase-down constraint"
+  - id: carrier-attribute-scaling
+    role: "fuel-price shocks via marginal-cost multipliers (e.g. gas+m2)"
+  - id: operations-only-solve
+    role: "dispatch a fixed system under a supply-shock scenario — the crisis re-run"
+  - id: scenario-matrix
+    role: "sweep EQ shares / import limits / fuel prices / CH4L to trace the cost of independence"
+gap_assessment: >
+  Materially stronger than pypsa-earth here, enough to change the verdict.
+  The electricity side matches earth's strengths: EQ prices national
+  self-sufficiency, config-path autarky prices full independence, and
+  cross-border flows are explicit (with default-on losses). The fuel side
+  — earth's weak half — has real infrastructure in pypsa-eur: gas arrives
+  through a clustered SciGRID_gas network via capacitated LNG terminals,
+  pipeline entry points and domestic production, with Russian/Belarusian
+  entries excluded by default, so pipeline-vs-LNG substitution and
+  entry-capacity stress are modellable, not just fuel-spend sensitivity.
+  Future import dependence is first-class too: sector.imports offers
+  priced H2/NH3/methanol/gas/oil routes under a sweepable volume cap —
+  the mirror of earth's export-only chain. Remaining honest gaps: oil and
+  coal stay effectively unlimited at fixed prices (no supply routes);
+  there is no strategic-storage or N-1-supply machinery, no
+  source-country granularity behind entry points, and disruption analysis
+  is deterministic scenario surgery (delete/cap entries, re-solve or
+  re-dispatch) rather than probabilistic. For import-dependence costing
+  and phase-down pathways this is ready; supply-chain risk proper still
+  needs off-model event definitions.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

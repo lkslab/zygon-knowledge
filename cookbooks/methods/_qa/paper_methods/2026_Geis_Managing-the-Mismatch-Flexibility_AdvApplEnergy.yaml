@@ -1,0 +1,195 @@
+paper: "2026_Geis_Managing-the-Mismatch-Flexibility_AdvApplEnergy.pdf"
+tier: 1
+model_used: >
+  PyPSA-DE (a bespoke PyPSA-Eur-based model of the German energy system),
+  30 regions for Germany plus 19 neighbouring-country nodes, hourly resolution
+  (8760 h), sector-coupled, investment periods 2025/2035/2045.
+scope: >
+  Quantifies flexibility needs and technology-specific flexibility contributions
+  along Germany's pathway to climate neutrality (2025–2045) using a
+  correlation-based time-decomposition metric applied to a fully sector-coupled,
+  spatially-explicit model; compares four flexibility scenarios (LowFlex,
+  LowBattery, Base, HighFlex) for cost, price and energy-security implications.
+methods:
+  - slug: sector-coupled-network-assembly
+    role: routine-use
+    evidence: >
+      "We use a sector-coupled model of the German energy system: PyPSA-DE...
+      The model co-optimises the investment and operation of generation, storage,
+      conversion and transmission infrastructures in a linear optimisation problem...
+      optimises supply, demand, storage, and transmission networks across a range
+      of sectors including electricity, heating, transport, agriculture, and
+      industry" (Sec. 2.2.1). Carriers modelled include electricity, hydrogen,
+      methane, methanol, Fischer-Tropsch fuels, heat (central and decentral),
+      and CO2.
+    procedure_notes: >
+      Sector network built on PyPSA-Eur. District heating separated from
+      decentral heat. PtX processes (electrolysis, methanolisation, methanation,
+      Fischer-Tropsch) share a CO2 accounting bus. Waste heat from conversion
+      processes fed into district heating. Carbon budget tightened for non-CO2
+      GHGs. Gas turbines built from 2035 exogenously switched to hydrogen in 2045.
+    variant: null
+    parameters: {nodes_germany: 30, neighbour_nodes: 19, investment_years: "2025/2035/2045", resolution: "1h/8760h"}
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "The model optimises supply, demand, storage, and transmission networks...
+      with perfect foresight over a weather year for each investment period, but
+      myopic foresight between the investment periods." (Sec. 2.2.1). Limitations
+      section also notes: "The assumption of perfect foresight within each
+      optimisation year implies fully optimised storage operation and investment
+      decisions" (Sec. 4.2).
+    procedure_notes: >
+      Within each investment year (2025, 2035, 2045) the model solves with
+      perfect foresight over the full 8760-hour weather year. Across investment
+      periods the model is myopic — no anticipation of future years' costs or
+      capacities. Installed capacities from earlier periods carry forward as
+      brownfield constraints.
+    variant: myopic-between-years-perfect-within
+    parameters: {investment_periods: 3, horizon_per_period_h: 8760}
+
+  - slug: demand-side-flexibility-representation
+    role: routine-use
+    evidence: >
+      "A key DSM option is the flexible charging of battery electric vehicles
+      (BEVs). An exogenously defined share of BEV battery capacity can be used
+      for flexible charging... V2G is also included as an additional flexibility
+      option for BEVs... the model includes industrial DSM, where electricity
+      demand can be shifted within the same day, constrained by both the shiftable
+      power and maximum holding duration." (Sec. 2.2.2). Appendices A.3 and A.4
+      give full implementation detail.
+    procedure_notes: >
+      BEV flexible charging: share of fleet (20–80% depending on scenario)
+      provides an optimisable battery with a minimum SoC of 80% enforced each
+      morning at 07:00; daily cycling periodicity constraint. V2G: available in
+      HF only from 2035, 80% of fleet, round-trip efficiency 90% per direction.
+      Industrial DSM: modelled as a debt-tracking virtual storage; load shifts
+      within the same day (24 h cycling constraint); uniform 4-hour holding
+      duration; capacity 6 GW in 2035, 10 GW in 2045 (Germany only). PtH
+      (power-to-heat) provides implicit DSM via thermal storage.
+    variant: ev-smart-charging-v2g-industrial-shifting
+    parameters:
+      bev_flex_share_lf_lb: "20% from 2045"
+      bev_flex_share_ba: "50% from 2035"
+      bev_flex_share_hf: "80% from 2035"
+      v2g_share_hf: "80% from 2035"
+      industrial_dsm_capacity: "6 GW (2035) / 10 GW (2045)"
+      dsm_holding_duration_h: 4
+      dsm_shift_window_h: 24
+      bev_soc_minimum: "80% at 07:00 daily"
+
+  - slug: storage-sizing-and-duration
+    role: routine-use
+    evidence: >
+      "PyPSA-DE encompasses multiple storage technologies to manage different
+      energy forms. Electricity can be stored in home and utility-scale batteries,
+      pumped hydro storage (PHS), hydrogen... Thermal energy storage is modeled as
+      large-scale water pits or tanks for seasonal heat storage in district heating
+      networks and short-term storage for individual buildings." (Sec. 2.2.2).
+      Table 3 reports energy and power capacities across scenarios.
+    procedure_notes: >
+      Energy and power capacity co-optimised independently for batteries, H2 tanks/
+      caverns, and thermal storage. PHS capacity fixed to installed assets. Iron-air
+      batteries (energy-to-power ratio 39 h) available in HF only. Battery
+      discharge capacity in LF capped at 75% of Base, LB at 50% of Base. H2
+      storage energy capacity in LF capped at 75% of Base. BA builds 310 GWh /
+      39 GW battery in 2035 (8 h ratio).
+    variant: null
+    parameters:
+      battery_energy_ba_2035_gwh: 310
+      battery_power_ba_2035_gw: 39
+      iron_air_ratio_h: 39
+      iron_air_energy_hf_2045_gwh: 1765
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "PyPSA-DE provides a comprehensive representation of all major CO2-emitting
+      sectors. The CO2 pricing is done indirectly via a budget. Non-CO2 greenhouse
+      gas (GHG) emissions are taken into account by tightening the remaining CO2
+      budget." (Sec. 2.2.1). "The CO2 emission amounts are consistent with
+      Germany's GHG targets." (Sec. 2.2.1).
+    procedure_notes: >
+      Annual CO2 budgets (not a price) aligned with Germany's statutory GHG
+      reduction targets per investment year. Non-CO2 GHGs handled by tightening
+      the CO2 cap. Nuclear excluded following 2023 phase-out; coal banned after
+      2038.
+    variant: co2-budget
+    parameters: {}
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "Renewable potentials and time series for wind and solar electricity
+      generation are calculated using atlite, taking into account land eligibility
+      constraints such as nature reserves and distance criteria from settlements."
+      (Sec. 2.2.1).
+    procedure_notes: >
+      Standard PyPSA-Eur/atlite pipeline: capacity factor time series from ERA5
+      reanalysis; land exclusions for nature reserves and settlement buffers.
+      Minimum renewable capacity constraints oriented towards German 2030 targets
+      also imposed exogenously.
+    variant: null
+    parameters: {}
+
+  - slug: weather-year-ensembles
+    role: routine-use
+    evidence: >
+      "A sensitivity analysis using weather years 2013, 2020, and 2023 confirms
+      this ordering: daily flexibility needs vary by at most 15%, weekly by 18%,
+      and annual by 20% (see Figure 9)." (Sec. 3.2). The main results use a
+      single (unspecified) weather year; the three-year sensitivity tests
+      robustness to inter-annual variability.
+    procedure_notes: >
+      Three weather years (2013, 2020, 2023) run as sensitivity cases for the
+      Base scenario only. Main results are based on one weather year. Comparison
+      with IEA [18] figure of 30% inter-annual variability for annual flexibility
+      cited to contextualise.
+    variant: sensitivity-subset
+    parameters: {weather_years_tested: [2013, 2020, 2023]}
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      "Germany is resolved in 30 regions, with the remaining 19 regions
+      representing electricity-interconnected neighbouring countries as well as
+      Italy and Spain." (Sec. 2.2.1). The paper also compares aggregated vs.
+      per-node flexibility metrics (Sec. 3.3.5, Fig. 15).
+    procedure_notes: >
+      30-node resolution for Germany; 19-node rest-of-system. The flexibility
+      metric is applied both to the system-aggregated German residual load and
+      node-by-node (summed afterwards), yielding different absolute values and
+      showing that network constraints amplify flexibility requirements.
+    variant: null
+    parameters: {germany_nodes: 30, total_nodes: 49}
+
+  - slug: import-and-trade-representation
+    role: routine-use
+    evidence: >
+      Model includes 19 neighbouring-country nodes "representing
+      electricity-interconnected neighbouring countries" (Sec. 2.2.1).
+      Hydrogen and e-fuel imports appear as exogenous supply options whose
+      volumes and costs differ by scenario. "Combined hydrogen and e-fuel imports
+      increase by 47% in LF." (Sec. 3.5.3).
+    procedure_notes: >
+      Cross-border electricity trade co-optimised via AC/DC transmission links
+      between Germany and neighbours. H2, e-fuels, biomass, oil and gas
+      available as imported commodities at exogenous prices. Transmission
+      expansion limited to 150% of 2025 capacity (total NTC × length).
+    variant: null
+    parameters:
+      transmission_expansion_limit: "150% of 2025 NTC"
+
+unmatched_methods:
+  - name: correlation-based-flexibility-metric
+    evidence: >
+      The paper's primary methodological contribution (Sec. 2.1, Appendix A.1–A.2,
+      Eqs. 1–10) is a correlation-based time-decomposition framework for
+      quantifying both system-level flexibility needs and technology-specific
+      flexibility contributions at daily, weekly and annual timescales. It formally
+      proves additivity (sum of technology contributions = total flexibility need)
+      and contrasts with the non-additive METIS add-tech-profile method. No slug
+      in SLUGS.yaml covers a post-hoc residual-load time-decomposition analysis
+      method — the vocabulary addresses how the optimisation is set up, not how
+      results are post-processed into flexibility attribution metrics.

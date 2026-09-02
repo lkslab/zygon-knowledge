@@ -1,0 +1,51 @@
+id: solar-to-evening-peak-shift
+title: Solar-to-evening-peak shift
+rank: 28
+question: >
+  How much storage of what duration moves midday solar into the evening peak?
+  India's central storage question (the daily solar-evening shift makes ~4-hour
+  batteries the marginal asset), and the standard duck-curve problem wherever
+  solar penetration is high.
+when_to_use:
+  - "4-hour battery sizing for the evening peak"
+  - "duck curve / midday surplus to evening ramp"
+  - "solar + storage vs peakers for the evening"
+  - "storage duration mix for a solar-heavy grid"
+  - "curtail midday solar or store it"
+recipes:
+  generation_conversion: [utility-scale-solar-pv, grid-scale-batteries, pumped-hydro-storage, sodium-ion-batteries]
+  demand: [electricity-load, demand-temporal-profiles, space-cooling-demand]
+functionality:
+  - id: temporal-resolution-nh
+    role: "caution: the whole topic lives in intraday shape — 24h averaging erases it, keep <=3h"
+  - id: time-segmentation-tsam
+    role: "TSAM segments preserve the daily ramp at lower solve cost than full-hourly"
+  - id: nodal-marginal-prices
+    role: "midday-vs-evening price spread = the storage arbitrage signal, from duals"
+  - id: carrier-attribute-scaling
+    role: "battery cost sweeps (battery+c0.5...) map the storage-vs-peaker frontier"
+  - id: summary-outputs
+    role: "curtailment and energy-balance tables quantify the unshifted surplus"
+  - id: scenario-matrix
+    role: "solar-share x storage-cost grids as parallel runs"
+  - id: bev-dsm-v2g
+    role: "sector runs add EV charging as a shiftable midday sink — the storage competitor"
+gap_assessment: >
+  Bread-and-butter coverage: hourly dispatch plus investment co-optimization is
+  exactly this problem. Batteries are modelled with independent power (MW) and
+  energy (MWh) decisions, so optimal duration — the 4-hour question — is an
+  output, not an assumption, and pumped hydro plus demand shifting compete in
+  the same solve; curtailment, storage cycling, and evening price spikes all
+  fall out of standard outputs. Practical watch-items rather than gaps:
+  (1) keep temporal resolution fine enough (hourly or TSAM), since nH
+  averaging flattens the exact ramp being studied; (2) the power-only chain's
+  scaled historical load shape understates future AC-driven evening peaks —
+  use sector-chain cooling demand for India-style studies; (3) no sub-hourly
+  dynamics or ancillary products, so fast-ramp value beyond hourly energy
+  arbitrage is unpriced (market-design-mechanisms absent). Storage cost
+  trajectories come from the technology-data tables — pin the cost year
+  deliberately, as it dominates the answer.
+coverage: ready
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

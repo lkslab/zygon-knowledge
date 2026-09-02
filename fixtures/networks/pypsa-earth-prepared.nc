@@ -1,0 +1,1 @@
+../../models/pypsa-earth/results/mexico-sector/prenetworks/elec_s_4_ec_lcopt_Co2L_144h_2030_0.071_AB.nc

@@ -1,0 +1,1018 @@
+id: endogenous-technology-learning
+title: "Endogenous technology learning (one-factor experience / learning curves)"
+summary: >
+  Make a technology's investment cost a decreasing function of its own cumulative
+  deployment INSIDE the optimisation, so that building more is what makes it cheaper,
+  rather than reading a cheaper number off a per-year cost table.
+question: >
+  Does deploying this technology early pay for itself by driving its own cost down, and
+  how much of the cost decline is the model's assumption rather than the model's result?
+aliases:
+  - "endogenous technology learning"
+  - "endogenous learning"
+  - "learning curve"
+  - "learning rate"
+  - "experience curve"
+  - "one-factor experience curve"
+  - "Wright's law"
+  - "learning-by-doing"
+  - "cost reduction per doubling of cumulative capacity"
+  - "floor cost / progress ratio"
+  - "piecewise-linearised learning curve"
+  - "SOS2 learning"
+  - "exogenous vs endogenous cost trajectory"
+when_to_use:
+  - "does building electrolysers early make them cheaper"
+  - "should we deploy now to bring costs down, even if it looks expensive today"
+  - "the model just assumes the cost falls — can it decide that itself"
+  - "what learning rate would justify this investment"
+  - "how much cheaper does the technology get if we scale it up"
+  - "is early deployment worth the premium, given cost reductions later"
+  - "first-mover advantage / market creation for a new technology"
+  - "how sensitive is the pathway to the assumed cost decline"
+  - "can a single country drive down a global technology's cost"
+family: foresight-and-pathways
+prevalence:
+  papers: 2
+  tier1: 2
+  tier2: 0
+  sweep_hits: 16
+  basis: >
+    Hand-coded pass 1 over all 100 PDFs (2026-07-25) found 2 papers: one that actually
+    implements learning inside the optimisation (Zeyen 2023) and one that estimates a
+    learning rate FROM model output (Franken 2025). The regex screen returned 16, and
+    it massively over-counts: 12 of the 16 hit the pattern once or twice, in a
+    related-work or discussion sentence of the form "endogenous learning is not
+    represented here" — the honest disclaimer every pathway paper makes. Only the two
+    counted papers score above 3 hits (57 and 17). This is the sharpest
+    prevalence-vs-sweep divergence in the book, and it is diagnostic: the corpus
+    OVERWHELMINGLY uses the exogenous-cost-trajectory variant below and says so.
+procedure:
+  - step: >
+      Choose the technologies to make endogenous, and get a learning rate LR for each
+      from the empirical literature. LR is the fractional cost reduction per DOUBLING of
+      cumulative capacity. Zeyen 2023 uses solar PV 24%, onshore wind 10%, offshore wind
+      10%, H2 electrolysis 16%. Every technology left exogenous keeps its cost table
+      value, so the choice of which four to endogenise is itself a modelling assumption.
+    handle: null
+    provenance: null
+  - step: >
+      Write the one-factor (Wright) experience curve in unit-cost form:
+      c(x) = c0 * (x / x0)^(-b), where x is cumulative INSTALLED capacity of that
+      technology, c0 and x0 are the cost and cumulative capacity at the anchor year, and
+      b is the learning exponent. b and LR are the same parameter twice: LR = 1 - 2^(-b),
+      equivalently b = -log2(1 - LR). A 20% learning rate is b = 0.322.
+    handle: null
+    provenance: null
+  - step: >
+      Integrate to the CUMULATIVE-COST curve, because the objective needs total spend,
+      not marginal unit cost: C(x) = integral_{x0}^{x} c(s) ds
+      = c0 * x0^b / (1 - b) * (x^(1-b) - x0^(1-b)) for b != 1. Since x is a decision
+      variable and C is CONCAVE in x, minimising it is a concave minimisation — NOT an
+      LP, and not solvable by any of the LP paths in either model. This step is the whole
+      reason the method has its own card.
+    handle: null
+    provenance: null
+  - step: >
+      Approximate C(x) by a piecewise-linear function over a small number of segments,
+      with interpolation points spaced NON-uniformly — shorter segments where the curve
+      is steepest, at low cumulative capacity. Zeyen 2023 uses 5 segments / 6
+      interpolation points following Barreto's scheme.
+    handle: null
+    provenance: null
+  - step: >
+      Force the solution onto exactly one segment. Two encodings: Special Ordered Sets of
+      type 2 (SOS2), where at most two ADJACENT interpolation weights may be non-zero —
+      what Zeyen 2023 uses — or an explicit big-M/binary encoding with one binary per
+      segment and a sum-to-one constraint. Either way the problem becomes a MILP.
+      linopy 0.5.8 has no SOS2 API, so the binary encoding is the expressible one here.
+    handle: "n.model.add_variables(..., binary=True) for the segment-selection variables"
+    provenance: "linopy/model.py:add_variables"
+  - step: >
+      Tie x to the model's own investment variables: cumulative capacity in period t is
+      the sum of that carrier's p_nom over all build years up to t, plus the anchor-year
+      x0. This is the coupling that makes learning endogenous, and it is the step that
+      requires MULTIPLE investment periods co-optimised in one model — with a single
+      horizon there is no accumulation for the curve to walk along.
+    handle: null
+    provenance: null
+  - step: >
+      Apply a TEMPORAL DELAY: the investment cost available in period t is set by
+      cumulative capacity at the END of period t-1, not t. Without the lag the model can
+      pay the learned-down price for the very capacity that earns the learning, which is
+      circular and overstates the benefit of early deployment.
+    handle: null
+    provenance: null
+  - step: >
+      Decide the learning DOMAIN per technology: global or local. Zeyen 2023 uses global
+      learning for renewables — European new capacity is scaled by the current EU share
+      of global capacity before entering the curve — and local learning for electrolysis,
+      where only European installations count. The choice changes the answer more than
+      the learning rate does.
+    handle: null
+    provenance: null
+  - step: >
+      Solve the MILP with a MIP-capable solver and expect a large step up in cost. Zeyen
+      2023: Gurobi, 12 threads, ~21 h and ~30 GB RAM per scenario on a single-node
+      Europe with six renewable-variability regions and 7 investment periods.
+    handle: "solving.solver.name (must be a MIP solver: gurobi, cplex, highs)"
+    provenance: "config/config.default.yaml:solver; scripts/solve_network.py:solver_options"
+  - step: >
+      Sanity-check against the two cheaper alternatives, which is what makes an
+      endogenous run publishable rather than merely expensive: (i) the EXOGENOUS method
+      — fixed per-year cost trajectories, one LP; and (ii) the SEQUENTIAL method — solve
+      the LP with exogenous costs, recompute costs from the resulting capacities via the
+      curve, re-solve, iterate to convergence (Zeyen 2023 stops at <5% max mean-square
+      cost difference). The sequential method is an LP loop and needs no MILP at all.
+    handle: null
+    provenance: null
+variants:
+  - id: exogenous-cost-trajectory
+    what: >
+      The non-learning baseline, and what essentially the whole corpus actually does:
+      cost decline is an INPUT, read per horizon from a technology-cost table
+      (costs.year, or one cost file per planning_horizon). Deployment does not feed back
+      into cost. Cheap, an LP, and the honest default — but it cannot answer "does
+      building early make it cheaper", only "given that it gets cheaper, when do we
+      build". Listed as a variant rather than omitted because routing a user here is the
+      right answer most of the time.
+    papers:
+      - "2023_Zeyen_Endogenous-learning-green-hydrogen_NatComms.pdf"
+  - id: one-factor-learning-by-doing
+    what: >
+      The method proper: a single explanatory factor (own cumulative capacity),
+      piecewise-linearised and solved as a MILP across investment periods, with the
+      temporal delay. What "endogenous learning" means without further qualification.
+    papers:
+      - "2023_Zeyen_Endogenous-learning-green-hydrogen_NatComms.pdf"
+  - id: global-vs-local-learning
+    what: >
+      Whether the cost driver is deployment INSIDE the modelled region (local learning)
+      or worldwide deployment of which the region is a fraction (global learning).
+      Zeyen 2023 splits them by technology: global for solar and wind, where the modelled
+      region is a small share of a mature world market, local for electrolysis. This is
+      the crux for any single-country study — a national model with local learning
+      implicitly claims the country sets the world price of the technology, which for PV
+      or wind is false and will manufacture a spurious first-mover benefit.
+    papers:
+      - "2023_Zeyen_Endogenous-learning-green-hydrogen_NatComms.pdf"
+  - id: multi-technology-spillover
+    what: >
+      Learning that crosses technology boundaries: shared components (power electronics,
+      stacks, drilling rigs) mean deployment of one technology reduces the cost of
+      another, so the curve's x is a weighted sum over several carriers rather than one.
+      NOT exercised by either paper in this slice — Zeyen 2023's four technologies each
+      learn from their own cumulative capacity only. Recorded because it is the standard
+      next generalisation and because a user asking about it must be told the corpus has
+      no PyPSA precedent.
+    papers: []
+  - id: ex-post-learning-rate-estimation
+    what: >
+      Invert the question: run the LP repeatedly at exogenously imposed cost-reduction
+      levels, record deployed capacity at each, and FIT the learning exponent from the
+      resulting (cost, capacity) pairs — b = ln(1/y) / ln(Cy/C0). The output is the
+      learning rate that the deployment implies, not a cheaper system. Franken 2025 does
+      this for EGS geothermal and reports ~20% (25% in the early phase). Costs a handful
+      of ordinary LP solves and no MILP, which makes it the pragmatic route when the
+      user's real question is "what learning rate would this need to work".
+    papers:
+      - "2025_Franken_Geothermal-Market-Integration.pdf"
+  - id: sequential-cost-update
+    what: >
+      Iterated LP: solve with exogenous costs, map the resulting cumulative capacities
+      through the experience curve to get new costs, re-solve, repeat until costs stop
+      moving (Zeyen 2023 converges at <5% max mean-square cost difference). Stays an LP
+      throughout, so it is enormously cheaper than the MILP, but it is a fixed-point
+      heuristic with no optimality guarantee and no temporal-delay structure — Zeyen 2023
+      includes it precisely as the benchmark the endogenous method is measured against.
+    papers:
+      - "2023_Zeyen_Endogenous-learning-green-hydrogen_NatComms.pdf"
+literature:
+  - paper: "2023_Zeyen_Endogenous-learning-green-hydrogen_NatComms.pdf"
+    tier: 1
+    role: defines
+    note: >
+      The reference implementation for this method in the PyPSA family, and the only
+      paper in the corpus that puts learning inside the objective. Full sector-coupled
+      Europe (electricity, heating, transport, industry), single node with six
+      representative regions for renewable variability, 7 investment periods 2020-2050 at
+      5-year intervals. Investment costs of solar PV, onshore wind, offshore wind and H2
+      electrolysis are "not exogenously specified but are part of the optimisation in
+      form of a piecewise-realised one-factor experience curve. This results in a mixed
+      integer linear problem MILP." Supplies every parameter this card quotes: SOS2 with
+      5 segments / 6 interpolation points following Barreto (shorter segments in the
+      steep early region), learning rates 24/10/10/16%, +/-10% learning-rate
+      sensitivity, temporal-delayed learning (period t costs set by cumulative capacity
+      at t-1), global learning for renewables scaled by the EU share of global capacity
+      versus local learning for electrolysis, and the cost: Gurobi, 12 threads, ~21 h and
+      ~30 GB per scenario. Also supplies the two comparison methods (exogenous,
+      sequential) that make the expense arguable. Implemented on PyPSA-Eur-Sec — a fork,
+      not upstream; nothing from it is merged into either model at these refs.
+  - paper: "2025_Franken_Geothermal-Market-Integration.pdf"
+    tier: 1
+    role: extends
+    note: >
+      Runs the relationship BACKWARDS and is worth quoting to any user who baulks at
+      21 h MILPs. Sector-coupled PyPSA-Eur, 72 nodes, 3-hourly, a single carbon-neutral
+      target year — so no accumulation and no endogenous learning is even possible. It
+      states the same algebra this card uses ("Starting with the power law equation
+      C(x) = C0 * x^-b ... we obtain the learning rate from LR = 1 - 2^-b", Eqs. 3-4) and
+      then estimates b EX POST from successive model runs: for each imposed drilling-cost
+      reduction level y, record the installed EGS capacity Cy and set
+      b = ln(1/y) / ln(Cy/C0), anchoring C0 at the run with cost-reduction factor 1.
+      Finds ~20% (25% for the early phase). Contributes the ex-post variant and the
+      demonstration that a useful learning-rate ANSWER can come out of an LP sweep.
+pitfalls:
+  - pitfall: >
+      The objective becomes non-convex, so the piecewise-linear approximation is not a
+      convenience — it is what makes the problem solvable at all. Segment count and
+      placement are therefore load-bearing model parameters, not numerical details: too
+      few segments in the steep early region and the model systematically misprices
+      exactly the early deployment the study is about.
+    evidence: "2023_Zeyen_Endogenous-learning-green-hydrogen_NatComms.pdf"
+    note: >
+      Report the segment count and interpolation points as results-affecting assumptions.
+      Follow Zeyen's 5-segment/6-point non-uniform scheme rather than uniform spacing,
+      and re-solve at a finer segmentation as a convergence check before publishing.
+  - pitfall: >
+      Without the temporal delay the formulation is circular: the model buys capacity at
+      a price that its own purchase decision created within the same period, which
+      overstates the value of early deployment and can look like a spectacular
+      first-mover result.
+    evidence: "2023_Zeyen_Endogenous-learning-green-hydrogen_NatComms.pdf"
+    note: >
+      Always lag the curve by one investment period (cost in t from cumulative capacity
+      at t-1), and state the lag explicitly — it is the difference between a defensible
+      early-deployment finding and an artefact.
+  - pitfall: >
+      Local learning applied to a globally traded technology in a regional model is the
+      single most damaging trap here. If a national or single-region model treats its own
+      deployment as the driver of solar or wind cost, it manufactures a national learning
+      benefit that in reality accrues to a world market the country barely moves.
+    evidence: "2023_Zeyen_Endogenous-learning-green-hydrogen_NatComms.pdf"
+    note: >
+      Classify each technology as global or local BEFORE writing any constraint. For
+      global technologies scale the region's new capacity by its share of global capacity
+      (Zeyen's treatment for PV and wind); reserve local learning for genuinely
+      regional-supply-chain technologies. For a single-country study this usually means
+      the method has no legitimate use at all — route to
+      ex-post-learning-rate-estimation or exogenous-cost-trajectory instead.
+  - pitfall: >
+      Learning rates are empirically uncertain by more than the effect being modelled,
+      and the result is highly sensitive to them. Zeyen 2023 runs +/-10% on all
+      technologies for this reason.
+    evidence: "2023_Zeyen_Endogenous-learning-green-hydrogen_NatComms.pdf"
+    note: >
+      Never present a single endogenous-learning run. Budget for the learning-rate
+      sensitivity band from the start; if the compute only affords one MILP, the study
+      cannot support a learning claim and should use the sequential or ex-post variant.
+  - pitfall: >
+      The exogenous baseline is not learning-free — it embeds a cost decline that came
+      from someone else's learning assumption. Comparing "endogenous" against "no
+      learning" is therefore not the comparison anyone thinks it is.
+    evidence: "2023_Zeyen_Endogenous-learning-green-hydrogen_NatComms.pdf"
+    note: >
+      State which technology-data cost vintage the exogenous baseline uses and what
+      decline it already contains, then compare endogenous against exogenous and
+      sequential as Zeyen does — three methods on one figure, not two.
+  - pitfall: >
+      A single planning horizon cannot support the method, yet a learning rate can still
+      be quoted from such a model — which invites confusing an ex-post fitted rate with
+      an endogenously optimised one.
+    evidence: "2025_Franken_Geothermal-Market-Integration.pdf"
+    note: >
+      Label the result: "learning rate implied by the deployment response" is a different
+      claim from "cost path co-optimised with deployment". Franken 2025's ~20% for EGS is
+      the former.
+requires_methods:
+  - foresight-and-planning-horizons
+  - custom-constraints-with-linopy
+combines_with:
+  - discounting-and-cost-of-capital
+  - brownfield-and-capacity-vintaging
+  - sensitivity-and-uncertainty-sweeps
+  - carbon-constraints-and-pricing
+  - soft-linking-with-iam
+  - temporal-aggregation-and-segmentation
+  - spatial-clustering-and-resolution
+topics:
+  - net-zero-pathways
+  - capacity-expansion
+  - green-hydrogen-siting
+  - geothermal-niche-baseload
+  - marginal-abatement-cost-curves
+pypsa_primitive:
+  symbol: "linopy/model.py:add_variables"
+  pypsa_version: "0.30.3"
+  exposed_by: "neither — nothing in pypsa, pypsa-eur or pypsa-earth builds a learning curve"
+  reachable_via: >
+    There is NO learning primitive in pypsa 0.30.3: grepping the installed package for
+    learning, experience_curve, piecewise and SOS turns up only one unrelated hit, the
+    `transmission_losses` tangent count in pypsa/optimization/optimize.py. What DOES
+    exist one layer down is the MILP substrate: linopy 0.5.8's
+    Model.add_variables(..., binary=True) / (..., integer=True), which pypsa itself uses
+    for committable generators (pypsa/optimization/variables.py:define_status_variables)
+    and modular capacity. linopy's Model.type property returns 'MILP'/'MIP' automatically
+    once any binary or integer variable is present, and the solver interface passes it
+    through, so a big-M/binary piecewise encoding added inside a model's
+    extra_functionality hook is expressible with no library patching.
+  note: >
+    The decisive negative: linopy 0.5.8 has NO SOS/SOS2 API (grep for 'sos' in
+    linopy/*.py returns nothing). Zeyen 2023's actual encoding is therefore not
+    reproducible verbatim; the equivalent binary/big-M formulation must be written
+    instead — mathematically equivalent, typically slower for the solver, and one more
+    thing that has to be got right. That is the precise shape of this method's L5: not
+    "write an optimisation formulation from scratch", but "write a known piecewise
+    encoding using binary variables you can already declare". A week of careful
+    formulation, not a quarter. Soft anchor: pypsa and linopy are conda dependencies,
+    not submodules, so this is pinned to version strings rather than SHAs.
+models:
+  - model: pypsa-eur
+    version_anchor:
+      ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d"
+      date: "2026-07-25"
+    functionality:
+      - id: perfect-foresight
+        role: >
+          the ONLY viable host: learning needs several investment periods co-optimised in
+          one model, and this is the single place in either repo where that exists.
+          Registry status `working`. Its concat_networks step is the natural anchor,
+          because it is where per-horizon assets become one network with build_year
+          labels and per-horizon capital_cost.
+      - id: myopic-foresight
+        role: >
+          the WRONG host, and worth saying so: `working` here, but each horizon is a
+          separate solve, so the only learning it can express is the
+          sequential-cost-update heuristic — cost table rewritten between horizons — not
+          the endogenous MILP.
+      - id: technology-cost-year
+        role: >
+          the exogenous-cost-trajectory variant in its entirety: costs.year selects the
+          technology-data vintage and the myopic/perfect chains pull one cost table per
+          planning horizon. Registry status `working`.
+      - id: cost-data-pipeline
+        role: >
+          the L1 route to a hand-built cost trajectory: custom_costs.csv overwrites
+          parameters per planning_horizon and can add new technology rows, so a learning
+          curve evaluated OFFLINE at assumed deployment can be injected without code.
+          `working`, and absent from earth's registry entirely.
+      - id: max-growth-limits
+        role: >
+          the closest thing eur has to a deployment-dynamics constraint, and instructive
+          because it is the mirror image: it caps how fast capacity can GROW between
+          investment periods rather than making cost fall with capacity. Registry status
+          `partial`, wired only for foresight: perfect, enable defaults false.
+      - id: custom-constraint-hook
+        role: >
+          the sanctioned landing point for the piecewise-linear segment constraints and
+          the cumulative-capacity coupling. `working`, and the key is present in
+          config.default.yaml at this ref.
+      - id: existing-baseyear-brownfield
+        role: >
+          supplies the anchor x0: the curve needs cumulative capacity already installed
+          at the base year, and this is what seeds build years for the existing fleet.
+      - id: discount-rate-dimension
+        role: >
+          adjacent and easy to conflate: costs.social_discountrate weights investment
+          periods against each other in perfect foresight, which is what makes early
+          spend look expensive. Learning changes the cost, discounting changes its
+          present value — see discounting-and-cost-of-capital, which owns the annuity.
+      - id: solver-choice
+        role: >
+          becomes a hard requirement rather than a preference: the MILP needs gurobi,
+          cplex or highs. gurobi-default is the shipped default.
+      - id: global-summary
+        role: >
+          where a cumulative-cost pathway comparison between endogenous, exogenous and
+          sequential runs would be assembled; make_cumulative_costs already integrates
+          discounted system cost over planning horizons.
+    available:
+      verdict: absent
+      how: >
+        Nothing implements learning. Grepping the whole repo for learning, learning_rate,
+        experience_curve, SOS2 and piecewise finds zero learning machinery: the only
+        `piecewise` hits are the transmission-loss tangent count in the solving config
+        schema, and the only `cumulative` hits are scripts/make_cumulative_costs.py
+        (discounted system cost integrated over a myopic pathway — an OUTPUT metric, not
+        a cost driver) and an unrelated variable in base_network.py. The registry has no
+        learning id in either model. What does exist is the host structure: perfect
+        foresight concatenates all horizons into one network with per-build-year assets,
+        and the custom_extra_functionality hook can add arbitrary constraints to that
+        model after the built-ins.
+      missing: >
+        Procedure steps 1-4 and 6-8 have no handle: no learning-rate input, no experience
+        curve, no cumulative-cost integration, no piecewise segmentation, no coupling of
+        cost to the model's own p_nom variables, no temporal-delay structure, no
+        global/local domain scaling. Step 5's segment binaries are declarable via linopy
+        but nothing in the repo declares them. Concretely, capital_cost in the
+        concatenated perfect-foresight network is a fixed per-build-year NUMBER taken
+        from that horizon's cost table; making it a function of a decision variable is a
+        change to the objective's structure, which is why this is `absent` and not
+        `assemble`. Zeyen 2023 implemented it as a PyPSA-Eur-Sec fork; nothing from that
+        fork is merged at this ref, and that fork is the honest route to cite to a user.
+      provenance: "scripts/prepare_perfect_foresight.py:concat_networks; scripts/solve_network.py:custom_extra_functionality; scripts/make_cumulative_costs.py:calculate_cumulative_cost"
+    levers:
+      - key: "foresight"
+        effect: >
+          Must be `perfect` for any endogenous variant — it is the only mode that
+          co-optimises investment periods in a single model, which is what cumulative
+          capacity accumulation requires. `myopic` restricts you to
+          sequential-cost-update; `overnight` (the default) makes the method impossible.
+        default: "'overnight'"
+        provenance: "config/config.default.yaml:foresight; scripts/prepare_perfect_foresight.py:concat_networks"
+      - key: "scenario.planning_horizons"
+        effect: >
+          The investment periods the curve walks along. Zeyen 2023 uses 7 at 5-year
+          intervals 2020-2050; the default single [2050] leaves nothing to accumulate.
+        default: "[2050]"
+        provenance: "config/config.default.yaml:planning_horizons; scripts/prepare_perfect_foresight.py:concat_networks"
+      - key: "costs.year"
+        effect: >
+          Selects the technology-data cost vintage — the whole of the
+          exogenous-cost-trajectory variant, and the baseline any endogenous run must be
+          compared against. In perfect/myopic mode one table is pulled per horizon.
+        default: "2050"
+        provenance: "config/config.default.yaml:year; scripts/process_cost_data.py:prepare_costs"
+      - key: "costs.custom_cost_fn"
+        effect: >
+          Path to a csv that overwrites cost parameters PER planning horizon and can add
+          new technology rows — the L1 way to inject an offline-evaluated learning curve
+          (or the ex-post variant's imposed cost-reduction levels) without touching code.
+        default: "'data/custom_costs.csv'"
+        provenance: "config/config.default.yaml:custom_cost_fn; scripts/process_cost_data.py:overwrite_costs"
+      - key: "solving.options.custom_extra_functionality"
+        effect: >
+          Path to a user module imported and called with (n, snapshots, snakemake) after
+          the built-in constraints — where the segment binaries, the convexity/adjacency
+          constraints and the cumulative-capacity coupling land.
+        default: "'../data/custom_extra_functionality.py' (present but a no-op stub)"
+        provenance: "config/config.default.yaml:custom_extra_functionality; scripts/solve_network.py:custom_extra_functionality"
+      - key: "sector.limit_max_growth.enable"
+        effect: >
+          Turns on per-carrier absolute and relative deployment growth caps between
+          investment periods. Not learning, but the standard exogenous stand-in for
+          deployment dynamics, and the thing to reach for when the MILP is unaffordable.
+          Perfect-foresight only at this ref.
+        default: "false"
+        provenance: "config/config.default.yaml:limit_max_growth; scripts/solve_network.py:add_max_growth"
+      - key: "costs.social_discountrate"
+        effect: >
+          Inter-period objective weighting in perfect foresight — it sets how expensive
+          early deployment looks, so it interacts directly with any learning finding and
+          must be held fixed across the endogenous/exogenous/sequential comparison.
+        default: "0.02"
+        provenance: "config/config.default.yaml:social_discountrate; scripts/prepare_perfect_foresight.py:concat_networks"
+      - key: "solving.solver.name"
+        effect: >
+          Must be MIP-capable for the endogenous variants (gurobi/cplex/highs). Zeyen
+          2023 used Gurobi with 12 threads.
+        default: "'gurobi'"
+        provenance: "config/config.default.yaml:solver; scripts/solve_network.py:solver_options"
+    assembly:
+      - step: >
+          Set up a multi-horizon perfect-foresight base case and confirm it solves as an
+          LP before adding anything: foresight: perfect with several planning_horizons.
+          This is the only structural prerequisite that is pure config, and it is where
+          earth stops entirely.
+        uses: [perfect-foresight, existing-baseyear-brownfield]
+        config: "foresight: perfect; scenario.planning_horizons; existing_capacities.*"
+        code: null
+        provenance: "config/config.default.yaml:foresight; scripts/prepare_perfect_foresight.py:concat_networks"
+      - step: >
+          Establish the exogenous baseline and record it. One cost table per horizon via
+          costs.year / the per-horizon processed cost files; this is the run every
+          endogenous result is reported against, and for most users it is also the final
+          answer.
+        uses: [technology-cost-year, cost-data-pipeline]
+        config: "costs.year; costs.custom_cost_fn"
+        code: null
+        provenance: "scripts/process_cost_data.py:prepare_costs; scripts/process_cost_data.py:overwrite_costs"
+      - step: >
+          Build the curve OFFLINE first, in a plain script: pick technologies, fix
+          learning rates, classify each as global or local, compute b = -log2(1-LR),
+          integrate to the cumulative-cost curve and choose non-uniform interpolation
+          points (Zeyen: 5 segments, 6 points). No repo surface does any of this; it is
+          arithmetic on inputs and belongs outside the solve, where it can be unit-tested.
+        uses: []
+        config: null
+        code: "new module under scripts/ — no existing rule owns this"
+        provenance: "scripts/process_cost_data.py:prepare_costs"
+      - step: >
+          Implement the sequential-cost-update variant next, not the MILP. It reuses the
+          curve module and the existing LP solve: solve, read cumulative p_nom per
+          carrier, rewrite the cost table through the curve, re-solve, iterate to <5%
+          mean-square cost change. Cheap, LP-only, and it validates the curve module
+          before any binary variable exists.
+        uses: [technology-cost-year, cost-data-pipeline, myopic-foresight]
+        config: "costs.custom_cost_fn"
+        code: "new driver looping scripts/solve_network.py; scripts/process_cost_data.py:overwrite_costs"
+        provenance: "scripts/process_cost_data.py:overwrite_costs; scripts/add_brownfield.py:add_brownfield"
+      - step: >
+          Only then write the endogenous MILP in the hook. Inside
+          custom_extra_functionality on the concatenated perfect-foresight network:
+          declare per-technology, per-period segment weights and segment binaries with
+          linopy's binary=True, constrain them to sum to one with adjacency (the big-M
+          stand-in for SOS2, since linopy 0.5.8 has none), express cumulative capacity as
+          a sum of that carrier's p_nom over build years <= t-1 for the temporal delay,
+          scale by the global share for global-learning technologies, and add the
+          piecewise cumulative-cost expression to the objective. Substrate details in
+          custom-constraints-with-linopy.
+        uses: [custom-constraint-hook, perfect-foresight]
+        config: "solving.options.custom_extra_functionality"
+        code: "scripts/solve_network.py:custom_extra_functionality; the user module it imports"
+        provenance: "scripts/solve_network.py:custom_extra_functionality; rules/common.smk:input_custom_extra_functionality"
+      - step: >
+          Switch to a MIP solver and re-budget. The LP-tuned barrier profiles are the
+          wrong preset; expect the order-of-magnitude jump Zeyen reports (~21 h, ~30 GB
+          on a single-node Europe) and coarsen spatial/temporal resolution to pay for it.
+        uses: [solver-choice]
+        config: "solving.solver.name; solving.solver_options"
+        code: null
+        provenance: "scripts/solve_network.py:solver_options"
+      - step: >
+          Run the learning-rate sensitivity band (Zeyen: +/-10% on all technologies) plus
+          the exogenous and sequential comparators, and assemble the cumulative discounted
+          cost of each pathway. make_cumulative_costs already integrates discounted system
+          cost over planning horizons and is the cheapest place to hang the comparison.
+        uses: [global-summary, max-growth-limits]
+        config: "run.scenarios.enable; sector.limit_max_growth.enable"
+        code: "scripts/make_cumulative_costs.py"
+        provenance: "scripts/make_cumulative_costs.py:calculate_cumulative_cost; rules/postprocess.smk:make_cumulative_costs"
+    boundary:
+      - variant: exogenous-cost-trajectory
+        rung: L0
+        note: >
+          costs.year is a config key and the perfect/myopic chains already pull one cost
+          table per planning horizon. L1 if you want a hand-authored trajectory, via
+          costs.custom_cost_fn, which overwrites per horizon and can add new technology
+          rows. This is where the overwhelming majority of users belong.
+      - variant: ex-post-learning-rate-estimation
+        rung: L1
+        note: >
+          A sweep of ordinary LP solves at imposed cost-reduction factors plus arithmetic
+          on the outputs. The imposed reductions are L1 — adjustments/carrier+c tokens or
+          custom_costs.csv — and the fitting is a few lines of pandas outside the solve.
+          What Franken 2025 does, and by far the best value per compute-hour on this card.
+      - variant: sequential-cost-update
+        rung: L5
+        note: >
+          No new optimisation formulation — every solve stays an LP — but the iterate-
+          until-converged loop, the capacity-to-cost mapping and the convergence test are
+          all new Python with no rule that owns them. L5 by the ladder's definition (a run
+          harness), yet the cheapest L5 on this card: days, and it needs no MIP solver.
+      - variant: one-factor-learning-by-doing
+        rung: L5
+        note: >
+          The real cost. New objective structure: segment binaries, adjacency/convexity
+          constraints, cumulative-capacity coupling to p_nom across build years, and the
+          temporal delay, all inside custom_extra_functionality on the concatenated
+          perfect-foresight network. Two things keep it from being open-ended: the host
+          (perfect foresight) is `working` and pure config, and the MILP substrate
+          (linopy binary variables) already exists. Two things make it worse than it
+          looks: linopy 0.5.8 offers no SOS2 so the encoding must be re-derived in
+          big-M/binary form, and the solve moves from LP to MILP.
+      - variant: global-vs-local-learning
+        rung: L5
+        note: >
+          Same code as one-factor-learning-by-doing plus a per-technology scaling factor
+          from regional to global cumulative capacity — trivial arithmetic, decisive for
+          correctness. The exogenous global-deployment series it needs is a new DATA input
+          (see data_dependencies), so budget it as L5-code-plus-L3-data.
+      - variant: multi-technology-spillover
+        rung: L5
+        note: >
+          One-factor-learning-by-doing with x a weighted sum over several carriers. No
+          extra machinery, but no PyPSA precedent in this corpus either, so the spillover
+          weights would be unvalidated assumptions. Treat as research, not delivery.
+    where:
+      - change: >
+          piecewise-linear segment variables, adjacency/convexity constraints,
+          cumulative-capacity coupling and the temporal delay
+        anchor: "solving.options.custom_extra_functionality -> the user module's entry function"
+        provenance: "scripts/solve_network.py:custom_extra_functionality; rules/common.smk:input_custom_extra_functionality"
+      - change: >
+          the multi-period network the learning constraints must attach to (per-build-year
+          assets, investment-period weightings)
+        anchor: "rule prepare_perfect_foresight -> scripts/prepare_perfect_foresight.py::concat_networks"
+        provenance: "scripts/prepare_perfect_foresight.py:concat_networks"
+      - change: "offline curve evaluation / cost-table rewrite for the sequential and ex-post variants"
+        anchor: "scripts/process_cost_data.py::overwrite_costs (fed by costs.custom_cost_fn)"
+        provenance: "scripts/process_cost_data.py:overwrite_costs; scripts/process_cost_data.py:prepare_costs"
+      - change: "MIP-capable solver profile"
+        anchor: "solving.solver / solving.solver_options -> scripts/solve_network.py::solver_options"
+        provenance: "scripts/solve_network.py:solver_options"
+      - change: "pathway cost comparison across endogenous / exogenous / sequential runs"
+        anchor: "rule make_cumulative_costs -> scripts/make_cumulative_costs.py::calculate_cumulative_cost"
+        provenance: "scripts/make_cumulative_costs.py:calculate_cumulative_cost; rules/postprocess.smk:make_cumulative_costs"
+    data_dependencies:
+      - input: "learning rates per technology from the empirical literature"
+        required_for: one-factor-learning-by-doing
+        availability: >
+          absent from the repo — technology-data ships cost vintages, not learning rates.
+          Must be supplied by the modeller; Zeyen 2023's values (PV 24%, onshore wind 10%,
+          offshore wind 10%, H2 electrolysis 16%) are the citable European set
+      - input: "exogenous global cumulative-capacity trajectory per globally-learning technology"
+        required_for: global-vs-local-learning
+        availability: >
+          absent — needed to convert European new capacity into a share of world
+          deployment (Zeyen 2023 scales by the current EU share of global capacity).
+          Comes from IRENA/IEA statistics or an IAM; see soft-linking-with-iam
+      - input: "anchor-year cumulative installed capacity x0 per technology"
+        required_for: one-factor-learning-by-doing
+        availability: >
+          exists by default for the modelled region via the base-year fleet
+          (existing_capacities / powerplantmatching); the GLOBAL x0 does not
+      - input: "imposed cost-reduction factor grid for the ex-post sweep"
+        required_for: ex-post-learning-rate-estimation
+        availability: >
+          exists by default as a config surface — adjustments/carrier+c tokens or
+          costs.custom_cost_fn; the grid itself is a study design choice
+    cost_profile:
+      solves: >
+        1 LP for exogenous-cost-trajectory. ~5-10 LPs for
+        ex-post-learning-rate-estimation (one per imposed cost-reduction level).
+        3-10 LPs for sequential-cost-update (iterations to <5% mean-square cost change).
+        1 MILP for one-factor-learning-by-doing, times 3 for the +/-10% learning-rate band,
+        times the number of policy scenarios.
+      relative: >
+        The MILP is the outlier: Zeyen 2023 reports ~21 h and ~30 GB per scenario on a
+        SINGLE-NODE Europe with six representative renewable regions and 7 investment
+        periods — i.e. the spatial resolution was already sacrificed to afford it. Against
+        a comparable perfect-foresight LP that is roughly one to two orders of magnitude.
+        The sequential variant costs a handful of LPs and the ex-post variant a handful
+        more, which is why both are in this card.
+      note: >
+        Two multipliers compound badly: perfect foresight already scales the LP by the
+        number of investment periods, and the MILP branch-and-bound sits on top of that.
+        Zeyen's mitigation is the one to copy — spend the resolution budget on investment
+        periods and renewable-variability representation, not on nodes. Coarsen clusters
+        hard, use TSAM segmentation rather than nH averaging, and keep the technology set
+        that learns endogenously to a handful. If the compute cannot afford the
+        learning-rate sensitivity band as well as the central case, use
+        sequential-cost-update or ex-post-learning-rate-estimation instead: an
+        unbanded single MILP cannot support a learning claim.
+    verifies:
+      - variant: one-factor-learning-by-doing
+        check: "len(n.model.binaries) > 0 and n.model.type.startswith('MI')"
+        over: run
+        note: >
+          If no binary variables reached the model, the piecewise constraints were never
+          added and the solve is an ordinary LP with fixed costs. This is the defining
+          silent failure of this method: the run succeeds, the objective looks sane, and
+          the reported cost decline is entirely the exogenous cost table.
+      - variant: one-factor-learning-by-doing
+        check: "len(n.investment_periods) > 1"
+        over: run
+        note: >
+          A single investment period means there is no cumulative accumulation for the
+          curve to walk along, so any 'learning' result is meaningless regardless of what
+          constraints were added.
+      - variant: one-factor-learning-by-doing
+        check: "n.generators.groupby(['carrier', 'build_year']).capital_cost.first().groupby('carrier').nunique().max() > 1"
+        over: run
+        note: >
+          Costs must actually DIFFER across build years for the learning technologies. All
+          build years sharing one capital_cost means the curve never fed back into the
+          network — either the constraint was inert or the results were read off the
+          pre-solve network.
+      - variant: sequential-cost-update
+        check: "abs(costs[-1] - costs[-2]).max() / abs(costs[-2]).max() < 0.05"
+        over: ensemble
+        note: >
+          The fixed-point loop must have converged; Zeyen 2023's threshold is <5% max
+          mean-square cost difference. A loop stopped at a fixed iteration count instead
+          reports an arbitrary point on the trajectory, not a self-consistent solution.
+      - variant: ex-post-learning-rate-estimation
+        check: "len(ns) >= 3 and len({n.meta['cost_reduction_factor'] for n in ns}) == len(ns)"
+        over: ensemble
+        note: >
+          Fitting b from fewer than three distinct cost-reduction levels, or from runs
+          that silently shared a factor, gives a learning rate with no support. Franken
+          2025 anchors C0 at the factor-1 run, so that run must be present and distinct.
+  - model: pypsa-earth
+    version_anchor:
+      ref: "8435f4c8cc05f30088933b37b7db497ff860dc53"
+      date: "2026-07-25"
+    functionality:
+      - id: myopic-foresight
+        role: >
+          the ONLY multi-horizon mode earth has, and it is `partial`. Sequential
+          per-horizon solves with capacity carry-forward — enough for
+          sequential-cost-update, structurally incapable of the endogenous MILP.
+      - id: technology-cost-year
+        role: >
+          the exogenous-cost-trajectory variant: costs.year plus the technology-data
+          release pin. `working`. Note the asymmetry with eur — earth's ELECTRICITY chain
+          hardcodes a single costs_{costs.year} table, so only the sector/myopic chain
+          gets per-horizon cost files.
+      - id: custom-constraint-hook
+        role: >
+          the single extra_functionality entry point where any piecewise constraint would
+          land. `working`, but it is called with (n, snapshots) only — no snakemake object
+          — so learning parameters must be smuggled in via config globals or the network.
+      - id: existing-baseyear-brownfield
+        role: >
+          the anchor x0 for the curve. `partial` here, and its heating brownfield call is
+          commented out in prepare_sector_network — so the base-year fleet the curve
+          would anchor on is itself incomplete.
+      - id: carrier-attribute-scaling
+        role: >
+          the ex-post variant's whole mechanism: carrier+c tokens scale capital_cost per
+          carrier from the wildcard, giving the imposed cost-reduction grid Franken 2025's
+          method fits against. `working`.
+      - id: monte-carlo-sampling
+        role: >
+          earth's advantage over eur, reusable here: an LHS fan-out with one solve per
+          sample over arbitrary network quantities. It is the right harness for the
+          learning-rate sensitivity band and for the ex-post cost-reduction sweep, though
+          it samples inputs and cannot express the objective change. `partial`, off by
+          default.
+      - id: discount-rate-dimension
+        role: >
+          adjacent: costs.discountrate is a LIST that feeds a filename wildcard, so
+          annuity assumptions are already a sweep dimension. `partial`, and the registry
+          warns the value must be kept consistent in the costs config by hand.
+      - id: solver-choice
+        role: >
+          the MILP gate: HiGHS is the open-source default and is MIP-capable, but the
+          registry notes barrier settings dominate solve time at scale — a MILP on top of
+          that is the binding constraint here more than in eur.
+      - id: scenario-matrix
+        role: >
+          combinatorial run expansion for the exogenous/sequential/ex-post comparison
+          runs. `working`.
+    available:
+      verdict: absent
+      how: >
+        Nothing whatsoever. Grepping scripts, config.default.yaml and the Snakefile for
+        learning, learning_rate, experience_curve, cumulative, SOS2 and piecewise returns
+        ZERO hits of any kind — not even the incidental ones eur has. Earth is one step
+        further back than eur, and the gap is structural rather than a missing feature:
+        earth's Snakefile branches only on `foresight == "overnight"` and
+        `foresight == "myopic"`, there is no `perfect` branch and no
+        prepare_perfect_foresight equivalent, and `perfect-foresight` has NO ENTRY in
+        earth's FUNCTIONALITY registry at all. Since the endogenous method requires
+        several investment periods inside one optimisation, its host does not exist here.
+        `cost-data-pipeline` is likewise absent from earth's registry — there is no
+        custom_costs.csv overwrite surface, so even the L1 injected-curve route that eur
+        offers is unavailable.
+      missing: >
+        Every procedure step, plus the prerequisite. The endogenous variants
+        (one-factor-learning-by-doing, global-vs-local-learning,
+        multi-technology-spillover) would require BUILDING multi-investment-period
+        support first — a perfect-foresight chain earth does not have — and only then the
+        MILP formulation on top. That is a strictly larger job than the same variants in
+        eur, and it is the honest thing to tell a user asking for endogenous learning
+        outside Europe. What remains reachable is the exogenous baseline (costs.year), the
+        ex-post variant (carrier+c scaling plus the monte-carlo fan-out, both `working`
+        or `partial`), and in principle sequential-cost-update over the `partial` myopic
+        chain — with the caveat that earth's myopic sector chain is the less
+        battle-tested part of the model.
+      provenance: "Snakefile:foresight; scripts/solve_network.py:extra_functionality; scripts/process_cost_data.py:load_costs"
+    levers:
+      - key: "foresight"
+        effect: >
+          Accepts `overnight` (default) and `myopic` only — the Snakefile has no `perfect`
+          branch. This single line is why the endogenous variants are out of reach here:
+          there is no mode that co-optimises investment periods in one model.
+        default: "'overnight'"
+        provenance: "config.default.yaml:foresight; Snakefile:foresight"
+      - key: "scenario.planning_horizons"
+        effect: >
+          The horizon list for the myopic chain, and a filename wildcard on the
+          per-horizon sector cost files — the accumulation axis a sequential-cost-update
+          loop would iterate over.
+        default: "[2030]"
+        provenance: "config.default.yaml:planning_horizons; scripts/add_brownfield.py:add_brownfield"
+      - key: "costs.year"
+        effect: >
+          Technology-data cost vintage: the exogenous-cost-trajectory variant. Sweep it
+          via scenario-matrix. Caveat from the Snakefile: the electricity chain
+          interpolates costs.year directly into its cost filename, so only the sector
+          chain varies cost by horizon.
+        default: "2030"
+        provenance: "config.default.yaml:year; scripts/process_cost_data.py:load_costs"
+      - key: "costs.technology_data_version"
+        effect: >
+          Pins the technology-data release the cost tables come from — the provenance of
+          whatever exogenous cost decline the baseline already contains, which must be
+          stated before any learning comparison is meaningful.
+        default: "'v0.13.2'"
+        provenance: "config.default.yaml:technology_data_version; scripts/process_cost_data.py:load_costs"
+      - key: "costs.discountrate"
+        effect: >
+          A LIST feeding a run wildcard, so annuity assumptions are already a sweep
+          dimension here in a way they are not in eur. Held fixed across a learning
+          comparison; owned by discounting-and-cost-of-capital.
+        default: "[0.071]"
+        provenance: "config.default.yaml:discountrate; scripts/process_cost_data.py:annuity"
+      - key: "monte_carlo.options.samples"
+        effect: >
+          Size of the LHS fan-out — the number of learning-rate draws or imposed
+          cost-reduction levels in an ex-post study.
+        default: "9"
+        provenance: "config.default.yaml:samples; scripts/monte_carlo.py:monte_carlo_sampling"
+      - key: "solving.solver.name"
+        effect: >
+          Must be MIP-capable for any endogenous variant. HiGHS keeps this open-source
+          runnable; the registry warns barrier settings dominate at scale, and a MILP
+          makes that worse.
+        default: "'gurobi'"
+        provenance: "config.default.yaml:solving; scripts/solve_network.py:solver_options"
+    assembly:
+      - step: >
+          Check the country data grade FIRST. Learning rates are global-literature
+          numbers, but x0 (the anchor cumulative capacity) and the cost table are
+          regional, and earth's country_specific_data is limited. If the base-year fleet
+          for the learning technology is unknown, the curve has no anchor and no variant
+          on this card is answerable.
+        uses: [existing-baseyear-brownfield, technology-cost-year]
+        config: "costs.year; costs.technology_data_version; existing_capacities.*"
+        code: null
+        provenance: "scripts/process_cost_data.py:load_costs; scripts/add_existing_baseyear.py:add_build_year_to_new_assets"
+      - step: >
+          Establish the exogenous baseline with costs.year, and state which
+          technology-data release supplied the decline it already contains. For most
+          non-European studies this is where the engagement should stop.
+        uses: [technology-cost-year, scenario-matrix]
+        config: "costs.year; scenario.planning_horizons"
+        code: null
+        provenance: "scripts/process_cost_data.py:load_costs; Snakefile:foresight"
+      - step: >
+          Deliver the ex-post variant instead of the endogenous one. Impose a grid of
+          cost-reduction factors on the learning technology with carrier+c opts tokens (or
+          drive the grid through the monte-carlo fan-out), record deployed capacity per
+          run, and fit b = ln(1/y)/ln(Cy/C0) with C0 from the factor-1 run. This is
+          Franken 2025's procedure, it is all `working` surfaces, and it answers the
+          question a user usually actually has.
+        uses: [carrier-attribute-scaling, monte-carlo-sampling, scenario-matrix]
+        config: "opts carrier+c tokens; monte_carlo.options.samples; run.name"
+        code: null
+        provenance: "scripts/prepare_network.py:attr_lookup; scripts/monte_carlo.py:monte_carlo_sampling"
+      - step: >
+          If a genuine cost-feedback pathway is required, build sequential-cost-update on
+          the myopic chain: solve horizon h, read cumulative capacity, rewrite the next
+          horizon's cost table through the curve, continue. Earth has no custom-cost
+          overwrite surface (cost-data-pipeline is absent from its registry), so the
+          rewrite must edit the per-horizon costs_{planning_horizons}_sec.csv resource or
+          patch load_costs — a data-layer edit, not config.
+        uses: [myopic-foresight, existing-baseyear-brownfield]
+        config: "foresight: myopic; scenario.planning_horizons"
+        code: "scripts/process_cost_data.py:load_costs; scripts/add_brownfield.py:add_brownfield"
+        provenance: "scripts/add_brownfield.py:add_brownfield; scripts/process_cost_data.py:load_costs"
+      - step: >
+          Only for the endogenous variants: build multi-investment-period support first.
+          There is no `perfect` branch in the Snakefile and no network-concatenation step
+          to attach period-indexed learning constraints to. This is a workflow-level
+          addition BEFORE any formulation work, and it is the step that makes earth
+          strictly more expensive than eur for this method.
+        uses: [myopic-foresight]
+        config: "foresight (would need a new accepted value)"
+        code: "Snakefile (new foresight branch + rules); no prepare_perfect_foresight equivalent exists"
+        provenance: "Snakefile:foresight"
+      - step: >
+          Then the MILP itself in extra_functionality — segment binaries via linopy,
+          adjacency/convexity, cumulative-capacity coupling, temporal delay. Note the
+          signature difference from eur: earth's hook receives (n, snapshots) with no
+          snakemake object, so learning parameters must arrive through a config global or
+          be attached to the network.
+        uses: [custom-constraint-hook, solver-choice]
+        config: "solving.solver.name"
+        code: "scripts/solve_network.py:extra_functionality"
+        provenance: "scripts/solve_network.py:extra_functionality; scripts/solve_network.py:solver_options"
+    boundary:
+      - variant: exogenous-cost-trajectory
+        rung: L0
+        note: >
+          costs.year is a config key and `working`. L1 to sweep vintages across horizons
+          via scenario-matrix. Unlike eur there is no custom_costs.csv overwrite surface,
+          so a hand-authored trajectory is L3 (edit the cost resource) rather than L1 —
+          a concrete eur/earth asymmetry.
+      - variant: ex-post-learning-rate-estimation
+        rung: L1
+        note: >
+          The best-value variant here and the one to route users to. carrier+c opts
+          tokens impose the cost-reduction grid (`working`), the monte-carlo harness or
+          scenario matrix supplies the fan-out, and the fit is arithmetic on outputs.
+          Franken 2025's method, reproducible on earth with no code.
+      - variant: sequential-cost-update
+        rung: L5
+        note: >
+          The loop harness plus the curve module, as in eur, but harder for two reasons:
+          the myopic chain is `partial` here and less battle-tested, and the cost rewrite
+          has no config surface so it lands on the per-horizon cost RESOURCE or on
+          load_costs. Expect to debug the base myopic pathway before the loop means
+          anything.
+      - variant: one-factor-learning-by-doing
+        rung: L5
+        note: >
+          Strictly larger than eur's L5: the multi-investment-period HOST must be built
+          first (no `perfect` branch in the Snakefile, no registry entry, no
+          concatenation step) and only then the piecewise MILP. Two sequential pieces of
+          bespoke work rather than one. Route users who need this to pypsa-eur if their
+          region allows it, and say plainly that it has never been done on earth.
+      - variant: global-vs-local-learning
+        rung: L5
+        note: >
+          Same as above, and this is where earth's users are MOST exposed: earth studies
+          are typically single-country or single-region, so local learning would claim a
+          country sets the world price of PV or wind. The global variant needs an
+          exogenous world-deployment series that earth ships nothing for. Formally L5 for
+          code, L3 for that data.
+      - variant: multi-technology-spillover
+        rung: L5
+        note: >
+          Host plus MILP plus unvalidated spillover weights, on top of a `partial`
+          multi-horizon chain. No precedent anywhere in this corpus. Research only.
+    where:
+      - change: "multi-investment-period host (the missing prerequisite)"
+        anchor: "Snakefile foresight branch (config['foresight'] == ...) and the rules it gates"
+        provenance: "Snakefile:foresight"
+      - change: "piecewise segment binaries, adjacency and cumulative-capacity coupling"
+        anchor: "scripts/solve_network.py::extra_functionality (called with n, snapshots)"
+        provenance: "scripts/solve_network.py:extra_functionality"
+      - change: "cost-table rewrite for the sequential variant (no config surface here)"
+        anchor: "scripts/process_cost_data.py::load_costs and the costs_{planning_horizons}_sec.csv resource"
+        provenance: "scripts/process_cost_data.py:load_costs; scripts/process_cost_data.py:prepare_costs"
+      - change: "imposed cost-reduction grid for the ex-post variant"
+        anchor: "opts carrier+c tokens -> scripts/prepare_network.py::attr_lookup"
+        provenance: "scripts/prepare_network.py:attr_lookup"
+      - change: "many-solve fan-out for the sweep or the learning-rate band"
+        anchor: "monte_carlo rule -> scripts/monte_carlo.py"
+        provenance: "scripts/monte_carlo.py:monte_carlo_sampling"
+    data_dependencies:
+      - input: "regional anchor-year cumulative installed capacity x0 for the learning technology"
+        required_for: one-factor-learning-by-doing
+        availability: >
+          region-dependent and the binding constraint here: earth's
+          existing-baseyear-brownfield is `partial` and country_specific_data is limited,
+          so for many countries the base-year fleet for the technology of interest is
+          poorly known. Without x0 the curve is unanchored and the method is unanswerable
+          regardless of code
+      - input: "learning rates per technology"
+        required_for: one-factor-learning-by-doing
+        availability: >
+          absent from the repo, and the published values are European/global — importing
+          Zeyen 2023's rates into a non-European study is an assumption to sign off with
+          the user explicitly
+      - input: "exogenous global cumulative-capacity trajectory"
+        required_for: global-vs-local-learning
+        availability: >
+          absent, and more important here than in eur: a single-country earth study
+          CANNOT legitimately use local learning for a globally traded technology, so
+          this series is not optional
+      - input: "hand-authored per-horizon cost trajectory"
+        required_for: exogenous-cost-trajectory
+        availability: >
+          must be built — there is no custom_costs.csv overwrite surface in earth, so a
+          bespoke trajectory means editing the costs_{planning_horizons}_sec.csv resource
+          or patching load_costs
+    cost_profile:
+      solves: >
+        1 LP for exogenous-cost-trajectory. 5-10 LPs for
+        ex-post-learning-rate-estimation, which maps directly onto
+        monte_carlo.options.samples (default 9). 3-10 LPs for sequential-cost-update.
+        The endogenous MILP is not currently reachable, so no measured figure exists for
+        earth.
+      relative: >
+        The LP variants are cheap: earth base cases are often smaller (fewer countries,
+        electricity-only) than a sector-coupled eur run, so the ex-post sweep is
+        comfortably affordable. The MILP is unmeasured here and would sit on top of a
+        newly built multi-period chain, so treat Zeyen's ~21 h single-node figure as a
+        FLOOR, not an estimate.
+      note: >
+        The mitigation order is the reverse of eur's. There the question is how to buy
+        MILP time; here it is whether to attempt the MILP at all. Deliver
+        ex-post-learning-rate-estimation, spend the compute on the cost-reduction grid
+        and the country data check, and reserve the endogenous formulation for a
+        pypsa-eur study.
+    verifies:
+      - variant: ex-post-learning-rate-estimation
+        check: "len(ns) >= 3 and len({n.meta['cost_reduction_factor'] for n in ns}) == len(ns)"
+        over: ensemble
+        note: >
+          Three or more DISTINCT imposed cost-reduction levels are the minimum support
+          for fitting b, and the factor-1 run must be present because C0 is read from it.
+          Duplicate factors mean the opts token or the sample draw collapsed silently and
+          the fitted learning rate is fabricated.
+      - variant: ex-post-learning-rate-estimation
+        check: "n.generators.query('carrier == learning_carrier').p_nom_opt.sum() > 0"
+        over: run
+        note: >
+          If the learning technology was not deployed at all in a run, that point
+          contributes no information to the fit — and a sweep where the cheapest levels
+          deploy nothing gives a learning rate estimated off one or two points.
+      - variant: sequential-cost-update
+        check: "abs(costs[-1] - costs[-2]).max() / abs(costs[-2]).max() < 0.05"
+        over: ensemble
+        note: >
+          Same convergence test as eur (Zeyen 2023's <5%). On earth's `partial` myopic
+          chain a non-converging loop more often means the base pathway is broken than
+          that the curve is wrong — check the myopic run standalone first.
+      - variant: exogenous-cost-trajectory
+        check: "len({n.meta['costs_year'] for n in ns}) == len(ns)"
+        over: ensemble
+        note: >
+          Earth's electricity chain interpolates costs.year into its cost FILENAME, so a
+          scenario sweep that fails to vary the resolved cost table silently runs the same
+          vintage repeatedly and reports a flat trajectory as a finding.

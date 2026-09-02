@@ -1,0 +1,56 @@
+id: waste-heat-recovery
+title: "Waste heat recovery"
+rank: 80
+question: >
+  How much industrial excess heat can be recovered — on-site or fed into
+  district heating — and what fuel and carbon does it displace? A staple of
+  industrial-cluster and district-heating studies (data centres, kilns,
+  electrolysers as heat sources).
+when_to_use:
+  - "industrial waste heat to district heating"
+  - "on-site heat recovery from furnaces / kilns"
+  - "excess heat from electrolysers or data centres"
+  - "heat cascading in industrial clusters"
+  - "value of recovered heat vs heat pumps"
+recipes:
+  generation_conversion: [waste-heat-recovery, district-heating,
+                          industrial-heat-pumps, combined-heat-and-power]
+  demand: [district-heating-demand-share,
+           industrial-process-heat-temperature-bands, services-heat-demand]
+functionality:
+  - id: sector-master-switches
+    role: "core — the use_*_waste_heat fraction knobs and nowasteheat token live in the sector chain"
+  - id: district-heating-suite
+    role: "the DH system the recovered heat competes in; the DH footprint (potential/progress) caps total recovery"
+  - id: industry-t-endogenous
+    role: "industrial temperature-band links only CONSUME heat — no by-product port, so no industrial donor even in endogenous mode"
+  - id: co2-network-sequestration
+    role: "capture heat demand is waved through ('assume enough local waste heat for CC') — free, not modelled"
+  - id: chp-operation-constraints
+    role: "dead-key — the CHP operating envelope of the competing DH stack is never enforced"
+  - id: summary-outputs
+    role: "displaced boiler/heat-pump supply and its carbon read from the energy-balance tables"
+gap_assessment: >
+  Partial — a genuine upgrade over pypsa-earth's flat gap, but only for
+  power-to-X heat. add_waste_heat retrofits an urban-central-heat output
+  onto six donor links by default — Fischer-Tropsch, Sabatier, Haber-Bosch,
+  methanolisation, H2 electrolysis and H2 fuel cells — with per-donor
+  recoverable fractions (use_*_waste_heat, 25% except fuel cells at 100%),
+  so "electrolyser excess heat into district heating" is a config knob and
+  the recovered heat competes endogenously in the DH merit order against
+  heat pumps, CHP and boilers. The industrial half of the topic remains
+  absent: industry (including the new endogenous temperature-band links) has
+  no heat by-product port, so kilns, steel, glass and data centres cannot
+  donate; DAC and SMR have no hook; there is no on-site reuse, band-to-band
+  cascading, ORC recovery, or temperature-level accounting; recovery only
+  lands on urban-central buses, so the DH footprint caps it; and waste heat
+  cannot serve as a heat-pump source (limited_heat_sources knows only
+  geothermal and river water). The waste-heat-recovery recipe grades
+  industrial-donor variants L2-L5 (extra output on industry links is a small
+  edit; defensible potentials need external site/temperature data). Use it
+  for P2X heat integration; industrial excess-heat studies still need
+  bespoke work or a dedicated DH tool.
+coverage: partial
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

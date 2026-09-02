@@ -1,0 +1,232 @@
+id: shipping-demand
+title: Shipping demand (maritime navigation fuels)
+summary: >
+  Energy demand of domestic and international navigation (shipping), its
+  allocation to port regions, and its split across marine fuels
+  (oil / hydrogen / methanol) over time.
+
+when_to_use:
+  - "add or change shipping / maritime / navigation demand"
+  - "green shipping fuels / hydrogen ships / ammonia or methanol shipping"
+  - "marine fuel oil / bunker fuel demand"
+  - "ports in the model"
+  - "international bunkers emissions"
+  - "scale shipping demand"
+  - "H2 liquefaction for shipping"
+  - "known in pypsa-eur as: shipping, shipping oil, H2 for shipping"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        Constant nodal loads for navigation: 'H2 for shipping' on H2 (or 'H2 liquid')
+        buses for the hydrogen share, and 'shipping oil' on oil buses for the remainder,
+        sized from 'total international navigation' + 'total domestic navigation' and
+        allocated to regions containing ports; plus a negative 'shipping oil emissions'
+        load (full or domestic-only share per international_bunkers).
+      mechanism: >
+        rule prepare_ports (scripts/prepare_ports.py) downloads the World Port Index,
+        weights ports by harbor size (Harbor_size_nr 1/2/3 for Small/Medium/Large) and
+        computes per-country 'fraction'. add_shipping in scripts/prepare_sector_network.py
+        maps ports to GADM regions via locate_bus and sets p_set = share * fraction *
+        country navigation demand (* efficiency for H2) * 1e6 / 8760. The hydrogen share
+        comes from sector.shipping_hydrogen_share keyed '{demand}_{planning_horizons}'
+        (get() with demand_sc + '_' + investment_year); H2 demand is scaled by
+        shipping_average_efficiency / fuel-cell efficiency; optional H2 liquefaction adds
+        'H2 liquid' buses and liquefaction links. The oil share is the residual
+        1 - hydrogen share. Country totals come from UNSD balances
+        (build_base_energy_totals.py, 'navigation') scaled by prepare_energy_totals CAGRs.
+      not_covered: >
+        No methanol or ammonia shipping option (two-way H2/oil split only); flat profile
+        (no voyage seasonality); domestic and international navigation are lumped in one
+        allocation (both distributed via port fractions); the H2 load is suppressed when
+        policy_config.hydrogen is_reference + remove_h2_load; no custom hook for the ports
+        list (custom_data only covers export_ports).
+      provenance: "scripts/prepare_sector_network.py:add_shipping;scripts/prepare_ports.py:Harbor_size_nr;scripts/build_base_energy_totals.py:navigation"
+    levers:
+      - key: sector.enable.shipping
+        effect: "Toggles add_shipping on/off."
+        default: "true"
+        provenance: "config.default.yaml:shipping;scripts/prepare_sector_network.py:add_shipping"
+      - key: sector.shipping_hydrogen_share
+        effect: "Hydrogen share of navigation energy, dict keyed '{demand}_{planning_horizons}' (e.g. NZ_2050: 0.36); oil share is the residual."
+        default: "dict BU/AP/NZ/DF/AB x 2030/2050, e.g. AB_2030: 0.05"
+        provenance: "config.default.yaml:shipping_hydrogen_share;scripts/prepare_sector_network.py:shipping_hydrogen_share"
+      - key: sector.shipping_average_efficiency
+        effect: "Fuel-oil-to-propulsion efficiency; H2 demand = share * demand * (this / fuel cell efficiency)."
+        default: "0.4"
+        provenance: "config.default.yaml:shipping_average_efficiency;scripts/prepare_sector_network.py:shipping_average_efficiency"
+      - key: sector.shipping_hydrogen_liquefaction
+        effect: "If true, shipping H2 is served from 'H2 liquid' buses fed by H2 liquefaction links (adds cost/losses)."
+        default: "false"
+        provenance: "config.default.yaml:shipping_hydrogen_liquefaction;scripts/prepare_sector_network.py:shipping_hydrogen_liquefaction"
+      - key: sector.international_bunkers
+        effect: "If true, all shipping-oil emissions are counted; if false only the domestic navigation share."
+        default: "false"
+        provenance: "config.default.yaml:international_bunkers;scripts/prepare_sector_network.py:international_bunkers"
+      - key: policy_config.hydrogen.remove_h2_load
+        effect: "With is_reference, drops the 'H2 for shipping' load (reference network for export additionality runs)."
+        default: "false"
+        provenance: "config.default.yaml:remove_h2_load;scripts/prepare_sector_network.py:remove_h2_load"
+      - key: scenario.demand
+        effect: "Demand-scenario wildcard selecting both the share key '{demand}_{year}' and the CAGR pathway."
+        default: "[AB]"
+        provenance: "config.default.yaml:demand:;scripts/prepare_sector_network.py:demand_sc"
+    boundary:
+      - variant: "raise/lower hydrogen shipping uptake per scenario and year"
+        rung: L1
+        note: "Edit the '{demand}_{year}' entries of sector.shipping_hydrogen_share (1.0 = all-H2 shipping)."
+      - variant: "scale total navigation demand"
+        rung: L3
+        note: "Edit 'total domestic navigation' / 'total international navigation' columns of data/demand/growth_factors_cagr.csv / efficiency_gains_cagr.csv."
+      - variant: "use a custom port list or re-weight ports"
+        rung: L2
+        note: "prepare_ports.py always downloads the WPI and hardcodes size weights (Harbor_size_nr) — edit the script or overwrite resources ports.csv; only export_ports has a custom_data hook."
+      - variant: "methanol or ammonia shipping"
+        rung: L5
+        note: "No third fuel share exists in earth; needs new carrier/load logic in add_shipping (pypsa-eur's shipping_methanol_share is the template)."
+      - variant: "seasonal shipping profile"
+        rung: L2
+        note: "p_set is flat; replace with a time series in add_shipping."
+    where:
+      - change: "shipping loads, H2/oil split, liquefaction, emissions"
+        anchor: "scripts/prepare_sector_network.py:add_shipping"
+        provenance: "scripts/prepare_sector_network.py:add_shipping"
+      - change: "port list and per-port fractions"
+        anchor: "rule prepare_ports -> scripts/prepare_ports.py"
+        provenance: "Snakefile:rule prepare_ports;scripts/prepare_ports.py:filter_ports"
+      - change: "country navigation totals and scenario scaling"
+        anchor: "scripts/build_base_energy_totals.py:calc_sector + data/demand/growth_factors_cagr.csv"
+        provenance: "scripts/build_base_energy_totals.py:calc_sector;data/demand/growth_factors_cagr.csv:total domestic navigation"
+    data_dependencies:
+      - input: "World Port Index csv (live download from msi.nga.mil)"
+        required_for: "spatial allocation to port regions"
+        availability: "downloaded at runtime (global coverage)"
+      - input: "UNSD energy balances navigation columns"
+        required_for: "demand level"
+        availability: "must be built (build_base_energy_totals; global)"
+      - input: "GADM shapes for locate_bus mapping"
+        required_for: "port-to-region assignment"
+        availability: "must be built (region-dependent)"
+      - input: "data/demand CAGR csvs navigation columns"
+        required_for: "scenario scaling"
+        availability: "exists by default (DEFAULT row fallback)"
+    demand_dimensions:
+      driver: "Country domestic + international navigation final energy from UNSD balances"
+      spatial: "Port locations weighted by harbor size (WPI), mapped to GADM regions"
+      temporal: "Annual-constant (p_set = annual TWh * 1e6 / 8760)"
+      scenario: "H2 share dict keyed '{demand}_{planning_horizons}'; totals via CAGR csvs per {demand} wildcard"
+
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Nodal navigation demand split three ways per investment year into 'H2 for
+        shipping' (with optional liquefaction), 'shipping methanol' and 'shipping oil'
+        loads, each with its own efficiency conversion relative to fuel oil, CO2 booked
+        on the supply links; international demand allocated by real port cargo volumes,
+        domestic by population.
+      mechanism: >
+        rule build_shipping_demand (scripts/build_shipping_demand.py) distributes each
+        country's 'total international navigation' across regions by the outflow volumes
+        of ports from the attributed-ports dataset (sjoin_nearest of ports to regions,
+        properties_outflows fractions). add_shipping in scripts/prepare_sector_network.py
+        adds population-weighted 'total domestic navigation', forms p_set = total * 1e6 /
+        nhours, and applies get(shipping_{hydrogen,methanol,oil}_share, investment_year).
+        H2 demand is scaled by shipping_oil_efficiency / fuel-cell efficiency (liquefied
+        via 'H2 liquefaction' links if shipping_hydrogen_liquefaction); methanol by
+        shipping_oil_efficiency / shipping_methanol_efficiency on 'shipping methanol'
+        buses (regional per methanol.regional_methanol_demand); oil on 'shipping oil'
+        buses (regional per regional_oil_demand). Shares summing to != 1 are allowed and
+        act as demand scaling (logged warning).
+      not_covered: >
+        No ammonia shipping share; flat profile (no seasonality); port allocation applies
+        only to international navigation (domestic is population-weighted); no explicit
+        efficiency-improvement pathway for ships beyond the static efficiency ratios.
+      provenance: "scripts/build_shipping_demand.py:properties_outflows;scripts/prepare_sector_network.py:add_shipping;rules/build_sector.smk:rule build_shipping_demand"
+    levers:
+      - key: sector.shipping
+        effect: "Toggles add_shipping on/off."
+        default: "true"
+        provenance: "config/config.default.yaml:shipping;scripts/prepare_sector_network.py:add_shipping"
+      - key: sector.shipping_hydrogen_share
+        effect: "H2 share per investment year (dict 2020-2050)."
+        default: "0 for all years"
+        provenance: "config/config.default.yaml:shipping_hydrogen_share;scripts/prepare_sector_network.py:shipping_hydrogen_share"
+      - key: sector.shipping_methanol_share
+        effect: "Methanol share per investment year."
+        default: "2020: 0 ... 2050: 1"
+        provenance: "config/config.default.yaml:shipping_methanol_share;scripts/prepare_sector_network.py:shipping_methanol_share"
+      - key: sector.shipping_oil_share
+        effect: "Fuel-oil share per investment year; sum != 1 scales total shipping demand."
+        default: "2020: 1 ... 2050: 0"
+        provenance: "config/config.default.yaml:shipping_oil_share;scripts/prepare_sector_network.py:shipping_oil_share"
+      - key: sector.shipping_oil_efficiency
+        effect: "Fuel-oil propulsion efficiency; reference for converting demand to H2/methanol quantities."
+        default: "0.4"
+        provenance: "config/config.default.yaml:shipping_oil_efficiency;scripts/prepare_sector_network.py:shipping_oil_efficiency"
+      - key: sector.shipping_methanol_efficiency
+        effect: "Methanol propulsion efficiency (demand multiplier oil_eff/methanol_eff)."
+        default: "0.46"
+        provenance: "config/config.default.yaml:shipping_methanol_efficiency;scripts/prepare_sector_network.py:shipping_methanol_efficiency"
+      - key: sector.shipping_hydrogen_liquefaction
+        effect: "Serve shipping H2 as liquid H2 via liquefaction links."
+        default: "false"
+        provenance: "config/config.default.yaml:shipping_hydrogen_liquefaction;scripts/prepare_sector_network.py:shipping_hydrogen_liquefaction"
+      - key: sector.regional_oil_demand
+        effect: "Regional vs single EU bus for the shipping-oil load."
+        default: "true"
+        provenance: "config/config.default.yaml:regional_oil_demand;scripts/prepare_sector_network.py:regional_oil_demand"
+      - key: sector.methanol.regional_methanol_demand
+        effect: "Regional vs single EU bus for the shipping-methanol load."
+        default: "false"
+        provenance: "config/config.default.yaml:regional_methanol_demand;scripts/prepare_sector_network.py:regional_methanol_demand"
+      - key: energy.energy_totals_year
+        effect: "Statistics year of the navigation totals baseline."
+        default: "2023"
+        provenance: "config/config.default.yaml:energy_totals_year;rules/build_sector.smk:energy_totals_year"
+    boundary:
+      - variant: "change the marine fuel mix per year"
+        rung: L0
+        note: "Edit the per-year dicts of the three shares (must sum to 1 unless intentional scaling)."
+      - variant: "scale total shipping demand"
+        rung: L1
+        note: "Deliberately let the three shares sum to !=1 (the code warns but proceeds: 'increased or decreased demand assumptions')."
+      - variant: "ammonia shipping"
+        rung: L5
+        note: "No shipping ammonia share/carrier in the config or add_shipping; new logic needed (methanol branch is the template)."
+      - variant: "different port allocation (own port/cargo data)"
+        rung: L3
+        note: "Replace the attributed_ports dataset input (datasets.attributed_ports / rule retrieve_attributed_ports) with same-schema geojson including properties_outflows."
+      - variant: "seasonal shipping profile"
+        rung: L2
+        note: "Static p_set in add_shipping; replace with a time series."
+    where:
+      - change: "fuel split, efficiencies, liquefaction, emissions"
+        anchor: "scripts/prepare_sector_network.py:add_shipping"
+        provenance: "scripts/prepare_sector_network.py:add_shipping"
+      - change: "international-navigation port allocation"
+        anchor: "rule build_shipping_demand -> scripts/build_shipping_demand.py"
+        provenance: "rules/build_sector.smk:rule build_shipping_demand;scripts/build_shipping_demand.py:sjoin_nearest"
+      - change: "ports dataset"
+        anchor: "rule retrieve_attributed_ports / datasets.attributed_ports"
+        provenance: "rules/retrieve.smk:rule retrieve_attributed_ports;config/config.default.yaml:attributed_ports"
+    data_dependencies:
+      - input: "attributed ports json with cargo outflows (attributed_ports dataset)"
+        required_for: "international navigation allocation"
+        availability: "exists by default (retrieved archive; global ports, filtered to Europe scope)"
+      - input: "JRC-IDEES + eurostat navigation energy totals"
+        required_for: "demand level"
+        availability: "must be built (Europe only)"
+      - input: "pop_weighted_energy_totals_s_{clusters}.csv"
+        required_for: "domestic navigation allocation"
+        availability: "must be built"
+      - input: "methanol and H2 infrastructure buses"
+        required_for: "non-oil fuel shares"
+        availability: "exists by default in sector networks"
+    demand_dimensions:
+      driver: "Country domestic + international navigation final energy (JRC-IDEES/eurostat)"
+      spatial: "International: port cargo-outflow fractions (attributed ports, nearest region); domestic: population weighting"
+      temporal: "Annual-constant static p_set"
+      scenario: "Three per-year fuel-share dicts (2020-2050) via get(); shares summing !=1 scale demand; baseline via energy.energy_totals_year"

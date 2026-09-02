@@ -1,0 +1,232 @@
+paper: "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+tier: 1
+model_used: >
+  Bespoke PyPSA model (GBPower): a custom GB electricity market model built on PyPSA,
+  using a nodal (~300 buses, Grid Supply Points) network layout with DC approximation
+  (NTC links, Kirchhoff's law removed). Electricity-only, operations only (no investment),
+  run day-by-day at 30-minute resolution for 2022-01-01 to 2024-12-31.
+scope: >
+  Quantifies consumer savings, unit-level producer surplus impacts, and socioeconomic
+  welfare gain that would have arisen had a six-zone wholesale electricity market operated
+  in Great Britain during 2022-2024, and analyses transitional and permanent investor risk
+  under zonal pricing.
+methods:
+  - slug: zonal-nodal-and-redispatch
+    role: defines
+    evidence: >
+      "The simulation of the GB national electricity market, and the counterfactual
+      six-zonal locational market layout, is run in the open-source linear optimisation
+      framework Python for Power System Analysis (PyPSA)." (Methods M.1). Three market
+      layouts are implemented and compared: national (copper plate), zonal (six zones),
+      and nodal (~300 zones). After day-ahead wholesale optimisation, storage and
+      interconnector positions are fixed and a nodal re-optimisation determines the
+      transmission-compliant dispatch; the difference is the required redispatch volume
+      (Methods M.3, M.8).
+    procedure_notes: >
+      National market: all buses aggregated to one. Zonal market: intra-zone line
+      capacities set to infinity; five critical inter-zonal boundaries (SSE-SP, SCOTEX/B6,
+      SSHARN, FLOWSTH, SEIMP) constrain cross-zonal flows via NTC. Nodal market:
+      ~300 buses, used only as a post-clearing physical dispatch check. After the
+      wholesale optimisation, storage and interconnector positions are inserted into
+      the nodal layout and re-optimised to find the transmission-compliant dispatch.
+      The schedule difference = congestion-related balancing volume. Line capacities
+      are then iteratively tuned (a daily global scaling factor) until modelled balancing
+      volume matches real observed grid-congestion-related balancing volume (Methods M.7).
+      Runs cover every day 2022-01-01 to 2024-12-31 (1096 days), 48 settlement periods
+      per day. Zonal boundary configuration was also compared against PyPSA-Eur's
+      cluster_network.py aggregation in a sensitivity experiment (Methods M.10).
+    variant: national-vs-zonal-backcasting
+    parameters:
+      zones: 6
+      settlement_periods: 48
+      horizon_days: 1
+      nodes: "~300 (nodal layout)"
+      years_simulated: "2022, 2023, 2024"
+
+  - slug: linearised-optimal-power-flow
+    role: routine-use
+    evidence: >
+      "Power flow is simulated using a full DC approximation, as is done in [22]. This
+      approximation removes constraints imposed by Kirchhoff's law [45], and instead
+      simplifies flows across boundaries to a simple Net Transfer Capacity (NTC)."
+      (Methods M.3). The model uses PyPSA Link components rather than Line components
+      to drop Kirchhoff Voltage Law constraints (Methods M.7).
+    procedure_notes: >
+      Lines are replaced with Links, removing KVL constraints. NTC-style capacity limits
+      are imposed only at the five critical cross-zonal boundaries. Internal experiments
+      showed that including KVL altered spatial price distributions (Methods M.10).
+      The model uses strictly linear optimisation throughout; unit commitment is omitted
+      for computational feasibility (Methods M.10).
+    variant: ntc-dc-no-kvl
+    parameters: {}
+
+  - slug: shadow-prices-and-marginal-values
+    role: canonical-use
+    evidence: >
+      The paper reads zonal wholesale prices as the dual variables of the linear
+      optimisation, uses them to compute inter-zonal congestion rent, producer surplus,
+      and consumer savings. "The resulting GB wholesale schedules are then assessed
+      against the physical capacity of the transmission grid to evaluate the required
+      volume of redispatch actions." (Introduction/Methods M.1). Congestion rent is
+      explicitly tracked as a price-difference term: "Inter-zonal congestion rents, when
+      allocated to consumers, reduce the consumer cost of electricity by ~£6.3/MWh."
+    procedure_notes: >
+      Zonal prices emerge from the linear programme's duals. Producer surplus is
+      computed post-optimisation at the unit level for wholesale, RO, CfD and balancing
+      revenues. Consumer cost decomposition tracks wholesale, CfD payments, RO payments,
+      BM costs and congestion rents separately. Two welfare calculations are performed:
+      top-down (consumer surplus minus producer surplus losses plus IC congestion rent
+      change) and bottom-up (fuel-cost savings from changed dispatch mix). Results
+      are compared as a validation cross-check (Methods M.9).
+    variant: zonal-dual-and-congestion-rent
+    parameters: {}
+
+  - slug: price-formation-and-scarcity-rents
+    role: canonical-use
+    evidence: >
+      "In 69% of simulated hours, wind output is low enough to avoid grid congestion,
+      leading to one (mostly) gas-set marginal wholesale price across GB in a national
+      market and all zones under a zonal market." In high-wind hours, "Wholesale prices
+      in northern zones are typically set by CfD units with (approximately) zero marginal
+      cost, while zonal prices in the South are set by gas-fired generators." The paper
+      extensively analyses how price formation changes between a national and a zonal
+      design and the implications for scarcity rents, inframarginal rents, and balancing
+      premiums. (Results sections, Methods M.5, M.9.)
+    procedure_notes: >
+      Thermal unit SRMCs are estimated from a data-driven 30-day rolling-window
+      correlation of dispatch behaviour with observed day-ahead prices, then a
+      per-settlement-period correction factor is applied to match the real day-ahead
+      price for each period (Methods M.5). CfD units bid at £0/MWh; RO units bid at
+      negative their ROC value. Balancing markup is set at £30/MWh (aligned with
+      ENTSO-E assumptions). The £55/MWh observed average balancing premium in the
+      real system is compared against this assumption, and the gap is treated as
+      strategic bidding rent that would shrink under zonal pricing.
+    variant: data-calibrated-merit-order
+    parameters:
+      balancing_markup: "£30/MWh (central); £15/MWh (sensitivity)"
+      srmc_rolling_window_days: 30
+
+  - slug: operational-dispatch-and-rolling-horizon
+    role: routine-use
+    evidence: >
+      "The present research is based on model executions for every day between
+      2022-01-01 and 2024-12-31, one day at a time with 48 settlement periods
+      (i.e. in 30-minute intervals)." (Methods M.1). "Each model run only uses a
+      24-hour optimisation horizon." (Methods M.10).
+    procedure_notes: >
+      Each day is solved independently as a fixed-horizon dispatch optimisation with
+      no look-ahead beyond 24 hours. Investment is absent; all capacities are exogenous
+      and inserted from historical data. The 24-hour horizon is acknowledged as a
+      limitation for pumped-hydro storage with E/P ratios suggesting inter-day
+      optimisation would be feasible (Methods M.10). Storage units carry no state of
+      charge from the previous day's run.
+    variant: day-by-day-dispatch-only
+    parameters:
+      horizon: "24 hours (48 half-hour settlement periods)"
+      total_days: 1096
+
+  - slug: storage-sizing-and-duration
+    role: routine-use
+    evidence: >
+      "For each unit, energy and (dis)charging capacity are here estimated using more
+      than 300 days of PN data. The model assumes that energy capacity equals the
+      accumulated maximum uninterrupted charging observed within this timeframe."
+      (Methods M.4). A "damping factor" of 25% is applied to energy and power capacity
+      as seen by the model wholesale optimisation (Methods M.4, Results).
+    procedure_notes: >
+      Storage units (batteries and pumped hydro) have their energy and power capacities
+      inferred from Physical Notification (PN) data rather than nameplate values, because
+      these units split capacity across wholesale and balancing markets. A 25% scaling
+      factor is applied to the wholesale-visible capacity to reproduce observed wholesale
+      arbitrage behaviour. The 75% is implicitly reserved for balancing. E/P ratios are
+      computed per unit; some exceed 10 hours, suggesting potential inter-day use.
+    variant: empirically-damped-capacity
+    parameters:
+      wholesale_capacity_fraction: 0.25
+      capacity_estimation_window_days: ">300"
+
+  - slug: balancing-and-ancillary-services
+    role: canonical-use
+    evidence: >
+      "The GBPower electricity market model is run for each day of 2022, 2023 and 2024
+      ... the resulting GB wholesale schedules are then assessed against the physical
+      capacity of the transmission grid to evaluate the required volume of redispatch
+      actions for both market designs. The cost assigned to those redispatch actions ...
+      via the so-called Balancing Mechanism ('BM') is based on the observed costs of
+      the actions taken on the relevant day in GB." (Introduction). The paper's central
+      quantity — socioeconomic welfare gain — is dominated by reduced balancing market
+      costs (prevented thermal balancing SRMC) under zonal pricing.
+    procedure_notes: >
+      The balancing market is not explicitly optimised but approximated: the difference
+      between wholesale schedule and nodal (transmission-compliant) dispatch defines
+      the balancing volume. Real daily Elexon accepted bid/offer costs are pooled and
+      assigned proportionally to modelled balancing volumes. Only congestion-related
+      ("flagged") BM actions are modelled; energy-imbalance ("non-flagged") actions are
+      excluded. Five components of socioeconomic benefit are tracked (Methods M.9):
+      export revenues, import costs, IC congestion rents, prevented thermal balancing
+      SRMC, and prevented thermal wholesale SRMC. The balancing markup is £30/MWh.
+    variant: volume-matched-cost-pooling
+    parameters:
+      balancing_markup: "£30/MWh"
+      scope: "congestion-flagged BM actions only"
+
+  - slug: cost-allocation-and-equity-metrics
+    role: defines
+    evidence: >
+      "This section explores policies that could be put in place to ensure financial
+      compensation for the losses suffered by existing generators (Table 1)." Three
+      grandfathering policies are analysed: Policy 1 (CfD strike price grandfathering),
+      Policy 2 (production-based FTRs eliminating price risk), Policy 3 (grandfathered
+      merit order splitting dispatch from revenue to eliminate volume risk). The paper
+      quantifies the distributional trade-off between consumer savings and generator
+      revenue restoration at unit level for 437 assets.
+    procedure_notes: >
+      Producer surplus is computed unit-by-unit across 437 BMUs for wholesale,
+      RO certificates, CfD top-ups and balancing revenues under both market designs.
+      Policy 2 allocates intra-GB congestion rent proportionally to actual dispatch
+      (production-based FTRs). Policy 3 further redistributes to cover curtailed units,
+      distributing volume risk across assets equally. Total policy payout is constrained
+      to match available congestion rent (100% allocation to generators is the extreme
+      case; partial allocations follow the same arithmetic). The north-south asset
+      classification is based on a geographic boundary shown in Fig. 26.
+    variant: grandfathering-policy-spectrum
+    parameters:
+      units: 437
+      policy_variants: 3
+      congestion_rent_allocation: "0% to 100% to generators"
+
+  - slug: discounting-and-cost-of-capital
+    role: routine-use
+    evidence: >
+      The paper compares its welfare results against studies that use hurdle rate uplifts
+      as the metric for permanent investor risk. "Following the arithmetic demonstrated
+      by AFRY, where every 0.01% rise in hurdle rates cuts zonal market welfare by about
+      £100 million NPV, the benefits projected in this work could absorb hurdle rate
+      increases significantly larger than 1%." AFRY's central scenario is discounted
+      at 3.5% per year in real terms. (Section on GB Socioeconomic Benefit / Future
+      Projections.)
+    procedure_notes: >
+      The paper does not itself run a discounting or capital-cost model; it cites AFRY's
+      and LCP Delta's NPV frameworks and compares its own welfare magnitudes against
+      their implied break-even hurdle rate increases. Discount rate of 3.5% (real) is
+      AFRY's assumption, cited and used for comparison purposes only. The paper's own
+      results are in undiscounted annual £bn.
+    variant: cited-comparison-only
+    parameters:
+      discount_rate: "3.5% real (AFRY assumption, cited for comparison)"
+      hurdle_rate_sensitivity: "£100mn NPV per 0.01% increase (AFRY's arithmetic)"
+
+unmatched_methods:
+  - name: "data-driven network capacity calibration (daily line-tuning)"
+    evidence: >
+      "In an iterative approach, the line (now link) capacities are tuned uniformly
+      until the modelled balancing volume matches the real grid-congestion-related
+      balancing volume in the real system for that day. The result is a global 'line
+      tuning factor'." (Methods M.7). This is a novel empirical calibration procedure —
+      fitting a scalar NTC scaling factor per day so that modelled curtailment matches
+      Elexon-observed congestion-flagged BM volumes. No existing slug covers this
+      data-driven calibration of network parameters to match observed system behaviour;
+      it is not spatial clustering, not N-1 security, and not transmission expansion
+      co-optimisation. Closest slug would be linearised-optimal-power-flow but that
+      covers the formulation, not iterative empirical tuning of line capacities to
+      match real balancing volumes.

@@ -1,0 +1,93 @@
+id: electric-ferries
+title: Electric ferries / short-sea shipping
+summary: >
+  Battery-electric vessels for ferry routes and short-sea shipping, charged from
+  shore power at ports.
+
+when_to_use:
+  - "electric ferries / e-ferries"
+  - "battery ships / electric vessels"
+  - "short-sea shipping electrification"
+  - "shore power / cold ironing demand"
+  - "electrify domestic navigation"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        NOT covered. Shipping (add_shipping) knows exactly two fuels: a hydrogen
+        share (sector.shipping_hydrogen_share -> "H2 for shipping" Load at
+        port-weighted nodes) and the oil remainder ("shipping oil" Load). There is no
+        electricity share, no battery-vessel component, no shore-power load, and no
+        distinction between ferry/short-sea and deep-sea navigation — demand is the
+        UNSD 'total domestic navigation' + 'total international navigation' total per
+        country, distributed to nodes by port size (rule prepare_ports, World Port
+        Index).
+      mechanism: >
+        Nothing electric to describe; the port-location machinery (locate_bus on the
+        ports CSV, country demand mapped by port fraction) is the reusable part an
+        electric-shipping load would piggyback on.
+      not_covered: >
+        Everything electric: shore charging, vessel batteries, route-length
+        suitability (which trips can be electrified), ferry vs cargo split within
+        navigation demand.
+      provenance: "scripts/prepare_sector_network.py:add_shipping"
+
+    levers:
+      - key: sector.enable.shipping
+        effect: "Master switch for shipping demand (H2 + oil only)."
+        default: "true"
+        provenance: "Snakefile:prepare_sector_network"
+      - key: sector.shipping_hydrogen_share
+        effect: "Only existing low-carbon shipping lever; shifts demand to H2, not electricity."
+        default: "AB_2030: 0.05 (dict per scenario/year)"
+        provenance: "scripts/prepare_sector_network.py:shipping_hydrogen_share"
+
+    boundary:
+      - variant: "Any electric shipping at all"
+        rung: L2
+        note: >
+          No config key exists. Smallest edit: in add_shipping, add a
+          shipping_electric_share (read via options), and madd an AC-bus Load at the
+          port nodes for that fraction (pattern-copy the H2 share/load logic,
+          dropping the fuel-cell efficiency conversion in favour of an
+          electric-propulsion efficiency). New key also needs adding to your config.
+      - variant: "Domestic-only (ferry/short-sea) electrification"
+        rung: L2
+        note: "energy_totals carries 'total domestic navigation' separately from international — apply the electric share to the domestic column only inside add_shipping."
+      - variant: "Route-resolved ferry demand (which crossings, what schedule)"
+        rung: L3
+        note: "Needs ferry route/traffic data for the target region mapped to ports — no such dataset exists in the repo."
+      - variant: "Vessel batteries + charging power limits at ports as components"
+        rung: L4
+        note: "New Store/Link components sized from new data plus config/rule plumbing (analogous to the EV battery pattern in add_land_transport)."
+      - variant: "Endogenous fuel choice for shipping (electric vs H2 vs oil)"
+        rung: L5
+        note: "Shares are exogenous; competition needs bespoke logic."
+
+    where:
+      - change: "Where an electric-shipping share and shore-power load would be added"
+        anchor: "scripts/prepare_sector_network.py function add_shipping (pattern: shipping_hydrogen_share handling)"
+        provenance: "scripts/prepare_sector_network.py:add_shipping"
+      - change: "Port locations and per-country port weighting"
+        anchor: "rule prepare_ports -> scripts/prepare_ports.py"
+        provenance: "scripts/prepare_ports.py:download_ports"
+      - change: "Domestic vs international navigation split in demand data"
+        anchor: "rule build_base_energy_totals -> scripts/build_base_energy_totals.py function calc_sector"
+        provenance: "scripts/build_base_energy_totals.py:calc_sector"
+      - change: "Reusable EV-style battery/charger component pattern"
+        anchor: "scripts/prepare_sector_network.py function add_land_transport"
+        provenance: "scripts/prepare_sector_network.py:add_land_transport"
+
+    data_dependencies:
+      - input: "UNSD energy balances ('total domestic navigation', 'total international navigation')"
+        required_for: "any shipping demand, incl. an electric share carved from it"
+        availability: "must be built (build_base_energy_totals)"
+      - input: "World Port Index ports (resources ports.csv via prepare_ports)"
+        required_for: "locating shore-power loads at nodes"
+        availability: "must be built (runtime download; monthly-updated source)"
+      - input: "Ferry route / vessel traffic data for the target region"
+        required_for: "route-resolved or battery-sizing variants"
+        availability: "absent"

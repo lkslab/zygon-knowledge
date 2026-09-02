@@ -1,0 +1,10 @@
+--- a/Snakefile
++++ b/Snakefile
+@@ -86,6 +86,7 @@
+ include: "rules/solve_electricity.smk"
+ include: "rules/postprocess.smk"
+ include: "rules/development.smk"
++include: "rules/zygon_collect.smk"
+ 
+ 
+ if config["foresight"] == "overnight":

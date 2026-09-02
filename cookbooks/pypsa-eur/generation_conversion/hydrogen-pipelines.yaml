@@ -1,0 +1,146 @@
+id: hydrogen-pipelines
+title: Hydrogen pipeline network
+summary: >
+  Inter-regional hydrogen transport by pipeline — greenfield candidate
+  corridors, compression losses, unit-size discretisation, and how the
+  network can also arise from repurposed gas pipes.
+when_to_use:
+  - "hydrogen network / H2 grid"
+  - "hydrogen pipelines"
+  - "H2 transmission between regions"
+  - "hydrogen backbone"
+  - "new hydrogen corridors"
+  - "H2 pipeline compression energy"
+  - "no hydrogen network / islanded hydrogen"
+  - "pypsa-eur carrier names: H2 pipeline, H2 pipeline retrofitted"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        ON by default (sector.H2_network: true). In
+        add_h2_gas_infrastructure, create_network_topology derives candidate
+        corridors from the EXISTING electricity lines plus links of carrier
+        "DC" and "gas pipeline" (i.e. the H2 network can only follow where
+        an electricity or gas connection already runs), keeps pairs whose
+        endpoints both host H2 buses, and adds one extendable bidirectional
+        "H2 pipeline" Link per corridor (p_min_pu = -1, p_nom starts at 0 —
+        the H2 grid is entirely greenfield), with capital cost = length x
+        the "H2 (g) pipeline" cost row. After all sectors are built,
+        lossy_bidirectional_links splits each pipe into a forward/reversed
+        pair (sector.transmission_efficiency enable includes "H2 pipeline");
+        compression_per_1000km 0.018 is applied as an ELECTRICITY demand at
+        the origin bus (bus2 with negative efficiency2), and the solver
+        couples the pair's capacities via
+        add_lossy_bidirectional_link_constraints (always wired in
+        extra_functionality). If sector.H2_retrofit is true a second,
+        cheaper corridor class "H2 pipeline retrofitted" appears on gas
+        routes (own recipe: hydrogen-pipeline-retrofitting). Optimised pipe
+        capacities can be snapped to 1200 MW units post-solve
+        (solving.options.post_discretization, link_unit_size "H2 pipeline",
+        default disabled). With sector.H2_network false, remove_h2_network
+        drops every link whose carrier contains "H2 pipeline" (note: that
+        string-match also removes retrofitted pipes). Myopic runs carry
+        built pipeline capacity forward as fixed vintaged links via
+        add_brownfield.
+      mechanism: >
+        rule prepare_sector_network -> add_h2_gas_infrastructure (H2_network
+        block, after the retrofit block); loss/compression splitting happens
+        in the __main__ transmission_efficiency loop calling
+        lossy_bidirectional_links; the reversed-pair capacity coupling and
+        (if enabled) post-discretisation live in scripts/solve_network.py.
+      not_covered: >
+        No existing hydrogen pipelines — there is no H2 infrastructure
+        dataset; every "H2 pipeline" starts at zero capacity. No candidate
+        corridors beyond the union of electricity and gas topologies:
+        an arbitrary new route (e.g. subsea H2 backbone between regions
+        without a DC link or gas pipe) needs a code edit. No cap on total
+        H2 network build (no equivalent of the line volume limit). No
+        linepack, pressure or flow physics — pipes are transport links with
+        static efficiency 1 plus compression electricity. H2 imports by
+        pipeline from outside the system are a separate fixed-price option
+        (sector.imports, "import H2" generators at former gas entry points
+        — green-energy-imports recipe). Intra-regional H2 distribution does
+        not exist (one H2 bus per region).
+      provenance: "scripts/prepare_sector_network.py:add_h2_gas_infrastructure; scripts/prepare_sector_network.py:create_network_topology; scripts/prepare_sector_network.py:lossy_bidirectional_links; scripts/prepare_sector_network.py:remove_h2_network; scripts/solve_network.py:add_lossy_bidirectional_link_constraints"
+    levers:
+      - key: sector.H2_network
+        effect: "Master switch: true = extendable H2 pipeline candidates on all elec/gas corridors; false = remove_h2_network strips ALL 'H2 pipeline' carriers (including retrofitted ones)."
+        default: "true"
+        provenance: "config/config.default.yaml:H2_network; scripts/prepare_sector_network.py:remove_h2_network"
+      - key: sector.transmission_efficiency
+        effect: "The 'H2 pipeline' entry sets compression electricity (compression_per_1000km 0.018, drawn at the origin bus) and per-km efficiency (1.0 = lossless); remove 'H2 pipeline' from the enable list to keep pipes simple bidirectional links."
+        default: "enable includes H2 pipeline; compression_per_1000km: 0.018; efficiency_per_1000km: 1"
+        provenance: "config/config.default.yaml:transmission_efficiency; scripts/prepare_sector_network.py:lossy_bidirectional_links"
+      - key: solving.options.post_discretization
+        effect: "enable: true snaps optimised H2 pipeline capacities to integer multiples of link_unit_size 'H2 pipeline' (1200 MW, threshold 0.3) after solving."
+        default: "enable: false"
+        provenance: "config/config.default.yaml:post_discretization; scripts/solve_network.py:post_discretization"
+      - key: sector.H2_retrofit
+        effect: "true adds the cheaper 'H2 pipeline retrofitted' corridor class on existing gas routes, capacity-coupled to gas decommissioning (see hydrogen-pipeline-retrofitting recipe)."
+        default: "false"
+        provenance: "config/config.default.yaml:H2_retrofit; scripts/prepare_sector_network.py:add_h2_gas_infrastructure"
+      - key: sector.imports.enable
+        effect: "true adds fixed-price 'import H2' Generators sized by former gas pipeline entry capacities — an exogenous substitute for modelling external H2 pipelines."
+        default: "false"
+        provenance: "config/config.default.yaml:imports; scripts/prepare_sector_network.py:import H2"
+    boundary:
+      - variant: "co-optimise a greenfield H2 network"
+        rung: L0
+        note: "default (sector.H2_network: true)"
+      - variant: "no H2 network (each region self-supplies)"
+        rung: L0
+        note: "sector.H2_network: false — but this also kills retrofitted pipes (remove_h2_network matches any 'H2 pipeline' carrier)"
+      - variant: "H2 network from repurposed gas pipes"
+        rung: L0
+        note: "sector.H2_retrofit: true (own recipe); greenfield candidates remain available alongside"
+      - variant: "change or disable compression losses"
+        rung: L1
+        note: "edit the sector.transmission_efficiency 'H2 pipeline' entry"
+      - variant: "discretise pipeline capacities to unit sizes"
+        rung: L1
+        note: "solving.options.post_discretization enable + link_unit_size"
+      - variant: "add a specific corridor outside the elec/gas topology"
+        rung: L2
+        note: "append rows to the h2_pipes frame in the H2_network block of add_h2_gas_infrastructure (bus0/bus1/length) — candidates are generated in code, not read from a data file"
+      - variant: "restrict which corridors are allowed"
+        rung: L2
+        note: "filter the create_network_topology output in the same block (e.g. drop cross-border pairs)"
+      - variant: "cap total H2 network expansion (volume or cost)"
+        rung: L5
+        note: "no global-constraint hook for H2 pipes; custom constraint over Link-p_nom of carrier 'H2 pipeline' via custom_extra_functionality"
+      - variant: "existing H2 pipelines with today's capacities"
+        rung: L3
+        note: "no dataset wired; set p_nom/p_nom_min on chosen corridors from user data (edit in the H2_network block)"
+      - variant: "linepack / pressure modelling"
+        rung: L5
+        note: "transport links only — no gas-flow physics anywhere in the workflow"
+    where:
+      - change: "candidate generation, costs, corridor filtering"
+        anchor: "scripts/prepare_sector_network.py::add_h2_gas_infrastructure (H2_network block using ::create_network_topology)"
+        provenance: "scripts/prepare_sector_network.py:create_network_topology; scripts/prepare_sector_network.py:add_h2_gas_infrastructure"
+      - change: "compression losses / bidirectional splitting"
+        anchor: "scripts/prepare_sector_network.py::lossy_bidirectional_links (transmission_efficiency loop in __main__)"
+        provenance: "scripts/prepare_sector_network.py:lossy_bidirectional_links"
+      - change: "reversed-pair capacity coupling at solve time"
+        anchor: "scripts/solve_network.py::add_lossy_bidirectional_link_constraints (always called in ::extra_functionality)"
+        provenance: "scripts/solve_network.py:add_lossy_bidirectional_link_constraints; scripts/solve_network.py:extra_functionality"
+      - change: "unit-size snapping after solving"
+        anchor: "solving.options.post_discretization kwargs passed through in scripts/solve_network.py"
+        provenance: "scripts/solve_network.py:post_discretization"
+      - change: "network removal when disabled"
+        anchor: "scripts/prepare_sector_network.py::remove_h2_network"
+        provenance: "scripts/prepare_sector_network.py:remove_h2_network"
+      - change: "carrying built pipes across myopic horizons"
+        anchor: "scripts/add_brownfield.py::add_brownfield (generic Link handling)"
+        provenance: "scripts/add_brownfield.py:add_brownfield"
+    data_dependencies:
+      - input: "cost rows 'H2 (g) pipeline' and 'H2 (g) pipeline repurposed'"
+        required_for: "greenfield and retrofit pipeline economics"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "electricity network topology (lines + DC links) and the clustered gas network"
+        required_for: "the candidate corridor set"
+        availability: "exists by default (base network + rules build_gas_network / cluster_gas_network)"
+      - input: "nodal H2 buses"
+        required_for: "pipeline endpoints"
+        availability: "exists by default (add_h2_gas_infrastructure)"

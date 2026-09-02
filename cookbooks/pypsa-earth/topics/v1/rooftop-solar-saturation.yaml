@@ -1,0 +1,52 @@
+id: rooftop-solar-saturation
+title: Rooftop solar saturation
+rank: 36
+question: >
+  How much rooftop PV can a system absorb before its value collapses or the
+  distribution grid pushes back — where is the economic saturation point,
+  and what (storage, export limits, network reinforcement) extends it?
+when_to_use:
+  - "how much rooftop solar is too much"
+  - "value deflation of distributed PV at high penetration"
+  - "distribution reinforcement cost of rooftop PV growth"
+  - "rooftop vs utility-scale solar split"
+  - "export limits or batteries to extend PV hosting"
+recipes:
+  generation_conversion: [rooftop-distributed-solar, behind-the-meter-der,
+                          utility-scale-solar-pv, grid-scale-batteries,
+                          smart-meters]
+  demand: [residential-electricity-demand, services-electricity-demand,
+           demand-temporal-profiles]
+functionality:
+  - id: distribution-grid-lv
+    role: "core surface — rooftop PV on LV buses with a linear grid-reinforcement cost (sector runs)"
+  - id: distribution-power-flow
+    role: "absent — no feeder voltage/thermal limits, so physical hosting capacity is a cost proxy"
+  - id: demand-elasticity
+    role: "absent — adoption is optimizer-chosen, not tariff-driven prosumer behaviour"
+  - id: nodal-marginal-prices
+    role: "value deflation shows up as falling captured price for solar as shares rise"
+  - id: sector-coupled-workflow
+    role: "prerequisite for the LV layer, home batteries, and EV coincidence"
+  - id: carrier-attribute-scaling
+    role: "sweep rooftop cost/potential to trace the saturation frontier"
+gap_assessment: >
+  Economic saturation is answerable: in sector runs rooftop PV competes
+  behind LV buses against utility-scale solar, its captured value falls
+  endogenously with penetration, home batteries and EV charging extend it,
+  and a linear distribution-reinforcement cost (grid_cost_factor) stands in
+  for network pushback — sweeping that factor and PV costs traces a credible
+  saturation frontier. Two things are proxies, not physics: there is no
+  feeder-level power flow, so voltage-rise and thermal hosting limits (the
+  binding constraint in real DNSPs) reduce to one linear cost; and adoption
+  is the planner's choice, not household economics — no tariff structures,
+  no self-consumption incentives, no prosumer payback logic, so the model
+  finds the socially optimal rooftop share, which can differ wildly from
+  what uncoordinated adoption delivers. Electricity-only runs lack the LV
+  layer entirely (rooftop PV then sits on the HV bus like any generator).
+  Use for system-value and reinforcement-budget questions; not for hosting
+  capacity per feeder or adoption forecasting.
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

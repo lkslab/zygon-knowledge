@@ -1,0 +1,51 @@
+id: vehicle-to-grid-v2g
+title: Vehicle-to-grid (V2G)
+rank: 29
+question: >
+  What is EV batteries' value as distributed system flexibility — smart
+  charging that follows solar, and discharge back to the grid at the peak?
+  A top applied theme (DSOs, aggregators, TYNDP treats transport
+  electrification as a core driver); the system-value half of rank-20's
+  smart-charging question.
+when_to_use:
+  - "value of V2G to the system"
+  - "EV fleets as storage / balancing resource"
+  - "smart charging vs V2G vs dumb charging scenarios"
+  - "how much peak capacity do EV batteries displace"
+  - "system cost saving from managed EV flexibility"
+recipes:
+  generation_conversion: [vehicle-to-grid, battery-electric-cars, smart-ev-chargers, grid-scale-batteries]
+  demand: [land-transport-demand, demand-temporal-profiles]
+functionality:
+  - id: bev-dsm-v2g
+    role: "core — BEV demand-shifting and V2G discharge, the model's only endogenous demand flexibility"
+  - id: sector-coupled-workflow
+    role: "EVs enter via the sector chain: transport demand, EV shares per scenario/horizon"
+  - id: distribution-grid-lv
+    role: "EVs sit behind the aggregate LV link — reinforcement is a linear cost, not a network"
+  - id: distribution-power-flow
+    role: "absent — feeder-level V2G limits (the DSO half of the question) are invisible"
+  - id: scenario-matrix
+    role: "dumb vs DSM vs V2G variants and EV-share sweeps as parallel runs"
+  - id: summary-outputs
+    role: "system-cost delta between charging regimes = the headline V2G value number"
+gap_assessment: >
+  The system-value question works out of the box: the sector chain builds
+  national EV fleets from transport demand and per-scenario EV shares, with an
+  availability-profiled aggregate battery per node that shifts charging (BEV
+  DSM) and, with v2g enabled, discharges to the grid at a capped power and
+  efficiency — so "what does V2G save vs smart vs unmanaged charging" is a
+  clean scenario comparison. Aggregation is the main caveat: one fleet
+  battery per cluster node, exogenous availability and state-of-charge
+  bounds, no individual-driver behaviour, no battery-degradation cost, and no
+  charger-siting decision (fleet-ev-charging-siting is a different topic).
+  The distribution half is the real gap — V2G revenue depends on
+  feeder/transformer constraints the model replaces with a linear LV cost —
+  and there are no balancing/ancillary products for EVs to sell
+  (market-design-mechanisms absent), so value here = energy arbitrage +
+  avoided capacity only. That is the honest lower bound most system studies
+  quote.
+coverage: ready
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

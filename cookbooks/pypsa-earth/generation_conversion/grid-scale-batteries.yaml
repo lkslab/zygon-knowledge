@@ -1,0 +1,134 @@
+id: grid-scale-batteries
+title: Grid-scale batteries (Li-ion)
+summary: Utility-scale electrochemical (lithium-ion) battery storage attached to grid buses, optimised for power and energy capacity.
+when_to_use:
+  - add batteries to the model
+  - grid-scale battery storage
+  - utility-scale battery / BESS
+  - lithium-ion storage buildout
+  - battery cost or duration assumptions
+  - fixed-duration battery (4h / 6h battery)
+  - home batteries / behind-the-meter batteries
+  - short-duration storage for solar/wind balancing
+  - "known in pypsa-eur as: battery, battery storage, battery charger, battery discharger, li-ion, li-ion charger, li-ion discharger, lfp, lfp charger, lfp discharger"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        Extendable grid-scale batteries at every bus, on by default in the power-only
+        chain. Two representations exist: (a) Store + charger/discharger Links (three
+        investment variables: energy, charge power, discharge power — duration is
+        endogenous), active by default because electricity.extendable_carriers.Store
+        defaults to [battery, H2]; (b) StorageUnit with fixed energy/power ratio
+        (one investment variable), off by default because
+        electricity.extendable_carriers.StorageUnit defaults to []. The sector chain
+        rebuilds batteries as Store+Links at every node (carrying over any battery
+        StorageUnits from the electricity network) and can additionally add home
+        batteries on low-voltage buses.
+      mechanism: >
+        Rule add_extra_components (Snakefile) runs scripts/add_extra_components.py.
+        attach_stores adds, per bus, a battery Bus, a Store (capital_cost from costs
+        row "battery storage") and charger/discharger Links (efficiency and
+        capital_cost from costs row "battery inverter"). attach_storageunits adds
+        StorageUnits with max_hours from electricity.max_hours and capital_cost from
+        the synthetic combined costs row "battery" that load_costs
+        (scripts/process_cost_data.py) builds via costs_for_storage from
+        "battery storage" + "battery inverter" using electricity.max_hours.battery.
+        At solve time add_battery_constraints (scripts/solve_network.py) ties
+        charger p_nom = discharger p_nom * efficiency for links whose names contain
+        "battery charger"/"battery discharger". In the sector chain, add_storage
+        (scripts/prepare_sector_network.py) drops elec-network batteries, re-adds
+        extendable Store+Links at all spatial nodes and converts any pre-existing
+        battery StorageUnits to fixed Stores/Links; add_electricity_distribution_grid
+        adds "home battery" Store+Links on low-voltage buses when
+        sector.home_battery and sector.electricity_distribution_grid are true.
+      not_covered: >
+        No existing (brownfield) utility battery fleet in the power-only chain —
+        capacities start at zero and there is no ingest path from powerplantmatching
+        or custom data for batteries. No degradation, cycle limits, or
+        state-of-charge-dependent behaviour. A single generic Li-ion cost set
+        ("battery storage"/"battery inverter"); no chemistry variants out of the box.
+      provenance: scripts/add_extra_components.py:attach_stores
+    levers:
+      - key: electricity.extendable_carriers.Store
+        effect: Include "battery" here to get the Store+Links representation (endogenous duration) at every bus; remove it to drop batteries from the power-only chain.
+        default: "[battery, H2]"
+        provenance: scripts/add_extra_components.py:attach_stores
+      - key: electricity.extendable_carriers.StorageUnit
+        effect: Include "battery" here to get the single-investment-variable StorageUnit representation with fixed duration electricity.max_hours.battery.
+        default: "[] (comment suggests battery, H2)"
+        provenance: scripts/add_extra_components.py:attach_storageunits
+      - key: electricity.max_hours.battery
+        effect: Energy/power ratio (h) of the battery StorageUnit representation; also sets the duration used to synthesise the combined "battery" costs row in load_costs.
+        default: "6"
+        provenance: scripts/process_cost_data.py:costs_for_storage
+      - key: costs.marginal_cost.battery
+        effect: Config-side override of the battery marginal cost applied in load_costs after cost synthesis (sibling keys battery inverter, electrolysis etc. work the same way).
+        default: "0."
+        provenance: scripts/process_cost_data.py:load_costs
+      - key: sector.home_battery
+        effect: Adds "home battery" Store + charger/discharger Links on low-voltage buses in the sector chain (needs sector.electricity_distribution_grid).
+        default: "true"
+        provenance: scripts/prepare_sector_network.py:add_electricity_distribution_grid
+      - key: sector.electricity_distribution_grid
+        effect: Adds low-voltage buses; prerequisite for home batteries in the sector chain.
+        default: "true"
+        provenance: scripts/prepare_sector_network.py:add_electricity_distribution_grid
+      - key: sector.marginal_cost_storage
+        effect: Marginal cost applied to battery (and home battery) discharger Links in the sector chain.
+        default: "0"
+        provenance: scripts/prepare_sector_network.py:add_storage
+    boundary:
+      - variant: Endogenous battery buildout with free power/energy ratio
+        rung: L0
+        note: Default — "battery" is in electricity.extendable_carriers.Store; nothing to do.
+      - variant: Fixed-duration battery (e.g. 4h) as one investment variable
+        rung: L1
+        note: Move "battery" to electricity.extendable_carriers.StorageUnit and set electricity.max_hours.battery (remove it from Store to avoid doubling).
+      - variant: Change battery cost assumptions from config
+        rung: L1
+        note: >
+          costs.marginal_cost.battery exists by default; investment/FOM/VOM/lifetime
+          overrides are read by load_costs via config.get("investment") etc. — add e.g.
+          costs.investment: {battery storage: <EUR/MW>} (keys are present only as
+          comments in config.default.yaml).
+      - variant: Different technology-data cost vintage/year
+        rung: L1
+        note: costs.year selects the costs_{year}.csv file; costs.technology_data_version pins the technology-data release (default v0.13.2).
+      - variant: Brownfield/existing utility battery fleet in the power-only chain
+        rung: L3
+        note: >
+          No ingest path exists — needs a fleet dataset plus a small edit (e.g. set
+          p_nom/p_nom_min in attach_storageunits, or add non-extendable units). The
+          sector chain's add_storage already carries over battery StorageUnits if the
+          elec network contains them.
+      - variant: Cycle limits / degradation / calendar ageing
+        rung: L5
+        note: No hook exists; requires a custom constraint in the solve step (extra functionality alongside add_battery_constraints in scripts/solve_network.py).
+    where:
+      - change: Battery Store+Links representation (costs keys, efficiencies, new behaviour)
+        anchor: scripts/add_extra_components.py, function attach_stores (rule add_extra_components)
+        provenance: scripts/add_extra_components.py:attach_stores
+      - change: Battery StorageUnit representation / brownfield capacities
+        anchor: scripts/add_extra_components.py, function attach_storageunits
+        provenance: scripts/add_extra_components.py:attach_storageunits
+      - change: Combined battery cost synthesis (capital_cost of the "battery" row)
+        anchor: scripts/process_cost_data.py, function load_costs (helper costs_for_storage), rule process_cost_data
+        provenance: scripts/process_cost_data.py:costs_for_storage
+      - change: Sector-chain batteries (nodal Store+Links, carry-over logic)
+        anchor: scripts/prepare_sector_network.py, function add_storage (rule prepare_sector_network)
+        provenance: scripts/prepare_sector_network.py:add_storage
+      - change: Home batteries on LV buses
+        anchor: scripts/prepare_sector_network.py, function add_electricity_distribution_grid
+        provenance: scripts/prepare_sector_network.py:add_electricity_distribution_grid
+      - change: Charger/discharger sizing constraint
+        anchor: scripts/solve_network.py, function add_battery_constraints
+        provenance: scripts/solve_network.py:add_battery_constraints
+    data_dependencies:
+      - input: technology-data costs rows "battery storage" and "battery inverter" (resources/{run}/costs_{year}_elec.csv via rule retrieve_cost_data, version costs.technology_data_version)
+        required_for: All battery representations
+        availability: exists by default (retrieved; also present in the offline fallback data/costs.csv)
+      - input: technology-data costs rows "home battery storage" and "home battery inverter"
+        required_for: Home batteries in the sector chain
+        availability: exists by default in retrieved technology-data v0.13.2 output; absent from the offline fallback data/costs.csv

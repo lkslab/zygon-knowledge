@@ -1,0 +1,188 @@
+paper: "2024_JRC_Future-proofing-power-market-redispatch-congestion.pdf"
+tier: 2
+model_used: >
+  PyPSA-Eur, 1024 nodes, electricity-only, hourly dispatch, extended with custom
+  flow-based market coupling, two-step grid expansion, and a minimum-redispatch
+  post-market optimisation; target years 2030 and 2040 (no capacity investment
+  optimisation — capacities are exogenous scenario inputs).
+scope: >
+  Quantifies European redispatch volumes and costs under asymmetric renewable
+  deployment to 2040 across three inner-zonal grid-expansion scenarios, and
+  discusses policy instruments to reduce congestion through better locational
+  investment and operational signals.
+methods:
+  - slug: zonal-nodal-and-redispatch
+    role: extends
+    evidence: >
+      "We use a redispatch approach that minimizes the redispatch volume … The
+      objective minimizes the necessary redispatch to achieve a feasible outcome"
+      (Sec. 2.6). The paper develops a custom two-stage workflow: zonal FBMC
+      market clearing followed by a minimum-volume nodal redispatch optimisation,
+      including a cross-zonal cooperation share parameter (Sec. 2.6, Fig. 7).
+    procedure_notes: >
+      After the zonal spot-market clears under FBMC, the model solves a
+      min-redispatch LP that corrects generator schedules to achieve a physically
+      feasible nodal dispatch. A parameter x_CZ (set to 30% in the reference case)
+      limits the fraction of each zone's redispatch that can be exported as
+      cross-zonal countertrading. Generator upward/downward headroom is bounded by
+      spot-market dispatch and a minimum-load factor ML_g. All generation types
+      plus hydro storage can provide redispatch. The redispatch optimisation is run
+      simultaneously across all zones (not sequentially per zone). Validated
+      against ACER Market Monitoring Report 2020 data.
+    variant: minimum-volume-post-market
+    parameters:
+      cross_zonal_redispatch_share: "30% (reference); 10% and 50% in sensitivity"
+      nodes: 1024
+      target_years: "2030, 2040"
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      "As recommended by the developers … we do not run the model at full
+      resolution, but rather cluster it to 1024 nodes to improve the robustness of
+      the results. This corresponds to 4-5 substations being clustered together on
+      average" (Sec. 2, citing Frysztacki and Brown 2020). The base network is
+      elec_s_1024_None.nc from the PyPSA-Eur workflow.
+    procedure_notes: >
+      Standard PyPSA-Eur hierarchical spatial clustering to 1024 nodes. The choice
+      is justified by prior literature showing this resolution delivers realistic
+      grid results for congestion modelling. No further spatial aggregation
+      sensitivity is run; 1024 nodes is the single resolution used throughout.
+    variant: null
+    parameters:
+      nodes: 1024
+
+  - slug: temporal-aggregation-and-segmentation
+    role: routine-use
+    evidence: >
+      "We further cluster all hours of the year based on total variable renewable
+      generation and total load. For this, the total sample of 8760 hours is split
+      according to whether the hour is on a weekday or the weekend, at night or
+      during the day, as well as in the winter or the summer half of the year. For
+      each of these eight groups, a dendrogram … was created … selecting 2-3
+      clusters for each group … k-medoids clustering was performed to determine
+      the clusters" (Sec. 2.4).
+    procedure_notes: >
+      Temporal clustering is used only to generate representative hours for the
+      FBMC base-case flow calculation, not to compress the full market simulation.
+      The full market and redispatch simulation appears to run at hourly resolution
+      for all 8760 hours. Clustering yields 16-24 representative hours (8 groups x
+      2-3 clusters each). K-medoids, not k-means; cluster centres are the actual
+      representative hour (medoid), not a synthetic average.
+    variant: k-medoids-for-fbmc-base-case
+    parameters:
+      groups: 8
+      clusters_per_group: "2-3"
+      total_representative_hours: "16-24"
+
+  - slug: transmission-expansion-cooptimisation
+    role: routine-use
+    evidence: >
+      "In a second step, we allow the model to increase grid capacities inside the
+      countries. Here, the model can increase the capacity on all available AC and
+      DC lines until the entire grid inside the country is expanded by a ratio
+      gamma" (Sec. 2.5). Cross-border expansion is also modelled (Sec. 2.5.1).
+    procedure_notes: >
+      Grid expansion is a two-step exogenous-then-optimised process. Step 1:
+      cross-border capacities are expanded using TYNDP NTC ratios as targets —
+      this is not a co-optimisation but a scaling based on external data. Step 2:
+      inner-zonal AC/DC line capacities are co-optimised subject to a country-level
+      circuit-length expansion budget gamma (10%, 20%, or 35% depending on
+      scenario). New candidate HVDC links in DE, PL, FR are added with zero initial
+      capacity and can be expanded. No generation investment is co-optimised —
+      all generation capacities are exogenous scenario inputs.
+    variant: budget-constrained-inner-zonal
+    parameters:
+      expansion_scenarios: "BAU=10%, AGE=20%, XGE=35% of national circuit length"
+      cross_border: "scaled to TYNDP 2022 NTC targets"
+
+  - slug: demand-side-flexibility-representation
+    role: routine-use
+    evidence: >
+      "Electricity demands from heat pumps and electric vehicles (EVs) are modelled
+      to maintain the characteristics of their flexibility … We further assume that
+      heat pump load can be shifted, with the help of thermal storage … we model a
+      degree of flexibility for EV charging, which renders these differences even
+      less significant … electrolysis has been modelled as price sensitive demand.
+      We selected a strike price of 50 EUR/MWh" (Sec. 2.2.1).
+    procedure_notes: >
+      Heat pump demand is derived from HOTMAPS heating profiles scaled by heating
+      degree days, converted to electricity via a COP formula (COP = 6.81 - 0.121
+      * dT + 0.00063 * dT^2). Thermal inertia allows load shifting. EV charging is
+      derived from German highway activity data; average residence time is 2 hours,
+      which bounds the flexibility window. No V2G assumed. Electrolyser demand is
+      price-responsive with a 50 EUR/MWh strike price — only operates when market
+      price is below this threshold. Flexible consumers are located according to
+      population/GDP (heat pumps, EVs) and correlated with renewable capacity
+      (electrolysers).
+    variant: rule-based-with-price-sensitive-electrolysis
+    parameters:
+      ev_residence_time: "2 hours"
+      electrolyser_strike_price: "50 EUR/MWh"
+      cop_formula: "6.81 - 0.121*dT + 0.00063*dT^2"
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: routine-use
+    evidence: >
+      "This assumption shall be checked here, to see how it affects redispatch
+      volumes if a higher or a lower share is assumed … The results can be seen in
+      Figure 15 for the AGE scenario" (Sec. 3.2.3). Three grid-expansion scenarios
+      (BAU, AGE, XGE) also constitute a structured scenario sweep.
+    procedure_notes: >
+      One targeted sensitivity: the cross-zonal redispatch share x_CZ is varied
+      at 10%, 30% (reference), and 50% for the AGE scenario in 2040. Separately,
+      three grid-expansion scenarios (BAU, AGE, XGE) across two target years (2030,
+      2040) constitute a 6-point structured scenario sweep rather than a formal
+      sensitivity analysis. No Monte Carlo or Latin hypercube sampling.
+    variant: one-at-a-time
+    parameters:
+      cz_redispatch_sweep: "10%, 30%, 50%"
+      grid_scenarios: "BAU/AGE/XGE x 2030/2040"
+
+  - slug: shadow-prices-and-marginal-values
+    role: routine-use
+    evidence: >
+      "we assume that their bid reflects the water value, which is reflected by
+      the shadow price of the storage energy balance" (Sec. 2.6). Carbon pricing
+      affects redispatch costs: "dispatchable generation is more costly in 2040,
+      due to the higher CO2 price" (Sec. 3.2).
+    procedure_notes: >
+      Shadow prices are used internally in two places: (1) the dual of the hydro
+      storage energy balance is interpreted as the water value and used as the
+      hydro bid price in the redispatch stage; (2) the CO2 price enters as an
+      exogenous parameter in marginal costs of fossil generators, not derived as a
+      dual. No post-processing of locational shadow prices (LMPs) as an output
+      metric — the paper discusses LMP as a policy option (Sec. 5.6) but does not
+      compute nodal prices from the model.
+    variant: null
+    parameters: {}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "Redispatch costs rise disproportionally between 2030 and 2040 … since
+      dispatchable generation is more costly in 2040, due to the higher CO2 price"
+      (Sec. 3.2). The paper's scenarios align with the EU 2040 90% emissions
+      reduction target (Abstract, Sec. 1).
+    procedure_notes: >
+      CO2 pricing is an exogenous input that raises fossil marginal costs. No CO2
+      cap is endogenously imposed in the optimisation; emissions reduction is
+      achieved through the exogenous capacity scenario (capacity mix from the EU
+      Climate Target Plan 2040 S3 scenario). The CO2 price level is not stated
+      numerically but is described as higher in 2040 than 2030.
+    variant: exogenous-price
+    parameters: {}
+
+unmatched_methods:
+  - name: "flow-based market coupling (FBMC) implementation"
+    evidence: >
+      The paper implements a complete FBMC module following Byers and Hug (2020):
+      nodal base-case dispatch at 1024 nodes, generator shift keys (GSKs) based on
+      firm capacity share, power transfer distribution factors (PTDFs), flow
+      reliability margin (FRM=10%), and minimum remaining available margin
+      (minRAM=70%). This is a specific market-clearing formulation that goes
+      beyond the existing `zonal-nodal-and-redispatch` slug (which covers the
+      redispatch stage) and beyond `linearised-optimal-power-flow` (which covers
+      the DC power-flow formulation). FBMC as a market-clearing protocol — with
+      GSKs, PTDFs, minRAM, and domain computation — is a distinct procedure not
+      captured by any current slug. Sec. 2.4 describes it in full.

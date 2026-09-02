@@ -1,0 +1,163 @@
+paper: "2022_Frysztacki_clustering-methods-spatial-reduction_EnergyInformatics.pdf"
+tier: 1
+model_used: >
+  PyPSA-Eur, electricity-only, spatial resolutions swept from 37 to 1250 nodes,
+  2-hourly temporal resolution over one weather year (2013), brownfield capacity
+  expansion.
+scope: >
+  Systematic comparison of four spatial clustering methods (k-means on coordinates,
+  Ward's method with annual capacity factors, Ward's method with hourly time-series,
+  and modularity maximisation on electrical distance) applied to PyPSA-Eur, evaluated
+  on renewable siting accuracy and power-flow estimation under 60% and 100% CO2
+  reduction targets.
+methods:
+  - slug: spatial-clustering-and-resolution
+    role: defines
+    evidence: >
+      "This study investigates methods for spatially clustering electricity system
+      models at transmission level to overcome the computational constraints."
+      Four algorithms are developed, implemented and compared: k-means on node
+      coordinates (eq. 2), Ward's HAC on annual capacity factors f_cap(v) (eqs. 3–4),
+      Ward's HAC on hourly time-series f_time(v) (eqs. 3, 5), and Clauset-Newman-Moore
+      greedy modularity maximisation on electrical admittance Q (eq. 6). Results
+      evaluated at 37–397 nodes in steps of 30 and at 67, 97 and 127 nodes in detail
+      (Sec. "Clustering Methodology", Sec. "Results", Appendix).
+    procedure_notes: >
+      Pre-aggregation: one-valent nodes merged to neighbours; non-substation nodes
+      aggregated to electrically closest substations via Dijkstra shortest-path on
+      line lengths, reducing 5323 → 2435 nodes. Country-proportional demand allocation
+      determines node-count per country/synchronous zone (eq. 1). Within each zone the
+      four clustering algorithms are applied. After clustering, copperplate aggregation:
+      nodes within a cluster replaced by a single equivalent node (demand and potentials
+      summed, capacity factors averaged); intra-cluster lines removed; inter-cluster lines
+      aggregated. Benchmark: 1250-node solution (24 days, 240 GB RAM) used as
+      high-resolution reference. Runs at 97 nodes (main), 67 and 127 nodes
+      (sensitivity). Two CO2 caps: 60% and 100% reduction vs. 1990.
+    variant: multi-algorithm-comparison
+    parameters:
+      node_counts_swept: "37 to 397 in steps of 30, plus 67, 97, 127"
+      benchmark_resolution: "1250 nodes"
+      pre_aggregated_size: "2435 nodes, 3673 HVAC, 42 HVDC"
+      full_resolution: "5323 nodes, 6572 HVAC, 68 HVDC"
+      co2_reduction_targets: "60%, 100% vs. 1990"
+
+  - slug: linearised-optimal-power-flow
+    role: routine-use
+    evidence: >
+      "In the present paper the linear load flow is used, which has been shown to be a
+      good approximation for a well-compensated transmission network (Stott et al. 2009)
+      ... To guarantee the physicality of the network flows, in addition to KCL, Kirchhoff's
+      Voltage Law (KVL) must be enforced in each connected network." (Sec. "Capacity
+      expansion problem")
+    procedure_notes: >
+      DC/linearised OPF with KVL (cycle flows) and KCL constraints. Line capacities
+      capped at 70% of TYNDP 2018 ratings to account for N-1 and reactive power
+      (eq. 9). Transmission grid is fixed (no expansion); line capacities from ENTSO-E
+      interactive map via GridKit.
+    variant: fixed-grid-no-expansion
+    parameters:
+      line_capacity_derating: "70% of TYNDP 2018"
+
+  - slug: brownfield-and-capacity-vintaging
+    role: routine-use
+    evidence: >
+      "We perform a brownfield capacity optimisation that builds on a system that exists
+      as of 2018 for both the generating fleet according to the dataset provided in
+      (Open Power System Data 2020) and the planned transmission grid in the ten year
+      network development plan 2018 (TYNDP 2018)." (Sec. "Capacity expansion problem")
+    procedure_notes: >
+      Existing 2018 capacity from OPSD forms the lower bound for renewable installations
+      (G_v,s^2018); expansion of conventional generators is not allowed. Renewable
+      capacity upper bound from GLAES land-eligibility tool. Cost projections for 2030
+      from Danish Energy Agency, DIW, Budischak et al. and ETIP-PV.
+    variant: existing-fleet-lower-bound
+    parameters:
+      fleet_year: "2018"
+      cost_projection_year: "2030"
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "The installable renewable capacity G_v,s is bounded below by todays installed
+      capacities G_v,s^2018, and bounded above by land eligibility. The upper bound is
+      derived using the GLAES tool (Ryberg et al. 2018) and is always finite for
+      renewable carriers." (Sec. "Capacity expansion problem")
+    procedure_notes: >
+      GLAES used to exclude nature reserves, cities, streets from installable area.
+      Capacity factors for wind from ERA5 (0.281° × 0.281°), solar from SARAH-2
+      (0.05° × 0.05°). Wind hub height 80 m, solar south-orientation tilt 35°.
+      Voronoi regions used to assign capacity factors to network nodes.
+    variant: glaes-exclusion
+    parameters:
+      wind_data: "ERA5, 0.281deg resolution"
+      solar_data: "SARAH-2, 0.05deg resolution"
+      wind_hub_height: "80 m"
+      solar_tilt: "35 degrees south"
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "CO2 emissions are limited by a cap CAP_CO2, implemented using the specific
+      emissions e_s in CO2-tonne-per-MWh of the fuel s and the efficiency η_v,s of
+      the generator. In all simulations this cap was set at a reduction of 60% or 100%
+      of the electricity sector emissions compared to 1990." (Sec. "Capacity expansion
+      problem")
+    procedure_notes: >
+      Annual CO2 cap enforced as a single constraint across all generators.
+      Two scenarios run: 60% and 100% reduction vs. 1990 electricity-sector emissions.
+    variant: annual-sectoral-cap
+    parameters:
+      co2_reduction_targets: ["60%", "100%"]
+      reference_year: "1990"
+
+  - slug: temporal-aggregation-and-segmentation
+    role: routine-use
+    evidence: >
+      "we resolve our model with a temporal resolution of two hours and run the
+      optimisation over one year (2013)." (Sec. "Time Series Aggregation", following
+      eq. 5). Snapshot weights of 2 account for 2-hourly resolution ("The factor of 2
+      accounts for the 2-hourly resolution in time", eq. 7).
+    procedure_notes: >
+      Single historical weather year 2013, 2-hourly resolution (|T| = 8760/2 = 4380
+      snapshots). No typical-period reduction; full year solved directly. Temporal
+      resolution chosen as a fixed simplification to make spatial-clustering comparisons
+      tractable; authors note this as a limitation.
+    variant: full-year-2h
+    parameters:
+      weather_year: "2013"
+      temporal_resolution: "2-hourly"
+      snapshots: "4380"
+
+  - slug: weather-year-ensembles
+    role: critiques
+    evidence: >
+      "Comparing modeling results retrieved from varying spatial resolutions is a
+      computationally challenging task, meaning that additional simplifications had to
+      be made to the model. For example, the optimisation is run for a single weather
+      year." (Sec. "Limitations of this work"). The paper uses ERA5 and SARAH-2
+      reanalysis data but explicitly identifies single-year use as a limitation.
+    procedure_notes: >
+      Only year 2013 used. Multi-year weather robustness not tested; identified as a
+      future-work item. The limitation is acknowledged rather than addressed.
+    variant: single-year-limitation
+    parameters: {}
+
+  - slug: storage-sizing-and-duration
+    role: routine-use
+    evidence: >
+      Storage technologies (hydrogen, battery, hydro-dams) are included in the
+      capacity expansion with energy and power co-optimised: "hydrogen, battery and
+      hydro-dams in terms of storage technologies" (Sec. "Capacity expansion problem").
+      Cyclic state-of-charge assumed: "the energy level is assumed to be cyclic,
+      i.e. e_{i,s,t=0} = e_{i,s,t=|T|}".
+    procedure_notes: >
+      Hydrogen and battery storage sized with independent energy and power capacity
+      in the optimisation. Hydro-dams have inflow and spillage modelled. Standing
+      losses, charging and discharging efficiencies included. Storage MSE evaluated
+      separately from generation in Tables 8–10.
+    variant: co-optimised-energy-power
+    parameters:
+      technologies: ["hydrogen", "battery", "hydro-dams"]
+      state_of_charge: "cyclic"
+
+unmatched_methods: []

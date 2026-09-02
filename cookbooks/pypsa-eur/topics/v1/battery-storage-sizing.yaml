@@ -1,0 +1,60 @@
+id: battery-storage-sizing
+title: Battery storage sizing
+rank: 10
+question: >
+  How much battery storage does the system need, of what duration, where —
+  and what is it worth? The commercial boom question: optimal sizing and
+  siting for system planners, arbitrage value for developers and investors.
+when_to_use:
+  - "how much battery storage does [system] need"
+  - "optimal battery power vs energy (duration) split"
+  - "where to site grid-scale batteries"
+  - "battery value / arbitrage revenue at a node"
+  - "storage vs grid vs peakers as substitutes"
+recipes:
+  generation_conversion: [grid-scale-batteries, sodium-ion-batteries, flow-batteries,
+                          iron-air-batteries, pumped-hydro-storage, long-duration-storage]
+  demand: [electricity-load, demand-temporal-profiles]
+functionality:
+  - id: battery-charger-ratio
+    role: "couples charger/discharger sizing — but ONLY for links named 'battery charger/discharger'; the newer chemistry suite is uncoupled"
+  - id: nodal-marginal-prices
+    role: "price spreads at the battery's bus are its arbitrage value"
+  - id: operations-only-solve
+    role: "dedicated rule values a FIXED battery in dispatch-only mode — earth needs manual assembly"
+  - id: temporal-resolution-nh
+    role: "temporal averaging flattens spreads and undersizes batteries"
+  - id: time-segmentation-tsam
+    role: "segmentation preserves the extremes storage lives off"
+  - id: carrier-attribute-scaling
+    role: "battery cost sweeps (battery+c0.7) map the buildout frontier"
+  - id: post-discretization
+    role: "round continuous builds to unit sizes (iterative mode only)"
+  - id: market-design-mechanisms
+    role: "revenue stacking across markets — absent, energy value only"
+  - id: summary-outputs
+    role: "optimal power/energy capacity, market values, cycling per run"
+gap_assessment: >
+  Bread and butter for the system-planning half: battery power (Link) and
+  energy (Store) capacity are independently co-optimized at every bus
+  against all alternatives — grid, peakers, other storage chemistries —
+  so "how much, what duration, where" falls out of a standard run, cost
+  sensitivity is a one-token sweep, and (unlike earth) valuing a FIXED
+  battery is a wired-in rule: solve_operations_network re-dispatches with
+  capacities frozen, the production-cost-model workflow developers want.
+  Demand profiles are measured ENTSO-E data, so price-spread shapes are
+  credible. Two watch-items at this ref: the charger/discharger coupling
+  constraint matches only links literally named 'battery
+  charger/discharger' — the newer chemistry suite (LFP, vanadium,
+  liquid-air, iron-air) creates differently-named links that are NOT
+  coupled and whose discharger sizing is effectively unconstrained — and
+  solve at (near-)hourly resolution or with segmentation, since averaging
+  flattens the spreads that set battery value. The investor half stays
+  weak family-wide: revenue is energy arbitrage plus an optional reserve
+  constraint — no capacity market, ancillary products, or
+  degradation-aware cycling — so a merchant business case needs the
+  model's prices post-processed through an external revenue model.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

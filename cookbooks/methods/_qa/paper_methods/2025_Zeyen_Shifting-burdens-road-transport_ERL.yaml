@@ -1,0 +1,145 @@
+paper: "2025_Zeyen_Shifting-burdens-road-transport_ERL.pdf"
+tier: 1
+model_used: >
+  PyPSA-Eur with full sector coupling (power, heating, industry, agriculture,
+  aviation, shipping, land transport), 39 regions, 3-hourly resolution, planning
+  horizon 2025–2050 with five investment periods (2025, 2030, 2035, 2040, 2050).
+scope: >
+  How the speed of road transport decarbonisation in Europe shifts emission
+  reduction burdens to other sectors under a fixed EU CO2 budget, comparing
+  fast/base/slow EV transition speeds, demand scenarios, and zero-emission
+  vehicle mandates.
+
+methods:
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "The model has perfect foresight with 3-hourly time resolution inside
+      each investment year, but myopic foresight between the investment periods.
+      This means that investments cannot anticipate future CO2 budgets or energy
+      prices." (Sec. 2.1 Model structure)
+    procedure_notes: >
+      Five investment periods (2025, 2030, 2035, 2040, 2050). Within each
+      investment year the optimisation has full foresight over all 3-hourly
+      snapshots; across periods it is myopic — the fleet turnover constraint
+      means vehicle investment decisions lock in based on energy prices at the
+      time of investment only. The paper explicitly investigates the consequences
+      of this limited foresight via a mandate sensitivity (Sec. 3.3).
+    variant: myopic-between-periods-perfect-within
+    parameters: {investment_periods: "2025, 2030, 2035, 2040, 2050", temporal_resolution: "3h"}
+
+  - slug: sector-coupled-network-assembly
+    role: routine-use
+    evidence: >
+      "This study uses the European energy system model PyPSA-Eur comprising
+      the sectors power, heating, industry, agriculture, aviation, shipping and
+      land transport. It minimises total system costs, while optimising
+      generation, storage, transmission, distribution capacity and dispatch."
+      (Sec. 2.1 Model structure)
+    procedure_notes: >
+      Full sector-coupled PyPSA-Eur run. Novel extension in this paper is the
+      endogenous investment in road transport drivetrains (BEV, FCEV, ICE)
+      for both light- and heavy-duty separately, with fleet turnover rates
+      anchored to country-specific car registration data from JRC-IDEES.
+      CO2 accounting bus captures cross-sector emissions. Distribution grid
+      and hydrogen pipeline components included.
+    variant: null
+    parameters: {regions: 39, sectors: "power, heating, industry, agriculture, aviation, shipping, land transport"}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "CO2 emissions are constrained in line with EU greenhouse gas targets to
+      a 55% reduction in 2030, 90% reduction in 2040 and net-zero in 2050
+      compared to 1990 levels. This corresponds to cumulative emissions of
+      approximately 35 GtCO2 from 2022 to 2050." (Sec. 2.1 Model structure).
+      CO2 prices are reported as shadow prices: "In 2030 system-wide CO2 prices
+      are more than two times higher in the Slow transition scenario (290 €/tCO2)
+      compared to the Fast scenario (137 €/tCO2)." (Sec. 3.1)
+    procedure_notes: >
+      Annual CO2 caps aligned with EU targets; the dual of the constraint is
+      reported as the CO2 price across scenarios and investment periods (Fig. 17).
+      LULUCF offsets (up to 239 MtCO2/a from 2030) and CO2 sequestration
+      potentials (up to 200 MtCO2/a by 2050) are included as additional supply
+      options. Cumulative budget framing used to motivate the scenario design.
+    variant: annual-cap-with-lulucf
+    parameters: {cap_2030: "-55% vs 1990", cap_2040: "-90% vs 1990", cap_2050: "net-zero", cumulative_budget: "~35 GtCO2 (2022-2050)"}
+
+  - slug: demand-side-flexibility-representation
+    role: routine-use
+    evidence: >
+      "In the main scenarios, no demand side management (DSM) in form of
+      flexible charging of the BEV or vehicle-to-grid (V2G) is allowed."
+      The sensitivity analysis (Appendix Sec. 4.2) activates DSM and V2G
+      separately and measures impacts on storage, grid, and costs.
+    procedure_notes: >
+      Main scenarios use inflexible BEV charging as a conservative baseline.
+      Sensitivity runs add (i) DSM only (flexible charging, no discharge back)
+      and (ii) DSM + V2G. V2G reduces H2 storage by up to 30%, battery storage
+      by 3–8%, distribution grid capacity by up to 20%, and total system costs
+      marginally (−0.4%). Cumulative savings over horizon: 9 bn € (DSM) and
+      130 bn € (V2G) at 2% social discount rate. (Appendix Sec. 4.2, Figs. 19–20)
+    variant: conservative-no-dsm-plus-v2g-sensitivity
+    parameters: {dsm_savings_cumulative: "9 bn EUR", v2g_savings_cumulative: "130 bn EUR", discount_rate: "2%"}
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: routine-use
+    evidence: >
+      "A ±20% variation in vehicle capital costs is introduced to test the
+      robustness of results." (Sec. 2.2 Road Transport). Additional sensitivity
+      for road transport demand (±5% to ±30% by 2050) is a structured sweep.
+    procedure_notes: >
+      Six main scenarios (Base, Fast, Slow, High-Demand, Low-Demand, Mandate)
+      plus vehicle cost variations of ±10% and ±20% applied by shifting BEV costs
+      up while shifting FCEV costs down simultaneously (and vice versa). These
+      are one-at-a-time sweeps rather than a sampled ensemble. Results reported
+      as contour areas in Fig. 1. Demand sensitivity sweeps ±5%/period to ±30%
+      total in 2050. DSM/V2G sensitivity also run (Appendix Sec. 4.2).
+    variant: ota-structured-grid
+    parameters: {vehicle_cost_variation: "±10%, ±20%", demand_variation: "±5% per period up to ±30% in 2050"}
+
+  - slug: discounting-and-cost-of-capital
+    role: routine-use
+    evidence: >
+      Cumulative cost savings are stated "assuming a social discount rate of 2%"
+      throughout the results (e.g. Sec. 3.3: "533 billion €, assuming a 2% social
+      discount rate").
+    procedure_notes: >
+      A uniform 2% social discount rate is applied to convert annualised costs
+      into cumulative present values for comparisons across the modelling horizon.
+      The paper uses this discount rate consistently for mandate vs. Base and
+      Fast vs. Base comparisons; no technology- or country-specific rates are
+      discussed.
+    variant: social-discount-rate
+    parameters: {discount_rate: "2%"}
+
+  - slug: distribution-and-voltage-aware-aggregation
+    role: routine-use
+    evidence: >
+      "electricity distribution grid" appears in the system cost breakdown
+      (Fig. 11, Fig. 12) and is listed as a component whose capacity is reduced
+      by V2G. "If V2G is available, the capacity of the electricity distribution
+      grid can be reduced by up to 20%." (Appendix Sec. 4.2, Fig. 20)
+    procedure_notes: >
+      Distribution grid capacity is co-optimised with generation and storage.
+      The paper does not detail the sub-transmission representation method, but
+      it is a distinct component in the PyPSA-Eur sector-coupled build. Its
+      role is most visible in the DSM/V2G sensitivity where BEV smart charging
+      reduces required distribution grid investment.
+    variant: null
+    parameters: {}
+
+unmatched_methods:
+  - name: "endogenous drivetrain investment with fleet-turnover constraints"
+    evidence: >
+      "The fleet turnover is based on country-specific new car registration data
+      from the JRC-IDEES database, where the share of new registrations from the
+      total fleet is endogenously optimised to determine the cost-optimal
+      powertrain. Scenario-specific assumptions further define the maximum share
+      of non-zero-emission vehicles from the newly registered cars." (Sec. 2.2)
+      This is a novel formulation — investment decisions are constrained by
+      physical fleet turnover rates and political mandates on new-vehicle sales
+      shares, which is distinct from the standard technology-expansion framing.
+      No slug in SLUGS.yaml covers endogenous technology-choice under physical
+      fleet-retirement constraints (as opposed to learning curves or brownfield
+      capacity vintaging).

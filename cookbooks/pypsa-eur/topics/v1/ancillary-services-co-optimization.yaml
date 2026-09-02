@@ -1,0 +1,56 @@
+id: ancillary-services-co-optimization
+title: Ancillary services co-optimization
+rank: 32
+question: >
+  Can energy and ancillary services (frequency response, reserves, inertia,
+  voltage) be co-optimized instead of procured in siloed markets — and what
+  does joint procurement save? The "co-optimize across services" question
+  raised by IEA/Agora flexibility work and live in AEMO/GB market reform.
+when_to_use:
+  - "co-optimize energy and reserves / FCAS"
+  - "how much does siloed ancillary procurement cost"
+  - "which assets should provide frequency response"
+  - "inertia or system-strength procurement study"
+  - "reserve headroom vs energy dispatch trade-off"
+recipes:
+  generation_conversion: [grid-scale-batteries, gas-power-plants,
+                          synchronous-condensers, grid-forming-inverters,
+                          vehicle-to-grid]
+  demand: [electricity-load, demand-temporal-profiles]
+functionality:
+  - id: market-design-mechanisms
+    role: "absent — no ancillary products or multi-product clearing"
+  - id: operational-reserves
+    role: "one aggregate reserve requirement IS co-optimized with energy — the single-product kernel of the topic"
+  - id: inertia-stability
+    role: "absent — no inertia, frequency, or system-strength constraints to price"
+  - id: linearized-unit-commitment
+    role: "LP-relaxed UC data gives part-loaded thermal units a min-load cost — headroom provision is less mispriced than in a pure LP, but still no commitment integers"
+  - id: nodal-marginal-prices
+    role: "energy prices plus the reserve-constraint dual as a shadow reserve price"
+  - id: contingency-scopf
+    role: "no N-1 co-optimization; contingency enters only as a fixed MW in the reserve formula"
+  - id: custom-constraint-hook
+    role: "sanctioned landing point for bespoke inertia floors or synchronous-capacity constraints"
+gap_assessment: >
+  One narrow slice works: electricity.operational_reserve adds an hourly
+  reserve requirement that the LP satisfies jointly with energy dispatch
+  and investment, so energy-vs-reserve headroom trade-offs and a shadow
+  reserve price fall out of one solve, and pypsa-eur's linearized
+  unit-commitment (start-up, min-load, ramps as LP relaxation — absent in
+  earth) makes provision from part-loaded thermal units less badly priced.
+  Everything that makes this a real co-optimization topic is still missing:
+  a single symmetric reserve product (no raise/lower split, no
+  response-speed tiers, no FCAS-style product set), no inertia or
+  system-strength constraints at all — synchronous condensers and
+  grid-forming inverters exist only as cost items, their stability value
+  cannot be endogenously rewarded — and UC is a relaxation without
+  commitment decisions. The custom extra_functionality hook is the honest
+  route to a hand-rolled inertia floor, but that is user code, not model
+  capability. Useful as a first-order reserve-constrained expansion study;
+  actual multi-product market design needs a dispatch model with full UC
+  and explicit service definitions.
+coverage: gap
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

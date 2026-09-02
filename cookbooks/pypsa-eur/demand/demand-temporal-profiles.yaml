@@ -1,0 +1,233 @@
+id: demand-temporal-profiles
+title: Temporal profiles of demand
+summary: >-
+  What gives each demand its shape in time — degree-day heat profiles, intraday
+  standard load profiles, weekly traffic shapes, and the flat annual-average
+  loads used for everything else.
+when_to_use:
+  - "demand profile shape / load curve over the day or year"
+  - "heat demand seasonality / winter peak"
+  - "why is industry demand flat"
+  - "EV charging / transport demand pattern"
+  - "intraday profile / standard load profile / BDEW"
+  - "weekday weekend demand difference"
+  - "temperature-dependent demand"
+  - "make a load time-varying"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >-
+        Three shape families. (1) Heat: rule build_heat_demand computes daily
+        per-region heat demand from the weather cutout with atlite
+        (cutout.heat_demand, population-layout weighted); prepare_heat_data
+        forward-fills it to hourly and multiplies by BDEW intraday
+        weekday/weekend profiles (data/heat_load_profile_BDEW.csv,
+        generate_periodic_profiles with per-country timezone shift) — space heat
+        gets degree-day seasonality x intraday shape, water heat gets the
+        intraday shape only; the shape is then normalised and scaled to the
+        nodal energy totals. (2) Land transport: prepare_transport_data shapes
+        annual road energy with a weekly German traffic-count profile
+        (data/emobility/KFZ__count) and corrects it with a
+        temperature-dependent vehicle heating/cooling factor
+        (transport_degree_factor); BEV availability and DSM windows come from
+        Pkw counts and config restriction hours. (3) Everything else is flat:
+        industry, aviation, shipping, agriculture loads are annual totals
+        divided by 8760 (p_set = .../8760 idiom throughout add_industry,
+        add_aviation, add_shipping, add_agriculture), while
+        residential/services fuel demands inherit the normalized hourly shape
+        of the existing electricity (or heat) load via p_set_from_scaling. The
+        baseline electricity profile itself comes from the GEGIS/DemandCast
+        source (see electricity-load).
+      mechanism: >-
+        generate_periodic_profiles (defined in both prepare_heat_data.py and
+        prepare_transport_data.py) tiles a 168-hour weekly profile over the
+        snapshots per node, honouring each country's timezone. Degree-day
+        parameters for transport are config keys
+        (sector.transport_heating_deadband_lower/_upper, ICE/EV degree
+        factors); the atlite heat-demand threshold is called with defaults (no
+        parameters passed in build_heat_demand.py).
+      not_covered: >-
+        No industry load profiles (strictly constant, with a TODO on non-hourly
+        snapshot compatibility); no space-cooling profile in the heat pipeline;
+        the traffic shape is a single German weekly profile applied to every
+        country (timezone-shifted only); no holiday calendars; BDEW intraday
+        profiles are German standard load profiles applied globally.
+      provenance: "Snakefile:rule build_heat_demand ; scripts/build_heat_demand.py:cutout.heat_demand ; scripts/prepare_heat_data.py:generate_periodic_profiles ; scripts/prepare_transport_data.py:transport_degree_factor ; scripts/prepare_sector_network.py:p_set_from_scaling"
+    levers:
+      - key: load_options.weather_year
+        effect: "Weather year of the electricity profile; heat/transport temperature series instead follow the cutout year of the snapshots."
+        default: "2013"
+        provenance: "config.default.yaml:weather_year ; scripts/build_demand_profiles.py:weather_year"
+      - key: snapshots.start
+        effect: "Snapshot window that all profiles (heat degree-days, traffic tiling, electricity) are built for."
+        default: "\"2013-01-01\""
+        provenance: "config.default.yaml:snapshots ; Snakefile:rule build_demand_profiles"
+      - key: sector.transport_heating_deadband_lower
+        effect: "Lower temperature bound below which vehicle energy demand is increased by the degree factor (with _upper, ICE_/EV_ degree factors as sibling keys)."
+        default: "15"
+        provenance: "config.default.yaml:transport_heating_deadband_lower ; scripts/prepare_transport_data.py:transport_degree_factor"
+      - key: sector.bev_dsm_restriction_time
+        effect: "Hour of day at which EV state-of-charge must reach the restriction value — shapes the EV DSM profile."
+        default: "7"
+        provenance: "config.default.yaml:bev_dsm_restriction_time ; scripts/prepare_transport_data.py:bev_dsm_restriction_time"
+      - key: custom_data.heat_demand
+        effect: "Switches the heat demand inputs to user-provided files instead of the built cutout-based series."
+        default: "false"
+        provenance: "config.default.yaml:custom_data ; Snakefile:rule prepare_heat_data"
+    boundary:
+      - variant: "Change transport temperature-correction strength"
+        rung: L0
+        note: "sector.transport_heating_deadband_* and *_degree_factor keys."
+      - variant: "Different intraday heat profile (non-German standard loads)"
+        rung: L3
+        note: "Replace data/heat_load_profile_BDEW.csv (columns '{sector} {use} weekday/weekend', 24 rows)."
+      - variant: "Country-specific traffic shape"
+        rung: L3
+        note: "Replace data/emobility/KFZ__count / Pkw__count (weekly count series); one profile serves all countries unless the code in prepare_transport_data.py is also split per country (then L2)."
+      - variant: "Give industry a time-varying profile"
+        rung: L2
+        note: "Replace the p_set = annual/8760 constants in add_industry (prepare_sector_network.py) with a profile — no hook exists."
+      - variant: "Change the heat degree-day threshold"
+        rung: L2
+        note: "build_heat_demand.py calls cutout.heat_demand without arguments; pass atlite's threshold parameter there."
+      - variant: "Space cooling profile"
+        rung: L4
+        note: "No cooling demand pipeline exists; needs a new rule (cooling degree days) plus loads in the sector network."
+    where:
+      - change: "Daily heat demand from weather"
+        anchor: "scripts/build_heat_demand.py (rule build_heat_demand, atlite cutout.heat_demand)"
+        provenance: "scripts/build_heat_demand.py:cutout.heat_demand"
+      - change: "Intraday heat shaping and scaling to totals"
+        anchor: "scripts/prepare_heat_data.py function prepare_heat_data (rule prepare_heat_data, input heat_profile)"
+        provenance: "Snakefile:heat_profile ; scripts/prepare_heat_data.py:intraday_profiles"
+      - change: "Transport weekly shape, temperature correction, EV availability/DSM"
+        anchor: "scripts/prepare_transport_data.py functions generate_periodic_profiles / transport_degree_factor (rule prepare_transport_data)"
+        provenance: "Snakefile:rule prepare_transport_data ; scripts/prepare_transport_data.py:generate_periodic_profiles"
+      - change: "Flat sector loads (annual/8760) and shape inheritance"
+        anchor: "scripts/prepare_sector_network.py functions add_industry / add_aviation / add_shipping / add_agriculture / p_set_from_scaling"
+        provenance: "scripts/prepare_sector_network.py:def add_industry ; scripts/prepare_sector_network.py:def add_agriculture"
+    data_dependencies:
+      - input: "Weather cutout covering the region (temperature fields)"
+        required_for: "Heat degree-day profile and transport temperature correction"
+        availability: "must be built or retrieved (region-dependent)"
+      - input: "data/heat_load_profile_BDEW.csv"
+        required_for: "Intraday heat shape"
+        availability: "exists by default (German BDEW profiles)"
+      - input: "data/emobility/KFZ__count and Pkw__count weekly traffic counts"
+        required_for: "Transport shape and BEV availability"
+        availability: "retrieved with the data bundle (German counts, applied to all countries)"
+      - input: "Clustered population layouts (urban/rural/total)"
+        required_for: "Weighting cutout cells into per-region heat profiles"
+        availability: "must be built (build_population_layouts)"
+    demand_dimensions:
+      driver: "Shapes are weather (temperature), standard load profiles, and traffic counts; levels come from energy totals"
+      spatial: "Profiles built per clustered region (population-weighted cutout cells); flat loads have no shape to distribute"
+      temporal: "Heat: degree-day daily x BDEW intraday; transport: weekly traffic x temperature correction; industry/aviation/shipping/agriculture: constant; residential/services fuels: inherit electricity shape"
+      scenario: "Shapes are scenario-invariant; only annual totals scale with {demand}_{planning_horizons}"
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >-
+        (1) Heat: rule build_daily_heat_demand converts cutout temperature to
+        population-weighted daily heating-degree-day demand per region (atlite
+        cutout.heat_demand); rule build_hourly_heat_demand multiplies by BDEW
+        intraday weekday/weekend profiles (data/heat_load_profile_BDEW.csv) —
+        space heat = daily HDD x intraday, water heat = intraday only — and also
+        emits a residential-heat DSM availability profile (heat_dsm_profile,
+        checkpoint hours from sector.residential_heat.dsm.restriction_time). The
+        hourly shape is scaled to pop-weighted annual totals in
+        prepare_sector_network (build_heat_demand function). (2) Land transport:
+        rule build_transport_demand tiles the German weekly traffic count over
+        the year (generate_periodic_profiles from scripts/_helpers.py), corrects
+        for vehicle heating/cooling via transport_degree_factor, and produces
+        BEV availability (bev_availability_profile) and DSM
+        (bev_dsm_profile) series consumed by add_land_transport. (3) Industry
+        and most fuel demands are constant: annual totals divided by nhours in
+        add_industry (p_set = .../ nhours), including the temperature-banded
+        process heat loads. (4) Baseline electricity keeps its measured hourly
+        shape (see electricity-load).
+      mechanism: >-
+        generate_periodic_profiles lives in scripts/_helpers.py and applies
+        per-country timezones. Degree-day and BEV parameters are sector config
+        keys (transport_heating_deadband_*, bev_avail_max/mean,
+        bev_dsm_restriction_time/value); daily heat demand resolution is fixed
+        (snapshots resampled to daily) and the atlite threshold is left at its
+        default in build_daily_heat_demand.py.
+      not_covered: >-
+        Industry has no load profiles (flat by construction); the traffic shape
+        is one German weekly profile for all countries; BDEW profiles are German
+        standard load profiles applied Europe-wide; no explicit holiday
+        calendar; space cooling exists only insofar as configured elsewhere, not
+        as part of this heat-profile pipeline.
+      provenance: "rules/build_sector.smk:rule build_daily_heat_demand ; scripts/build_daily_heat_demand.py:cutout.heat_demand ; scripts/build_hourly_heat_demand.py:heat_dsm_profile ; scripts/build_transport_demand.py:transport_degree_factor ; scripts/prepare_sector_network.py:def build_heat_demand"
+    levers:
+      - key: sector.transport_heating_deadband_lower
+        effect: "Temperature deadband bound for the vehicle heating correction (with _upper and ICE_/EV_ degree factor siblings)."
+        default: "15.0"
+        provenance: "config/config.default.yaml:transport_heating_deadband_lower ; scripts/build_transport_demand.py:transport_degree_factor"
+      - key: sector.bev_dsm_restriction_time
+        effect: "Hour at which EV batteries must hold bev_dsm_restriction_value state of charge — shapes the weekly EV DSM profile."
+        default: "7"
+        provenance: "config/config.default.yaml:bev_dsm_restriction_time ; scripts/build_transport_demand.py:bev_dsm_profile"
+      - key: sector.residential_heat.dsm
+        effect: "Enables/parameterises the building-thermal-mass DSM profile (restriction_time checkpoint hours) generated alongside hourly heat demand."
+        default: "{dsm: {enable: false, restriction_time: [10, 22], restriction_value: per-year dict, ...}}"
+        provenance: "config/config.default.yaml:residential_heat ; scripts/build_hourly_heat_demand.py:heat_dsm_profile"
+      - key: energy.energy_totals_year
+        effect: "Base-year annual totals that the hourly heat/transport shapes are scaled to."
+        default: "2023"
+        provenance: "config/config.default.yaml:energy_totals_year ; rules/build_sector.smk:energy_totals_year"
+    boundary:
+      - variant: "Tune vehicle heating correction or EV DSM window"
+        rung: L0
+        note: "sector.transport_heating_deadband_* / bev_* keys."
+      - variant: "Different intraday heat profiles"
+        rung: L3
+        note: "Replace data/heat_load_profile_BDEW.csv (input heat_profile of rule build_hourly_heat_demand)."
+      - variant: "Country-specific traffic shape"
+        rung: L3
+        note: "Replace the traffic_data_KFZ/Pkw count inputs of rule build_transport_demand; per-country differentiation would additionally need a small code edit (L2)."
+      - variant: "Time-varying industry loads"
+        rung: L2
+        note: "add_industry sets p_set as annual / nhours constants; introducing profiles means editing those madd calls in prepare_sector_network.py."
+      - variant: "Change the HDD threshold or use hourly heat conversion"
+        rung: L2
+        note: "build_daily_heat_demand.py calls cutout.heat_demand with defaults on daily-resampled snapshots; parameters/resolution are edited there."
+    where:
+      - change: "Daily HDD heat demand"
+        anchor: "scripts/build_daily_heat_demand.py (rule build_daily_heat_demand)"
+        provenance: "scripts/build_daily_heat_demand.py:cutout.heat_demand"
+      - change: "Intraday shaping + heat DSM profile"
+        anchor: "scripts/build_hourly_heat_demand.py (rule build_hourly_heat_demand, input heat_load_profile_BDEW)"
+        provenance: "rules/build_sector.smk:heat_load_profile_BDEW ; scripts/build_hourly_heat_demand.py:intraday_profiles"
+      - change: "Scaling heat shape to annual totals"
+        anchor: "scripts/prepare_sector_network.py function build_heat_demand (used by add_heat)"
+        provenance: "scripts/prepare_sector_network.py:def add_heat"
+      - change: "Transport shape, availability and DSM profiles"
+        anchor: "scripts/build_transport_demand.py (rule build_transport_demand)"
+        provenance: "rules/build_sector.smk:rule build_transport_demand ; scripts/build_transport_demand.py:bev_availability_profile"
+      - change: "Flat industry loads"
+        anchor: "scripts/prepare_sector_network.py function add_industry (p_set = ... / nhours)"
+        provenance: "scripts/prepare_sector_network.py:def add_industry ; scripts/prepare_sector_network.py:nhours"
+      - change: "Weekly-profile tiling helper"
+        anchor: "scripts/_helpers.py function generate_periodic_profiles"
+        provenance: "scripts/_helpers.py:generate_periodic_profiles"
+    data_dependencies:
+      - input: "Weather cutout (temperature)"
+        required_for: "Heat degree days and transport temperature correction"
+        availability: "exists by default for Europe (retrieved cutouts)"
+      - input: "data/heat_load_profile_BDEW.csv"
+        required_for: "Intraday heat shape"
+        availability: "exists by default"
+      - input: "Traffic count series (kfz.csv / pkw.csv, mobility_profiles dataset)"
+        required_for: "Transport shape and BEV availability"
+        availability: "exists by default (retrieved dataset; German counts applied Europe-wide)"
+      - input: "Population layouts per cluster"
+        required_for: "Population-weighted heat profiles"
+        availability: "must be built (build_population_layouts rules)"
+    demand_dimensions:
+      driver: "Shapes from temperature, BDEW standard load profiles, traffic counts; levels from energy totals"
+      spatial: "Profiles per clustered region via population-weighted cutout cells"
+      temporal: "Heat: daily HDD x BDEW intraday (+ optional thermal-mass DSM); transport: weekly traffic x temperature correction (+ BEV avail/DSM); industry: constant"
+      scenario: "Shapes scenario-invariant; totals and technology shares change per planning horizon"

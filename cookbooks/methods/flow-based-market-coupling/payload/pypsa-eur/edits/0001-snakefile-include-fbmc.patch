@@ -1,0 +1,11 @@
+--- a/Snakefile	2026-08-02 14:44:18.105543722 +0200
++++ b/Snakefile	2026-08-02 14:44:31.108972325 +0200
+@@ -87,6 +87,8 @@
+ include: "rules/postprocess.smk"
+ include: "rules/development.smk"
+ 
++include: "rules/fbmc.smk"
++
+ 
+ if config["foresight"] == "overnight":
+ 

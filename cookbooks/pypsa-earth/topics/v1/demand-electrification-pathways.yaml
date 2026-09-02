@@ -1,0 +1,51 @@
+id: demand-electrification-pathways
+title: Demand electrification pathways
+rank: 81
+question: >
+  How fast do transport, heating, cooking, and industry switch from fuels to
+  electricity, what does each trajectory do to load level and shape, and what
+  supply mix does the electrified demand pull in? The demand-side twin of
+  net-zero pathways, acute wherever load growth is the planning driver.
+when_to_use:
+  - "electrification scenario for transport / heat / cooking"
+  - "what if EV or heat-pump uptake doubles by 2035"
+  - "load growth from fuel switching"
+  - "electricity demand under deep electrification"
+  - "staged electrification across planning horizons"
+recipes:
+  generation_conversion: [battery-electric-cars, air-source-heat-pumps,
+                          electric-cooking, electric-process-heat]
+  demand: [land-transport-demand, residential-space-heating-demand,
+           cooking-energy-demand, demand-scenarios-and-growth,
+           industrial-crosscutting-electricity]
+functionality:
+  - id: sector-coupled-workflow
+    role: "core — fuel-vs-electricity split per sector lives in the sector chain"
+  - id: scenario-matrix
+    role: "demand wildcard + sopts expand electrification variants into parallel runs"
+  - id: myopic-foresight
+    role: "stage switch shares across planning_horizons with capacity carry-forward"
+  - id: bev-dsm-v2g
+    role: "electrified transport arrives with its own flexibility (DSM/V2G)"
+  - id: demand-elasticity
+    role: "no price- or cost-driven adoption — uptake cannot respond to the model"
+  - id: temporal-resolution-nh
+    role: "electrified heat/EV peaks are profile-shaped; coarse averaging hides them"
+gap_assessment: >
+  The machinery is exogenous shares, competently wired: land transport splits
+  into EV/FCEV/ICE fractions per horizon, heating and cooking carriers switch
+  via sector config, and the demand book's growth scenarios (SSP-style CAGRs,
+  efficiency assumptions) scale the totals — so "compare a fast vs slow
+  electrification pathway" is a config edit plus a scenario sweep, with the
+  supply side re-optimized per case. What the model does not do is choose the
+  pathway: adoption is not endogenous (no consumer cost comparison, no
+  S-curves, no price response — demand-elasticity is absent), so
+  electrification rates are inputs you must defend from outside the model, and
+  the interesting feedback (cheap clean power accelerating uptake) never
+  closes. Profiles for the new loads also lean on European proxies (BDEW,
+  German mobility data) in most countries — check the data_quality scorecards
+  before trusting the peak impact of what you electrify.
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

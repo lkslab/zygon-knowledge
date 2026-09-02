@@ -1,0 +1,53 @@
+id: electrolyser-grid-flexibility
+title: Electrolyser grid flexibility
+rank: 34
+question: >
+  Can electrolysers act as flexible grid assets — soaking up cheap/curtailed
+  VRE, backing off in scarcity — while still delivering H2 at acceptable
+  cost and meeting green-certification (temporal-matching) rules? The
+  IRENA "electrolysers as grid services" question.
+when_to_use:
+  - "electrolyser as a flexible / interruptible load"
+  - "optimal electrolyser utilisation vs H2 cost trade-off"
+  - "do electrolysers absorb curtailment"
+  - "temporal matching / green H2 certification impact on operation"
+  - "electrolyser + storage sizing against a variable grid"
+recipes:
+  generation_conversion: [electrolysers, green-hydrogen,
+                          hydrogen-storage-salt-caverns, hydrogen-pipelines,
+                          grid-scale-batteries]
+  demand: [hydrogen-export-demand, electricity-load]
+functionality:
+  - id: sector-coupled-workflow
+    role: "core — electrolysers are Links dispatched against system prices by construction"
+  - id: h2-color-accounting
+    role: "green/pink share constraints — the certification / temporal-matching proxy"
+  - id: h2-pipeline-routing
+    role: "downstream H2 transport that widens or narrows siting-for-flexibility choices"
+  - id: h2-export-chain
+    role: "export volumes/prices set how hard electrolysers must run"
+  - id: nodal-marginal-prices
+    role: "value of flexible operation = electricity price captured vs baseload operation"
+  - id: temporal-resolution-nh
+    role: "keep resolution fine — coarse averaging flattens exactly the price spreads at stake"
+  - id: market-design-mechanisms
+    role: "absent — no ancillary-service revenue stacking on top of energy value"
+gap_assessment: >
+  Close to ready out of the box: electrolysers are extendable Links whose
+  dispatch is co-optimized with the whole system, so they are
+  price-responsive by construction — they run into cheap/curtailed hours,
+  back off in scarcity, and the capacity-vs-utilisation trade-off (low
+  capex share favours flexible operation) is endogenous. H2 storage
+  (caverns/tanks) and pipelines buffer flexible production against steady
+  offtake, and hydrogen color shares give a workable proxy for
+  green-certification constraints on electricity origin, though not
+  hourly-matching-with-additionality rules as legally drafted (EU RFNBO
+  style) — approximating those needs custom constraints. What is missing is
+  the services layer: no balancing or reserve products means "grid services
+  revenue" beyond energy arbitrage cannot be earned (market-design-mechanisms
+  absent), and hourly resolution understates sub-hourly flexibility value.
+  For system-value and H2-cost questions this runs today.
+coverage: ready
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

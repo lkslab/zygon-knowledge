@@ -1,0 +1,51 @@
+id: uncertainty-near-optimal-mga
+title: "Uncertainty / near-optimal spaces (MGA)"
+rank: 84
+question: >
+  What else is (nearly) as cheap as the optimum — the space of maximally
+  different systems within a few percent of least cost — and how do input
+  uncertainties propagate into it? The methodological push beyond single
+  least-cost runs that the modelling community itself ranks as a top pain.
+when_to_use:
+  - "modelling to generate alternatives / MGA"
+  - "near-optimal feasible space within X% cost slack"
+  - "how different could the mix be at similar cost"
+  - "propagate cost/demand uncertainty through the model"
+  - "is this technology choice structural or an artefact of the optimum"
+recipes:
+  generation_conversion: []
+  demand: []
+functionality:
+  - id: mga-near-optimal
+    role: "the topic's core method — absent; no cost-slack exploration is wired in"
+  - id: monte-carlo-sampling
+    role: "the parametric half is ALSO absent — pypsa-earth has an LHS module, pypsa-eur does not"
+  - id: scenario-matrix
+    role: "the only sweep tool: structured (non-sampled) uncertainty via create_scenarios + the run wildcard"
+  - id: carrier-attribute-scaling
+    role: "manual probing — perturb a carrier's cost/potential and watch the optimum move"
+  - id: custom-constraint-hook
+    role: "the sanctioned landing point for hand-writing an epsilon-slack constraint + MGA objective"
+  - id: multi-weather-year
+    role: "weather uncertainty only via one-year-per-run sweeps, never inside one solve"
+gap_assessment: >
+  A full gap, and — unusually — WEAKER than pypsa-earth here. Near-optimal
+  exploration is not wired in: no MGA objective, no epsilon-cost-slack
+  constraint, no vertex enumeration of the near-optimal polytope (published
+  near-optimal studies on PyPSA-Eur used separate forks/projects, none merged
+  at this ref). And the parametric half that earth DOES ship — a monte-carlo
+  module with Latin-hypercube sampling over network quantities — has no
+  pypsa-eur equivalent, so sampled uncertainty fan-out must be emulated by
+  generating many scenario yamls (config/create_scenarios.py can enumerate
+  parameter draws, but the sampling design and the ensemble analysis are
+  entirely yours). What exists is structured sweeping: the scenario matrix
+  expands combinatorial run lists, and carrier-attribute-scaling perturbs
+  costs/potentials along chosen axes — probing the space, not mapping it.
+  The honest path to MGA today is the custom_extra_functionality hook: the
+  slack constraint and replacement objective are a few lines of linopy, but
+  you write them, iterate the directions, and manage the runs yourself.
+  Core method missing on both halves: gap.
+coverage: gap
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

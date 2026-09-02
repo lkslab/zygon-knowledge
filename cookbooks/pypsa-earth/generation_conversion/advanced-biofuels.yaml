@@ -1,0 +1,109 @@
+id: advanced-biofuels
+title: Advanced biofuels
+summary: Second-generation biofuel routes — biogas upgrading, biomass-to-hydrogen, and (absent) liquid biofuels like BtL.
+when_to_use:
+  - "advanced / second-generation biofuels"
+  - "biomass-to-liquids (BtL), biodiesel, bioethanol"
+  - "biogas upgrading to biomethane"
+  - "biomass gasification for hydrogen"
+  - "bioenergy with carbon capture (BECCS) fuel routes"
+  - "biojet / biokerosene"
+  - "known in pypsa-eur as: biomass to liquid, unsustainable bioliquids, electrobiofuels"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        GASEOUS and HYDROGEN bio-routes exist; LIQUID biofuels do not. With sector.enable.biomass
+        (default true), add_biomass creates per-node "biogas" and "solid biomass" buses and Stores
+        whose energy comes from two config totals (sector.biogas_potential,
+        sector.solid_biomass_potential, TWh/a for the WHOLE modelled area, split equally across
+        nodes — flagged in-code as a TODO for real potentials), a "biogas to gas" upgrading Link
+        into the natural gas bus (credits gas CO2 intensity to atmosphere, "biogas upgrading"
+        costs), a "biomass EOP" electricity link, optional inter-node "solid biomass transport"
+        links, and (with district heating + sector.chp) solid-biomass CHP incl. a CC variant.
+        Additionally, add_hydrogen offers non-default production_technologies "Solid biomass steam
+        reforming", "Biomass gasification", "Biomass gasification CC" (solid biomass -> H2, tagged
+        "green H2" under hydrogen_colors). Industry can burn solid biomass ("solid biomass for
+        industry" spatial carriers).
+      mechanism: >
+        scripts/prepare_sector_network.py:add_biomass (buses, stores, upgrading, transport, CHP);
+        scripts/prepare_sector_network.py:add_hydrogen (biomass-to-H2 tech_params entries).
+      not_covered: >
+        No liquid biofuel production anywhere: grep for "biofuel"/"BtL"/"biodiesel"/"bioethanol"
+        across scripts and config matches only a powerplantmatching fueltype string in
+        build_powerplants.py ("biofuel" -> "Bioenergy" mapping for existing power plants). There is
+        no biomass -> oil-bus link, no biokerosene, no ethanol carrier. Biomass potentials are
+        config scalars, not geodata; no sustainability tiers or feedstock classes (single "solid
+        biomass" + "biogas" carriers); no anaerobic-digestion feedstock modelling. BtL,
+        biomass-to-methanol and BioSNG COST rows do exist in the retrieved technology-data file
+        but nothing consumes them.
+      provenance: "scripts/prepare_sector_network.py:add_biomass"
+    levers:
+      - key: sector.enable.biomass
+        effect: Master switch for the biomass chain.
+        default: "true"
+        provenance: "config.default.yaml:biomass; Snakefile:prepare_sector_network"
+      - key: sector.biogas_potential
+        effect: Total biogas resource (TWh/a, whole modelled area) available for upgrading.
+        default: "0.5"
+        provenance: "config.default.yaml:biogas_potential; scripts/prepare_sector_network.py:add_biomass"
+      - key: sector.solid_biomass_potential
+        effect: Total solid biomass resource (TWh/a, whole modelled area).
+        default: "40"
+        provenance: "config.default.yaml:solid_biomass_potential; scripts/prepare_sector_network.py:add_biomass"
+      - key: sector.biomass_transport
+        effect: Enables inter-node solid biomass transport links (and per-node biomass buses instead of one Earth bus).
+        default: "true"
+        provenance: "config.default.yaml:biomass_transport; scripts/prepare_sector_network.py:add_biomass"
+      - key: sector.biomass_transport_default_cost
+        effect: Fallback EUR/km/MWh transport cost for countries missing from the transport-cost csv.
+        default: "0.1"
+        provenance: "config.default.yaml:biomass_transport_default_cost; scripts/prepare_sector_network.py:add_biomass"
+      - key: sector.hydrogen.production_technologies
+        effect: Add "Solid biomass steam reforming" / "Biomass gasification" / "Biomass gasification CC" to unlock bio-hydrogen.
+        default: '["H2 Electrolysis", "SMR", "SMR CC"] (biomass routes not included)'
+        provenance: "config.default.yaml:production_technologies; scripts/prepare_sector_network.py:add_hydrogen"
+      - key: sector.cc
+        effect: Enables CC variants (biomass CHP CC; required spatial industry-CC carriers).
+        default: "true"
+        provenance: "config.default.yaml:cc_fraction; scripts/prepare_sector_network.py:add_biomass"
+    boundary:
+      - variant: "Biogas upgrading to grid gas"
+        rung: L0
+        note: Default on; volume limited by sector.biogas_potential.
+      - variant: "Raise/localise biomass availability"
+        rung: L1
+        note: Config totals; but SPATIALLY resolved potentials are L3 — the equal split across nodes is hardcoded in add_biomass, so real geodata needs both a data source and a small edit there (L2+L3).
+      - variant: "Biomass-derived hydrogen (incl. BECCS-H2)"
+        rung: L1
+        note: Extend production_technologies with the biomass entries; cost rows ship with technology-data.
+      - variant: "Liquid biofuels (BtL diesel/kerosene into the oil bus)"
+        rung: L4
+        note: New link solid biomass -> spatial.oil.nodes using the existing "BtL" cost row, mirroring H2_liquid_fossil_conversions; plus a config flag and main-block hook. No new external data strictly required.
+      - variant: "Bioethanol / biodiesel as distinct carriers with blending mandates"
+        rung: L5
+        note: New carriers, demand splits in transport, and quota constraints — none of the structure exists.
+      - variant: "Feedstock-differentiated sustainable biomass classes"
+        rung: L5
+        note: Single biomass carrier today; classes need new carriers/buses and potential data.
+    where:
+      - change: "Biomass buses, potentials, upgrading, transport, CHP"
+        anchor: "scripts/prepare_sector_network.py:add_biomass"
+        provenance: "scripts/prepare_sector_network.py:add_biomass"
+      - change: "Bio-hydrogen production entries"
+        anchor: "scripts/prepare_sector_network.py:add_hydrogen (tech_params biomass entries)"
+        provenance: "scripts/prepare_sector_network.py:add_hydrogen"
+      - change: "BtL link template (multi-bus synthesis link into oil bus)"
+        anchor: "scripts/prepare_sector_network.py:H2_liquid_fossil_conversions"
+        provenance: "scripts/prepare_sector_network.py:H2_liquid_fossil_conversions"
+    data_dependencies:
+      - input: "sector.biogas_potential / sector.solid_biomass_potential config scalars (no external dataset)"
+        required_for: "all biomass routes"
+        availability: "exists by default; region-realistic values are the user's responsibility (defaults are placeholders for the whole area)"
+      - input: "data/temp_hard_coded/biomass_transport_costs.csv"
+        required_for: "biomass_transport: true"
+        availability: "exists in repo; countries missing from it fall back to biomass_transport_default_cost"
+      - input: "technology-data costs csv rows: biogas upgrading, biomass EOP, central solid biomass CHP, H2 production biomass gasification (CC), BtL (unused but present)"
+        required_for: "existing routes and the L4 BtL variant"
+        availability: "must be built (rule retrieve_cost_data); rows confirmed in built costs file"

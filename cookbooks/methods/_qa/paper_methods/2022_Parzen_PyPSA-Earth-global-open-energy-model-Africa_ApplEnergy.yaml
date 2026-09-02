@@ -1,0 +1,183 @@
+paper: "2022_Parzen_PyPSA-Earth-global-open-energy-model-Africa_ApplEnergy.pdf"
+tier: 2
+model_used: >
+  PyPSA-Earth v0.1, electricity-only, demonstrated on Nigeria at 4–54 nodes and
+  Africa at 420 nodes; single target-year runs (2020 dispatch validation and 2060
+  net-zero capacity expansion).
+scope: >
+  Introduces PyPSA-Earth, the first open-source global energy system model with
+  high spatial and temporal resolution; validates data for the African continent
+  and demonstrates 2020 dispatch and 2060 net-zero capacity expansion for Nigeria.
+methods:
+  - slug: spatial-clustering-and-resolution
+    role: extends
+    evidence: >
+      Sec. 3.7 "Spatial clustering approach": "the model offers state-of-the-art
+      spatial clustering methods which are imported from the PyPSA package and
+      PyPSA-Eur model and adapted for the model to simulate future scenarios."
+      Four methods are provided: renewable-potential-aware hierarchical clustering,
+      line-impedance-based density clustering, weighted k-means on node locations,
+      and GADM administrative-zone aggregation. A novel two-iteration scheme
+      (first iteration fixes resource resolution, optional second iteration further
+      reduces the transmission network independently) is introduced.
+    procedure_notes: >
+      Any of the four clustering methods can be applied in one or two iterations.
+      In the Nigeria demonstration, the grid is clustered to 54 nodes for the 2020
+      dispatch run and to a variable number (4–54) for the solver benchmark (Fig. 12).
+      The first iteration aggregates generators, storage, lines and demand together;
+      the second iteration optionally re-clusters only the transmission network,
+      holding renewable resource resolution fixed.
+    variant: two-iteration-multi-method
+    parameters: {nodes_demo: "4, 14, 54 (Nigeria); 420 (Africa)", iterations: "1 or 2"}
+
+  - slug: land-eligibility-and-potentials
+    role: canonical-use
+    evidence: >
+      Sec. 3.5 and Fig. 6: Atlite is used to create cutouts, apply ERA5/SARAH-2/
+      GEBCO data, and produce technology-specific spatially resolved capacity-factor
+      time series. Eligible area is derived by "excluding protected and reserved areas
+      recorded in protectedplanet.net and excluding specific land-cover types from
+      Copernicus Global Land Service." Socio-technical power densities are 4.6 MW/km²
+      (solar PV), 3 MW/km² (onshore wind), 2 MW/km² (offshore wind).
+    procedure_notes: >
+      Eligible area raster at (0.25°)² is built, then downsampled to fundamental
+      shapes by area-weighted averaging. Hydro runoff time series from Atlite are
+      rescaled to match EIA reported annual production per country. Density
+      assumptions are validated against 41 large PV plants and 7 utility wind farms
+      (Sec. 4.3). The same socio-technical density is applied irrespective of land
+      cover type; authors note this is conservative for desert areas.
+    variant: atlite-era5-global
+    parameters: {solar_density_MW_per_km2: 4.6, onshore_wind_density_MW_per_km2: 3.0, offshore_wind_density_MW_per_km2: 2.0, cutout_resolution_deg: 0.25}
+
+  - slug: powerplant-matching-and-fleet-assembly
+    role: extends
+    evidence: >
+      Sec. 3.6 and Fig. 7: "the existing powerplantmatching tool has been extended
+      to include additional datasets, such as OpenStreetMap, to fine-tune the African
+      model." Sources used: CARMA, ENTSO-E, ESE, GEO, OSPD, GPD, JRC hydro, IRENA,
+      and the newly added OSM. The procedure downloads, filters, pairwise-compares
+      for duplicates, and merges into a unique dataset.
+    procedure_notes: >
+      Only GEO, GPD and IRENA have global scope; OSM is added as a new optional
+      source especially for Africa where data is sparse. Validation against IRENA
+      and USAID country statistics shows 165 GW matched out of 229 GW reported, with
+      2–15% error per technology (Sec. 4.4). Coal and gas deviations attributed to
+      recent plant additions not yet in open databases.
+    variant: osm-extended-global
+    parameters: {matched_capacity_GW: 165, irena_reported_GW: 229}
+
+  - slug: linearised-optimal-power-flow
+    role: routine-use
+    evidence: >
+      Sec. 5.1: "The 2020 scenario applies a dispatch optimization with linear
+      optimal power flow constraints." Sec. 5.2: the 2060 net-zero scenario performs
+      "a dispatch optimisation...subject to linear optimal power flow constraints."
+      The model inherits PyPSA's LOPF formulation from PyPSA-Eur.
+    procedure_notes: >
+      Used in both the 2020 dispatch-only run (fixed capacity, minimize operating
+      cost) and the 2060 co-optimisation (investment + dispatch). Solvers benchmarked:
+      Gurobi 9.5.1 (4 threads) and HiGHS 1.2.1 (single core). Solution time and
+      memory reported for 10–54 node variants in Fig. 12.
+    variant: null
+    parameters: {nodes_2020: 54, solver_gurobi: "9.5.1", solver_highs: "1.2.1"}
+
+  - slug: transmission-expansion-cooptimisation
+    role: routine-use
+    evidence: >
+      Sec. 5.2: "we perform a brownfield capacity expansion optimization. This means
+      that new renewable energy and transmission capacity can be built on top of
+      existing infrastructure." Sec. 3.8 describes the augmented line algorithm that
+      creates candidate HVAC and HVDC expansion options.
+    procedure_notes: >
+      Augmented lines (k-edge augmentation ensuring each node has at least k
+      connections, with minimum spanning tree to nearest neighbour) are added with
+      1 MW initial capacity to create expansion options. In the 2060 run, each node
+      connects to at least three nearest HVAC neighbours; a random selection of
+      far-distance nodes (>600 km) get HVDC options. Line capacity is co-optimised
+      with generation in the LOPF.
+    variant: augmented-line-options
+    parameters: {min_connections_hvac: 3, hvdc_distance_threshold_km: 600, augmented_line_initial_MW: 1}
+
+  - slug: brownfield-and-capacity-vintaging
+    role: routine-use
+    evidence: >
+      Sec. 5.2: "we perform a brownfield capacity expansion optimization. This means
+      that new renewable energy and transmission capacity can be built on top of
+      existing infrastructure." The 2020 fleet (validated in Sec. 4.4) is held fixed
+      and new capacity is added on top.
+    procedure_notes: >
+      Existing 2020 power plant fleet from powerplantmatching is locked in as
+      non-expandable (for dispatch scenario) or as the brownfield starting point
+      (for 2060 expansion). No explicit age-based retirement modelling described;
+      the 2060 study inherits existing capacity and optimises additions.
+    variant: single-target-year-brownfield
+    parameters: {target_year: 2060, base_year_fleet: 2020}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      Sec. 5.2: "Additional to the net-zero emission constraint, the 2060 total
+      demand has been calibrated in agreement to [96] to about 250 TWh." The
+      net-zero constraint is the binding CO2 cap for the Nigeria 2060 study.
+    procedure_notes: >
+      A net-zero CO2 cap is imposed for the 2060 electricity-sector scenario,
+      consistent with Nigeria's COP26 commitment (cited Sec. 5.2). No emission
+      price is reported; the shadow price of the cap is not analysed in the paper.
+    variant: null
+    parameters: {target_year: 2060, emission_target: "net-zero"}
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      Two single-year optimisations are run: 2020 dispatch-only and 2060 net-zero
+      capacity expansion (Sec. 5.1 and 5.2). Sec. 2.2 lists "single or multi-year
+      optimization" as a feature but the paper's demonstration uses single target
+      years only.
+    procedure_notes: >
+      Both scenarios are overnight/greenfield in the sense that investment is decided
+      for one target year. No transition pathway or myopic rolling is implemented in
+      the demonstration. The 2060 demand is linearly interpolated from IEA Stated
+      Energy Policies for Nigeria (Sec. 5.2).
+    variant: overnight
+    parameters: {years: [2020, 2060]}
+
+  - slug: storage-sizing-and-duration
+    role: routine-use
+    evidence: >
+      Sec. 5.2: "The battery storage consists of an inverter component [€/MW] and a
+      Li-Ion battery stack [€/MWh] that can be independently scaled by the model...
+      The energy to power ratio (EP)...is optimized in the range 4.6 h – 15.1 h with
+      an average of 7.4 h." Hydrogen storage with steel tanks is also an expansion
+      option.
+    procedure_notes: >
+      Power and energy capacity are sized independently (separate decision variables
+      for inverter and battery stack). The EP ratio emerges from the optimisation
+      without a fixed max_hours constraint. Hydrogen storage is available but barely
+      used in the Nigeria scenario ("not significantly optimized, probably because we
+      ignore fuel trade with other countries").
+    variant: independent-power-energy
+    parameters: {ep_ratio_range_h: "4.6–15.1", ep_ratio_avg_h: 7.4}
+
+  - slug: weather-year-ensembles
+    role: routine-use
+    evidence: >
+      Sec. 3.4: "The model currently provides globally hourly demand predictions for
+      2030, 2040, 2050 and 2100. Each year includes demand predictions for the ERA5
+      reanalysis weather years of 2011, 2013 and 2018." ERA5 is used for renewable
+      capacity factor time series throughout (Sec. 3.5).
+    procedure_notes: >
+      Three ERA5 weather years (2011, 2013, 2018) are provided as options for demand
+      and renewable time series. The paper's Nigeria demonstration uses a single
+      weather year (not explicitly stated which one); no multi-year ensemble run is
+      performed for the optimisation results.
+    variant: era5-single-year-run
+    parameters: {available_weather_years: [2011, 2013, 2018], era5_range: "1959–2021"}
+
+unmatched_methods:
+  - name: "osm-network-extraction"
+    evidence: >
+      Sec. 3.2 describes a novel three-step procedure (download, filter/clean, build
+      meshed network with HVAC/HVDC components) for constructing the electricity
+      network topology entirely from OpenStreetMap data using the esy-osm tool. This
+      is a data-engineering method specific to network topology construction from
+      crowd-sourced GIS data, not covered by any slug in the vocabulary.

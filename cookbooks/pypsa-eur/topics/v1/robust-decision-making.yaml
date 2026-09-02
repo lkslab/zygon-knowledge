@@ -1,0 +1,58 @@
+id: robust-decision-making
+title: Robust decision-making
+rank: 85
+question: >
+  Which investments hold up across many plausible futures — low-regret builds,
+  stress-tested plans, decisions that do not hinge on one demand forecast or
+  fuel-price path? The planner's version of the uncertainty question: not
+  "what is optimal" but "what won't we regret".
+when_to_use:
+  - "low-regret / no-regret investment identification"
+  - "stress-test the plan across demand and price futures"
+  - "which builds are robust across scenarios"
+  - "min-max regret or RDM-style analysis"
+  - "adaptive pathway / decision under deep uncertainty"
+recipes:
+  generation_conversion: []
+  demand: [demand-scenarios-and-growth]
+functionality:
+  - id: scenario-matrix
+    role: "core workhorse — scenario yaml files (create_scenarios) give the ensemble of futures, each a full config override"
+  - id: operations-only-solve
+    role: "the stress-test half earth lacks: re-dispatch a FIXED plan against other futures via solve_operations_network"
+  - id: weather-year-selection
+    role: "85 ERA5 years selectable — the weather axis of the ensemble"
+  - id: carrier-attribute-scaling
+    role: "fuel-price / cost / potential axes of the ensemble as adjustments or opts tokens"
+  - id: global-summary
+    role: "cross-scenario collected csvs — the raw material for regret metrics, pre-concatenated"
+  - id: summary-outputs
+    role: "per-run cost and capacity tables feeding capacity-overlap and regret computations"
+  - id: monte-carlo-sampling
+    role: "no sampled futures — earth's LHS module has no eur equivalent"
+  - id: mga-near-optimal
+    role: "robustness inside one future (near-optimal overlap) is absent"
+  - id: probabilistic-adequacy
+    role: "no probabilistic layer — the ensemble is deterministic scenarios, never distributions"
+gap_assessment: >
+  pypsa-eur generates and stress-tests the ensemble but does not analyse it.
+  The generation side is strong: scenario management (create_scenarios plus
+  per-run config overrides) enumerates futures across demand, costs, fuel
+  prices, and 85 weather years, and make_global_summary concatenates results
+  across the whole matrix — a cleaner ensemble pipeline than earth's. The
+  genuinely RDM-flavoured piece earth lacks: solve_operations_network fixes
+  a candidate plan's capacities and re-dispatches it against other futures,
+  which is exactly the "does plan A survive future B" cross-evaluation a
+  regret matrix is built from. What is missing is the decision layer: no
+  regret computation, no scenario-discovery / PRIM-style vulnerability
+  search, no adaptive pathways, no two-stage stochastic program (every
+  expansion run commits to its future with perfect foresight), no sampled
+  futures (monte-carlo absent, unlike earth), and no near-optimal-space
+  intersection since MGA is absent. The honest workflow is
+  ensemble-plus-pandas: min-max regret and "built in every future" overlap
+  from the collected csvs, computed by you. Credible for reports; not the
+  RDM literature's machinery.
+coverage: partial
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

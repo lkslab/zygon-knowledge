@@ -1,0 +1,56 @@
+id: ultra-high-voltage-transmission
+title: Ultra-high-voltage transmission
+rank: 51
+question: >
+  What is the system value of UHV DC corridors (±800 kV and above) moving bulk
+  power over thousands of km — China's west-to-east transfers being the
+  archetype — and where do such corridors beat local generation plus storage?
+when_to_use:
+  - "model an 800 kV / 1100 kV UHVDC corridor"
+  - "China-style west-to-east bulk power transfer"
+  - "value of a long-distance DC backbone"
+  - "UHV vs local renewables + storage"
+  - "750 kV AC lines in the base grid"
+recipes:
+  generation_conversion: [uhv-dc, hvdc-interconnectors, hv-transmission-lines,
+                          transmission-expansion-projects]
+  demand: [electricity-load, demand-spatial-disaggregation]
+functionality:
+  - id: transmission-projects
+    role: "the entry point for a named UHV corridor — a manual new_links.csv row with user-set p_nom injects the asset alongside TYNDP/NEP candidates"
+  - id: transmission-expansion-limits
+    role: "corridor capacity co-optimized against generation/storage under the volume/cost transmission_limit — the value-of-the-corridor study"
+  - id: base-network-source
+    role: "OSM (default) or TYNDP base grid; 750 kV AC is a first-class voltage class in both before the 380 kV collapse"
+  - id: iterative-impedance-expansion
+    role: "keeps AC-side impedances consistent as the surrounding grid grows with the corridor"
+  - id: transmission-losses
+    role: "piecewise-linear losses on by default — long-corridor loss economics enter the LP, which earth omits"
+  - id: post-discretization
+    role: "rounds DC expansion to a 2000 MW unit size — a generic block, not a UHV bipole"
+  - id: spatial-clustering
+    role: "keep corridor endpoints in separate zones or the corridor vanishes in clustering"
+  - id: cost-data-pipeline
+    role: "UHV-specific cost rows must be authored via custom_costs.csv — only generic HVDC overhead/submarine/inverter rows ship"
+gap_assessment: >
+  The generic bulk-DC machinery is strong — existing DC assets enter as Links
+  with data-driven p_nom, candidate corridors can be injected as manual
+  transmission projects with a known rating, expansion is co-optimized under
+  the transmission_limit with default-on losses, and 750 kV AC is even a
+  shipped voltage class — but nothing UHV-specific exists and, unlike
+  pypsa-earth, the underlying data cannot supply it: the European OSM/TYNDP
+  base grid contains no >=800 kV DC corridor, HVDC costing is voltage-blind
+  (one generic overhead/submarine/inverter set for all DC links, so
+  differentiated UHV costs need custom rows plus a code edit in
+  set_transmission_costs to apply them selectively), converter stations are
+  folded away in simplification, and all voltage layers collapse onto 380 kV.
+  One earth failure mode is absent here — DC links are never snapped to a
+  wrong voltage type because DC ratings are read straight from the data — but
+  the topic's archetype (China/India/Brazil corridors) sits outside the
+  model's European scope entirely, so a UHV study is a hand-built
+  project-injection exercise on a model that has no UHV class, no UHV data
+  and no UHV costs.
+coverage: partial
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

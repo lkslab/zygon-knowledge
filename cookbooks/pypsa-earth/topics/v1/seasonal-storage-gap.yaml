@@ -1,0 +1,54 @@
+id: seasonal-storage-gap
+title: Seasonal storage gap
+rank: 40
+question: >
+  How big is the seasonal (weeks-to-months) energy gap once daily storage is
+  saturated — and what fills it: hydrogen in caverns, thermal storage,
+  reservoir hydro, overbuild-and-curtail, or residual fuels?
+when_to_use:
+  - "seasonal storage need in a high-VRE system"
+  - "hydrogen caverns vs overbuild vs backup fuels"
+  - "summer-to-winter energy shifting"
+  - "how much storage energy capacity (TWh) does the system need"
+  - "role of thermal storage in the seasonal balance"
+recipes:
+  generation_conversion: [hydrogen-storage-salt-caverns, long-duration-storage,
+                          thermal-storage, pumped-hydro-storage,
+                          conventional-hydropower, electrolysers]
+  demand: [electricity-load, residential-space-heating-demand,
+           district-heating-demand-share]
+functionality:
+  - id: sector-coupled-workflow
+    role: "core — H2 cycle, heat demand seasonality, and thermal stores need the sector chain"
+  - id: temporal-resolution-nh
+    role: "full-year chronology preserved under nH averaging — seasonal cycling emerges naturally"
+  - id: time-segmentation-tsam
+    role: "segmentation keeps extremes at lower cost than uniform averaging for year-long solves"
+  - id: co2-cap
+    role: "seasonal storage only becomes binding under tight carbon budgets — sweep Co2L"
+  - id: weather-year-selection
+    role: "the gap is weather-year-dependent; pick and vary the year deliberately"
+  - id: multi-weather-year
+    role: "absent — no single solve across many years, so worst-case sizing needs a sweep"
+  - id: hydro-inflow-normalization
+    role: "get reservoir hydro's seasonal contribution calibrated before crediting it"
+gap_assessment: >
+  Ready in its core: the model solves a full chronological year, so state of
+  charge in H2 caverns, thermal stores, and reservoirs cycles seasonally by
+  construction, and under tight CO2 caps the optimizer trades seasonal
+  storage against overbuild, transmission, and residual fuels — the central
+  question of this topic falls out of a standard sector-coupled run with a
+  Co2L sweep. Two qualifications. First, data: salt-cavern potentials
+  outside Europe are sparse and coarsely mapped, so cavern capacity bounds
+  are often guesswork — check the data_quality notes on the
+  hydrogen-storage-salt-caverns recipe and treat cavern-heavy results as
+  conditional on geology. Second, a single weather year understates the
+  true gap: seasonal storage is sized by the worst year in decades, not an
+  average one, and multi-weather-year optimization is absent — approximate
+  by sweeping weather years and taking the envelope. Watch temporal
+  compression: aggressive averaging (24h+) can flatter storage by smoothing
+  the very deficits it exists for; prefer segmentation for long runs.
+coverage: ready
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

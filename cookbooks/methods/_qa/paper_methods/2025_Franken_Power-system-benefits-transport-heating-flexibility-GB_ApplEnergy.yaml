@@ -1,0 +1,184 @@
+paper: "2025_Franken_Power-system-benefits-transport-heating-flexibility-GB_ApplEnergy.pdf"
+tier: 1
+model_used: >
+  PyPSA-FES — a bespoke PyPSA model forked from PyPSA-Eur, built for Great
+  Britain. 17 transmission zones, hourly resolution, full-year optimisation
+  (electricity + sector coupling). Connected European countries included as
+  single nodes.
+scope: >
+  Quantifies whole-system power-sector benefits of simultaneous smart EV
+  charging and thermal-storage-coupled heat-pump flexibility in Great
+  Britain under National Grid ESO Future Energy Scenarios (Leading the Way /
+  Falling Short), 2025–2050.
+methods:
+  - slug: sector-coupled-network-assembly
+    role: canonical-use
+    evidence: >
+      "The model defines a network as pairs of nodes and time steps … links
+      simply transport energy and [are] used to represent interconnections and
+      conversion between different energy carriers, such as heat pumps."
+      Electricity demand is split into four end-uses: baseload, EV transport,
+      heat pumps/resistive heating, and electrolysis. Each carrier bus is
+      explicitly separated to prevent unphysical cross-sector storage arbitrage
+      (Sec. 2.1, Fig. 1, Sec. 2.3).
+    procedure_notes: >
+      Multi-carrier buses: electricity (transmission + distribution), heat
+      (via heat pumps and resistive heaters), transport (EV batteries), and
+      hydrogen (via electrolysis). Conversion links carry COP-weighted
+      efficiencies for heat pumps. A CO2 cap constraint binds the electricity
+      bus. Neighbouring European countries are single-node electricity buses
+      inherited from PyPSA-Eur.
+    variant: null
+    parameters: {heat_loss_rate: "2%/h (thermal battery)", charging_efficiency: "90% (EV)", EV_battery: "50 kWh per car", charge_rate: "11 kW per car"}
+
+  - slug: demand-side-flexibility-representation
+    role: defines
+    evidence: >
+      "When flexibility is activated, the model receives full control of EV
+      charging. Constraints are imposed to reflect availability for charging
+      based on time of use profiles. Additionally, EVs need to be charged to
+      at least 75% each morning at 6 am." For heating: "heating demand in
+      PyPSA-FES is enhanced by energy storage that can shift demand by around
+      12 h with an hourly heat loss of 2%." Constrained variants (4-hour EV
+      window; pre-heating only without battery) also implemented and compared
+      (Sec. 2.7, Sec. 3.4).
+    procedure_notes: >
+      Three flexibility modes per sector: (a) fully flexible — model has full
+      dispatch control subject to SoC floor / storage capacity constraints;
+      (b) constrained — EV: 4-hour overnight window, 12% daily opt-out; heat:
+      pre-heating only in 2–3 h before morning/afternoon peaks, no battery;
+      (c) off — EVs charged immediately on plug-in, heat follows demand profile.
+      Demand totals are identical across modes; only dispatch timing changes.
+      Cross-sectoral rollout experiments sweep EV flexibility from 0–100% and
+      heat flexibility from 0–100% (Fig. 8, Sec. 3.3).
+    variant: smart-charging-and-thermal-storage
+    parameters: {EV_SoC_floor: "75% by 6 am", thermal_shift: "12 h", thermal_loss: "2%/h", constrained_EV_window: "4 h (midnight–4 am)", constrained_heat_window: "2–3 h pre-peak"}
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      "The model splits the UK into 17 zones … based on a layout by National
+      Grid ESO capturing transmission network bottlenecks." Substation-level
+      ENTSO-E data is processed through the PyPSA-Eur pipeline using Voronoi
+      cells, then each substation is assigned to the fixed 17-zone map from
+      ETYS rather than k-means (Sec. 2.6).
+    procedure_notes: >
+      Standard PyPSA-Eur k-means clustering is replaced by a fixed
+      administrative zone map (National Grid ESO ETYS 17 zones). Connected
+      European countries are each collapsed to a single node. Layout is fixed
+      for all runs to enable laptop-scale computation.
+    variant: fixed-administrative-zones
+    parameters: {n_zones_GB: 17, European_neighbours: "single-node each"}
+
+  - slug: temporal-aggregation-and-segmentation
+    role: routine-use
+    evidence: >
+      "It performs linear optimisation of dispatch and capacity expansion over
+      a full year with hourly resolution." The weather year chosen is 2019 for
+      both demand and renewable capacity factor time series (Sec. 2.6, Sec. 2.4).
+    procedure_notes: >
+      No time-series aggregation or typical-period compression applied; full
+      8760-hour year at 1-hour snapshots. Single weather year (2019) used for
+      ERA5-derived capacity factors and ESPENI demand profile.
+    variant: full-year-hourly
+    parameters: {hours: 8760, resolution: "1 h", weather_year: 2019}
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "The model implicitly assumes such a framework in addition to perfect
+      foresight" (Sec. 3.5 Limitations). Each modelled year (2025, 2030, 2035,
+      2040, 2045, 2050) is an independent overnight optimisation; investment
+      capacities for renewable and fixed assets are set exogenously from FES.
+    procedure_notes: >
+      Overnight single-year investment optimisation repeated for six target
+      years. No multi-period pathway or myopic chain. Renewable capacities are
+      fixed as exogenous constraints (FES values); only dispatchable capacity
+      and distribution grid are endogenous investment decisions. Perfect
+      foresight over the 8760-hour year.
+    variant: overnight
+    parameters: {target_years: [2025, 2030, 2035, 2040, 2045, 2050]}
+
+  - slug: transmission-expansion-cooptimisation
+    role: routine-use
+    evidence: >
+      "In terms of grid expansion, two scenarios for transmission grid
+      reinforcement are included. The first is the Holistic Network Design
+      (HND) … The other scenario is 'historic'." In the HND case "the model
+      is constrained in terms of transmission capacity expansion … by the
+      investment accumulated between now and 2040" (Sec. 2.6).
+    procedure_notes: >
+      Existing transmission network from ENTSO-E Interactive Map (≥220 kV)
+      inherited from PyPSA-Eur. Expansion is co-optimised with generation and
+      storage investment, subject to a cap on cumulative transmission investment
+      (HND scenario) or an annual budget cap (historic scenario). HVDC
+      interconnectors to mainland Europe are fixed exogenously (OFGEM list).
+      Results reported in GW·km. Spatial distribution across 17 zones analysed
+      in Sec. 3.2.
+    variant: volume-capped
+    parameters: {HND_scenario: "~£10 bn/yr from 2026", historic_scenario: "~£1 bn/yr"}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "constraints simulate physical realities … limit the volume of carbon the
+      system is allowed to emit" (Sec. 2.1). Net emissions per year and FES
+      scenario are taken as an exogenous constraint (Table 1, column
+      Constraints: Net emissions — EX from [1]).
+    procedure_notes: >
+      Annual CO2 cap imposed as a hard constraint per run. Values taken from
+      National Grid ESO FES projections. No explicit carbon price; the dual
+      of the cap gives the implicit price. Separate caps for Leading the Way
+      and Falling Short scenarios.
+    variant: annual-cap
+    parameters: {}
+
+  - slug: powerplant-matching-and-fleet-assembly
+    role: routine-use
+    evidence: >
+      "current-day generation capacities are estimated by the Python library
+      powerplantmatching [28]. Powerplantmatching harmonises different
+      databases, and adds gas turbines, coal and nuclear power plants along
+      with hydropower, and their respective capacities and geolocations to the
+      model." (Sec. 2.4)
+    procedure_notes: >
+      Powerplantmatching used as inherited from PyPSA-Eur to seed existing GB
+      fleet. Atlite used for hydropower runoff and renewable capacity factor
+      time series (ERA5, 2019). Renewable totals then scaled and spatially
+      distributed according to FES projections.
+    variant: null
+    parameters: {weather_source: "ERA5", weather_year: 2019}
+
+  - slug: storage-sizing-and-duration
+    role: routine-use
+    evidence: >
+      "heating demand in PyPSA-FES is enhanced by energy storage that can
+      shift demand by around 12 h with an hourly heat loss of 2%." Grid-level
+      batteries (pumped hydro, liquid air, compressed air) have total capacity
+      fixed exogenously by FES; spatial distribution is endogenous (Table 1,
+      Sec. 2.5).
+    procedure_notes: >
+      Thermal storage: 12-hour duration, 2%/hour self-discharge. EV battery
+      acts as vehicle-to-grid capable storage with 50 kWh capacity, 11 kW
+      power, 90% round-trip efficiency. Grid-level battery capacity fixed from
+      FES (exogenous total, endogenous spatial split). No independent sizing
+      optimisation for thermal or EV batteries; their aggregate size is
+      determined by the FES-projected fleet size × penetration rate.
+    variant: fixed-duration
+    parameters: {thermal_duration: "12 h", thermal_loss: "2%/h", EV_capacity: "50 kWh", EV_power: "11 kW", EV_efficiency: "90%"}
+
+  - slug: weather-year-ensembles
+    role: routine-use
+    evidence: >
+      "The weather year chosen is 2019" for ERA5 renewable capacity factors and
+      the ESPENI demand profile. A single weather year is used; the paper does
+      not run an ensemble (Sec. 2.4, Sec. 2.6).
+    procedure_notes: >
+      Single ERA5 weather year (2019) applied uniformly. No inter-annual
+      variability analysis performed. The authors note this as an implicit
+      assumption but do not treat it as a limitation that required multi-year
+      sampling.
+    variant: single-year
+    parameters: {year: 2019, source: "ERA5"}
+
+unmatched_methods: []

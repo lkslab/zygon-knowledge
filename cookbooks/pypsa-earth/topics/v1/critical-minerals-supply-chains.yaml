@@ -1,0 +1,45 @@
+id: critical-minerals-supply-chains
+title: Critical-minerals supply chains
+rank: 95
+question: >
+  How much lithium, copper, cobalt, rare earths does a buildout scenario
+  imply, and what happens if mineral supply or price binds? Rising topic
+  adjacent to system modelling — moderate demand, tied to security-of-supply
+  and industrial policy.
+when_to_use:
+  - "mineral demand implied by a scenario"
+  - "lithium / copper / cobalt requirements of the buildout"
+  - "mineral price shock sensitivity"
+  - "supply-chain constraints on technology deployment"
+  - "material substitution (sodium-ion, iron-air)"
+recipes:
+  generation_conversion: [grid-scale-batteries, sodium-ion-batteries,
+                          iron-air-batteries]
+  demand: []
+functionality:
+  - id: summary-outputs
+    role: "capacity buildout by technology and region — the input to any intensity calculation"
+  - id: scenario-matrix
+    role: "mineral demand across the whole scenario fan in one sweep"
+  - id: carrier-attribute-scaling
+    role: "mineral price shocks as capex tokens (e.g. battery+c1.5) without code"
+  - id: country-carrier-capacity-limits
+    role: "crude supply-chain ceilings: cap mineral-constrained technologies per country (CCL)"
+gap_assessment: >
+  Nothing in the model: no material flows, no mineral-intensity data, no
+  supply-chain or trade representation, and no constraint links deployment
+  to any resource other than land and cost. The workable pattern is entirely
+  post-processing and sensitivity: (1) take capacity-expansion results (GW
+  added by technology, region, and horizon from the summaries) and multiply
+  by external intensity factors (kg/MW from IEA or academic datasets) to get
+  implied mineral demand per scenario; (2) represent supply tightness in
+  reverse, as capex shocks via carrier+c tokens or as CCL deployment caps on
+  the affected technologies; (3) explore substitution by switching storage
+  chemistry assumptions — the sodium-ion and iron-air recipes document how
+  to introduce low-criticality alternatives as distinct carriers. Endogenous
+  mineral constraints (a cumulative material budget coupling technologies)
+  would be a bespoke extra_functionality constraint plus user data.
+coverage: gap
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

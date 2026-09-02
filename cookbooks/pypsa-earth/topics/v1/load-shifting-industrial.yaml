@@ -1,0 +1,52 @@
+id: load-shifting-industrial
+title: Load-shifting (industrial)
+rank: 62
+question: >
+  How much can industrial demand-side response — shiftable furnaces, cold
+  stores, aluminium potlines, flexible process schedules — contribute to
+  system flexibility, and what is that shifting worth to the plant and the
+  grid? A headline demand-response question for TSOs and large consumers.
+when_to_use:
+  - "value of industrial demand response"
+  - "can industry shift load to absorb solar / avoid peaks"
+  - "flexible operation of energy-intensive processes"
+  - "industrial DSM potential in a national study"
+  - "load-shifting vs storage as flexibility sources"
+recipes:
+  generation_conversion: [electrolysers, desalination-flexible-load,
+                          electric-process-heat, thermal-storage]
+  demand: [industrial-crosscutting-electricity,
+           industrial-process-heat-temperature-bands,
+           aluminium-nonferrous-demand, demand-temporal-profiles]
+functionality:
+  - id: demand-elasticity
+    role: "the missing core — industrial loads are fixed profiles, nothing shifts"
+  - id: bev-dsm-v2g
+    role: "the only endogenous demand-shifting in the model is EVs, not industry"
+  - id: sector-coupled-workflow
+    role: "industrial demands enter as exogenous nodal loads via the sector chain"
+  - id: nodal-marginal-prices
+    role: "price spreads from duals quantify what shifting WOULD be worth"
+  - id: temporal-resolution-nh
+    role: "hourly resolution suits daily/weekly shifting windows if they existed"
+  - id: market-design-mechanisms
+    role: "no DSM products or industrial tariffs to respond to"
+gap_assessment: >
+  Industrial DSM does not exist in pypsa-earth: every industrial load is a
+  fixed exogenous profile, demand-elasticity is absent, and the only
+  endogenous demand flexibility anywhere in the model is the EV fleet
+  (bev-dsm-v2g). There is no store-plus-link "shiftable industrial load"
+  construct wired in. Two honest workarounds: (1) new flexible CONVERSION
+  loads are endogenous — electrolysers and (per its recipe) desalination
+  dispatch freely against the system, so hydrogen/water flexibility is
+  modellable even though existing-process flexibility is not; (2) shifting
+  can be hand-built by replacing a load with a bus + store + link with
+  energy-conservation over a window, but that is PyPSA surgery, not config.
+  The model does tell you the value on offer: nodal price spreads and
+  peak-hour duals bound what a shiftable MWh would earn. For "how much DSM
+  does industry offer this system," the potential itself must come from
+  outside the model.
+coverage: gap
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

@@ -1,0 +1,1 @@
+../../models/pypsa-earth/results/mexico-power/networks/elec_s_4_ec_lcopt_Co2L.nc

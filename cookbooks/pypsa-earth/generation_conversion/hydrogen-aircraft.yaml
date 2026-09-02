@@ -1,0 +1,114 @@
+id: hydrogen-aircraft
+title: Hydrogen aircraft (emerging)
+summary: >
+  Hydrogen-powered aviation — aircraft burning or fuel-celling H2 instead of
+  kerosene, with airport-side H2 (liquefaction) demand.
+
+when_to_use:
+  - "hydrogen planes / H2 aircraft"
+  - "hydrogen aviation"
+  - "liquid hydrogen at airports"
+  - "decarbonise air travel with hydrogen"
+  - "zero-emission aircraft"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        NOT covered. Aviation (add_aviation) is kerosene-on-the-oil-bus only: UNSD
+        'total international aviation' + 'total domestic aviation' per country is
+        distributed to nodes by airport size (rule prepare_airports, ourairports
+        dataset, weighting large airports by sector.airport_sizing_factor) and added
+        as a flat "kerosene for aviation" Load on the oil buses, plus a CO2
+        atmosphere emissions load (international portion excluded unless
+        sector.international_bunkers). There is no aviation fuel-share key of any
+        kind — unlike shipping, aviation has NO analogue of shipping_hydrogen_share.
+      mechanism: >
+        add_aviation in rule prepare_sector_network, guarded by
+        sector.enable.aviation. Note the model DOES ship the building blocks a
+        hydrogen-aviation variant would reuse: nodal H2 buses (add_hydrogen), an H2
+        liquefaction Link pattern (the shipping_hydrogen_liquefaction block in
+        add_shipping creates "H2 liquid" buses + liquefaction Links), and the
+        {demand}_{planning_horizon}-keyed share pattern (get() on
+        shipping_hydrogen_share).
+      not_covered: >
+        Any hydrogen (or electric) aviation share, airport H2/liquefaction demand,
+        aircraft efficiency assumptions, fleet turnover. E-fuels for aviation are a
+        SIBLING topic: with sector.fischer_tropsch (default true) synthetic kerosene
+        can already supply the existing oil-bus load — that belongs to an e-kerosene
+        recipe, not this one.
+      provenance: "scripts/prepare_sector_network.py:add_aviation"
+
+    levers:
+      - key: sector.enable.aviation
+        effect: "Master switch for the kerosene aviation load."
+        default: "true"
+        provenance: "Snakefile:prepare_sector_network"
+      - key: sector.airport_sizing_factor
+        effect: "Weight of large vs medium airports when distributing national aviation demand to nodes."
+        default: "3"
+        provenance: "scripts/prepare_airports.py:airport_sizing_factor"
+      - key: sector.international_bunkers
+        effect: "Whether international aviation emissions count toward the CO2 atmosphere balance."
+        default: "false"
+        provenance: "scripts/prepare_sector_network.py:international_bunkers"
+      - key: custom_data.airports
+        effect: "Use a custom data/custom/airports.csv instead of the ourairports download."
+        default: "false"
+        provenance: "config.default.yaml:airports"
+
+    boundary:
+      - variant: "Kerosene aviation demand (status quo)"
+        rung: L0
+        note: "sector.enable.aviation, on by default."
+      - variant: "Hydrogen share of aviation demand"
+        rung: L2
+        note: >
+          No key exists. Localised edit in add_aviation mirroring the shipping H2
+          pattern: an aviation_hydrogen_share read via get() with
+          {demand}_{planning_horizon} keys, an H2 (or H2 liquid) Load at the
+          airport-weighted nodes with an H2-aircraft efficiency assumption, and the
+          kerosene load scaled to the remainder. New key must be added to your
+          config.
+      - variant: "Liquid H2 at airports (liquefaction step)"
+        rung: L2
+        note: "Pattern-copy the shipping_hydrogen_liquefaction block of add_shipping ('H2 liquid' buses + 'H2 liquefaction' Links using the 'H2 liquefaction' costs row) into the aviation load's bus choice."
+      - variant: "Grounded H2-aircraft efficiency/cost assumptions"
+        rung: L3
+        note: "No aircraft technology data exists in the costs inputs; the kerosene->H2 energy conversion factor must be sourced externally."
+      - variant: "Aviation demand scenarios with own wildcards / separate domestic vs international electrolysis of demand"
+        rung: L4
+        note: "add_aviation lumps domestic+international into one load; splitting with scenario plumbing needs rule/wildcard work in the demand chain."
+      - variant: "Endogenous fuel switch kerosene vs H2 vs e-kerosene"
+        rung: L5
+        note: "Shares would be exogenous even after the L2 edit; competition needs bespoke logic."
+
+    where:
+      - change: "Aviation load creation (where an H2 share would be carved out)"
+        anchor: "scripts/prepare_sector_network.py function add_aviation"
+        provenance: "scripts/prepare_sector_network.py:add_aviation"
+      - change: "Share-key + liquefaction pattern to copy"
+        anchor: "scripts/prepare_sector_network.py function add_shipping (shipping_hydrogen_share, shipping_hydrogen_liquefaction blocks)"
+        provenance: "scripts/prepare_sector_network.py:shipping_hydrogen_liquefaction"
+      - change: "Airport locations and sizing weights"
+        anchor: "rule prepare_airports -> scripts/prepare_airports.py"
+        provenance: "scripts/prepare_airports.py:download_airports"
+      - change: "Base aviation energy demand per country"
+        anchor: "rule build_base_energy_totals -> scripts/build_base_energy_totals.py function calc_sector"
+        provenance: "scripts/build_base_energy_totals.py:calc_sector"
+
+    data_dependencies:
+      - input: "UNSD energy balances ('total domestic aviation', 'total international aviation')"
+        required_for: "aviation demand baseline"
+        availability: "must be built (build_base_energy_totals)"
+      - input: "ourairports airports.csv + runways.csv (runtime download; or data/custom/airports.csv)"
+        required_for: "locating aviation (and any future H2) demand at nodes"
+        availability: "must be built (prepare_airports; custom override available)"
+      - input: "costs row 'H2 liquefaction'"
+        required_for: "the liquid-H2-at-airports variant (already used by shipping)"
+        availability: "exists by default (retrieve_cost_data)"
+      - input: "H2-aircraft propulsion efficiency / cost assumptions"
+        required_for: "converting kerosene demand into H2 demand"
+        availability: "absent (must be supplied)"

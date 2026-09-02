@@ -1,0 +1,34 @@
+paper: "2021_Hofmann_atlite-renewable-power-potentials_JOSS.pdf"
+tier: 2
+model_used: >
+  no model (tooling paper — introduces the atlite Python library for renewable
+  power potential and time series calculation; no energy system optimisation is run)
+scope: >
+  Presents atlite, an open Python package that retrieves historical weather data
+  (ERA5, SARAH-2, GEBCO) and converts it to renewable capacity factors, land-use
+  availability matrices, and heating demand time series for use in energy system models.
+methods:
+  - slug: land-eligibility-and-potentials
+    role: defines
+    evidence: >
+      "atlite provides a performant, parallelized implementation to calculate
+      land-use availabilities within all grid cells of a Cutout. The entries A_{r,x,y}
+      of an Availability Matrix A indicate the overlap of the eligible area of region r
+      with grid cell at (x, y). The user can exclude geometric shapes or geographic
+      rasters of arbitrary projection, like specific codes of the Corine Land Cover (CLC)
+      database. To determine capacity expansion potentials per region, atlite does not use
+      an explicit placement algorithm … but the product of available area and allowed
+      deployment density." (Sec. "Land-Use Restrictions")
+    procedure_notes: >
+      The Availability Matrix A is computed analogously to the Indicator Matrix I but
+      restricted to eligible area. Exclusion inputs can be vector geometries or raster
+      datasets of arbitrary projection (e.g. CLC codes, protected-area polygons). The
+      implementation is described as inspired by the GLAES package (Ryberg et al., 2018).
+      Capacity potential per region = available area × allowed deployment density (no
+      explicit turbine placement). Conversion to capacity-factor time series then uses the
+      Indicator Matrix formulation: φ_r(t) = Σ I_{r,x,y} λ_{x,y} φ_{x,y}(t), with
+      optional custom layout weightings λ_{x,y}. ERA5 at 0.25° × 0.25° / 1h default
+      resolution; SARAH-2 at 0.05° × 0.05° / 30 min for solar irradiance.
+    variant: availability-matrix
+    parameters: {spatial_resolution_default: "0.25° × 0.25°", temporal_resolution_default: "1h"}
+unmatched_methods: []

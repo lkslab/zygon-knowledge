@@ -1,0 +1,53 @@
+id: e-kerosene-aviation-fuel
+title: E-kerosene / aviation fuel
+rank: 57
+question: >
+  What does synthetic jet fuel cost from a real power system — electrolysis +
+  captured CO2 + Fischer-Tropsch — and when does e-kerosene (or a SAF
+  mandate) displace fossil kerosene in aviation demand?
+when_to_use:
+  - "e-kerosene / power-to-liquid for aviation"
+  - "sustainable aviation fuel (SAF) scenarios"
+  - "delivered cost of synthetic jet fuel"
+  - "SAF blending mandate impact"
+  - "aviation under a national carbon budget"
+recipes:
+  generation_conversion: [e-kerosene-saf, e-diesel-fischer-tropsch,
+                          electrolysers, direct-air-capture]
+  demand: [aviation-demand]
+functionality:
+  - id: sector-coupled-workflow
+    role: "aviation demand, oil bus, H2 chain, and CO2 accounting only exist in the sector chain"
+  - id: co2-cap
+    role: "a tight budget is what pushes FT output into the aviation share of the oil bus"
+  - id: co2-network-sequestration
+    role: "stored-CO2 supply (point-source CC or DAC) is the FT carbon feedstock"
+  - id: emission-pricing
+    role: "Ep sweeps trace the fossil-vs-synthetic switchover price"
+  - id: carrier-attribute-scaling
+    role: "FT / electrolyser capex sensitivity as opts tokens"
+  - id: h2-export-chain
+    role: "compare making e-fuel at home vs exporting the H2 feedstock"
+  - id: summary-outputs
+    role: "oil-bus supply split (fossil generator vs FT) is the e-kerosene share"
+gap_assessment: >
+  The mechanism exists and closes: aviation is a default fixed kerosene load
+  allocated to airport regions from national energy totals, and the
+  Fischer-Tropsch link (H2 + stored CO2 + electricity -> oil) supplies it
+  whenever cost-optimal or CO2-forced — so "what does system-integrated
+  e-kerosene cost and when does it deploy" is answerable today. The honest
+  caveats are structural: there is NO distinct kerosene/SAF carrier — FT
+  output lands on the shared oil bus serving aviation, shipping, trucks,
+  naphtha, and boilers alike, so e-kerosene is indistinguishable from
+  e-diesel and a SAF-specific blending mandate ("X% synthetic in aviation
+  fuel") cannot be expressed without splitting the bus or adding a custom
+  constraint. Aviation emissions are booked from demand volume, not the
+  fossil/synthetic supply split (the accounting nets out via the FT link's
+  stored-CO2 draw, system-wide rather than per-flight); demand is a fixed
+  profile with no efficiency or elasticity; hydrogen and electric aircraft
+  are absent. For mandate studies, budget code work; for system-cost and
+  deployment-threshold studies, it runs.
+coverage: ready
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

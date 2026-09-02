@@ -1,0 +1,24 @@
+--- a/config/config.default.yaml	2026-08-02 14:54:50.426486454 +0200
++++ b/config/config.default.yaml	2026-08-02 15:09:50.384429416 +0200
+@@ -1506,3 +1506,21 @@
+     project_name: "PyPSA-Eur"
+     email: "contact@pypsa.org"
+     website: "https://github.com/PyPSA/pypsa-eur"
++
++# Redispatch stage (zygon methods payload: redispatch)
++# Consumed by rules/redispatch.smk -> scripts/solve_redispatch.py; docs in
++# the method spec cookbooks/methods/redispatch/spec.yaml.
++redispatch:
++  stage1: ntc            # ntc (self-contained) | fbmc (needs that payload)
++  snapshots:
++    start: "2013-03-01"
++    end: "2013-03-02"
++  zones:
++    mode: split          # country | split | busmap (ignored for stage1: fbmc)
++    n: 2
++    busmap: {}
++  beta: auto             # volume penalty; auto = max MC spread + 1 (paper rule)
++  cross_zonal_cap: 0.3   # max countertrading share (JRC reference value)
++  ntc_haircut: 0.7       # stage-1 NTC = haircut * summed tie capacity
++  line_scaling: 1.0      # extra derate on ratings inside this chain
++  voll: 3000.0           # load shedding cost [EUR/MWh]

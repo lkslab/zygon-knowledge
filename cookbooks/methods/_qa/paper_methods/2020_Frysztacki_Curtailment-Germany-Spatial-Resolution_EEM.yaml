@@ -1,0 +1,128 @@
+paper: "2020_Frysztacki_Curtailment-Germany-Spatial-Resolution_EEM.pdf"
+tier: 1
+model_used: >
+  PyPSA-Eur, Germany subnetwork, up to 306 nodes, electricity-only, hourly
+  resolution, dispatch-only (fixed capacities), years 2013-2018.
+scope: >
+  Validates historically measured renewable curtailment in Germany (2013-2018)
+  using PyPSA-Eur by sweeping spatial resolution from 6 to 306 nodes, quantifying
+  how k-means clustering affects congestion and curtailment bias.
+methods:
+  - slug: spatial-clustering-and-resolution
+    role: extends
+    evidence: >
+      "We chose a version of k-means clustering based on the geographical location
+      of the original substations in the network, weighted by the average electricity
+      demand and conventional capacity at the substations" (Sec. II-C). The paper
+      sweeps from 306 to 6 nodes and defines four qualitative resolution stages
+      where curtailment bias changes sign (Sec. III-A), making this a direct
+      analysis of aggregation bias rather than routine use.
+    procedure_notes: >
+      Weighted k-means (Eq. 10) minimises sum of Euclidean distances weighted by
+      installed capacity + demand at each substation; univalent nodes aggregated
+      to polyvalent neighbours first. Inter-cluster lines replaced by a single
+      representative line with summed capacity; length from haversine distance
+      × 1.25 routing factor. Capacity-factor time series aggregated weighted by
+      installed renewables. Swept from 306 down to 6 nodes; 246 nodes chosen as
+      operating point for validation. Also defines an a-priori excess-energy
+      measure (Eq. 9) to quantify node-assignment error without solving the LP.
+    variant: weighted-geographic-kmeans
+    parameters:
+      nodes_swept: "6 to 306"
+      chosen_resolution: 246
+      weight: "installed capacity + electricity demand"
+      routing_factor: 1.25
+
+  - slug: linearised-optimal-power-flow
+    role: canonical-use
+    evidence: >
+      "The transmission grid is additionally constrained by Kirchhoff's voltage
+      law... This can be translated to direct constraints on the flows" using the
+      cycle-flow formulation (Eq. 3, Sec. II-A). The paper implements the full
+      cycle-flow LOPF with KCL (Eq. 2) and KVL (Eq. 3).
+    procedure_notes: >
+      Cycle-flow formulation (citing Hörsch et al. 2018): incidence matrix K for
+      KCL (Eq. 2), cycle matrix C with reactances x for KVL (Eq. 3). Line flows
+      constrained to 70% of rated capacity as N-1 security proxy (Eq. 4).
+      Objective minimises operational costs only (Eq. 1); capacities fixed
+      exogenously per historical year. Full-resolution solve: ~20 GB RAM, ~1 hour;
+      156-node solve: ~30% less RAM, 2× faster (Sec. III-E).
+    variant: cycle-flow
+    parameters:
+      line_loading_limit: "70% of rated capacity (N-1 proxy)"
+      formulation: "cycle-flow KVL"
+
+  - slug: n-1-security-and-contingency
+    role: routine-use
+    evidence: >
+      "Each flow in the transmission grid is constrained by the line capacity
+      multiplied by a factor of 0.7, a convention used in the past decades to
+      account for N-1 security" (Eq. 4, Sec. II-A, citing [20,21]).
+    procedure_notes: >
+      Implemented as a static 70% derating of all line capacities, not as explicit
+      contingency constraints. Applied uniformly across all years and resolutions.
+    variant: static-derating
+    parameters:
+      derating_factor: 0.7
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "This research is a case-study to reproduce historical data. Therefore, the
+      objective function minimises solely the operational costs for a fixed generation
+      and storage fleet and fixed transmission capacities" (Sec. II-A). Each
+      calendar year 2013-2018 is solved independently as a single overnight horizon.
+    procedure_notes: >
+      Greenfield/overnight not applicable — fully dispatch-only. Historic capacities
+      of generation and transmission fleet given exogenously per year index a. Six
+      separate annual runs, no investment variables.
+    variant: dispatch-only
+    parameters:
+      years: "2013-2018"
+      investment: "none (fixed capacities)"
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "Capacities for conventional and renewable generators are taken from the new
+      database provided by the German Federal Network Agency, the
+      Marktstammdatenregister [30]" and assigned to nodes via nearest-substation
+      rule (Eq. 8, Sec. II-B). Capacity factor time series from weather data,
+      corrected by factors of 0.9 (wind) and 0.8 (solar) to match historical
+      production (Sec. IV).
+    procedure_notes: >
+      Generator coordinates from Marktstammdatenregister matched to nearest
+      network node by Euclidean distance (Eq. 8). Electricity demand disaggregated
+      from national totals using GDP + population weights per NUTS3 (Eq. 7,
+      0.6 GDP + 0.4 population). Capacity factors from weather data uniformly
+      scaled down: ×0.9 wind, ×0.8 solar at every point in space and time.
+    variant: plant-registry-assignment
+    parameters:
+      demand_weights: "0.6 GDP + 0.4 population (NUTS3)"
+      cf_correction_wind: 0.9
+      cf_correction_solar: 0.8
+
+  - slug: shadow-prices-and-marginal-values
+    role: routine-use
+    evidence: >
+      "The shadow prices µ_l,t and µ_l,t [€/MW] are positive, if the flow f_l,t
+      equals 70% of its capacity, and if this constraint is binding" (Eq. 4,
+      Sec. II-A). Shadow prices are read from line-capacity dual variables to
+      identify congested lines.
+    procedure_notes: >
+      Line shadow prices used diagnostically to flag binding transmission
+      constraints and to spatially attribute congestion; not post-processed into
+      nodal prices or market values. Used alongside curtailment GWh as the
+      primary congestion indicator.
+    variant: null
+    parameters: {}
+
+unmatched_methods:
+  - name: "assignment-error quantification (excess-energy measure)"
+    evidence: >
+      Eq. 9 (Sec. II-B) defines an a-priori scalar that sums the positive excess
+      of local renewable availability over local demand plus export capacity for
+      each node, without solving the LP. Used throughout to distinguish
+      node-misassignment bias from genuine network congestion. No existing slug
+      covers this pre-solve spatial-assignment diagnostic; it is closer to a data
+      quality / input validation concept than spatial clustering per se.

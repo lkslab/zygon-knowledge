@@ -1,0 +1,117 @@
+paper: "2018_Weber_Counter-intuitive-CO2-caps_Energy.pdf"
+tier: 1
+model_used: >
+  PyPSA model of the German electricity sector (dispatch-only, 128 nodes, hourly
+  resolution for 2015, derived from PyPSA-Eur). Also uses an elementary two-fuel
+  analytic model and the IKARUS integrated energy system model for Germany (not PyPSA).
+scope: >
+  Demonstrates counter-intuitive optimisation artefacts that arise under CO2 caps
+  (cost minimisation) and budget caps (emission minimisation) across three models of
+  different scope; argues these can produce Giffen-like behaviour and mislead policy.
+methods:
+  - slug: carbon-constraints-and-pricing
+    role: critiques
+    evidence: >
+      The paper's central argument is that a hard CO2 emissions cap (case A: cost
+      minimisation subject to E ≤ Ecap) and a fixed cost budget cap (case B: emission
+      minimisation subject to C ≤ Cbudget) each produce paradoxical outcomes — either
+      technology improvements reduce the use of the cleaner technology, or higher CO2
+      prices increase total emissions. Demonstrated analytically (Sec. 2.1, Eqs. 9-10)
+      and numerically in PyPSA (Sec. 2.2 / 3.2) and IKARUS (Sec. 2.3 / 3.3).
+    procedure_notes: >
+      Case A: CO2 cap set at 40% reduction relative to unconstrained cost minimum
+      (112 Mt for the year); CO2 intensity reduction swept from 0 to ~14% to show
+      counter-intuitive gas displacement. Case B: cost budget derived by minimising
+      system costs at CO2 price of 50 Euro/t; effective CO2 price then swept from 0
+      to 50 Euro/t. Both cases run in all three models. Electricity exchange with
+      neighbours fixed exogenously in the IKARUS runs to isolate the effect.
+    variant: cap-versus-price-paradox
+    parameters:
+      co2_cap_reduction: "40% below unconstrained minimum (112 Mt/yr)"
+      co2_intensity_sweep: "0 to ~14%"
+      co2_price_sweep: "0–50 Euro/t"
+      budget_anchor_price: "50 Euro/t"
+
+  - slug: operational-dispatch-and-rolling-horizon
+    role: routine-use
+    evidence: >
+      "The model optimizes the operation of a representation of the German power system
+      for the year 2015 with a high spatial and temporal resolution … The dispatch of
+      power plants and storage as well as a potential curtailment of renewable sources
+      is optimised hourly for the full year" (Sec. 2.2). Capacity is fixed (existing
+      fleet); only dispatch is optimised.
+    procedure_notes: >
+      Single full-year (8760 h) dispatch optimisation; no investment decisions; fixed
+      installed capacities from the German portion of the PyPSA-Eur dataset. Run
+      repeatedly under different CO2 caps or prices to produce Figs. 6a–d.
+    variant: full-year-fixed-capacity
+    parameters:
+      temporal_resolution: "hourly"
+      horizon: "full year 2015"
+
+  - slug: zonal-nodal-and-redispatch
+    role: routine-use
+    evidence: >
+      "The model includes … transmission lines and the electrical demand … optimised
+      hourly for the full year using nodal pricing, guaranteeing that no transmission
+      lines are overloaded and thus approximating the current system after market
+      clearing and redispatch" (Sec. 2.2).
+    procedure_notes: >
+      128-node nodal pricing model of Germany; transmission lines constrained to never
+      exceed thermal ratings; approximates redispatch outcome. Excludes energy trading
+      with neighbouring countries. N-1 security approximated by capping line loading
+      at 70% of thermal rating.
+    variant: nodal-with-security-derate
+    parameters:
+      nodes: 128
+      n1_derate: "70% of thermal rating"
+
+  - slug: powerplant-matching-and-fleet-assembly
+    role: routine-use
+    evidence: >
+      "The power plant database comes from the Open Power System Data (OPSD) project
+      [43]" (Sec. 2.2). The existing German generation fleet is assembled from OPSD
+      and used as fixed installed capacity.
+    procedure_notes: >
+      Fleet data sourced from OPSD; no deduplication procedure described by this paper
+      — it delegates to the PyPSA-Eur data pipeline (ref. [39]). Fixed capacities;
+      no retirement or investment modelling in the PyPSA runs.
+    variant: null
+    parameters: {}
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      The PyPSA model optimises only dispatch for a single year (2015) with all
+      capacities fixed. IKARUS is applied only to 2020 with a "current policies
+      scenario" (Sec. 2.3). No investment decisions are made in either model; both
+      are effectively overnight/snapshot runs.
+    procedure_notes: >
+      PyPSA: dispatch-only, 2015. IKARUS: single target year 2020, chosen because
+      it is "before the complete nuclear phase-out in Germany (2022) such that mixing
+      effects can be avoided" (Sec. 2.3). No multi-year pathway; no myopic or perfect
+      foresight investment.
+    variant: overnight-dispatch-only
+    parameters:
+      target_years: "2015 (PyPSA), 2020 (IKARUS)"
+
+  - slug: sector-coupled-network-assembly
+    role: routine-use
+    evidence: >
+      The IKARUS model "depicts the whole German energy system ranging from primary
+      energy supply across conversion and transport of energy carriers to final energy
+      demand in a technology rich way (some thousand technologies)" including
+      electricity, gas, coal, oil, district heat, transport and industry sectors
+      (Sec. 2.3, Fig. 3).
+    procedure_notes: >
+      IKARUS is a linear optimisation covering the full German energy system for 2020.
+      Cross-sectoral CO2 price applied uniformly (not limited to EU-ETS sectors) to
+      isolate the counter-intuitive effect. Representative time slices with heuristics
+      for backup needs. Not a PyPSA model.
+    variant: full-national-energy-system
+    parameters:
+      technologies: "some thousand"
+      target_year: 2020
+      region: "Germany (single node)"
+
+unmatched_methods: []

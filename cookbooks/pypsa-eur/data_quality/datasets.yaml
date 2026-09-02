@@ -1,0 +1,387 @@
+# Dataset registry for the pypsa-eur data-quality cookbook.
+# Every country-resolved data source the workflow consumes, with the recipe
+# slugs (cookbooks/generation_conversion + cookbooks/demand) that depend on it.
+# All consumer symbols are grep-verified against the scripts named.
+# Default scope (config/config.default.yaml countries): AL AT BA BE BG CH CZ DE
+# DK EE ES FI FR GB GR HR HU IE IT LT LU LV ME MK NL NO PL PT RO RS SE SI SK XK.
+
+- id: jrc-idees
+  title: "JRC-IDEES 2021/2023 energy end-use database"
+  path: data/jrc_idees/archive/2023-v1/
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/build_energy_totals.py:idees_per_country; scripts/build_industrial_energy_demand_per_country_today.py:industrial_energy_demand_per_country; scripts/build_industrial_production_per_country.py:get_energy_ratio"
+  missing_behavior: "build_energy_totals only calls build_idees for countries ∩ EU27 and fills the others from Eurostat balances split by EU28-average IDEES end-use fractions; industry scripts substitute EU27-average energy-per-tonne ratios via add_non_eu27_industrial_energy_demand and ct = 'EU27' in industry_production_per_country"
+  tier_when_missing: C
+  used_by: [residential-space-heating-demand, residential-water-heating-demand, residential-electricity-demand, services-heat-demand, services-electricity-demand, cooking-energy-demand, land-transport-demand, rail-transport-demand, aviation-demand, agriculture-energy-demand, district-heating-demand-share, steel-demand, chemicals-demand, cement-minerals-demand, pulp-paper-demand, food-beverages-demand, light-manufacturing-demand, industrial-process-heat-temperature-bands, building-retrofit]
+  notes: "2023-v1 archive holds EU27 dirs only (plus EU27 aggregate); GR stored as EL, GB would map to UK but no UK dir exists at this version — so AL BA CH GB ME MK NO RS XK all take the EU-average path; per-country xlsx JRC-IDEES-{2023|2021}_{Residential|Tertiary|Transport|Industry...}_<CT>.xlsx"
+
+- id: eurostat-balances
+  title: "Eurostat complete energy balances (nrg_bal_c)"
+  path: data/eurostat_balances/archive/2026-02/estat_nrg_bal_c.tsv.gz
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/build_eurostat_balances.py:build_eurostat; scripts/build_energy_totals.py:build_energy_totals"
+  missing_behavior: "build_energy_totals reindexes to countries x eurostat_years, so a country absent from the Eurostat geo list keeps NaN energy totals (only CH is rerouted to the Swiss balances) — NaNs propagate silently into energy_totals.csv"
+  tier_when_missing: D
+  used_by: [residential-space-heating-demand, residential-electricity-demand, services-heat-demand, services-electricity-demand, cooking-energy-demand, agriculture-energy-demand, shipping-demand, aviation-demand, land-transport-demand, biomass-bioenergy, steel-demand, chemicals-demand, industrial-feedstocks-nonenergy]
+  notes: "geo codes in the tsv: EU27 + AL BA GE IS MD ME MK NO RS TR UA UK XK — every default-scope country except CH is covered; script renames UK->GB, EL->GR; also feeds 1990 CO2 baselines (build_eurostat_co2) and unsustainable biomass (add_unsustainable_potentials)"
+
+- id: swiss-energy-balances
+  title: "Swiss BFS energy balances (Gesamtenergiestatistik)"
+  path: data/swiss_energy_balances/primary/2025-10-01/12361-VWZ_Webtabellen_2024.xlsx
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/build_swiss_energy_balances.py:load_sheet; scripts/build_energy_totals.py:build_energy_totals"
+  missing_behavior: "the file is only ever used for CH (build_energy_totals drops the reindexed CH row and concats the Swiss frame); every other country is served by eurostat-balances, so nothing falls back to this dataset"
+  tier_when_missing: B
+  used_by: [residential-space-heating-demand, residential-electricity-demand, services-heat-demand, services-electricity-demand, cooking-energy-demand, agriculture-energy-demand, land-transport-demand]
+  notes: "CH-native xlsx (BFS Webtabellen 2024); without it CH energy totals would be NaN since CH is missing from Eurostat nrg_bal_c; swiss transport data comes via snakemake.input.swiss_transport in build_transport_data"
+
+- id: electricity-demand-historic
+  title: "Historic hourly electricity demand (ENTSO-E transparency + OPSD)"
+  path:
+    - data/entsoe_electricity_demand/archive/2026-02-02/electricity_demand_entsoe_raw.csv
+    - data/opsd_electricity_demand/archive/2026-02-02/electricity_demand_opsd_raw.csv
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/build_electricity_demand.py:load_timeseries; scripts/build_electricity_demand.py:manual_adjustment"
+  missing_behavior: "gaps are interpolated (fill_gaps.interpolate_limit), larger gaps copied from neighbouring time slices (fill_large_gaps), remaining holes filled from the synthetic dataset (supplement_synthetic: true); a country with no data anywhere trips the final 'Load data contains nans' AssertionError"
+  tier_when_missing: C
+  used_by: [electricity-load, residential-electricity-demand, services-electricity-demand, smart-meters]
+  notes: "ENTSO-E raw covers all 33 default countries incl. AL BA XK (plus CY MD UA); OPSD covers the pre-2019 years but lacks AL/BA/XK; per-country data quality varies strongly — manual_adjustment patches known bad stretches (e.g. AL, ME, MK, XK time slices)"
+
+- id: gb-national-demand
+  title: "GB demand (NESO national timeseries + DESNZ subnational consumption + ONS LAD boundaries)"
+  path:
+    - data/neso_electricity_demand/archive/2026-02-02/electricity_demand_neso_raw.csv
+    - data/desnz_electricity_consumption/archive/2026-02-16/Subnational_electricity_consumption_statistics_2005-2024.xlsx
+    - data/ons_lad/archive/may-2024/Local_Authority_Districts_May_2024_Boundaries__UK_BSC.geojson
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/build_electricity_demand.py:load_timeseries; scripts/build_electricity_demand_base.py:gb_distribution_keys"
+  missing_behavior: "these GB-only sources override the generic path for GB; any other country simply keeps its ENTSO-E/OPSD timeseries and NUTS3 GDP/pop distribution keys (gb_distribution_keys returns keys only for LAD geometries, combine_first fills the rest)"
+  tier_when_missing: B
+  used_by: [electricity-load, demand-spatial-disaggregation]
+  notes: "NESO csv has a single GB column; DESNZ xlsx sheet '2019' column 'Total consumption\\n(GWh):\\nAll meters' per Local authority Code; Northern Ireland is not in the LAD data and falls back to NUTS3 keys (renormalised in upsample_load)"
+
+- id: synthetic-demand
+  title: "Synthetic hourly electricity demand (fallback series)"
+  path: data/synthetic_electricity_demand/primary/v2/load_synthetic_raw.csv
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/build_electricity_demand.py:supplement_synthetic"
+  missing_behavior: "countries hard-excluded from the synthetic frame (code drops UA MD XK CY MT with the comment 'do not appear in synthetic load data') rely purely on gap-filled ENTSO-E/OPSD data; if NaNs remain the run stops at the 'Load data contains nans' assert"
+  tier_when_missing: B
+  used_by: [electricity-load]
+  notes: "covers 33 ISO2 columns + KV (Kosovo) which the code nevertheless discards for XK; only consulted when load.supplement_synthetic is true (default) and holes survive interpolation/time-shift filling"
+
+- id: powerplantmatching-fleet
+  title: "Conventional power plant fleet (powerplantmatching release)"
+  path: data/powerplants/archive/0.8.1/powerplants.csv
+  code_convention: country-name
+  coverage_class: country-listed
+  consumer: "scripts/build_powerplants.py:map_to_country_bus; scripts/add_electricity.py:attach_conventional_generators"
+  missing_behavior: "a country with no rows silently gets no existing conventional/hydro capacity (attach_conventional_generators and attach_hydro add nothing there); the only remedies are data/custom_powerplants.csv or electricity.everywhere_powerplants"
+  tier_when_missing: D
+  used_by: [coal-power-plants, gas-power-plants, oil-power-plants, conventional-nuclear, conventional-hydropower, pumped-hydro-storage, run-of-river-hydro, biomass-bioenergy, waste-to-energy, combined-heat-and-power]
+  notes: "Country column holds full names ('Kosovo', 'Bosnia and Herzegovina', ...); all 33 scope countries present plus MD/UA; completeness and DateIn/max_hours attributes are markedly thinner for the Balkans — probe rows per country before trusting brownfield capacities"
+
+- id: osm-grid
+  title: "Prebuilt OSM transmission grid (buses/lines/links/converters/transformers)"
+  path: data/osm/archive/0.7/
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/base_network.py:_load_buses; scripts/base_network.py:_load_lines"
+  missing_behavior: "base_network keeps only buses whose country is in the configured list (_load_buses filters on europe_shape/countries); where OSM tagging is sparse the network is silently sparse — no warning ties missing lines to a country"
+  tier_when_missing: B
+  used_by: [hv-transmission-lines, hvdc-interconnectors, uhv-dc, electricity-distribution-grid]
+  notes: "electricity.base_network: osm with data.osm.source: archive resolves to these five csvs (buses.csv has an ISO2 country column); alternatives are source: build (earth-osm rebuild) or entsoegridkit/tyndp; OSM grid quality in AL/BA/MK/XK is the weakest in scope"
+
+- id: tyndp-transmission-projects
+  title: "Transmission expansion projects (TYNDP 2020 + German NEP + manual)"
+  path:
+    - data/transmission_projects/tyndp2020/
+    - data/transmission_projects/nep/
+    - data/transmission_projects/manual/
+  code_convention: global
+  coverage_class: country-listed
+  consumer: "scripts/build_transmission_projects.py:get_project_files; scripts/build_transmission_projects.py:remove_projects_outside_countries"
+  missing_behavior: "projects are matched purely geometrically (x0/y0/x1/y1); remove_projects_outside_countries drops anything outside the modelled europe_shape, and a country that no TYNDP/NEP project touches simply gets no candidate expansion links — silently"
+  tier_when_missing: D
+  used_by: [transmission-expansion-projects, hvdc-interconnectors, hv-transmission-lines]
+  notes: "tyndp2020 has new_lines/new_links/upgraded_lines/upgraded_links, nep and manual only new lines/links; coverage follows the ENTSO-E TYNDP perimeter, so XK and parts of the Western Balkans see few or no projects; probe by point-in-polygon of the coordinate pairs"
+
+- id: scigrid-gas-network
+  title: "European gas transmission network (SciGRID_gas IGGIELGN)"
+  path: data/scigrid_gas/primary/1.1.2/data/
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/build_gas_network.py:load_dataset; scripts/cluster_gas_network.py:build_clustered_gas_network"
+  missing_behavior: "a country crossed by no IGGIELGN pipe segment ends up with no gas pipeline links between its clustered gas buses (build_clustered_gas_network drops intra-region and unmatched pipes silently) and nothing to retrofit to H2 when H2_retrofit is enabled"
+  tier_when_missing: D
+  used_by: [natural-gas-pipelines, hydrogen-pipeline-retrofitting, hydrogen-pipelines, fossil-fuel-supply]
+  notes: "IGGIELGN_PipeSegments country_code list covers all scope countries except ME and XK (which genuinely lack gas grids); sector.gas_network is true by default in this repo, so the clustered network is actively built into prepare_sector_network"
+
+- id: gas-input-locations
+  title: "Gas entry points, LNG terminals, production and storage (GEM Europe Gas Tracker + IGGIELGN)"
+  path:
+    - data/gem/Europe-Gas-Tracker-2024-05.xlsx
+    - data/scigrid_gas/primary/1.1.2/data/IGGIELGN_BorderPoints.geojson
+    - data/scigrid_gas/primary/1.1.2/data/IGGIELGN_Storages.geojson
+  code_convention: country-name
+  coverage_class: country-listed
+  consumer: "scripts/build_gas_input_locations.py:build_gem_lng_data; scripts/build_gas_input_locations.py:build_gem_prod_data; scripts/build_gas_input_locations.py:read_scigrid_gas"
+  missing_behavior: "regions containing no GEM terminal/production site and no IGGIELGN border point or storage get zero exogenous gas supply capacity in gas_input_locations_s_{clusters}.csv — their gas demand must then be met over pipelines from elsewhere, silently"
+  tier_when_missing: D
+  used_by: [fossil-fuel-supply, natural-gas-pipelines]
+  notes: "GEM xlsx sheets keyed by country names with lat/lon per facility; check the 'LNG terminals' and 'Gas extraction sites' sheets per country; Balkan countries appear mainly via planned (not operating) facilities"
+
+- id: enspreso-biomass
+  title: "JRC ENSPRESO biomass potentials (NUTS2)"
+  path: data/enspreso_biomass/archive/2019-06-20/ENSPRESO_BIOMASS.xlsx
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/build_biomass_potentials.py:enspreso_biomass_potentials; scripts/build_biomass_potentials.py:disaggregate_nuts0; scripts/build_biomass_potentials.py:build_nuts_population_data"
+  missing_behavior: "a country absent from the ENSPRESO sheet would get NaN commodity columns after the build_nuts2_shapes join, which dissolve/sum turns into zero sustainable potential — only the Eurostat-derived 'unsustainable' share (add_unsustainable_potentials) would give it any biomass; at this data version no default-scope country is actually absent"
+  tier_when_missing: D
+  used_by: [biomass-bioenergy, biogas-anaerobic-digestion, advanced-biofuels, biomass-to-methanol, beccs]
+  notes: "sheet 'ENER - NUTS2 BioCom E' covers the FULL default scope: EU27+UK NUTS2 plus country-level rows for AL BA RS ME MK XK CH NO with nonzero potentials (verified: RS 1573 PJ, XK 663 PJ, BA 1447 PJ across years/scenarios) — the Balkans are handled explicitly (build_nuts2_shapes appends their bare country shapes; disaggregate_nuts0 distributes their NUTS0 rows by the populations hardcoded in build_nuts_population_data: AL=2778 BA=3234 RS=6664 ME=617 XK=1587 thousands); CH population comes from the BFS canton xlsx"
+
+- id: hotmaps-industrial-sites
+  title: "Hotmaps industrial sites database"
+  path: data/hotmaps_industrial_sites/archive/version-1.1/Industrial_Database.csv
+  code_convention: country-name
+  coverage_class: country-listed
+  consumer: "scripts/build_industrial_distribution_key.py:prepare_hotmaps_database; scripts/build_industrial_distribution_key.py:build_nodal_distribution_key"
+  missing_behavior: "for a (country, Subsector) pair with no facilities, build_nodal_distribution_key silently falls back to the clustered population-share key (keys.loc[regions_ct, 'population']), spreading industrial demand by population instead of siting it at plants"
+  tier_when_missing: C
+  used_by: [demand-spatial-disaggregation, steel-demand, cement-minerals-demand, chemicals-demand, pulp-paper-demand, industrial-process-emissions, industrial-ccs, waste-heat-recovery]
+  notes: "semicolon-separated, Country column with full names; covers EU28 + IS LI NO CH only — AL BA ME MK RS XK have zero sites and always take the population fallback; refineries additionally supplemented from data/refineries-noneu.csv (prepare_refineries_supplement)"
+
+- id: gem-steel-cement-trackers
+  title: "GEM Global Steel Plant Tracker + Global Cement and Concrete Tracker"
+  path:
+    - data/gem_gspt/archive/march-2025-v1.1/Global-Steel-Plant-Tracker.xlsx
+    - data/gem_gcct/archive/july-2025/Global-Cement-and-Concrete-Tracker.xlsx
+  code_convention: country-name
+  coverage_class: global-listed
+  consumer: "scripts/build_industrial_distribution_key.py:prepare_gem_steel_database; scripts/build_industrial_distribution_key.py:prepare_gem_cement_database"
+  missing_behavior: "countries with no GEM steel or cement capacities fall back to the population-share key in build_nodal_distribution_key (else branch key = keys.loc[regions_ct, 'population']) for EAF / DRI + EAF / Integrated steelworks and Cement"
+  tier_when_missing: C
+  used_by: [steel-demand, cement-minerals-demand, h2-dri-steel, electric-arc-furnace, low-clinker-cement, demand-spatial-disaggregation]
+  notes: "global trackers, so European coverage is good incl. Balkans; missing clinker/cement capacities imputed with the 1% quantile; steel process split (EAF vs integrated) drives the endogenous steel-route recipes"
+
+- id: ammonia-production-usgs
+  title: "Ammonia production and plant locations (USGS nitrogen statistics + plant list)"
+  path:
+    - data/nitrogen_statistics/archive/2023/nitro-ert.xlsx
+    - data/ammonia_plants.csv
+  code_convention: country-name
+  coverage_class: country-listed
+  consumer: "scripts/build_ammonia_production.py:snakemake.input.usgs; scripts/build_industrial_production_per_country.py:separate_basic_chemicals; scripts/build_industrial_distribution_key.py:prepare_ammonia_database"
+  missing_behavior: "separate_basic_chemicals sets demand['Ammonia'] = 0.0 for countries absent from the USGS table (logged 'Following countries have no ammonia demand'), and prepare-side the Ammonia distribution key is set to 0.0 where no plant row exists"
+  tier_when_missing: D
+  used_by: [green-ammonia, chemicals-demand, electrolytic-chemicals, industrial-feedstocks-nonenergy, industrial-material-production-drivers]
+  notes: "USGS sheet T12 (ktonN/a, 2019-2023, converted to ktonNH3); data/ammonia_plants.csv lists individual European plants with capacities; both keyed by country names -> ISO2 via country_converter"
+
+- id: h2-salt-caverns
+  title: "Hydrogen salt cavern storage potentials (Caglayan et al.)"
+  path: data/h2_salt_caverns/archive/16-10-2019/h2_salt_caverns_GWh_per_sqkm.geojson
+  code_convention: gridded
+  coverage_class: continent-file
+  consumer: "scripts/build_salt_cavern_potentials.py:salt_cavern_potential_by_region; scripts/prepare_sector_network.py:hydrogen_underground_storage"
+  missing_behavior: "regions whose geometry intersects no cavern polygons (or whose potential is <= 2 TWh) are excluded from the underground 'H2 Store' and instead get the more expensive 'hydrogen storage tank type 1 including compressor' Store via nodes_overground"
+  tier_when_missing: C
+  used_by: [hydrogen-storage-salt-caverns, long-duration-storage, hydrogen-pipelines]
+  notes: "geology-limited European geojson (GWh per sqkm, onshore/offshore/nearshore classes) with no country attribute — attribution is geometric; countries without suitable salt formations (most of the Balkans, CH, mountains) always land on tank storage"
+
+- id: eia-hydro-annual
+  title: "EIA annual hydro generation and capacity statistics"
+  path:
+    - data/eia_hydro_annual_generation.csv
+    - data/eia_hydro_annual_capacity.csv
+    - data/country_runoff/archive/2025-08-13/era5-runoff-per-country.csv
+  code_convention: country-name
+  coverage_class: global-listed
+  consumer: "scripts/build_hydro_profile.py:get_eia_annual_hydro_generation; scripts/build_hydro_profile.py:approximate_missing_eia_stats"
+  missing_behavior: "a country missing from the EIA table raises a KeyError at df.T[countries] in get_eia_annual_hydro_generation (hard stop) unless hydro.eia_approximate_missing is enabled, which infers annual generation from a linear regression on ERA5 country runoff"
+  tier_when_missing: B
+  used_by: [conventional-hydropower, run-of-river-hydro]
+  notes: "EIA world statistics 1980-2023 with country names (former CS/YU blocks split by ratio incl. Serbia/Montenegro/Kosovo); all 33 scope countries present; eia_norm_year/eia_correct_by_capacity/eia_approximate_missing default to false"
+
+- id: hydro-capacities
+  title: "Hydro reservoir storage/discharge capacities per country"
+  path: data/hydro_capacities.csv
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/add_electricity.py:attach_hydro"
+  missing_behavior: "countries absent from the csv cannot derive reservoir max_hours from E_store, triggering the logged warning 'Assuming max_hours=6 for hydro reservoirs in the countries: ...' with the flat 6 h default"
+  tier_when_missing: C
+  used_by: [conventional-hydropower, pumped-hydro-storage, run-of-river-hydro]
+  notes: "30 European countries (AT..CH); scope countries missing: AL ME MK XK — all hydro-heavy Balkan systems whose reservoir duration is therefore a flat 6 h; hydro_max_hours method default energy_capacity_totals_by_country"
+
+- id: era5-sarah-cutout
+  title: "ERA5 + SARAH-3 weather cutout (Europe 2013)"
+  path: data/cutout/archive/v1.0/europe-2013-sarah3-era5.nc
+  code_convention: continent
+  coverage_class: continent-file
+  consumer: "scripts/build_renewable_profiles.py:load_cutout; scripts/build_hydro_profile.py:load_cutout"
+  missing_behavior: "regions outside the cutout extent yield empty/zero capacity factors and inflow (atlite aggregates over an empty grid) — for the default Europe cutout no scope country is affected; a missing file must be rebuilt via build_cutout or retrieved"
+  tier_when_missing: B
+  used_by: [onshore-wind, offshore-wind, floating-offshore-wind, utility-scale-solar-pv, rooftop-distributed-solar, solar-thermal, concentrated-solar-power, conventional-hydropower, run-of-river-hydro, air-source-heat-pumps, ground-source-heat-pumps, residential-space-heating-demand, space-cooling-demand, demand-temporal-profiles, dynamic-line-rating-facts, land-transport-demand]
+  notes: "single continental file (v1.0 archive) also consumed by temperature/soil/solar-thermal/heat-demand/line-rating rules; SARAH-3 irradiation is biased at high latitudes (NO/SE/FI use ERA5 influx); weather year fixed to 2013 by default snapshots"
+
+- id: corine-landcover
+  title: "CORINE land cover raster (v18_5)"
+  path: data/corine/archive/v18_5/corine.tif
+  code_convention: gridded
+  coverage_class: continent-file
+  consumer: "scripts/determine_availability_matrix.py:excluder.add_raster"
+  missing_behavior: "eligible land is defined by inclusion (add_raster with codes and invert=True), so any area where the CORINE raster has no valid class — e.g. countries outside CLC coverage — contributes zero eligible area and hence zero renewable potential, silently"
+  tier_when_missing: D
+  used_by: [onshore-wind, utility-scale-solar-pv, concentrated-solar-power]
+  notes: "CLC v18_5 covers the EEA39 incl. the Western Balkans (AL BA ME MK RS XK) but not MD/UA (those use a Copernicus-based path in determine_availability_matrix_MD_UA); luisa alternative is off by default; probe: zonal count of valid CLC classes per country shape"
+
+- id: natura-and-offshore-exclusions
+  title: "Exclusion layers: Natura 2000 raster, GEBCO bathymetry, ship density"
+  path:
+    - data/natura/archive/2025-08-15/natura.tiff
+    - data/gebco/archive/2014/GEBCO_2014_2D.nc
+    - data/ship_raster/archive/v5/shipdensity_global.zip
+  code_convention: gridded
+  coverage_class: global-gridded
+  consumer: "scripts/determine_availability_matrix.py:snakemake.input.natura; scripts/determine_availability_matrix.py:snakemake.input.gebco; scripts/determine_availability_matrix.py:snakemake.input.ship_density"
+  missing_behavior: "these layers only ever exclude area, so a country not covered by a layer simply loses that exclusion: non-EU countries have no Natura 2000 sites and their protected areas are not excluded (renewable potentials overestimated); GEBCO and the World Bank ship raster are global"
+  tier_when_missing: C
+  used_by: [onshore-wind, offshore-wind, floating-offshore-wind, utility-scale-solar-pv, tidal-wave]
+  notes: "natura: true for all renewable techs by default; the natura.tiff is EU-only (Natura 2000 network), so AL BA CH ME MK NO RS XK conservation areas are invisible to the model unless a WDPA-based raster is built (wdpa datasets exist in data/versions.csv, retrieved at runtime by build_natura.py when data.natura source is build)"
+
+- id: eez
+  title: "Marine Exclusive Economic Zones (World EEZ v12)"
+  path: data/eez/archive/v12_20231025/World_EEZ_v12_20231025_LR/eez_v12_lowres.gpkg
+  code_convention: ISO3
+  coverage_class: global-listed
+  consumer: "scripts/build_shapes.py:eez"
+  missing_behavior: "a country absent from the EEZ file (or landlocked) gets no offshore shape, so no offshore regions, offshore wind potential or offshore cavern classes are ever created for it — silently correct for landlocked, silently wrong if a coastal ISO3 mapping fails"
+  tier_when_missing: B
+  used_by: [offshore-wind, floating-offshore-wind, tidal-wave, hydrogen-storage-salt-caverns]
+  notes: "global v12 low-res gpkg with ISO_TER1 codes; XK/landlocked scope countries (AT CH CZ HU LU MK RS SK XK) legitimately have none; BA has a ~20 km coast with a tiny EEZ — check it survives the simplification tolerance"
+
+- id: nuts3-population-gdp
+  title: "NUTS3 population/GDP (JRC ARDECO) + non-NUTS3 rasters (Kummu GDP, WorldPop count)"
+  path:
+    - data/jrc_ardeco/archive/2021/
+    - data/eu_nuts2021/archive/2021-01-01/
+    - data/osm_boundaries/build/unknown/
+    - data/gdp_per_capita/archive/2018-02-06/GDP_per_capita_PPP_1990_2015_v2.nc
+    - data/population_count/archive/2018-11-01/ppp_2019_1km_Aggregated.tif
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/build_shapes.py:create_regions; scripts/build_shapes.py:calc_gdp_pop"
+  missing_behavior: "countries not in the ARDECO NUTS3 tables (the other_countries set BA MD UA XK, drawn as OSM adm1 shapes) get GDP/pop from the Kummu 5-arcmin GDP-p.c. raster and WorldPop count raster via calc_gdp_pop, rescaled to hardcoded World Bank national totals in build_shapes"
+  tier_when_missing: C
+  used_by: [demand-spatial-disaggregation, electricity-load, residential-electricity-demand, services-electricity-demand]
+  notes: "ARDECO SNPTD (population) and SUVGDP (GDP) cover EU27 + AL CH IS LI ME MK NO RS TR UK at NUTS level; hardcoded totals in build_shapes: GDP bn USD BA=20.48 MD=11.74 UA=153.9 XK=7.9, pop k BA=3361 MD=2664 UA=44470 XK=1782; these keys drive load and industry disaggregation everywhere NUTS3 data is used"
+
+- id: worldbank-urban-population
+  title: "World Bank urban population share (SP.URB.TOTL.IN.ZS)"
+  path: data/worldbank_urban_population/archive/2025-08-14/API_SP.URB.TOTL.IN.ZS_DS2_en_csv_v2.csv
+  code_convention: ISO3
+  coverage_class: global-listed
+  consumer: "scripts/build_population_layouts.py:urban_percent"
+  missing_behavior: "a country missing from the World Bank csv would leave NaN urban fraction and break the urban/rural population layout split; in practice all scope countries incl. XKX (Kosovo) are covered"
+  tier_when_missing: B
+  used_by: [district-heating, district-heating-demand-share, residential-space-heating-demand, demand-spatial-disaggregation]
+  notes: "global indicator csv, ISO3 codes (Kosovo = XKX); drives pop_layout urban/rural/total which underpins heat demand disaggregation and district-heating shares"
+
+- id: jrc-energy-atlas
+  title: "JRC Energy Atlas spatial electricity demand raster (2019)"
+  path: data/jrc_energy_atlas/archive/2026-02-16/electricity_tot_demand_2019.tif
+  code_convention: gridded
+  coverage_class: continent-file
+  consumer: "scripts/build_electricity_demand_base.py:energy_atlas_distribution_keys"
+  missing_behavior: "energy_atlas_distribution_keys explicitly skips countries not in cc.EU27as('ISO2'), so non-EU27 countries fall through combine_first to the NUTS3 GDP/pop distribution keys (nuts3_distribution_keys) for spatial load disaggregation"
+  tier_when_missing: C
+  used_by: [electricity-load, demand-spatial-disaggregation]
+  notes: "EU27-only demand raster; in the default scope AL BA CH GB ME MK NO RS XK use GDP(0.6)/pop(0.4) NUTS3 keys instead (GB additionally uses the DESNZ LAD data); probe: zonal sum of the GeoTIFF per country"
+
+- id: district-heating-potentials
+  title: "District heating areas, ISI geothermal heat potentials, BGR aquifer shapes (ATES)"
+  path:
+    - data/dh_areas/
+    - data/geothermal_heat_utilisation_potentials/
+    - data/aquifer_data/
+  code_convention: gridded
+  coverage_class: continent-file
+  consumer: "scripts/build_dh_areas.py:handle_missing_countries; scripts/build_geothermal_heat_potential.py:get_heat_source_power; scripts/build_ates_potentials.py:suitable_aquifers"
+  missing_behavior: "dh_areas.handle_missing_countries defaults to 'fill' which substitutes whole-country geometries for countries missing from the DH areas dataset (with 'ignore' they silently get no district heat, 'raise' aborts); geothermal potentials outside EU27 LAU regions raise a ValueError unless ignore_missing_regions is set, in which case those regions get no geothermal heat source; ATES potential exists only where BGR/IHME aquifer polygons overlap DH areas"
+  tier_when_missing: C
+  used_by: [district-heating, aquifer-thermal-storage, thermal-storage]
+  notes: "all three are runtime-retrieved (dataset_version entries dh_areas, geothermal_heat_utilisation_potentials, aquifer_data in data/versions.csv; folders not on disk at this ref); ISI potentials are EU27-only (explicit log about 'onshore regions outside EU 27'); IHME1500 aquifer map covers most of Europe"
+
+- id: retro-building-stock
+  title: "Building stock and retrofit cost data (EU Building Observatory + Invert/EE-Lab)"
+  path: data/retro/
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/build_retro_cost.py:prepare_building_stock_data"
+  missing_behavior: "countries missing from data_building_stock.csv are first patched from floor_area_missing.csv, and anything still missing gets floor area estimated from population via the map_for_missings country-group averages (area_per_pop * ct_total) with estimated=1 flags"
+  tier_when_missing: C
+  used_by: [building-retrofit, residential-space-heating-demand]
+  notes: "data_building_stock.csv covers EU28 (lowercase ISO2, uk/gr codes); floor_area_missing.csv adds AL BA CH ME MK NO PL RS — XK relies entirely on the population-based estimate; retrofit branch is off unless sector.retrofitting.retro_endogen is enabled"
+
+- id: co2stop-sequestration
+  title: "CO2 storage potentials (CO2Stop / CO2JRC)"
+  path: data/co2stop/archive/26-august-2020/
+  code_convention: gridded
+  coverage_class: continent-file
+  consumer: "scripts/build_co2_sequestration_potentials.py:create_capacity_map_storage; scripts/build_clustered_co2_sequestration_potentials.py:allocate_sequestration_potential"
+  missing_behavior: "allocate_sequestration_potential overlays CO2Stop polygons with bus regions, so regions in countries outside the CO2Stop survey simply receive zero sequestration potential and prepare_sector_network caps their 'co2 sequestered' store at e_nom_max=0 — silently"
+  tier_when_missing: D
+  used_by: [co2-transport-and-sequestration, industrial-ccs, beccs, direct-air-capture, allam-cycle]
+  notes: "regional_co2_sequestration_potential.enable is true by default; CO2Stop was an EU project — storage units/traps cover EU member states + NO/UK shelf, with no data for AL BA CH ME MK RS XK; probe: intersect CO2Stop_Polygons shapefiles with country shapes"
+
+- id: transport-data-emobility
+  title: "German BASt traffic count profiles (transport/EV proxy)"
+  path: data/mobility_profiles/archive/2025-08-27/
+  code_convention: global
+  coverage_class: proxy-global
+  consumer: "scripts/build_mobility_profiles.py:zip_files; scripts/build_transport_demand.py:bev_availability_profile"
+  missing_behavior: "no per-country data exists at all — the weekly KFZ/PKW count shapes derived from German BASt A/B road counters (2010-2014) are applied to every country's transport demand and EV availability via generate_periodic_profiles, silently"
+  tier_when_missing: C
+  used_by: [battery-electric-cars, vehicle-to-grid, smart-ev-chargers, electric-heavy-trucks, land-transport-demand, demand-temporal-profiles]
+  notes: "kfz.csv/pkw.csv built by build_mobility_profiles from BASt zips (runtime download when source is build); identical temporal shape for all 33 countries regardless of local driving patterns"
+
+- id: unit-commitment-parameters
+  title: "Unit commitment parameters per conventional carrier"
+  path: data/unit_commitment.csv
+  code_convention: global
+  coverage_class: proxy-global
+  consumer: "scripts/add_electricity.py:attach_conventional_generators"
+  missing_behavior: "parameters are per-carrier with no country dimension — every country's OCGT/CCGT/coal/lignite/nuclear units get identical German-literature UC parameters, and carriers absent from the csv (oil, biomass, geothermal) get PyPSA component defaults (no min-up/down times, free ramps), silently"
+  tier_when_missing: C
+  used_by: [coal-power-plants, gas-power-plants, conventional-nuclear, oil-power-plants]
+  notes: "columns only OCGT, CCGT, coal, lignite, nuclear — no oil column despite oil being a default conventional carrier; only active when conventional.unit_commitment: true (default false)"
+
+- id: technology-costs
+  title: "Technology cost assumptions (PyPSA technology-data v0.14.0)"
+  path: data/costs/archive/v0.14.0/costs_2050.csv
+  code_convention: global
+  coverage_class: proxy-global
+  consumer: "scripts/_helpers.py:load_costs; scripts/add_electricity.py:load_costs"
+  missing_behavior: "costs carry no country dimension — a single European (mostly DEA/German) cost table is applied uniformly to all countries and planning horizons requested, so national WACC, labour and land cost differences are invisible unless costs.overwrites are set per scenario"
+  tier_when_missing: C
+  used_by: [electrolysers, grid-scale-batteries, onshore-wind, offshore-wind, utility-scale-solar-pv, gas-power-plants, direct-air-capture]
+  notes: "only costs_2050.csv staged at this ref (other horizons fetched on demand from the technology-data release); versioned via data/versions.csv 'costs' entry"
+
+- id: heat-profile-bdew
+  title: "BDEW intraday heat demand profiles (German proxy)"
+  path: data/heat_load_profile_BDEW.csv
+  code_convention: global
+  coverage_class: proxy-global
+  consumer: "scripts/build_hourly_heat_demand.py:intraday_profiles"
+  missing_behavior: "no per-country data exists at all — the same German BDEW weekday/weekend hourly shapes (residential/services x space/water) scale every country's daily heat demand into hourly profiles via the weekly_profile tiling, silently"
+  tier_when_missing: C
+  used_by: [demand-temporal-profiles, residential-space-heating-demand, residential-water-heating-demand, services-heat-demand, district-heating-demand-share]
+  notes: "24-hour normalised shapes, 8 columns; wired as input heat_profile of rule build_hourly_heat_demand in rules/build_sector.smk"

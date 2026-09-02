@@ -1,0 +1,58 @@
+id: non-expert-model-usability
+title: Non-expert model usability
+rank: 92
+question: >
+  Can an analyst, policymaker, or corporate user who is not an energy-system
+  modeller actually run a study? The loudest cross-cutting methodological
+  pain: powerful open models (PyPSA, TIMES, oemof) are expert-only, and the
+  latent demand for making them accessible is huge.
+when_to_use:
+  - "can a non-modeller run this"
+  - "how steep is the learning curve"
+  - "GUI / no-code interface to the model"
+  - "what can go wrong for a first-time user"
+  - "hand the model to a policy analyst"
+recipes:
+  generation_conversion: []
+  demand: []
+functionality:
+  - id: config-schema-validation
+    role: "the biggest usability win over pypsa-earth — every config key is validated against a typed schema at workflow start, so typos fail immediately with a readable error, not a stack trace deep in the DAG"
+  - id: scenario-matrix
+    role: "one config file (plus scenario overrides) is the entire standard-study surface — no Python for common questions"
+  - id: spatial-clustering
+    role: "few-node runs keep a first study laptop-sized"
+  - id: temporal-resolution-nh
+    role: "coarse time resolution (24h) for fast exploratory solves"
+  - id: solver-choice
+    role: "shipped HiGHS profiles make it open-source runnable — but the shipped DEFAULT is gurobi, a licence hurdle a first-time user hits immediately"
+  - id: data-retrieval-versioning
+    role: "all external data auto-retrieved through a pinned versions registry — fewer manual-download failure modes for newcomers"
+  - id: summary-outputs
+    role: "results as plain csvs, readable without PyPSA knowledge"
+  - id: plotting-suite
+    role: "canned maps, balance plots and interactive HTML — richer built-in visual output than earth"
+  - id: workflow-reproducibility
+    role: "lockfile + pinned datasets mean a copied known-good setup actually reproduces"
+gap_assessment: >
+  Still expert-only, but meaningfully more forgiving than pypsa-earth: the
+  pydantic config schema catches invalid keys and types before any rule
+  runs, dataset retrieval is versioned and automatic, and the plotting
+  suite gives presentable maps and balances out of the box. The hurdles
+  that remain are structural: a working pixi/snakemake environment is
+  assumed, config.default.yaml has hundreds of keys whose INTERACTIONS the
+  schema cannot check (valid-but-meaningless combinations still fail deep
+  in the DAG or solve to nonsense), the wildcard grammar
+  (clusters/opts/sector_opts) must be internalised — and has churned:
+  simpl and ll wildcards are gone at this ref, so most older tutorials and
+  forum answers mislead newcomers. The default solver is gurobi, so an
+  unlicensed first run fails until solving.solver.name is switched to
+  highs. There is no GUI and no guided setup. Realistic bar today: a
+  technical analyst with occasional expert support can run and adapt
+  studies; a policymaker cannot operate the model unassisted. Closing that
+  gap is an interface-layer product on top of the model, not a config
+  change.
+coverage: gap
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

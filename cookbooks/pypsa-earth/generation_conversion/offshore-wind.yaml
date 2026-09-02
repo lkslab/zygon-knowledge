@@ -1,0 +1,153 @@
+id: offshore-wind
+title: Offshore wind
+summary: Fixed-bottom wind generation in maritime zones, split into near-shore (AC-connected) and far-shore (DC-connected) carriers with depth- and distance-limited potentials and endogenous grid-connection costs.
+
+when_to_use:
+  - add offshore wind
+  - wind at sea / marine wind farms
+  - offwind-ac / offwind-dc
+  - change allowed water depth or distance from shore
+  - offshore wind connection cost
+  - increase or limit offshore wind potential
+  - country has a coastline, model sea wind
+  - "known in pypsa-eur as: offwind, offshore wind, offwind-ac, offshore wind (AC), offshore wind ac, offwind-dc, offshore wind (DC), offshore wind dc"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        Two default renewable carriers: 'offwind-ac' (within max_shore_distance 30 km of shore)
+        and 'offwind-dc' (beyond min_shore_distance 30 km), both fixed-bottom up to max_depth 50 m
+        (GEBCO bathymetry exclusion), both extendable by default. Profiles/potentials over
+        offshore Voronoi regions from rule build_renewable_profiles; generators attached in
+        add_electricity with per-bus connection costs from average distance to shore and
+        underwater fraction.
+      mechanism: >
+        rule build_renewable_profiles (offshore technologies use regions_offshore.geojson and
+        offshore_shapes) applies an atlite ExclusionContainer with copernicus grid_codes [80, 200]
+        (water/open sea), natura, a GEBCO depth mask (np.greater on -max_depth), and shore-distance
+        buffers from min_shore_distance/max_shore_distance; it also writes average_distance and
+        underwater_fraction per bus. attach_wind_and_solar in scripts/add_electricity.py detects
+        supcarrier 'offwind' and sets capital_cost = costs['offwind'] + costs['<carrier>-station']
+        + line_length_factor * average_distance * (underwater_fraction * costs['<carrier>-connection-submarine']
+        + (1-underwater_fraction) * costs['<carrier>-connection-underground']). Existing offshore
+        plants from powerplants.csv are forced to carrier 'offwind-ac'.
+      not_covered: >
+        No floating foundations (everything deeper than max_depth is excluded; see
+        floating-offshore-wind recipe); both carriers share the same turbine and the same base
+        'offwind' turbine capex row; no explicit offshore hub/meshed offshore grid topology —
+        connection cost is a capital-cost adder, not a modelled line.
+      provenance: "scripts/add_electricity.py:attach_wind_and_solar"
+
+    levers:
+      - key: electricity.renewable_carriers
+        effect: "Include/exclude 'offwind-ac' / 'offwind-dc' (remove both for landlocked countries)."
+        default: "[solar, onwind, offwind-ac, offwind-dc, hydro]"
+        provenance: "config.default.yaml:renewable_carriers"
+      - key: electricity.extendable_carriers.Generator
+        effect: "Whether offshore capacity is optimisable."
+        default: "[solar, onwind, offwind-ac, offwind-dc, OCGT]"
+        provenance: "config.default.yaml:extendable_carriers"
+      - key: renewable.offwind-ac.max_depth
+        effect: "Maximum water depth [m] for eligible offwind-ac area (GEBCO exclusion)."
+        default: "50"
+        provenance: "scripts/build_renewable_profiles.py:max_depth"
+      - key: renewable.offwind-dc.max_depth
+        effect: "Maximum water depth [m] for eligible offwind-dc area."
+        default: "50"
+        provenance: "scripts/build_renewable_profiles.py:max_depth"
+      - key: renewable.offwind-ac.max_shore_distance
+        effect: "offwind-ac restricted to within this distance [m] of shore."
+        default: "30000"
+        provenance: "scripts/build_renewable_profiles.py:max_shore_distance"
+      - key: renewable.offwind-dc.min_shore_distance
+        effect: "offwind-dc restricted to beyond this distance [m] from shore."
+        default: "30000"
+        provenance: "scripts/build_renewable_profiles.py:min_shore_distance"
+      - key: renewable.offwind-ac.resource.turbine
+        effect: "atlite offshore turbine power curve (same key for offwind-dc)."
+        default: "NREL_ReferenceTurbine_5MW_offshore"
+        provenance: "config.default.yaml:NREL_ReferenceTurbine_5MW_offshore"
+      - key: renewable.offwind-ac.capacity_per_sqkm
+        effect: "MW installable per km2 of eligible sea area (offwind-dc has its own key, default 3)."
+        default: "2"
+        provenance: "scripts/build_renewable_profiles.py:capacity_per_sqkm"
+      - key: renewable.offwind-ac.natura
+        effect: "Exclude marine protected areas (same key for offwind-dc)."
+        default: "true"
+        provenance: "scripts/build_renewable_profiles.py:natura"
+      - key: renewable.offwind-ac.potential
+        effect: "'simple' or 'conservative' p_nom_max method."
+        default: "simple"
+        provenance: "scripts/build_renewable_profiles.py:potential"
+      - key: lines.length_factor
+        effect: "Scales the as-the-crow-flies shore distance in the offshore connection-cost adder."
+        default: "1.25"
+        provenance: "config.default.yaml:length_factor"
+      - key: costs.marginal_cost.offwind
+        effect: "Overwrites offwind marginal cost (applies via supcarrier 'offwind' to both carriers)."
+        default: "0.015"
+        provenance: "scripts/process_cost_data.py:load_costs"
+      - key: electricity.estimate_renewable_capacities.technology_mapping
+        effect: "Maps IRENA 'Offshore' statistics onto [offwind-ac, offwind-dc] for capacity gap filling."
+        default: "Offshore: [offwind-ac, offwind-dc]"
+        provenance: "config.default.yaml:technology_mapping"
+
+    boundary:
+      - variant: "remove offshore wind (landlocked country)"
+        rung: L0
+        note: "delete offwind-ac/offwind-dc from electricity.renewable_carriers and extendable_carriers.Generator."
+      - variant: "allow deeper or nearer/farther sites"
+        rung: L0
+        note: "renewable.offwind-*.max_depth / max_shore_distance / min_shore_distance."
+      - variant: "different offshore turbine"
+        rung: L1
+        note: "renewable.offwind-*.resource.turbine."
+      - variant: "wake-loss derating"
+        rung: L1
+        note: "renewable.offwind-*.correction_factor (commented out by default; read via config.get('correction_factor', 1.0) in build_renewable_profiles)."
+      - variant: "change connection-cost treatment (e.g. distance-independent capex)"
+        rung: L2
+        note: "connection_cost formula is hardcoded in attach_wind_and_solar; edit there."
+      - variant: "floating offshore wind"
+        rung: L3
+        note: "see floating-offshore-wind recipe — technology-data ships offwind-float cost rows but no carrier is wired."
+      - variant: "explicit offshore grid / hub topology with modelled lines"
+        rung: L5
+        note: "no mechanism; connection is a cost adder, not network components."
+
+    where:
+      - change: "eligibility masks (depth, shore distance, natura) and profile computation"
+        anchor: "rule build_renewable_profiles -> scripts/build_renewable_profiles.py (ExclusionContainer block)"
+        provenance: "scripts/build_renewable_profiles.py:ExclusionContainer"
+      - change: "connection-cost formula and generator attachment"
+        anchor: "attach_wind_and_solar in scripts/add_electricity.py (supcarrier == 'offwind' branch)"
+        provenance: "scripts/add_electricity.py:attach_wind_and_solar"
+      - change: "cost rows used (offwind, <carrier>-station, <carrier>-connection-submarine/underground)"
+        anchor: "load_costs in scripts/process_cost_data.py + retrieved technology-data csv"
+        provenance: "scripts/process_cost_data.py:load_costs"
+
+    data_dependencies:
+      - input: "ERA5 cutout (cutouts/<name>.nc)"
+        required_for: "offshore wind profiles"
+        availability: "retrieved via enable.retrieve_cutout; built via build_cutout otherwise"
+      - input: "GEBCO bathymetry data/gebco/GEBCO_2025_sub_ice.nc"
+        required_for: "max_depth exclusion"
+        availability: "retrieved by databundle (enable.retrieve_databundle); global"
+      - input: "offshore_shapes.geojson + regions_offshore.geojson (EEZ-based bus regions)"
+        required_for: "siting area and per-bus aggregation"
+        availability: "built by the shapes/bus_regions rules from country selection"
+      - input: "Copernicus land cover raster (grid codes 80/200 = water)"
+        required_for: "sea-area eligibility"
+        availability: "retrieved by databundle; global"
+      - input: "natura.tiff exclusion raster"
+        required_for: "marine protected-area exclusion"
+        availability: "pregenerated by default"
+      - input: "technology-data costs file (offwind, offwind-ac-station, offwind-ac-connection-submarine, ... rows)"
+        required_for: "capex incl. connection-cost adder"
+        availability: "retrieved by rule retrieve_cost_data (exists by default)"
+      - input: "powerplants.csv"
+        required_for: "existing offshore capacity (forced to offwind-ac)"
+        availability: "built by rule build_powerplants; sparse in many pypsa-earth regions"

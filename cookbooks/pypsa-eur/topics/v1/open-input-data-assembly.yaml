@@ -1,0 +1,56 @@
+id: open-input-data-assembly
+title: Open input-data assembly
+rank: 86
+question: >
+  Where do consistent, open, country-resolved inputs — grid topology, plant
+  fleet, demand, weather, shapes, costs — come from, and how trustworthy are
+  they per country? The perennial time-sink the modelling community ranks
+  among its top pains, and one of the reasons open European models displaced
+  hand-assembled TSO datasets.
+when_to_use:
+  - "get model-ready input data for [country]"
+  - "open data pipeline for grid / fleet / demand / weather"
+  - "how good is the input data for country X"
+  - "avoid hand-assembling planning-study inputs"
+  - "reproducible data provenance for a study"
+recipes:
+  generation_conversion: []
+  demand: [electricity-load, demand-spatial-disaggregation]
+functionality:
+  - id: data-retrieval-versioning
+    role: "core — every external dataset resolves through data/versions.csv with primary/archive/build sources, pinnable per run"
+  - id: base-network-source
+    role: "grid topology arrives assembled: OSM-derived European grid by default, TYNDP reference grid as alternative"
+  - id: renewable-potentials-land-eligibility
+    role: "atlite cutouts + CORINE/LUISA/Natura exclusions turn raw weather into siting-ready profiles and potentials"
+  - id: hydro-inflow-normalization
+    role: "raw ERA5 runoff calibrated to EIA reported generation, not used blind"
+  - id: fleet-retirement-filter
+    role: "powerplantmatching fleet arrives queryable (dates, techs) and correctable via custom_powerplants.csv"
+  - id: cost-data-pipeline
+    role: "technology-data cost tables retrieved at a pinned release, overridable per horizon via custom_costs.csv"
+  - id: shared-resources-caching
+    role: "expensive assembled inputs (shapes, cutout-derived data) shared across scenario runs"
+  - id: workflow-reproducibility
+    role: "provenance — the solved network carries its full config, and pinned versions make the assembly rerunnable"
+gap_assessment: >
+  Ready, with a different character from earth: pypsa-eur's retrieve/build
+  rules pull the OSM (or TYNDP) European grid, ENTSO-E/OPSD electricity
+  load, powerplantmatching fleets, ERA5/SARAH cutouts (1940-2024),
+  JRC-IDEES sector statistics, SciGRID gas topology, CO2Stop sequestration
+  potentials, and technology costs automatically — a running
+  sector-coupled model for any ENTSO-E subset with zero hand-curated files.
+  Two things make it stronger than earth's pipeline where it applies: the
+  data is first-party European statistics rather than global proxies (no
+  silent BDEW-profile fallbacks — the profiles ARE the European ones), and
+  retrieval is explicitly versioned — data/versions.csv pins every dataset
+  with primary/archive/build sources, so the assembly is reproducible by
+  construction rather than by retrieval-date luck. The structural limit is
+  scope: the pipeline covers Europe only — there is no path to inputs for
+  any other continent (that is pypsa-earth's job), and within Europe,
+  edge-of-map countries (UA/MD/XK/BA) lean on coarser statistics than the
+  EU core, so check those inputs before load-bearing use.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

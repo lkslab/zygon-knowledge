@@ -1,0 +1,63 @@
+id: extreme-weather-resilience
+title: "Extreme-weather resilience"
+rank: 64
+question: >
+  Does the system survive heat waves, cold snaps, droughts, and storms —
+  what breaks first, how much unserved energy results, and what buys
+  resilience cheapest? Post-Uri / post-2022 framing, rising everywhere as
+  climate extremes intensify.
+when_to_use:
+  - "system performance in a heat wave / cold snap"
+  - "unserved energy under an extreme weather year"
+  - "resilience investment: what to harden first"
+  - "compound stress: drought plus heat plus low wind"
+  - "climate stress-testing a capacity plan"
+recipes:
+  generation_conversion: [gas-power-plants, grid-scale-batteries,
+                          long-duration-storage, conventional-hydropower,
+                          dynamic-line-rating-facts]
+  demand: [electricity-load, space-cooling-demand,
+           residential-space-heating-demand]
+functionality:
+  - id: weather-year-selection
+    role: "core lever — the 1940-2024 ERA5 cutout makes any historical stress year (1963, 1985, 1996-97, 2010...) selectable by snapshot window"
+  - id: load-shedding-voll
+    role: "per-carrier VOLL slack generators turn infeasibility into unserved-energy metrics across electricity, heat and H2"
+  - id: operations-only-solve
+    role: "the practical stress test — fix a capacity plan and re-dispatch it against other weather years"
+  - id: multi-weather-year
+    role: "cutout concatenation exists but the standard solve is one year — stress years are separate runs, not a distribution"
+  - id: probabilistic-adequacy
+    role: "no forced outages or LOLE — weather stress only, no equipment failure"
+  - id: monte-carlo-sampling
+    role: "absent in pypsa-eur (earth has it) — parameter fan-out around a stress case is scenario enumeration instead"
+  - id: time-segmentation-tsam
+    role: "segmentation preserves extreme hours that uniform nH averaging smooths away"
+  - id: hydro-inflow-normalization
+    role: "drought scenarios via EIA norm-year rescaling of inflows"
+  - id: dynamic-line-rating
+    role: "weather-dependent line ratings capture heat-wave transmission derating (off by default)"
+  - id: safe-reserve-margin
+    role: "deterministic peak margin backstop — needs the user-added SAFE_reservemargin config key"
+gap_assessment: >
+  A workable stress-testing loop, better provisioned than pypsa-earth's,
+  but still no extreme-event machinery. What works: pick a bad weather
+  year from 85 years of ERA5 (cutout and demand year move together), turn
+  on per-carrier load shedding at VOLL, and read unserved energy, shadow
+  prices, and which assets saturate — with hydro drought layered in via
+  inflow normalization, demand extremes via heating/cooling profiles, and
+  heat-wave line derating via dynamic line rating. The dedicated
+  operations-only rule makes the key workflow — dispatch a fixed plan
+  against many historical years — cleaner than in earth, and rolling
+  horizon handles long stress dispatches. What is missing is everything
+  event-shaped: no forced-outage sampling, no correlated generator/line
+  failures, no interdependency (gas-freeze-offs, cooling-water
+  curtailment), no storm damage, no monte-carlo module (earth has one),
+  and one weather year per standard solve, so tail risk is a hand-picked
+  scenario set rather than a probability distribution. Beware temporal
+  averaging: at 3h+ the extremes that define this topic start
+  disappearing — use tsam segmentation or full hourly for stress runs.
+coverage: partial
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

@@ -1,0 +1,98 @@
+id: heat-pump-water-heaters
+title: Heat-pump water heaters
+summary: Dedicated heat pumps for domestic hot water production, as opposed to space heating.
+
+when_to_use:
+  - "add heat pump water heaters"
+  - "HPWH"
+  - "electrify water heating"
+  - "domestic hot water demand"
+  - "hot water heat pump"
+  - "sanitary hot water"
+  - "split space heating from water heating"
+  - "water heating electrification"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        NOT a distinct technology. Water heating exists only as a demand component inside
+        the combined heat load: build_base_energy_totals splits each country's UNSD
+        household/services heat-commodity consumption into "total residential space" /
+        "total residential water" (and services equivalents) using the scalar
+        sector.space_heat_share (default 0.6; remainder is water). prepare_heat_data
+        builds separate "residential water" / "services water" time series (water uses
+        only the BDEW intraday profile from data/heat_load_profile_BDEW.csv, no
+        degree-day weather scaling, unlike space heat). In add_heat, however, space and
+        water columns are summed onto a single "{name} heat" bus per heat system
+        (heat_demand[[sector + " water", sector + " space"]] ... .sum()), so the generic
+        air/ground heat pumps, resistive heaters, gas boilers and solar thermal serve the
+        combined space+water load — there is no separate water-heating bus or dedicated
+        HPWH asset. For fuel-based heat, fuel_shares.csv column "space to water heat
+        share" performs the equivalent split per country in prepare_energy_totals.
+      mechanism: >
+        Demand-side only: rule build_base_energy_totals (param space_heat_share) ->
+        rule prepare_energy_totals (fuel_shares "space to water heat share") -> rule
+        prepare_heat_data (per-use profiles) -> add_heat (summed onto one heat bus per
+        system; served by the shared heat pump Links).
+      not_covered: >
+        No dedicated heat-pump water heater component, no separate hot-water bus, no
+        separate hot-water storage sizing (the "water tanks" TES stores serve the
+        combined heat bus), no distinct sink temperature for hot water vs space heat
+        (one sector.heat_pump_sink_T for everything).
+      provenance: "scripts/prepare_sector_network.py:add_heat"
+
+    levers:
+      - key: sector.space_heat_share
+        effect: Share of UNSD household/services heat consumption assigned to space heating; 1 minus this goes to water heating (changes profile shape mix, since water demand is not weather-scaled).
+        default: "0.6"
+        provenance: "config.default.yaml:space_heat_share; scripts/build_base_energy_totals.py:space_heat_share"
+      - key: sector.heat_pump_sink_T
+        effect: Single sink temperature used for all heat pump COPs, including the water-heating fraction of the load.
+        default: "55"
+        provenance: "config.default.yaml:heat_pump_sink_T; scripts/build_cop_profiles.py:heat_pump_sink_T"
+      - key: sector.tes
+        effect: Enables water-tank thermal storage on each heat bus — the closest existing proxy for hot-water tank flexibility.
+        default: "true"
+        provenance: "config.default.yaml:tes; scripts/prepare_sector_network.py:water tanks"
+
+    boundary:
+      - variant: "Change the space-vs-water split of heat demand (all countries)"
+        rung: L1
+        note: "sector.space_heat_share (consumed by rule build_base_energy_totals)."
+      - variant: "Country-specific space/water split for fuel-based heat"
+        rung: L3
+        note: "Edit the 'space to water heat share' column per country row in data/demand/fuel_shares.csv (DEFAULT row is the fallback via fill_country_data)."
+      - variant: "Change the water-heating intraday profile"
+        rung: L3
+        note: "Replace/edit data/heat_load_profile_BDEW.csv columns 'residential water weekday/weekend' consumed in prepare_heat_data."
+      - variant: "Model HPWH as its own technology on a separate hot-water bus with its own COP/sink temperature"
+        rung: L5
+        note: "add_heat must be edited to stop summing water into the space-heat bus, add a hot-water bus/load per system, and add a new Link with its own cost row (cost row addition is an L3 data step on top)."
+
+    where:
+      - change: "Space/water demand split at source"
+        anchor: "rule build_base_energy_totals, params space_heat_share"
+        provenance: "Snakefile:space_heat_share"
+      - change: "Country fuel-heat space/water split"
+        anchor: "data/demand/fuel_shares.csv column 'space to water heat share', consumed in prepare_energy_totals"
+        provenance: "scripts/prepare_energy_totals.py:space to water heat share"
+      - change: "Water vs space profile construction"
+        anchor: "scripts/prepare_heat_data.py:prepare_heat_data (uses = ['water', 'space'])"
+        provenance: "scripts/prepare_heat_data.py:prepare_heat_data"
+      - change: "Where water demand merges into the combined heat bus"
+        anchor: "scripts/prepare_sector_network.py:add_heat (heat_load construction)"
+        provenance: "scripts/prepare_sector_network.py:add_heat"
+
+    data_dependencies:
+      - input: "UNSD energy balances (household heat commodity totals)"
+        required_for: "Any water-heating demand magnitude"
+        availability: "must be built (build_base_energy_totals, demand_data.update_data)"
+      - input: "data/heat_load_profile_BDEW.csv (German BDEW intraday profiles)"
+        required_for: "Hourly shape of water heating demand"
+        availability: "exists by default (not region-specific — same profile everywhere)"
+      - input: "data/demand/fuel_shares.csv"
+        required_for: "Country-specific space/water split of fuel-based heat"
+        availability: "region-dependent (few country rows; DEFAULT fallback)"

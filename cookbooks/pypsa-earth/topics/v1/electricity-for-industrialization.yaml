@@ -1,0 +1,55 @@
+id: electricity-for-industrialization
+title: Electricity-for-industrialization
+rank: 37
+question: >
+  What power system does industrialization need — if a country grows mining,
+  manufacturing, and processing loads (the African productive-use agenda),
+  where does that demand land, what supply and grid must be built ahead of
+  it, and at what cost and carbon intensity?
+when_to_use:
+  - "power system for an industrialization strategy"
+  - "productive-use demand growth scenarios"
+  - "can the grid support new mining / manufacturing load"
+  - "build-ahead generation and transmission for industry"
+  - "industrial demand scenarios for a developing country"
+recipes:
+  generation_conversion: [utility-scale-solar-pv, conventional-hydropower,
+                          hv-transmission-lines, gas-power-plants,
+                          grid-scale-batteries]
+  demand: [industrial-material-production-drivers,
+           demand-scenarios-and-growth, industrial-crosscutting-electricity,
+           light-manufacturing-demand, mining-construction-demand]
+functionality:
+  - id: sector-coupled-workflow
+    role: "core — bottom-up industry subsector demands enter the network at plant-keyed nodes"
+  - id: scenario-matrix
+    role: "industrialization futures as demand-scenario sweeps (scenario.demand wildcard)"
+  - id: myopic-foresight
+    role: "stage supply/grid build-out ahead of demand across horizons"
+  - id: gadm-admin-clustering
+    role: "results by admin region — the unit industrial policy is written in"
+  - id: transmission-expansion-limits
+    role: "grid build-ahead co-optimized with generation"
+  - id: carbon-intensity-metrics
+    role: "keep the industrializing grid under climate-finance thresholds (partial, post-processing)"
+gap_assessment: >
+  A natural fit for the core machinery: industrial demand is built bottom-up
+  by subsector from production drivers, georeferenced via industrial
+  distribution keys, and scaled through demand scenarios, and the model then
+  co-optimizes generation, storage, and transmission to serve it — exactly
+  the "what must be built for this industrial future" question development
+  banks and planning ministries ask. Caveats are mostly data, not machinery:
+  industrial production projections for many African countries rest on thin
+  statistics and SSP-style scaling (check the data_quality scorecard for the
+  relevant demand recipes before trusting subnational siting), future plant
+  locations are exogenous assumptions rather than endogenously sited, and
+  there is no linkage from electricity cost back to industrial
+  competitiveness or demand (loads are fixed per scenario, demand-elasticity
+  absent). Reliability of supply — often the binding constraint for
+  industrial investors — is only a planning margin, not outage statistics.
+  Scenario discipline covers most of this: run industrialization as a
+  demand sweep and report cost, build-out, and carbon intensity per future.
+coverage: ready
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

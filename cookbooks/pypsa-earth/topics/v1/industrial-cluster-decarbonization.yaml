@@ -1,0 +1,57 @@
+id: industrial-cluster-decarbonization
+title: Industrial cluster decarbonization
+rank: 33
+question: >
+  How does an industrial cluster (port, chemical park, steel hub) decarbonize
+  as a coupled energy hub — which route per process (electrification, H2,
+  CCS, biomass), what shared H2/CO2/heat infrastructure, and what does the
+  cluster do to the surrounding grid?
+when_to_use:
+  - "decarbonization pathway for an industrial cluster / port"
+  - "electrification vs hydrogen vs CCS per process"
+  - "shared H2 or CO2 infrastructure for co-located industry"
+  - "grid impact of an industrial hub's fuel switch"
+  - "industrial cluster as an energy hub study"
+recipes:
+  generation_conversion: [h2-dri-steel, electric-process-heat,
+                          industrial-heat-pumps, industrial-ccs,
+                          electrolysers, low-clinker-cement]
+  demand: [steel-demand, cement-minerals-demand, chemicals-demand,
+           industrial-process-heat-temperature-bands,
+           industrial-crosscutting-electricity]
+functionality:
+  - id: sector-coupled-workflow
+    role: "core — industry demands, fuel-switching routes, and the power system in one network"
+  - id: co2-network-sequestration
+    role: "captured CO2 buses, optional pipeline network, sequestration budget for the CCS route"
+  - id: h2-pipeline-routing
+    role: "shared hydrogen infrastructure between cluster nodes"
+  - id: spatial-clustering
+    role: "cluster detail exists only down to the network node — no intra-site resolution"
+  - id: gadm-admin-clustering
+    role: "align zones to the admin unit hosting the cluster"
+  - id: custom-busmap
+    role: "carve out a dedicated zone around the cluster if node placement misses it"
+  - id: co2-cap
+    role: "cluster routes respond to the system-wide carbon budget"
+  - id: myopic-foresight
+    role: "staged retrofit timing across planning horizons"
+gap_assessment: >
+  The demand side is genuinely strong: steel, cement, chemicals and other
+  subsector demands are built bottom-up and georeferenced to actual plant
+  locations via industrial distribution keys, so a real cluster's load lands
+  on the right bus, and the sector-coupled workflow lets electrification,
+  H2-DRI, industrial CCS, and process-heat routes compete under a carbon
+  budget with shared H2/CO2 networks. The hole is resolution below the node:
+  a cluster is one bus, so intra-cluster steam/heat integration, site-level
+  waste-heat exchange, and process scheduling are out of scope, and route
+  choice is a system-cost decision with one discount rate — no plant-level
+  investment logic or stranded-asset accounting per owner. Fuel-switch
+  shares are partly exogenous config (sector.industry route assumptions)
+  rather than fully endogenous per plant. Good for "what should this
+  cluster's supply system look like"; pair with a site-level process model
+  for inside-the-fence questions.
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

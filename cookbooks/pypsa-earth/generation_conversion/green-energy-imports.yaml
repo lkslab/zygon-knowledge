@@ -1,0 +1,175 @@
+id: green-energy-imports
+title: Green energy imports (H2, ammonia, methanol, e-fuels from abroad)
+summary: >
+  Importing green fuels (hydrogen, ammonia, methanol, synthetic fuels) into the
+  modelled region from abroad as a supply option — typically a priced source at
+  ports or borders competing with domestic production.
+when_to_use:
+  - "import hydrogen"
+  - "buy green fuels from abroad"
+  - "import ammonia"
+  - "import methanol / e-fuels"
+  - "green fuel imports at world market price"
+  - "energy import dependency scenario"
+  - "imports vs domestic electrolysis"
+  - "LNG-style delivery of green fuels"
+  - "cheap H2 from a neighbouring country"
+  - "known in pypsa-eur as: import H2, import gas, import NH3, import oil, import methanol"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        GREEN fuel imports are NOT covered — pypsa-earth is built around the
+        opposite flow (hydrogen EXPORT via rule add_export and the {h2export}
+        wildcard; see ../demand/hydrogen-export-demand.yaml). What DOES exist is
+        implicit FOSSIL fuel imports: add_carrier_buses (invoked per fuel of
+        sector.conventional_generation by convert_conventional_generators_to_links)
+        puts an extendable, volume-unbounded Generator on each fuel bus (gas, oil,
+        coal, lignite, biomass) with marginal_cost = the costs-file 'fuel' price,
+        plus a Store seeded from fossil_reserves — economically a world-market
+        fossil purchase. add_shipping adds the same fallback oil-bus Generator if
+        none exists. Domestic green-fuel PRODUCTION is covered (electrolytic H2 in
+        add_hydrogen, Fischer-Tropsch in H2_liquid_fossil_conversions, Haber-Bosch
+        ammonia in add_ammonia), but nothing supplies those carriers from abroad.
+      mechanism: >
+        Nearest machinery for introducing imports: (a) the fuel-bus Generator
+        pattern in add_carrier_buses — a Generator priced at a fuel cost on a
+        carrier bus IS an import proxy, just only wired for fossil carriers;
+        (b) the endogenous-export Generator in scripts/add_export.py
+        (export_endogenous branch adds a sign=-1 Generator "H2 export load" priced
+        at export.endogenous_price on the H2 export bus) — an import is the
+        sign-flipped mirror of this; (c) add_ammonia's NH3 buses + ammonia cracker
+        (NH3 to H2) give a ready attach point and conversion route for an ammonia
+        import; (d) select_ports locates port H2 buses, reusable for siting
+        import terminals.
+      not_covered: >
+        Any import of H2, NH3, methanol or synthetic fuels: no import bus, no
+        import Generator/Store on green-carrier buses, no import price or volume
+        config key, no import wildcard. A methanol carrier does not exist at all
+        (no occurrence in scripts/prepare_sector_network.py or
+        config.default.yaml). No per-origin markets, shipping transport costs, or
+        import supply curves.
+      provenance: "scripts/prepare_sector_network.py:add_carrier_buses; scripts/prepare_sector_network.py:convert_conventional_generators_to_links; scripts/prepare_sector_network.py:add_ammonia; scripts/add_export.py:export_endogenous; Snakefile:rule add_export"
+    levers:
+      - key: sector.conventional_generation
+        effect: >
+          Generator-to-fuel mapping that decides which fossil fuel buses (and thus
+          which unbounded, fuel-priced supply Generators — the de-facto fossil
+          imports) are created by convert_conventional_generators_to_links /
+          add_carrier_buses.
+        default: "{OCGT: gas, CCGT: gas, oil: oil, coal: coal, lignite: lignite, biomass: biomass}"
+        provenance: "config.default.yaml:conventional_generation; scripts/prepare_sector_network.py:convert_conventional_generators_to_links"
+      - key: fossil_reserves.oil
+        effect: >
+          TWh of free initial energy in the fuel-bus Store added by
+          add_carrier_buses (e_initial); represents domestic reserves rather than
+          purchased imports.
+        default: "100"
+        provenance: "config.default.yaml:fossil_reserves; scripts/prepare_sector_network.py:add_carrier_buses"
+      - key: sector.oil.spatial_oil
+        effect: "Nodal oil buses vs one aggregate bus — where an oil-carrier import/supply Generator sits."
+        default: "true"
+        provenance: "config.default.yaml:spatial_oil; scripts/prepare_sector_network.py:add_shipping"
+      - key: sector.gas.spatial_gas
+        effect: "Nodal gas buses vs one 'Earth gas' bus — where the gas supply Generator sits."
+        default: "true"
+        provenance: "config.default.yaml:spatial_gas; scripts/prepare_sector_network.py:add_carrier_buses"
+      - key: sector.ammonia.enable
+        effect: >
+          Creates the NH3 buses, Haber-Bosch, ammonia store and ammonia cracker —
+          the attach point (and NH3-to-H2 conversion route) any ammonia-import
+          addition needs.
+        default: "true"
+        provenance: "config.default.yaml:spatial_ammonia; scripts/prepare_sector_network.py:add_ammonia"
+      - key: custom_rules
+        effect: >
+          List of user .smk files included into the Snakefile — the sanctioned
+          hook for adding an import-injection rule without forking the core
+          workflow.
+        default: "[]"
+        provenance: "config.default.yaml:custom_rules; Snakefile:custom_rules"
+    boundary:
+      - variant: "fossil fuel purchase at world market price (gas/oil/coal)"
+        rung: L0
+        note: >
+          already implicit by default — unbounded extendable Generators at the
+          costs-file 'fuel' price on every fuel bus from add_carrier_buses (and
+          the add_shipping oil fallback); no volume cap exists
+      - variant: "change the assumed fossil fuel import price"
+        rung: L1
+        note: >
+          costs overwrite dict in user config (costs: fuel: {gas: <EUR/MWh>} —
+          shipped commented-out in config.default.yaml) is read by load_costs in
+          scripts/process_cost_data.py and overrides the 'fuel' column feeding
+          those Generators' marginal_cost
+      - variant: "green H2 import at a fixed price (unlimited or p_nom-capped)"
+        rung: L2
+        note: >
+          no key exists; a few-lines edit in prepare_sector_network.py (e.g. in
+          add_hydrogen) adding n.madd('Generator', ...) on the '<node> H2' buses
+          with marginal_cost = assumed import price — the sign-flipped mirror of
+          the export_endogenous Generator in add_export.py; restrict to port
+          nodes by reusing the select_ports logic
+      - variant: "green ammonia import at a fixed price"
+        rung: L2
+        note: >
+          same pattern on spatial.ammonia.nodes (requires sector.ammonia.enable);
+          the existing ammonia cracker then arbitrates imported-NH3-to-H2 against
+          domestic Haber-Bosch
+      - variant: "import price/availability time series or a supply curve (price tiers)"
+        rung: L3
+        note: >
+          needs a user-supplied price/availability series (no such input exists),
+          then a small edit passing it as time-varying marginal_cost (or several
+          price-tiered Generators) on the import Generator
+      - variant: "import volume/price as a sweepable scenario dimension (mirror of {h2export})"
+        rung: L4
+        note: >
+          new rule + wildcard plumbing; cleanest via the custom_rules hook with a
+          post-prepare rule that loads the prenetwork and injects the import
+          components — structurally a sign-flipped copy of rule add_export
+      - variant: "methanol (or other absent e-fuel carrier) import"
+        rung: L5
+        note: >
+          the carrier does not exist at all — bespoke work to create the bus,
+          carrier, costs rows and, critically, something that CONSUMES methanol,
+          before an import source is meaningful
+      - variant: "per-origin markets, shipping legs, transport costs, embargo scenarios"
+        rung: L5
+        note: "no topology for external regions; bespoke buses/links/price series per origin"
+    where:
+      - change: "adding an H2 import Generator (fixed price / capped volume)"
+        anchor: "scripts/prepare_sector_network.py::add_hydrogen (H2 buses exist here)"
+        provenance: "scripts/prepare_sector_network.py:add_hydrogen"
+      - change: "the priced boundary-Generator pattern to mirror (sign-flipped)"
+        anchor: "scripts/add_export.py::add_export, export_endogenous branch"
+        provenance: "scripts/add_export.py:export_endogenous"
+      - change: "ammonia import attach point and NH3-to-H2 conversion"
+        anchor: "scripts/prepare_sector_network.py::add_ammonia (spatial.ammonia.nodes, ammonia cracker)"
+        provenance: "scripts/prepare_sector_network.py:add_ammonia"
+      - change: "fossil fuel-bus supply Generators and their price"
+        anchor: "scripts/prepare_sector_network.py::add_carrier_buses; price via scripts/process_cost_data.py::load_costs cost overwrites"
+        provenance: "scripts/prepare_sector_network.py:add_carrier_buses; scripts/process_cost_data.py:load_costs"
+      - change: "siting imports at port buses"
+        anchor: "scripts/add_export.py::select_ports (port-to-bus location logic)"
+        provenance: "scripts/add_export.py:select_ports"
+      - change: "clean rule plumbing for an import step / sweep"
+        anchor: "custom_rules config hook (included into Snakefile) + rule add_export as the structural template"
+        provenance: "Snakefile:custom_rules; Snakefile:rule add_export"
+    data_dependencies:
+      - input: "world-market import price assumption for H2/NH3 (scalar or series, EUR/MWh)"
+        required_for: "any green import variant"
+        availability: "absent — user assumption; no import-side analogue of export.endogenous_price exists"
+      - input: "costs_{planning_horizons}_sec.csv 'fuel' rows (gas, oil, coal)"
+        required_for: "fossil purchase price (the covered L0 part) and its L1 overwrite"
+        availability: "exists by default (retrieved technology-data)"
+      - input: "resources export_ports.csv (World Port Index via prepare_ports, or data/custom/export_ports.csv)"
+        required_for: "restricting import terminals to port nodes"
+        availability: "built by rule prepare_ports; reusable for the import side"
+      - input: "costs rows 'Ammonia cracker' / 'Haber-Bosch'"
+        required_for: "ammonia import arbitrage against domestic production"
+        availability: "exists by default when sector.ammonia.enable is true (used by add_ammonia)"
+      - input: "methanol carrier representation (costs, demand coupling)"
+        required_for: "methanol import"
+        availability: "absent — carrier not modelled anywhere in pypsa-earth"

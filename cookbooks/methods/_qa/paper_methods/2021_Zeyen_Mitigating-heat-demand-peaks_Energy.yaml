@@ -1,0 +1,177 @@
+paper: "2021_Zeyen_Mitigating-heat-demand-peaks_Energy.pdf"
+tier: 1
+model_used: >
+  PyPSA-Eur-Sec, 48 nodes, sector-coupled (electricity + heat + land transport),
+  hourly resolution, single target year 2050, net-zero CO2 constraint.
+scope: >
+  Co-optimises supply-side options and building renovation measures (retrofitting,
+  TES, hybrid heat pumps) to mitigate seasonal space heating demand peaks in a
+  fully sector-coupled European model under a net-zero CO2 constraint.
+methods:
+  - slug: sector-coupled-network-assembly
+    role: extends
+    evidence: >
+      "We use the least-cost capacity expansion model PyPSA-Eur-Sec … which
+      represents a comprehensive sector coupling approach (electricity, heating and
+      land transport) including high resolution in space and time." (Sec. 2.1).
+      The paper extends the model by adding co-optimised building renovation as a
+      supply-like technology (Eq. 3) and country-specific retrofitting cost curves
+      (Sec. 2.1.3), which were not in the prior PyPSA-Eur-Sec publication.
+    procedure_notes: >
+      48 nodes, each with buses for electricity (transmission and distribution),
+      heat (district and individual, rural/urban split), transport, hydrogen,
+      methane and biomass. Renovation is modelled as a generator reducing heat
+      demand by a constant fraction rn of time-varying demand (Eq. 3), linearised
+      over two cost steps (moderate: 40% savings, 157 EUR/m2; ambitious: 20% of
+      unrenovated demand, 224 EUR/m2). No transmission expansion in main scenarios.
+    variant: null
+    parameters: {nodes: 48, sectors: "electricity, heat, transport", resolution: "1h", target_year: 2050}
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "The model is constructed to represent a net-zero CO2 emissions target …
+      for the year 2050." (Sec. 2.1). Total annual costs are minimised in a single
+      optimisation over one year — a greenfield overnight model.
+    procedure_notes: >
+      Single target year overnight optimisation; no pathway or myopic stepping.
+      Fixed existing network capacities used as upper bounds for transmission;
+      all generation, storage and conversion capacity is optimised from scratch.
+    variant: overnight
+    parameters: {target_year: 2050}
+
+  - slug: demand-side-flexibility-representation
+    role: routine-use
+    evidence: >
+      "Thermal energy storage (TES) in the form of water tanks is available as a
+      seasonal storage (τ = 180 days) in urban areas with district heating, while
+      in decentralised heated regions there is only short-term storage (τ = 3 days)."
+      (Sec. 2.1.2). V2G is included ("up to 30% less electricity is fed back into
+      the distribution grid through V2G", Sec. 3.1.3).
+    procedure_notes: >
+      TES modelled with exponential decay time constants (τ = 180 days district,
+      τ = 3 days individual). Hybrid heat pumps with backup gas boilers provide
+      peak demand flexibility. V2G included in the transport sector. Building
+      retrofitting modelled as a demand-reducing supply technology (Eq. 3).
+    variant: thermal-storage-and-hybrid-heat-pumps
+    parameters: {tes_seasonal_tau_days: 180, tes_individual_tau_days: 3}
+
+  - slug: storage-sizing-and-duration
+    role: routine-use
+    evidence: >
+      TES is sized endogenously with separate energy and power capacity; τ = 180
+      days for seasonal district-heating storage and τ = 3 days for individual
+      short-term storage (Sec. 2.1.2). Battery, hydrogen and methane storage are
+      also co-optimised (Sec. 3.1.3).
+    procedure_notes: >
+      Energy capacity of TES, battery, hydrogen and methane storage are all
+      co-optimised. 85–95% of TES energy capacity is installed in district heating
+      areas (seasonal role). TES energy capacity drops by 56–75% when building
+      retrofitting is available, confirming it primarily buffers peak rather than
+      seasonal variability.
+    variant: null
+    parameters: {}
+
+  - slug: shadow-prices-and-marginal-values
+    role: routine-use
+    evidence: >
+      "The Karush-Kuhn-Tucker (KKT) multiplier λ represents the market price of
+      the energy carrier at bus n and hour t." (Eq. 2, Sec. 2.1). Marginal prices
+      are read from KKT multipliers and reported by country and season (Fig. 9).
+    procedure_notes: >
+      KKT multipliers from the nodal energy balance constraints (Eq. 2) are used
+      directly as electricity marginal prices and thermal heat marginal prices
+      (106–138 EUR/MWhth urban individual, 90–108 EUR/MWhth rural). Used to
+      explain the geography of renovation rates and the impact of gas boiler
+      availability on electricity prices.
+    variant: null
+    parameters: {}
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      "For the simulations we chose a total of 48 nodes for Europe … as a
+      compromise between representing grid bottlenecks while maintaining
+      computational tractability." (Sec. 2.1). Heat demand is spatially
+      disaggregated at NUTS3 level into rural/urban categories (Sec. 2.1.1).
+    procedure_notes: >
+      48-node network; large countries (Germany, France) have multiple nodes.
+      Within each node, heat demand split by rural vs. urban and urban further
+      split into individual vs. district heating using country-specific district
+      heating shares and NUTS3 population-density ranking.
+    variant: null
+    parameters: {nodes: 48}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "CO2 emissions are limited to be net-zero." (Sec. 2.1). The net-zero CO2
+      constraint is one of five additional constraints on the objective function
+      listed in Sec. 2.1.
+    procedure_notes: >
+      Annual net-zero CO2 cap applied system-wide across all sectors. No carbon
+      price instrument; the cap is a hard constraint whose shadow price is not
+      the focus of analysis.
+    variant: annual-cap
+    parameters: {co2_limit: "net-zero"}
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: routine-use
+    evidence: >
+      "The robustness of the results is analysed using a sensitivity analysis with
+      regard to different historical weather years and the costs of building
+      renovation." (Abstract, Sec. 4.3). SI contains sensitivity over weather
+      years, renovation costs, electricity grid expansion, district heating share
+      and heat-pump sink temperature.
+    procedure_notes: >
+      One-at-a-time sensitivity sweeps reported in the Supplementary Information.
+      Parameters varied include: weather year, renovation cost levels, presence/
+      absence of transmission expansion, district heating share, and sink
+      temperature of heat pumps (Tsink). Main-text results use a single weather
+      year with fixed grid.
+    variant: one-at-a-time
+    parameters: {}
+
+  - slug: weather-year-ensembles
+    role: routine-use
+    evidence: >
+      "The robustness of the results is analysed using a sensitivity analysis with
+      regard to different historical weather years." (Abstract). Supplementary
+      Information contains results over multiple ERA5-based weather years (Sec. 4.3
+      reference).
+    procedure_notes: >
+      Multiple historical weather years run as part of the SI sensitivity analysis
+      to test robustness of the main scenario results. ERA5 reanalysis data used
+      for temperature-based heat demand and renewable capacity factors. Number of
+      years and specific years not stated in the main text.
+    variant: null
+    parameters: {}
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "Ground-sourced brine-to-water heat pumps … are restricted to rural regions
+      due to land requirements." (Sec. 2.1.2). Renewable capacity factor time
+      series are based on weather data (ERA5, Sec. 2.1.1).
+    procedure_notes: >
+      Ground-source heat pump siting constrained to rural areas by land eligibility
+      rule. Capacity factors for solar and wind derived from ERA5 reanalysis. The
+      rural/urban classification is based on NUTS3 population density thresholds.
+      Atlite or similar tool not named explicitly; method follows PyPSA-Eur-Sec
+      convention cited in [19, 23].
+    variant: null
+    parameters: {cop_sink_temperature_C: 55}
+
+unmatched_methods:
+  - name: "building-renovation-co-optimisation"
+    evidence: >
+      The paper's primary methodological contribution: endogenous co-optimisation
+      of building thermal envelope retrofitting alongside supply-side measures.
+      Renovation is modelled as a supply-like generator with heat output equal to
+      a constant fraction rn of time-varying heat demand (Eq. 3), with country-
+      specific cost curves linearised into two steps (moderate/ambitious) derived
+      from ISO 13790 seasonal energy performance calculations, TABULA building
+      archetypes and Hotmaps data (Secs. 2.1.3 and SI). No existing slug covers
+      demand-side efficiency co-optimisation as a capacity-expansion decision
+      variable; demand-side-flexibility-representation covers load shifting, not
+      envelope renovation investment.

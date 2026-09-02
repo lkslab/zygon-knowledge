@@ -1,0 +1,108 @@
+id: beccs
+title: Bioenergy with CCS (BECCS)
+summary: >-
+  Burning or converting biomass while capturing the biogenic CO2 and storing it —
+  delivering energy plus net-negative emissions.
+when_to_use:
+  - "BECCS"
+  - "biomass with carbon capture"
+  - "bioenergy CCS / negative-emission power"
+  - "biomass CHP with capture"
+  - "carbon-negative electricity or hydrogen from biomass"
+  - "net negative emissions from bioenergy"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >-
+        No standalone "BECCS" carrier; BECCS is realised as CC variants of existing
+        biomass conversions: (1) "urban central solid biomass CHP CC" Links in
+        add_biomass (present when sector.chp, sector.cc and district-heating buses
+        exist) and (2) "solid biomass for industry CC" Links in add_industry (when
+        sector.cc). Optionally (3) hydrogen from "Biomass gasification CC" if that
+        technology is added to sector.hydrogen.production_technologies (not in the
+        default list).
+      mechanism: >-
+        Net-negativity works through the CO2 buses from add_co2: biomass combustion
+        is counted as carbon-neutral (the plain biomass links book no positive
+        emission on "co2 atmosphere"), and the CC variants additionally have a
+        NEGATIVE efficiency onto "co2 atmosphere" and a matching positive efficiency
+        onto the "co2 stored" buses, both equal to capture_rate x biomass
+        CO2-intensity (cost rows "biomass CHP capture" for the CHP, "cement capture"
+        for industry). So every MWh of biomass run through a CC link withdraws CO2
+        from the atmosphere store and books it into geological storage — under a CO2
+        cap/budget this is genuine negative emissions, bounded by
+        sector.solid_biomass_potential and the sector.co2_sequestration_potential
+        constraint (solve_network.py:add_co2_sequestration_limit). Capture consumes
+        extra electricity/heat via modified link efficiencies.
+      not_covered: >-
+        No power-only BECCS plant (the "biomass EOP" biomass-to-electricity link has
+        no CC variant); no biogas-with-CC route; capture rate and energy penalty are
+        cost-data attributes, not config keys; biomass supply is a single national
+        scalar with no sustainability classes, so BECCS scale is only limited by that
+        scalar and the sequestration cap.
+      provenance: "scripts/prepare_sector_network.py:add_biomass"
+    levers:
+      - key: sector.cc
+        effect: "Master switch for all carbon-capture link variants, including both BECCS links."
+        default: "true"
+        provenance: "config.default.yaml:cc ; scripts/prepare_sector_network.py:add_biomass"
+      - key: sector.chp
+        effect: "Needed for the biomass CHP (and hence its CC variant) at district-heating buses."
+        default: "true"
+        provenance: "config.default.yaml:chp ; scripts/prepare_sector_network.py:add_biomass"
+      - key: sector.solid_biomass_potential
+        effect: "Total biomass feedstock (TWh/a) — the hard resource bound on BECCS throughput."
+        default: "40"
+        provenance: "config.default.yaml:solid_biomass_potential ; scripts/prepare_sector_network.py:add_biomass"
+      - key: sector.co2_sequestration_potential
+        effect: "Cap (MtCO2/a) on total stored CO2 — the other hard bound on BECCS removals (shared with DAC and fossil CC)."
+        default: "200"
+        provenance: "config.default.yaml:co2_sequestration_potential ; scripts/solve_network.py:add_co2_sequestration_limit"
+      - key: sector.co2_sequestration_cost
+        effect: "EUR/tCO2 charged on the 'co2 stored' Stores that BECCS fills."
+        default: "10"
+        provenance: "config.default.yaml:co2_sequestration_cost ; scripts/prepare_sector_network.py:add_co2"
+      - key: sector.hydrogen.production_technologies
+        effect: "Adding 'Biomass gasification CC' to this list enables carbon-negative hydrogen from biomass (cost keys 'H2 production biomass gasification CC' are already wired in add_hydrogen)."
+        default: "[H2 Electrolysis, SMR, SMR CC]"
+        provenance: "config.default.yaml:production_technologies ; scripts/prepare_sector_network.py:add_hydrogen"
+    boundary:
+      - variant: "Enable BECCS CHP and industry-biomass CC"
+        rung: L0
+        note: "Default-on (sector.cc + sector.chp); CHP CC additionally requires district-heating buses to exist."
+      - variant: "Carbon-negative hydrogen (biomass gasification CC)"
+        rung: L1
+        note: "Add 'Biomass gasification CC' to sector.hydrogen.production_technologies."
+      - variant: "Power-only BECCS plant"
+        rung: L2
+        note: "Add a CC variant of the 'biomass EOP' link in add_biomass, mirroring the CHP CC efficiency terms (bus3 'co2 atmosphere' negative, bus4 co2 stored positive)."
+      - variant: "Different capture rate / capture energy penalty"
+        rung: L3
+        note: "Edit the 'biomass CHP capture' (capture_rate, electricity-input, heat terms) or 'cement capture' rows in the costs CSV — these are data attributes, not config keys."
+      - variant: "Sustainability-classed biomass supply for BECCS"
+        rung: L5
+        note: "Needs feedstock classes/supply curves that do not exist (single scalar potential today)."
+    where:
+      - change: "BECCS CHP link (and template for a power-only variant)"
+        anchor: "scripts/prepare_sector_network.py function add_biomass ('urban central solid biomass CHP CC' madd)"
+        provenance: "scripts/prepare_sector_network.py:add_biomass"
+      - change: "Industry biomass CC link"
+        anchor: "scripts/prepare_sector_network.py function add_industry ('solid biomass for industry CC' madd)"
+        provenance: "scripts/prepare_sector_network.py:add_industry"
+      - change: "Biomass-gasification-CC hydrogen route"
+        anchor: "scripts/prepare_sector_network.py function add_hydrogen (cost key 'H2 production biomass gasification CC')"
+        provenance: "scripts/prepare_sector_network.py:add_hydrogen"
+      - change: "Capture-rate / capture-cost data"
+        anchor: "costs CSV rows 'biomass CHP capture' and 'cement capture' (Snakefile rule retrieve_cost_data)"
+        provenance: "Snakefile:retrieve_cost_data"
+    data_dependencies:
+      - input: "Cost rows 'biomass CHP capture', 'cement capture', 'solid biomass' (CO2 intensity), 'central solid biomass CHP' (technology-data)"
+        required_for: "All BECCS link parameters"
+        availability: "exists by default"
+      - input: "District heating demand share (heat sector inputs)"
+        required_for: "The CHP CC variant (needs 'urban central heat' buses)"
+        availability: "exists by default when heat is enabled; magnitude region-dependent"
+      - input: "Regional biomass potential and CO2 storage assessments"
+        required_for: "Defensible BECCS bounds outside the placeholder defaults"
+        availability: "absent — user-supplied (defaults are whole-area scalars)"

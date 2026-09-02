@@ -1,0 +1,54 @@
+id: system-flexibility-need
+title: System flexibility need
+rank: 6
+question: >
+  How much flexibility does the system need, of what duration (hourly,
+  daily, weekly, seasonal), by when — and how much can come from clean
+  sources (batteries, DSR, smart charging, electrolysers) instead of fossil
+  peakers? The fastest-rising framing of 2025-26 (IEA, Agora, Ember).
+when_to_use:
+  - "how much flexibility does the system need"
+  - "flexibility by duration band / seasonal vs daily"
+  - "clean flexibility vs gas peakers"
+  - "role of demand response and smart charging"
+  - "what replaces fossil balancing at high VRE shares"
+recipes:
+  generation_conversion: [grid-scale-batteries, pumped-hydro-storage, long-duration-storage,
+                          electrolysers, vehicle-to-grid, smart-ev-chargers]
+  demand: [electricity-load, building-heat-dsm, land-transport-demand]
+functionality:
+  - id: temporal-resolution-nh
+    role: "averaging erases the ramps and spreads that create flexibility need"
+  - id: time-segmentation-tsam
+    role: "segmentation keeps extremes when full-hourly is too slow"
+  - id: bev-dsm-v2g
+    role: "the only endogenous demand-side flexibility in the model"
+  - id: demand-elasticity
+    role: "price-responsive / industrial DSR — absent, loads are fixed"
+  - id: operational-reserves
+    role: "sub-hourly balancing proxied as an hourly reserve requirement"
+  - id: market-design-mechanisms
+    role: "flexibility value across market products — absent, one price"
+  - id: sector-coupled-workflow
+    role: "heat, EVs, H2 as flexibility sources in one network"
+  - id: nodal-marginal-prices
+    role: "price spreads and storage duals quantify flexibility scarcity"
+gap_assessment: >
+  The supply side of the question works well: a sector-coupled run
+  co-optimizes batteries, pumped hydro, H2 storage, and electrolysers with
+  hourly chronology, and the implied flexibility need by duration falls out
+  of storage cycling and price-spread analysis — a solid "how much, of what
+  duration" answer. The demand side is the hole: apart from EV
+  battery-shifting/V2G, demand response does not exist — no price-elastic
+  load, no industrial load-shedding tranches, no explicit heat-pump
+  flexibility beyond thermal storage buffers — so the model structurally
+  overstates the need for supply-side flexibility relative to a world with
+  real DSR. Sub-hourly dynamics (the balancing timescale) are invisible at
+  hourly resolution, and valuing flexibility across market products is out
+  of scope: there is one energy price plus a reserve constraint, no
+  capacity or ancillary revenue stacking. Good for infrastructure-scale
+  flexibility planning; not for aggregator/VPP business cases.
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

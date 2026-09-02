@@ -1,0 +1,55 @@
+schema_version: 2
+id: capacity-expansion
+title: Capacity expansion
+rank: 4
+question: >
+  What generation, storage, and grid mix meets demand at least cost under
+  policy constraints — the canonical IRP/master-plan question every planner,
+  regulator, and development bank asks, for any country and target year.
+when_to_use:
+  - "least-cost generation mix for [country] by [year]"
+  - "integrated resource plan / power development plan"
+  - "how much solar/wind/storage/gas should we build"
+  - "system cost of a renewables or emissions target"
+  - "greenfield vs brownfield expansion study"
+recipes:
+  generation_conversion: [utility-scale-solar-pv, onshore-wind, gas-power-plants,
+                          coal-power-plants, conventional-hydropower, grid-scale-batteries]
+  demand: [electricity-load, demand-scenarios-and-growth, demand-temporal-profiles]
+methods:
+  - id: existing-fleet
+    role: "which pre-built capacity the optimiser sees — the greenfield/brownfield
+           starting point, and the first thing to check when a mix looks wrong"
+  - id: pathway-myopic
+    role: "sequential horizons with capacity carry-over — answers WHEN capacity
+           gets built and what retires, not just the end state"
+  - id: pathway-perfect
+    role: "all horizons co-optimized in one LP — earth has no native perfect
+           branch, so the method ships the port as its own pre-tested payload"
+defaults:
+  - aspect: overnight-foresight
+    is: "one target year, all capacity decided at once against that year's costs —
+         the shipped config default (foresight: overnight)"
+    note: "no method spec because there is nothing to change, so there is nothing
+           to cite. Reach for a pathway method only when the question is about
+           timing; an end-state mix does not need one."
+gap_assessment: >
+  This is the model's bread and butter: pypsa-earth exists to run exactly
+  this study for any country from open data — atlite renewable potentials,
+  OSM grid, powerplantmatching fleet, GEGIS-style demand — and co-optimizes
+  generation, storage, and transmission with hourly chronology, which most
+  incumbent IRP tools (LEAP, screening curves) cannot. Constraint machinery
+  covers the usual policy asks: CO2 caps/prices, per-country carrier limits,
+  reserve margins, BAU floors. Multi-horizon pathways are no longer the
+  caveat they were: both the myopic chain and a ported perfect-foresight
+  branch are verified specs here, the latter shipping its code surgery as a
+  pre-tested payload rather than something to re-author per study. Residual
+  honesty: investment is LP — unit-commitment data is never populated, so no
+  lumpy builds or start-up costs; and results are only as good as country
+  inputs — check the data_quality scorecard grades for power-fleet and
+  electricity-demand before presenting a mix to a ministry, since the fleet
+  and demand baselines gate credibility more than the optimizer does.
+coverage: ready
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

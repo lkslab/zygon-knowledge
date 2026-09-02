@@ -1,0 +1,98 @@
+id: virtual-power-plants
+title: Virtual power plants (VPP)
+summary: >-
+  Aggregating many small distributed assets (rooftop PV, home batteries, EVs, flexible
+  loads) so they are dispatched as one coordinated plant.
+when_to_use:
+  - "virtual power plant"
+  - "VPP / aggregator"
+  - "aggregate distributed batteries and EVs"
+  - "coordinate rooftop solar and home storage"
+  - "demand response aggregation"
+  - "value of aggregated flexibility"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >-
+        The EFFECT a VPP delivers — coordinated, system-optimal dispatch of all
+        distributed assets — is the model's default behaviour, so "VPP" as a business
+        construct has no separate model meaning. solve_network builds one linear
+        program with perfect foresight in which every component (home batteries,
+        rooftop PV, BEV smart charging/V2G, thermal storage) is co-optimised against
+        system cost, i.e. the whole system already behaves like one perfectly
+        coordinated aggregator. The distributed assets themselves exist via the
+        distribution-grid block: add_electricity_distribution_grid (low-voltage
+        buses, "solar rooftop" Generators, "home battery" Store+chargers) and
+        add_land_transport (BEV charger/V2G/battery DSM).
+      mechanism: >-
+        scripts/solve_network.py:solve_network (with extra_functionality constraints)
+        solves the single central LP; there is no agent, market-bidding, or
+        aggregation layer anywhere in the workflow, and no "aggregator"/"VPP"
+        concept in config or scripts. What a VPP study can vary is the SIZE of the
+        coordinated flexibility pool (asset switches and participation shares below).
+      not_covered: >-
+        Aggregator economics (fees, revenue split), imperfect participation or
+        control, market bidding / price-taking behaviour, forecast error (perfect
+        foresight is assumed), telecoms/latency constraints, and any comparison of
+        "with VPP" vs "without coordination" — the uncoordinated counterfactual does
+        not exist and must be constructed by disabling/limiting flexibility.
+      provenance: "scripts/solve_network.py:solve_network"
+    levers:
+      - key: sector.electricity_distribution_grid
+        effect: "Creates the low-voltage layer where distributed assets live; prerequisite for rooftop PV and home batteries."
+        default: "true"
+        provenance: "config.default.yaml:electricity_distribution_grid ; scripts/prepare_sector_network.py:add_electricity_distribution_grid"
+      - key: sector.home_battery
+        effect: "Adds household battery Store + charger/discharger Links on low-voltage buses — the storage half of a residential VPP pool."
+        default: "true"
+        provenance: "config.default.yaml:home_battery ; scripts/prepare_sector_network.py:add_electricity_distribution_grid"
+      - key: sector.solar_rooftop.enable
+        effect: "Adds 'solar rooftop' Generators on low-voltage buses — the generation half of the pool."
+        default: "true"
+        provenance: "config.default.yaml:solar_rooftop ; scripts/prepare_sector_network.py:add_electricity_distribution_grid"
+      - key: sector.bev_dsm
+        effect: "Enables EV battery demand-side management (EV storage participates in the pool)."
+        default: "true"
+        provenance: "config.default.yaml:bev_dsm ; scripts/prepare_sector_network.py:add_land_transport"
+      - key: sector.v2g
+        effect: "Allows vehicle-to-grid feed-in Links from EV batteries."
+        default: "true"
+        provenance: "config.default.yaml:v2g ; scripts/prepare_sector_network.py:add_land_transport"
+      - key: sector.bev_availability
+        effect: "Share of cars doing smart charging — the one existing 'participation rate' knob for a VPP pool."
+        default: "0.5"
+        provenance: "config.default.yaml:bev_availability ; scripts/prepare_sector_network.py:add_land_transport"
+    boundary:
+      - variant: "Represent a fully effective VPP (coordinated DER dispatch)"
+        rung: L0
+        note: "Already the default: enable the DER switches; the central LP coordinates them optimally."
+      - variant: "Vary the participation rate of the pool"
+        rung: L1
+        note: "EVs: sector.bev_availability. Home batteries / rooftop PV have no share key — scale via their potential/enable knobs only."
+      - variant: "Participation share for home batteries / rooftop PV"
+        rung: L2
+        note: "Small edit in add_electricity_distribution_grid: scale home-battery e_nom_max / rooftop p_nom_max by a participation factor (no key exists)."
+      - variant: "Uncoordinated counterfactual (no VPP)"
+        rung: L1
+        note: "Approximate by switching flexibility OFF (sector.home_battery false, bev_dsm false, v2g false) and comparing system cost — the delta is the coordination value."
+      - variant: "Aggregator constraints (bid limits, imperfect foresight, portfolio caps)"
+        rung: L5
+        note: "Bespoke constraints on grouped variables in solve_network extra_functionality (perfect-foresight LP has no native concept of an agent), or a rolling-horizon rewrite."
+    where:
+      - change: "Participation scaling of home batteries / rooftop PV"
+        anchor: "scripts/prepare_sector_network.py function add_electricity_distribution_grid"
+        provenance: "scripts/prepare_sector_network.py:add_electricity_distribution_grid"
+      - change: "EV flexibility pool"
+        anchor: "scripts/prepare_sector_network.py function add_land_transport (BEV charger / V2G / battery storage)"
+        provenance: "scripts/prepare_sector_network.py:add_land_transport"
+      - change: "Custom aggregator constraints"
+        anchor: "scripts/solve_network.py function extra_functionality"
+        provenance: "scripts/solve_network.py:extra_functionality"
+    data_dependencies:
+      - input: "Distribution-grid and DER cost rows ('electricity distribution grid', 'home battery storage', 'solar-rooftop', 'battery inverter'; technology-data)"
+        required_for: "The DER pool the VPP question is about"
+        availability: "exists by default"
+      - input: "EV fleet and availability profiles (transport data inputs to add_land_transport)"
+        required_for: "EV participation variants"
+        availability: "exists by default (built by the transport rules); region-dependent quality"

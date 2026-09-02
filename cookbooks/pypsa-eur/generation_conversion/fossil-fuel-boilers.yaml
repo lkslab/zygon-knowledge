@@ -1,0 +1,171 @@
+id: fossil-fuel-boilers
+title: Fossil fuel boilers (gas and oil heating)
+summary: >
+  Gas- and oil-fired boilers supplying space and water heat in buildings and
+  district heating — greenfield expansion, the existing boiler stock, and
+  hydrogen-retrofit options.
+when_to_use:
+  - "gas boilers"
+  - "oil heating / oil boilers"
+  - "fossil heating in buildings"
+  - "replace gas boilers / boiler phase-out"
+  - "existing heating stock"
+  - "gas boiler to hydrogen boiler retrofit"
+  - "district heating gas boiler"
+  - "condensing boiler efficiency"
+  - "pypsa-eur carrier names: residential rural gas boiler, urban central gas boiler, residential urban decentral oil boiler, retrofitted H2 boiler"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Sector runs with sector.heating true: add_heat adds, for EVERY heat
+        system (residential/services rural, residential/services urban
+        decentral, urban central), an extendable "{heat_system} gas boiler"
+        Link when sector.boilers is true — bus0 = the node's spatial gas bus,
+        bus1 = the heat bus, bus2 = co2 atmosphere, efficiency and cost from
+        the "decentral gas boiler" / "central gas boiler" cost rows, capital
+        cost scaled by sector.overdimension_heat_generators. Decentral gas
+        boilers additionally get gas distribution grid capital cost when
+        sector.gas_distribution_grid is true (insert_gas_distribution_costs).
+        Oil boilers: sector.oil_boilers (default false) adds extendable
+        "{heat_system} oil boiler" Links on all DECENTRAL heat systems only
+        (urban central explicitly excluded), bus0 = the EU oil bus, cost row
+        "decentral oil boiler". Existing stock: with myopic/perfect foresight,
+        rule build_existing_heating_distribution + add_existing_baseyear
+        (add_heating_capacities_installed_before_baseyear) install the current
+        gas and oil boiler fleets as non-extendable vintaged Links per
+        grouping year (existing_capacities.grouping_years_heat, lifetimes from
+        cost data / default_heating_lifetime), with country-specific
+        efficiencies from heating_efficiencies. H2 retrofit: in PERFECT
+        foresight, prepare_perfect_foresight::add_H2_boilers clones every
+        existing gas boiler into a "retrofitted H2 boiler" (H2 bus0, small
+        retrofit capex) and solve_network::add_retrofit_gas_boiler_constraint
+        (called only under multi-investment) makes existing gas boiler + H2
+        retrofit dispatch together follow the heat-demand profile — a
+        must-run/retrofit coupling.
+      mechanism: >
+        rule prepare_sector_network -> add_heat (boilers per heat system) and
+        add_industry (the oil_boilers block lives INSIDE add_industry, so oil
+        boilers additionally require sector.industry true); rule
+        add_existing_baseyear for the brownfield stock; rule
+        prepare_perfect_foresight + extra_functionality in solve_network.py
+        for the retrofit machinery. Fuel comes from the per-node gas buses
+        (see natural-gas-pipelines) and the EU oil bus (see
+        fossil-fuel-supply).
+      not_covered: >
+        No coal or LPG boilers anywhere. Oil boilers are decentral-only (no
+        oil-fired district heating) and — a genuine quirk — are skipped
+        entirely if sector.industry is false because their block sits in
+        add_industry. The gas-boiler-to-H2 retrofit exists ONLY in perfect
+        foresight (prepare_perfect_foresight); overnight and myopic runs have
+        no retrofit route (myopic brownfield gas boilers keep burning gas
+        until end of life). No hybrid heating systems (boiler + heat pump
+        combos are implicit through the node's technology mix, not an explicit
+        appliance). No building-level fuel switching costs. The electricity
+        workflow has no heat demand and therefore no boilers at all.
+      provenance: "scripts/prepare_sector_network.py:gas boiler; scripts/prepare_sector_network.py:oil boiler; scripts/add_existing_baseyear.py:add_heating_capacities_installed_before_baseyear; scripts/prepare_perfect_foresight.py:add_H2_boilers; scripts/solve_network.py:add_retrofit_gas_boiler_constraint; scripts/prepare_sector_network.py:insert_gas_distribution_costs"
+    levers:
+      - key: sector.boilers
+        effect: "Master switch for greenfield gas boilers in all heat systems."
+        default: "true"
+        provenance: "config/config.default.yaml:boilers; scripts/prepare_sector_network.py:gas boiler"
+      - key: sector.oil_boilers
+        effect: "true adds decentral oil boiler expansion (needs sector.industry true — the block is inside add_industry)."
+        default: "false"
+        provenance: "config/config.default.yaml:oil_boilers; scripts/prepare_sector_network.py:oil boiler"
+      - key: sector.heating
+        effect: "Gates add_heat entirely — false removes heat buses and every boiler."
+        default: "true"
+        provenance: "config/config.default.yaml:heating; scripts/prepare_sector_network.py:add_heat"
+      - key: sector.gas_distribution_grid
+        effect: "true adds gas distribution grid capital cost (scaled by sector.gas_distribution_grid_cost_factor) to decentral gas boilers and micro CHP."
+        default: "true"
+        provenance: "config/config.default.yaml:gas_distribution_grid; scripts/prepare_sector_network.py:insert_gas_distribution_costs"
+      - key: sector.overdimension_heat_generators
+        effect: "Capex multiplier accounting for peak-oversizing of heat generators (decentral / central) — applies to gas and oil boilers."
+        default: "{decentral: 1.1, central: 1.0}"
+        provenance: "config/config.default.yaml:overdimension_heat_generators; scripts/prepare_sector_network.py:overdim_factor"
+      - key: existing_capacities.grouping_years_heat
+        effect: "Vintage classes for the existing boiler stock in myopic/perfect runs (with threshold_capacity and default_heating_lifetime)."
+        default: "[1980 ... 2019]"
+        provenance: "config/config.default.yaml:grouping_years_heat; scripts/add_existing_baseyear.py:add_heating_capacities_installed_before_baseyear"
+      - key: existing_capacities.default_heating_lifetime
+        effect: "Assumed lifetime (years) for existing heating assets when distributing the stock over vintages."
+        default: "20"
+        provenance: "config/config.default.yaml:default_heating_lifetime; scripts/build_existing_heating_distribution.py:build_existing_heating"
+      - key: sector.reduce_space_heat_exogenously
+        effect: "Exogenous building-retrofit heat savings per horizon (reduce_space_heat_exogenously_factor) — shrinks the demand all boilers serve."
+        default: "true"
+        provenance: "config/config.default.yaml:reduce_space_heat_exogenously; scripts/prepare_sector_network.py:add_heat"
+      - key: costs.overwrites
+        effect: "Override boiler efficiency/investment/lifetime ('decentral gas boiler', 'central gas boiler', 'decentral oil boiler' rows) in prepare_costs; or use data/custom_costs.csv."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+      - key: co2_budget
+        effect: "The sector CO2 cap per horizon is the effective boiler phase-out driver — boilers emit to co2 atmosphere and are squeezed out as the budget tightens."
+        default: "0.72 (2020) ... 0.0 (2050) relative to 1990"
+        provenance: "config/config.default.yaml:co2_budget; scripts/prepare_sector_network.py:add_co2limit"
+    boundary:
+      - variant: "gas boilers competing in all heat systems"
+        rung: L0
+        note: "default (sector.boilers true, sector.heating true)"
+      - variant: "ban new gas boilers"
+        rung: L0
+        note: "sector.boilers: false (existing stock still appears in myopic/perfect via add_existing_baseyear — removing that too means dropping gas boiler from the existing-heating chain, L2)"
+      - variant: "allow oil boiler expansion"
+        rung: L1
+        note: "sector.oil_boilers: true AND sector.industry: true (block location quirk)"
+      - variant: "existing boiler stock with vintages and age-based retirement"
+        rung: L0
+        note: "automatic in myopic/perfect foresight (rules build_existing_heating_distribution + add_existing_baseyear)"
+      - variant: "gas boiler to hydrogen boiler retrofit"
+        rung: L1
+        note: "run perfect foresight (foresight: perfect) — add_H2_boilers + add_retrofit_gas_boiler_constraint activate; not available overnight/myopic without porting that code (L4)"
+      - variant: "change boiler efficiencies or costs"
+        rung: L1
+        note: "costs.overwrites (efficiency is in the overwrite list) or data/custom_costs.csv rows (L3); existing-stock efficiencies come from heating_efficiencies data (L3)"
+      - variant: "boiler phase-out by carbon policy"
+        rung: L1
+        note: "tighten co2_budget for the relevant horizons — boilers are on the co2 atmosphere balance"
+      - variant: "coal or LPG boilers"
+        rung: L2
+        note: "clone the oil boiler block (spatial.coal bus0, coal CO2 intensity) in add_industry / add_heat; needs a cost row (L3) — no such component exists today"
+      - variant: "oil-fired district heating boiler"
+        rung: L2
+        note: "the oil boiler loop explicitly skips HeatSystem.URBAN_CENTRAL; remove that exclusion and give it a central cost row"
+      - variant: "per-country boiler bans (e.g. DE 2024 rules)"
+        rung: L2
+        note: "no config hook; filter the boiler n.add calls by country or set p_nom_max=0 for the affected nodes in add_heat"
+    where:
+      - change: "greenfield gas boiler creation per heat system"
+        anchor: "scripts/prepare_sector_network.py::add_heat (options['boilers'] block, key '{heat_system.central_or_decentral} gas boiler')"
+        provenance: "scripts/prepare_sector_network.py:add_heat; scripts/prepare_sector_network.py:gas boiler"
+      - change: "oil boiler creation (decentral only)"
+        anchor: "scripts/prepare_sector_network.py::add_industry (options['oil_boilers'] block)"
+        provenance: "scripts/prepare_sector_network.py:oil_boilers; scripts/prepare_sector_network.py:decentral oil boiler"
+      - change: "existing boiler stock distribution and vintaging"
+        anchor: "scripts/build_existing_heating_distribution.py::build_existing_heating; scripts/add_existing_baseyear.py::add_heating_capacities_installed_before_baseyear"
+        provenance: "scripts/build_existing_heating_distribution.py:build_existing_heating; scripts/add_existing_baseyear.py:add_heating_capacities_installed_before_baseyear"
+      - change: "H2 boiler retrofit (perfect foresight only)"
+        anchor: "scripts/prepare_perfect_foresight.py::add_H2_boilers; scripts/solve_network.py::add_retrofit_gas_boiler_constraint (multi-invest branch of extra_functionality)"
+        provenance: "scripts/prepare_perfect_foresight.py:add_H2_boilers; scripts/solve_network.py:add_retrofit_gas_boiler_constraint"
+      - change: "gas distribution cost adder on decentral gas boilers"
+        anchor: "scripts/prepare_sector_network.py::insert_gas_distribution_costs"
+        provenance: "scripts/prepare_sector_network.py:insert_gas_distribution_costs"
+    data_dependencies:
+      - input: "cost rows 'decentral gas boiler', 'central gas boiler', 'decentral oil boiler'"
+        required_for: "boiler efficiency, capex, lifetime"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "per-node gas buses with supply / EU oil bus"
+        required_for: "boiler fuel"
+        availability: "exists by default in sector runs (gas network chain; add_carrier_buses)"
+      - input: "existing_heating_distribution (per node, per heat system, per technology)"
+        required_for: "brownfield boiler stock in myopic/perfect runs"
+        availability: "must be built (rule build_existing_heating_distribution; from national heating stock data)"
+      - input: "heating_efficiencies.csv (country boiler efficiencies by year)"
+        required_for: "existing boiler efficiencies"
+        availability: "must be built (heating efficiencies chain, default in workflow)"
+      - input: "hourly heat demand profiles (build_hourly_heat_demand)"
+        required_for: "the demand boilers serve; also the retrofit constraint profile"
+        availability: "must be built; default in sector workflow"

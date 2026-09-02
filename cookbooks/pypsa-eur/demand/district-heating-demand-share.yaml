@@ -1,0 +1,227 @@
+id: district-heating-demand-share
+title: District heating share of heat demand (demand-side allocation)
+summary: >
+  What fraction of building heat demand is served by centralised district heating
+  networks (urban central) versus individual decentral heating — the demand-side
+  split that decides how much heat load lands on urban central heat buses.
+when_to_use:
+  - "change the district heating share"
+  - "expand district heating"
+  - "how much heat is supplied by heat networks"
+  - "urban central heat demand allocation"
+  - "model a city with a district heating system"
+  - "no district heating in my country — turn it off"
+  - "increase DH penetration by 2050"
+  - "district heating rollout scenario"
+  - "heat network losses"
+  - "split heat demand between central and decentral"
+  - "communal heating / centralized heating share"
+  - "known in pypsa-eur as: central heat, urban central heat"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        Per-node district heating fraction of urban heat demand. Today's country-level
+        DH share comes from data/demand/district_heating.csv (column "current"; the file
+        ships only DEFAULT, MA, TN rows, all zero — so out of the box today's share is 0
+        everywhere and any DH penetration comes purely from the potential x progress
+        config mechanism). prepare_energy_totals.py copies the "current" column into
+        energy_totals["district heat share"]; the "potential" CSV column is never read.
+        prepare_heat_data.py passes the share through to a nodal csv, and
+        create_nodes_for_heat_sector in prepare_sector_network.py converts it to a
+        per-node dist_fraction: share scaled by the node's urban_ct_fraction, then
+        increased by progress x (urban_fraction x potential - today's share). add_heat
+        multiplies total heat demand at each node by dist_fraction and
+        (1 + district_heating_loss) to form the "urban central heat" Load; urban
+        decentral gets urban_fraction - dist_fraction, rural gets 1 - urban_fraction.
+      mechanism: >
+        Loads with carriers "<sector> rural heat", "<sector> urban decentral heat" and
+        "urban central heat" on per-node heat buses, created by rule
+        prepare_sector_network (scripts/prepare_sector_network.py:add_heat), using the
+        district_heat_share csv produced by rule prepare_heat_data from
+        energy_totals (rule prepare_energy_totals, input data/demand/district_heating.csv).
+      not_covered: >
+        No data-driven per-country DH shares beyond the all-zero default csv; no
+        per-country potential dict (potential is a single scalar, unlike pypsa-eur); no
+        DH-area geodata; distribution losses are a flat multiplier, not network-modelled;
+        no per-node custom shares without editing the intermediate csv or code.
+      provenance: "scripts/prepare_sector_network.py:create_nodes_for_heat_sector; scripts/prepare_energy_totals.py:district heat share; data/demand/district_heating.csv:current; scripts/prepare_heat_data.py:district_heat_share"
+    levers:
+      - key: sector.district_heating.potential
+        effect: >
+          Maximum fraction of urban heat demand that district heating can reach
+          (central_fraction ceiling in create_nodes_for_heat_sector).
+        default: "0.3"
+        provenance: "config.default.yaml:district_heating; scripts/prepare_sector_network.py:create_nodes_for_heat_sector"
+      - key: sector.district_heating.progress
+        effect: >
+          Interpolation between today's DH share (0) and the potential ceiling (1);
+          accepts a scalar or a per-investment-year dict resolved via get() against
+          the planning_horizons wildcard.
+        default: "1"
+        provenance: "config.default.yaml:district_heating; scripts/prepare_sector_network.py:create_nodes_for_heat_sector"
+      - key: sector.district_heating.district_heating_loss
+        effect: >
+          Heat-network loss markup: urban central heat load is multiplied by
+          (1 + district_heating_loss).
+        default: "0.15"
+        provenance: "config.default.yaml:district_heating_loss; scripts/prepare_sector_network.py:district_heating_loss"
+      - key: sector.enable.heat
+        effect: "Master switch — disables the whole heat sector chain (and DH with it)."
+        default: "true"
+        provenance: "config.default.yaml:enable; Snakefile:sector_enable"
+    boundary:
+      - variant: "turn district heating off entirely"
+        rung: L0
+        note: "set sector.district_heating.progress: 0 (with the zero default csv the share stays 0), or disable heat via sector.enable.heat"
+      - variant: "raise/lower future DH penetration"
+        rung: L0
+        note: "sector.district_heating.potential plus progress scalar"
+      - variant: "DH rollout trajectory across planning horizons"
+        rung: L1
+        note: "sector.district_heating.progress as a per-year dict (get() resolves it against the planning_horizons wildcard)"
+      - variant: "set today's actual DH share for a country"
+        rung: L3
+        note: "add a country row to data/demand/district_heating.csv with the share in the 'current' column (the shipped file has only DEFAULT/MA/TN, all zero); fill_country_data falls back to DEFAULT for missing countries"
+      - variant: "per-country DH potential (different ceilings per country)"
+        rung: L2
+        note: "potential is a single scalar in earth; make central_fraction country-dependent in create_nodes_for_heat_sector (pypsa-eur already has this pattern in build_district_heat_share.py)"
+      - variant: "per-node custom DH shares (city-level networks)"
+        rung: L3
+        note: "override the intermediate district_heat_share csv written by prepare_heat_data.py, or edit its passthrough of nodal_energy_totals['district heat share']"
+      - variant: "change the allocation formula (e.g. decouple DH share from urban population fraction)"
+        rung: L2
+        note: "edit create_nodes_for_heat_sector in scripts/prepare_sector_network.py (dist_fraction_node arithmetic)"
+      - variant: "temperature-resolved or network-modelled DH losses instead of the flat 15% markup"
+        rung: L5
+        note: "the loss is a scalar multiplier on the urban central Load; anything flow- or temperature-dependent needs new component logic"
+    where:
+      - change: "per-node DH fraction and potential/progress arithmetic"
+        anchor: "scripts/prepare_sector_network.py:create_nodes_for_heat_sector"
+        provenance: "scripts/prepare_sector_network.py:create_nodes_for_heat_sector"
+      - change: "heat load split into rural / urban decentral / urban central and the loss markup"
+        anchor: "scripts/prepare_sector_network.py:add_heat"
+        provenance: "scripts/prepare_sector_network.py:add_heat"
+      - change: "country DH share ingestion (only the 'current' column is consumed)"
+        anchor: "scripts/prepare_energy_totals.py (rule prepare_energy_totals)"
+        provenance: "scripts/prepare_energy_totals.py:district heat share; Snakefile:prepare_energy_totals"
+      - change: "nodal district_heat_share csv passthrough"
+        anchor: "scripts/prepare_heat_data.py (rule prepare_heat_data)"
+        provenance: "scripts/prepare_heat_data.py:district_heat_share; Snakefile:prepare_heat_data"
+    data_dependencies:
+      - input: "data/demand/district_heating.csv (country, current, potential)"
+        required_for: "today's country-level DH share"
+        availability: "exists by default but only DEFAULT/MA/TN rows, all zero — region-dependent, must be filled for real shares"
+      - input: "clustered population layout (pop_layout, urban/rural split)"
+        required_for: "urban fraction and nodal allocation"
+        availability: "must be built (build_clustered_population_layouts chain)"
+      - input: "heat demand profiles (heat_demand_total nc + BDEW intraday profiles)"
+        required_for: "the heat load being split"
+        availability: "must be built (heat demand chain, data/heat_load_profile_BDEW.csv ships with the repo)"
+    demand_dimensions:
+      driver: "national heat energy totals (UNSD balances x scenario CAGRs) split into space/water heat; DH share of it set by data csv 'current' + potential x progress"
+      spatial: "per node via urban population: dist_fraction = country share x urban_ct_fraction / node fraction, capped by urban_fraction x potential"
+      temporal: "daily degree-day heat demand shaped by BDEW intraday profiles; DH share itself is time-constant; urban central load carries the 1.15 loss markup"
+      scenario: "progress per-investment-year dict against planning_horizons; underlying totals scale with the {demand} scenario wildcard CAGRs"
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Data-driven historical country DH shares plus a config-driven expansion path.
+        build_energy_totals.py (function build_district_heat_share) derives district
+        heat share per country and year from JRC IDEES, filling gaps from
+        data/district_heat_share.csv and conservatively taking the minimum of both.
+        Rule build_district_heat_share (scripts/build_district_heat_share.py) makes the
+        share nodal via urban population, supports a per-country potential dict (with
+        required 'default' fallback), and applies progress x (urban_fraction x potential
+        - today's share), clipped at zero, writing 'district fraction of node' and
+        'urban fraction' per node. add_heat in prepare_sector_network.py reads that
+        file and weights heat loads per HeatSystem (heat_demand_weighting: urban
+        central = dist_fraction; urban decentral = urban_fraction - dist_fraction;
+        rural = 1 - urban_fraction); urban central load is scaled by
+        (1 + district_heating_loss).
+      mechanism: >
+        Loads with carrier "<heat system> heat" created in
+        scripts/prepare_sector_network.py:add_heat from the
+        district_heat_share_base_s_{clusters}_{planning_horizons}.csv resource;
+        urban central buses only exist where dist_fraction > 0.
+      not_covered: >
+        Shares are country-level made nodal by urban population — no city-level DH
+        network data drives the demand split (the dh_areas geodata constrains DH heat
+        sources, not the demand share); the loss markup is a flat multiplier.
+      provenance: "scripts/build_district_heat_share.py:dist_fraction_node; scripts/build_energy_totals.py:build_district_heat_share; scripts/prepare_sector_network.py:district fraction of node; scripts/definitions/heat_system.py:heat_demand_weighting; rules/build_sector.smk:build_district_heat_share"
+    levers:
+      - key: sector.district_heating.potential
+        effect: >
+          Ceiling on urban heat demand servable by DH; scalar or per-country dict
+          (missing countries take the 'default' entry, which is then required).
+        default: "0.6"
+        provenance: "config/config.default.yaml:district_heating; scripts/build_district_heat_share.py:central_fraction"
+      - key: sector.district_heating.progress
+        effect: >
+          Per-investment-year dict interpolating from today's data-derived share (0)
+          to the potential ceiling (1); the 'nodistrict' opts wildcard forces it to 0.
+        default: "{2020: 0.0, 2025: 0.1, 2030: 0.25, 2035: 0.4, 2040: 0.55, 2045: 0.75, 2050: 1.0}"
+        provenance: "config/config.default.yaml:district_heating; scripts/build_district_heat_share.py:progress; scripts/_helpers.py:nodistrict"
+      - key: sector.district_heating.district_heating_loss
+        effect: "Urban central heat load multiplied by (1 + district_heating_loss)."
+        default: "0.15"
+        provenance: "config/config.default.yaml:district_heating_loss; scripts/prepare_sector_network.py:district_heating_loss"
+      - key: energy.energy_totals_year
+        effect: "Which historical year's country DH share column is read from the energy-totals-derived district_heat_share.csv resource."
+        default: "2023"
+        provenance: "config/config.default.yaml:energy_totals_year; scripts/build_district_heat_share.py:energy_totals_year; rules/build_sector.smk:energy_totals_year"
+    boundary:
+      - variant: "turn district heating expansion off"
+        rung: L0
+        note: "progress: 0 for all years, or append 'nodistrict' to the opts wildcard (sets progress to 0.0 via _helpers)"
+      - variant: "raise/lower DH penetration trajectory"
+        rung: L0
+        note: "edit sector.district_heating.progress per-year dict + potential"
+      - variant: "different DH ceiling per country"
+        rung: L1
+        note: "sector.district_heating.potential as a {country: value, default: value} dict — natively supported in build_district_heat_share.py"
+      - variant: "override historical DH share for a country"
+        rung: L3
+        note: "edit data/district_heat_share.csv ('share to satisfy heat demand (residential) in percent'); note build_energy_totals takes the MINIMUM of this and JRC IDEES, so raising a share above IDEES needs the L2 edit in build_district_heat_share (function in build_energy_totals.py)"
+      - variant: "per-node / city-level DH shares from own data"
+        rung: L3
+        note: "replace or post-process the district_heat_share_base_s_{clusters}_{planning_horizons}.csv resource (columns 'district fraction of node', 'urban fraction')"
+      - variant: "change the nodal allocation formula"
+        rung: L2
+        note: "edit scripts/build_district_heat_share.py (dist_fraction_node arithmetic) — isolated script, no network side effects"
+      - variant: "change the central/decentral demand weighting itself"
+        rung: L2
+        note: "HeatSystem.heat_demand_weighting in scripts/definitions/heat_system.py"
+      - variant: "DH demand share driven by mapped DH-area polygons"
+        rung: L4
+        note: "dh_areas geodata (rule build_dh_areas from retrieve_dh_areas) currently scopes DH heat sources, not the demand split; wiring it into the share needs new rule plumbing into build_district_heat_share"
+    where:
+      - change: "nodal DH share, per-country potential dict, progress application"
+        anchor: "scripts/build_district_heat_share.py (rule build_district_heat_share)"
+        provenance: "scripts/build_district_heat_share.py:dist_fraction_node; rules/build_sector.smk:build_district_heat_share"
+      - change: "historical country share derivation (IDEES + csv minimum)"
+        anchor: "scripts/build_energy_totals.py:build_district_heat_share"
+        provenance: "scripts/build_energy_totals.py:build_district_heat_share"
+      - change: "heat load weighting per heat system and loss markup"
+        anchor: "scripts/prepare_sector_network.py:add_heat + scripts/definitions/heat_system.py:heat_demand_weighting"
+        provenance: "scripts/prepare_sector_network.py:add_heat; scripts/definitions/heat_system.py:heat_demand_weighting"
+      - change: "DH area polygons (heat-source scoping, adjacent to this topic)"
+        anchor: "rule build_dh_areas / rule retrieve_dh_areas"
+        provenance: "rules/build_sector.smk:build_dh_areas; rules/retrieve.smk:retrieve_dh_areas"
+    data_dependencies:
+      - input: "JRC IDEES + data/district_heat_share.csv"
+        required_for: "historical country DH shares"
+        availability: "exists by default (IDEES retrieved; csv ships with repo, EU-focused country list)"
+      - input: "clustered pop_layout (urban/rural per node)"
+        required_for: "nodal allocation"
+        availability: "must be built"
+      - input: "dh_areas.gpkg (retrieve_dh_areas)"
+        required_for: "DH-area-constrained heat sources (adjacent, not the demand share itself)"
+        availability: "retrieved from archive by default"
+    demand_dimensions:
+      driver: "country residential/services heat totals (eurostat/IDEES); DH share = min(IDEES, data csv) for energy_totals_year, expanded by potential x progress"
+      spatial: "nodal via urban population fractions in build_district_heat_share.py; urban central buses only where dist_fraction > 0"
+      temporal: "hourly heat demand profiles weighted by time-constant dist/urban fractions; urban central carries the 1.15 loss markup"
+      scenario: "progress and (optionally per-country) potential resolved per planning_horizons; 'nodistrict' opts wildcard as scenario switch"

@@ -1,0 +1,1307 @@
+id: linearised-optimal-power-flow
+title: "Linearised (DC) optimal power flow — LOPF"
+summary: >
+  Replace the nonlinear AC power flow with its small-angle linearisation so that
+  network physics becomes a set of linear constraints on flows, making dispatch and
+  capacity expansion a single tractable LP.
+question: >
+  Where can power actually go, and what does enforcing the grid's physics — rather
+  than just its capacities — change about the answer?
+aliases:
+  - "LOPF"
+  - "linear optimal power flow"
+  - "linearised optimal power flow"
+  - "linearized optimal power flow"
+  - "DC optimal power flow"
+  - "DC-OPF"
+  - "DC approximation"
+  - "linear load flow"
+  - "linearised power flow equations"
+  - "Kirchhoff formulation"
+  - "cycle-flow formulation"
+  - "cycle-based KVL"
+  - "PTDF"
+  - "power transfer distribution factors"
+  - "LODF"
+  - "transport model"
+  - "net transfer capacity"
+  - "NTC"
+  - "transmission loss approximation"
+when_to_use:
+  - "does the grid actually constrain this, or is my model a copperplate"
+  - "should I model the transmission network physically or just as trade limits"
+  - "my model builds flows that would never happen on the real grid"
+  - "how much does modelling Kirchhoff's laws change the result versus NTCs"
+  - "the solve is too slow — can I simplify the power flow"
+  - "should I include transmission losses"
+  - "how much energy is lost in the grid in this scenario"
+  - "how far off is a linear power flow from a real AC load flow"
+  - "line reactances change when I expand lines — does the model know that"
+  - "I want nodal prices that reflect loop flows, not just border congestion"
+  - "which lines are congested and why"
+family: grid-and-security
+prevalence:
+  papers: 40
+  tier1: 32
+  tier2: 8
+  sweep_hits: 43
+  basis: >
+    Hand-coded pass 1 over all 100 PDFs (2026-07-25) coded 41 papers as using this
+    method; the regex screen returned 43, so screen and hand-coding agree almost
+    exactly — expected, because the method's grep targets ("LOPF", "Kirchhoff",
+    "PTDF", "DC power flow") are named explicitly by anyone who uses them. One of the
+    41 was struck: 2021_Glismann is flagged mention-only in EVIDENCE_INDEX.md and its
+    own notes say the OPF runs on a one-node grid with "power distribution factors
+    omitted", i.e. no power flow was exercised. The other two flagged suspects were
+    KEPT after review: 2017_Hoersch_Spatial-scale enforces cycle KVL as its Eq. 8, and
+    2019_Neumann_Heuristics is the corpus's only angle-formulation-with-adaptive-
+    susceptance study and therefore load-bearing for the `angle-formulation` variant.
+    2017_Groissbock is retained despite also being single-bus, because it is the
+    corpus's evidence that "we ran LOPF" is routinely written about a network with no
+    grid in it — the pitfall below. 5 papers carry role `defines`, unusually many, and
+    the reason is that this is a substrate method whose formulation, its dual theory
+    and its loss extension were each introduced by a separate paper in this corpus.
+procedure:
+  - step: >
+      Reduce the AC network to a single voltage layer with per-line series reactance
+      x and resistance r. All lines are mapped to one reference voltage (380 kV in the
+      European corpus) preserving thermal capacity, and transformers disappear because
+      a DC formulation represents them as lines.
+    handle: "simplify_network_to_380 (config: clustering.simplify_network)"
+    provenance: "scripts/simplify_network.py:simplify_network_to_380"
+  - step: >
+      Choose the linearisation. The DC approximation assumes small angle differences,
+      a flat voltage profile and r << x, giving flow f_l = b_l * (theta_i - theta_j)
+      with b_l = 1/x_l. This is the only modelling assumption in the method; every
+      variant below is a different algebraic encoding of it, except the transport and
+      loss variants, which weaken and strengthen it respectively.
+    handle: null
+    provenance: null
+  - step: >
+      Enforce Kirchhoff's Current Law: nodal power balance, sum over branches of the
+      incidence matrix K times flow equals net injection at every bus and snapshot.
+      Every variant does this; a transport / NTC model does ONLY this.
+    handle: "define_nodal_balance_constraints"
+    provenance: "pypsa/optimization/constraints.py:define_nodal_balance_constraints"
+  - step: >
+      Enforce Kirchhoff's Voltage Law, which is what makes flows physical rather than
+      merely feasible. Three equivalent encodings: (a) ANGLE — introduce theta per bus
+      and write f_l = b_l * delta_theta, adding |N| variables; (b) PTDF — eliminate
+      theta analytically, f = H p with H = B_d K^T B^+ from the pseudo-inverse of the
+      Laplacian, giving a dense matrix; (c) CYCLE / KIRCHHOFF — decompose the graph
+      into a spanning tree plus an independent cycle basis C and impose
+      sum_l C_lc * x_l * f_lt = 0 per cycle, eliminating theta with no dense inverse.
+      Hörsch 2017 proves the three give identical optima and benchmarks them.
+    handle: "define_kirchhoff_voltage_constraints (cycle basis from find_cycles)"
+    provenance: "pypsa/optimization/constraints.py:define_kirchhoff_voltage_constraints; pypsa/pf.py:find_cycles"
+  - step: >
+      Bound each flow by its thermal rating, almost universally derated: |f_lt| <=
+      s_max_pu * s_nom_l, with s_max_pu = 0.7 across the corpus as a static N-1 and
+      reactive-power proxy. Exempt controllable HVDC links from KVL — they carry only
+      KCL — which is why link-vs-line is a formulation decision, not a data one.
+    handle: "lines.s_max_pu -> set_line_s_max_pu"
+    provenance: "scripts/prepare_network.py:set_line_s_max_pu"
+  - step: >
+      (optional) Add transmission losses. The exact loss psi_l = r_l * f_l^2 is
+      convex, so it can be under-approximated from below by 2n tangent hyperplanes and
+      capped above by r_l*(s_max_pu*s_nom)^2, giving a linear relaxation that is tight
+      at the tangent points. Losses are split half to each end bus. Requires FINITE
+      s_nom_max on every extendable branch, which is the trap.
+    handle: "define_loss_constraints (config: solving.options.transmission_losses = n tangents)"
+    provenance: "pypsa/optimization/constraints.py:define_loss_constraints"
+  - step: >
+      Solve the LP. Under capacity expansion the formulation is bilinear, because
+      b_l ∝ s_nom_l: expanding a line changes its susceptance and therefore the flow
+      pattern. Standard practice is sequential linear programming — solve, recompute
+      x and r from the new capacities, re-solve until the mean-square capacity change
+      falls below a threshold.
+    handle: "optimize_transmission_expansion_iteratively (config: solving.options.skip_iterations)"
+    provenance: "pypsa/optimization/abstract.py:optimize_transmission_expansion_iteratively"
+  - step: >
+      Validate ex post. Read line loadings and nodal duals off the solved network, and
+      — the step almost nobody performs — run a nonlinear AC Newton-Raphson power flow
+      on the solved dispatch to measure how far the linearisation was off. Neumann 2022
+      is the corpus's only systematic execution of this step.
+    handle: null
+    provenance: null
+variants:
+  - id: cycle-kirchhoff-formulation
+    what: >
+      KVL imposed directly on flow variables over an independent cycle basis, with no
+      auxiliary angle variables. Fewer and sparser constraints than the angle form:
+      Hörsch 2017 measures 1.4-2.8x average (up to 20x) speedup for dispatch and ~12x
+      average (up to 213x) for joint generation-and-transmission expansion; Neumann
+      2020 measures 95.3% of the angle formulation's constraints and 90.5% of its
+      variables. This is the de-facto default of the whole corpus and the only
+      formulation pypsa 0.30.3 still implements.
+    papers:
+      - "2017_Hoersch_Linear-Optimal-Power-Flow-Cycle-Flows_EPSR.pdf"
+      - "2017_Hoersch_Spatial-scale-generation-transmission_EEM.pdf"
+      - "2018_Brown_PyPSA-Python-for-Power-System-Analysis_JORS.pdf"
+      - "2018_Tranberg_Flow-based-storage-usage_EEM.pdf"
+      - "2019_Victoria_Storage-technologies-decarbonisation_EnConvMgmt.pdf"
+      - "2020_Frysztacki_Curtailment-Germany-Spatial-Resolution_EEM.pdf"
+      - "2020_Neumann_Near-Optimal-Feasible-Space_EPSR.pdf"
+      - "2020_Neumann_Transmission-Expansion-Cycle-Flows_ACMeEnergy.pdf"
+      - "2021_Frysztacki_Network-resolution-wind-solar_ApplEnergy.pdf"
+      - "2021_Parzen_beyond-cost-reduction-value-energy-storage.pdf"
+      - "2022_Frysztacki_clustering-methods-spatial-reduction_EnergyInformatics.pdf"
+      - "2022_Victoria_Speed-technological-transformations_Joule.pdf"
+      - "2023_Neumann_Broad-Ranges-Investment-Robust_iScience.pdf"
+      - "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+  - id: angle-formulation
+    what: >
+      The textbook encoding: one voltage-angle variable per bus and per snapshot, with
+      f_l = b_l * delta_theta. Adds |N| variables and |L| equalities, so it is slower,
+      but it is the natural home for anything that must reason about angles — and it
+      is the formulation you must reach for when susceptances are DECISION variables.
+      Neumann 2019 uses it precisely because b_ij ∝ F_ij under integer line
+      investment, making the standard LOPF bilinear and motivating a big-M MILP or an
+      SLP heuristic.
+    papers:
+      - "2017_Hoersch_Linear-Optimal-Power-Flow-Cycle-Flows_EPSR.pdf"
+      - "2018_Brown_PyPSA-Python-for-Power-System-Analysis_JORS.pdf"
+      - "2019_Neumann_Heuristics-Transmission-Expansion_EEM.pdf"
+      - "2020_Neumann_Transmission-Expansion-Cycle-Flows_ACMeEnergy.pdf"
+  - id: ptdf-formulation
+    what: >
+      Angles eliminated analytically into a dense sensitivity matrix H = B_d K^T B^+,
+      so flows are an explicit linear map of nodal injections. Slowest of the three as
+      an LP encoding (dense constraints), but it is the ONLY variant that gives you
+      flow sensitivities as an object you can manipulate: it is the entry point to
+      LODFs and contingency screening, to flow-based market coupling domains, and to
+      any flow-tracing or principal-component analysis of flow patterns. Ronellenfitsch
+      2017 develops the primal PTDF/LODF algebra and its dual (cycle-space) counterpart.
+    papers:
+      - "2017_Eriksen_Optimal-heterogeneity-renewable_Energy.pdf"
+      - "2017_Hoersch_Linear-Optimal-Power-Flow-Cycle-Flows_EPSR.pdf"
+      - "2017_Ronellenfitsch_Dual-theory-transmission-line-outages_TPWRS.pdf"
+      - "2018_Brown_PyPSA-Python-for-Power-System-Analysis_JORS.pdf"
+      - "2018_Hofmann_Principal-flow-patterns_EPL.pdf"
+      - "2021_Gazafroudi_N-1-Contingency-Topology_IJEPES.pdf"
+      - "2021_Gazafroudi_Network-Boosters-Corrective-Grid-Security.pdf"
+      - "2025_Thomassen_JRC_Locational-Price-Signals-Europe_nodal-zonal-national.pdf"
+  - id: transport-model-ntc
+    what: >
+      KVL dropped entirely: every branch is a controllable flow bounded by its
+      capacity, i.e. KCL only. This is what you get by modelling a corridor as a Link
+      rather than a Line, and it is what "NTC" means in a market model. Cheapest and
+      most permissive — it lets power route around congestion in ways the physical grid
+      cannot — and the standard choice for non-electric carriers (H2, gas, CO2
+      pipelines) and for low-fidelity legs of a two-fidelity study. Franken 2025
+      substitutes Links for Lines deliberately and records that re-adding KVL shifted
+      the spatial price distribution.
+    papers:
+      - "2019_Liu_Hydro-power-storage-transmission-China_ApplEnergy.pdf"
+      - "2022_Neumann_Linear-power-flow-transmission-loss_ApplEnergy.pdf"
+      - "2023_Glaum_Offshore-Wind-North-Sea-Floating_EEM.pdf"
+      - "2023_Neumann_Broad-Ranges-Investment-Robust_iScience.pdf"
+      - "2024_Chanal_carbon-capture-solvent-cost-energy-system.pdf"
+      - "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+  - id: piecewise-linear-losses
+    what: >
+      The quadratic loss curve r*f^2 replaced by a convex envelope: 2n tangents from
+      below plus one upper bound, n a config integer. Neumann 2022 introduces this on
+      top of the cycle formulation and validates it against AC Newton-Raphson,
+      reporting 6 tangents as sufficient. Now the pypsa-eur default (n=2) and the
+      standard choice of everything downstream of it.
+    papers:
+      - "2022_Neumann_Linear-power-flow-transmission-loss_ApplEnergy.pdf"
+      - "2025_Lindner_PyPSA-DE_EEM.pdf"
+      - "2025_Neumann_Green-energy-steel-imports-net-zero_NatComms.pdf"
+  - id: iterative-impedance-update
+    what: >
+      Sequential linear programming around the bilinearity of expansion: solve, rescale
+      x and r from the optimised capacities, re-solve until the mean-square capacity
+      change is under threshold. Orthogonal to the KVL encoding — it wraps any of them.
+      Neumann 2019 benchmarks the heuristic against an exact big-M MILP with integer
+      line investment; Xiong 2025 reports runs needing up to 274 iterations and >18 h.
+    papers:
+      - "2018_Brown_PyPSA-Python-for-Power-System-Analysis_JORS.pdf"
+      - "2019_Neumann_Heuristics-Transmission-Expansion_EEM.pdf"
+      - "2020_Neumann_Near-Optimal-Feasible-Space_EPSR.pdf"
+      - "2022_Neumann_Linear-power-flow-transmission-loss_ApplEnergy.pdf"
+      - "2025_Xiong_Modelling-High-Voltage-Grid-Open-Data_NatSciData.pdf"
+  - id: single-bus-copperplate
+    what: >
+      The degenerate case: one bus, no branches, so the "LOPF" reduces to an energy
+      balance with no network at all. Worth naming as a variant because papers report
+      it in the same words as a meshed study, and because it is the correct choice when
+      the question is about a fleet or a market product rather than about geography.
+    papers:
+      - "2017_Groissbock_high-renewable-penetration-scenarios.pdf"
+      - "2018_Hoersch_PyPSA-Eur_EnergyStratRev.pdf"
+literature:
+  - paper: "2017_Hoersch_Linear-Optimal-Power-Flow-Cycle-Flows_EPSR.pdf"
+    tier: 1
+    role: defines
+    note: >
+      The reference definition for this book. Formally specifies SEVEN LOPF
+      formulations — Pure Angle, Angle+Flow, Pure PTDF, PTDF+Flow, Kirchhoff, Pure
+      Cycle, Cycle+Flow — and tabulates variables, equalities, inequalities and matrix
+      sparsity for each (Table 2). Introduces the cycle decomposition (spanning tree
+      plus closed cycles, Eq. 10-12) that expresses KVL directly on flows with no
+      auxiliary variables. Benchmark: 7 MATPOWER/SciGRID topologies (case118 to
+      case2869pegase, plus SciGRID Germany at 585 buses / 948 branches), 3 generation
+      modes, 24 periods, 100 instances per case, Gurobi. Kirchhoff wins by 1.4-2.8x on
+      average (up to 20x) for dispatch and ~12x on average (up to 213x) for joint
+      capacity expansion. The numbers to quote when a user asks whether the formulation
+      choice matters: it does not change the optimum, only the time to reach it.
+  - paper: "2020_Neumann_Transmission-Expansion-Cycle-Flows_ACMeEnergy.pdf"
+    tier: 1
+    role: defines
+    note: >
+      Extends the cycle formulation from continuous LOPF to MILP transmission
+      expansion planning, deriving and proving both the angle-based and cycle-based
+      KVL forms and adding the multi-synchronous-zone connection combinatorics. Also
+      supplies the post-hoc voltage-angle recovery procedure, which is the answer to
+      "if you eliminate theta, how do I get angles back". Measured on 672 European
+      generation+transmission co-expansion problems at 250-1000 nodes: 95.3% of the
+      angle formulation's constraints, 90.5% of its variables.
+  - paper: "2022_Neumann_Linear-power-flow-transmission-loss_ApplEnergy.pdf"
+    tier: 1
+    role: defines
+    note: >
+      The loss paper, and the only paper in the corpus that validates the
+      linearisation itself rather than assuming it. Develops five flow formulations
+      from first principles — transport, lossy transport, lossless LOPF (cycle KVL),
+      lossy LOPF (convex tangent envelope around psi = r*p^2, Eqs. 39-43), and
+      iterative variants — and checks each against ex-post nonlinear AC
+      Newton-Raphson. 250 nodes, 4380 snapshots, 6 tangents, 70% line utilisation cap.
+      This is where `solving.options.transmission_losses` comes from, and the source
+      to cite when a user asks how wrong a linear power flow is.
+  - paper: "2018_Brown_PyPSA-Python-for-Power-System-Analysis_JORS.pdf"
+    tier: 1
+    role: defines
+    note: >
+      The PyPSA framework paper: establishes LOPF as the library's central
+      optimisation, with the angle linearisation at Eq. 4 and the cycle KVL form at
+      Eq. 15, and states explicitly that the voltage-angle, PTDF and cycle
+      formulations "deliver identical results" — the sentence that licenses treating
+      formulation choice as purely computational. Also records the practice this book
+      inherits: impedances held fixed within one solve, updated across up to 5
+      iterations for expansion.
+  - paper: "2017_Ronellenfitsch_Dual-theory-transmission-line-outages_TPWRS.pdf"
+    tier: 1
+    role: defines
+    note: >
+      The dual/LODF theory. Derives the nodal susceptance matrix B, the PTDF
+      (PTDF = B_d K^T B^+, Eq. 8) and the standard LODF
+      (LODF_kl = [PTDF·K]_kl / (1 - [PTDF·K]_ll), Eq. 10) from first principles as the
+      primal baseline, then reformulates outage sensitivities in cycle space,
+      obtaining a 1.31-4.43x faster method across ten MATPOWER/PEGASE grids of
+      300-9241 nodes and proving monotonic decay of outage effects in planar networks.
+      Not a PyPSA paper, but it is the algebra behind pypsa's calculate_PTDF /
+      calculate_BODF and the theoretical bridge from this card to
+      n-1-security-and-contingency.
+  - paper: "2017_Hoersch_Spatial-scale-generation-transmission_EEM.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The earliest full application of cycle-flow LOPF in the European corpus:
+      KCL (Eq. 7) plus cycle KVL (sum_l C_lc x_l f_lt = 0, Eq. 8) on a 37-362 bus
+      network at 2920 snapshots, with HVDC links exempt from KVL. Establishes the
+      framing repeated verbatim by a dozen later papers: "the linear load flow is a
+      good approximation for a well-compensated transmission network". Losses not
+      modelled.
+  - paper: "2020_Frysztacki_Curtailment-Germany-Spatial-Resolution_EEM.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The reference for reading LOPF output against reality: validates measured German
+      curtailment 2013-2018 by sweeping 6 to 306 nodes on a dispatch-only cycle-flow
+      LOPF with the 70% loading cap. Shows the formulation's answer is only as good as
+      the spatial resolution feeding it, and reports the compute shape — ~20 GB RAM and
+      ~1 h at full resolution, ~30% less RAM and 2x faster at 156 nodes.
+  - paper: "2021_Frysztacki_Network-resolution-wind-solar_ApplEnergy.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The clearest statement of the standard European recipe in one place: all lines
+      mapped to 380 kV equivalents before clustering (Eq. 1), KCL at Eq. 13, cycle KVL
+      at Eq. 14, flow capped at b_B = 0.7 of thermal rating (Eq. 15), HVDC links with
+      KCL only. Cites Hörsch 2017 explicitly for choosing cycle over angle/PTDF on
+      computational grounds. 37-1024 nodes, 3-hourly.
+  - paper: "2019_Neumann_Heuristics-Transmission-Expansion_EEM.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The corpus's angle-formulation study, and the one that makes the linearisation's
+      hidden nonlinearity explicit: b_ij ∝ F_ij under line investment, so the standard
+      LOPF is bilinear and honest TEP needs either an exact big-M MILP or an SLP
+      heuristic. Benchmarks both on the German subnetwork at 20-100 nodes, 100-400
+      snapshots. This is why iterative-impedance-update exists as a variant and why
+      `skip_iterations: true` is a modelling choice, not a speed setting.
+  - paper: "2020_Neumann_Near-Optimal-Feasible-Space_EPSR.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      Notable for stating that co-optimising generation, storage and transmission
+      SUBJECT TO LOPF constraints is unusual in its own subfield — evidence that the
+      grid physics in this card is not a given even in adjacent literature. Cycle KVL
+      at Eq. 12, HVDC exempt, 70% security margin, SLP impedance update, 100 nodes at
+      4380 snapshots.
+  - paper: "2021_Gazafroudi_N-1-Contingency-Topology_IJEPES.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      Uses the PTDF form as the object of study rather than as machinery: builds the
+      N-0 and N-1 flow polytopes from PTDF (Eq. 7) and LODF (Eq. 13) and derives
+      per-line buffer capacity factors from polytope geometry, i.e. a principled
+      replacement for the uniform 0.7. The reference for anyone whose real question is
+      "where does s_max_pu = 0.7 come from and can I do better".
+  - paper: "2021_Gazafroudi_Network-Boosters-Corrective-Grid-Security.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      PTDF and LODF matrices computed analytically (Eq. 7) as the substrate for a
+      corrective network-booster planning problem, with linearisation of ALL network
+      and generation constraints motivated explicitly by compute — 100 GB memory for
+      the German case. Names the standard omissions in its limitations: reactive power
+      and losses. The clearest corpus statement that the DC approximation is adopted
+      because the problem is otherwise intractable, not because it is accurate.
+  - paper: "2018_Hoersch_PyPSA-Eur_EnergyStratRev.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      LOPF used as a DATASET validator rather than a planning tool: a single-snapshot
+      run on the European peak-load hour (0.51 TW, 17:00 2013-01-17) to check the
+      combined network/generation/demand data can serve peak with line loading under
+      70%. The cheapest LOPF you can run, and a useful pattern to relay.
+  - paper: "2017_Eriksen_Optimal-heterogeneity-renewable_Energy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Pre-PyPSA PTDF practice: H built from the Moore-Penrose pseudo-inverse of the
+      network Laplacian with UNIT susceptances assumed throughout, and flows used only
+      to size transmission at the 99% quantile. Records the assumption explicitly and
+      performs no sensitivity to it — a useful marker of how casually the DC
+      approximation was treated before Neumann 2022.
+  - paper: "2018_Hofmann_Principal-flow-patterns_EPL.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Unconstrained PTDF as a pure analysis object: f(t) = H p(t) with no capacity
+      constraints and no optimisation, decomposed into principal flow patterns. The
+      paper notes that constrained dispatch would increase the number of relevant flow
+      components — the honest caveat on flow-pattern analysis done off an unconstrained
+      linear flow.
+  - paper: "2018_Tranberg_Flow-based-storage-usage_EEM.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Cycle KVL on the HVAC part only (Eq. 2), citing Hörsch, as the substrate for
+      flow tracing of storage usage. An early instance of the pattern where the LOPF
+      solution is the INPUT to a flow-allocation method.
+  - paper: "2018_Schlott_Climate-Change-Renewable-Network_ApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Linearised AC flows in the cost-minimisation LP (Eq. 15) with |f_lt| <= F_l, but
+      no formulation named beyond incidence-matrix nodal balance and no loss
+      representation — representative of the majority of the corpus, which specifies
+      "linearised power flow" and leaves the encoding to the tool.
+  - paper: "2019_Liu_Hydro-power-storage-transmission-China_ApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Explicit transport model outside Europe: controllable directed flows bounded by
+      thermal limits (Eq. 8) with KCL via the incidence matrix (Eq. 2), HVDC
+      unidirectional and UHVAC bidirectional, 31 nodes. States in the discussion that
+      KVL is not modelled — the cleanest citation for the transport-model-ntc variant
+      being a deliberate, defensible choice at low spatial resolution.
+  - paper: "2019_Victoria_Storage-technologies-decarbonisation_EnConvMgmt.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      "Linear optimal power flow is applied using Kirchhoff's formulation", citing
+      Hörsch — the canonical one-sentence methods statement of this method in the
+      corpus. Uses a 33% derating for N-1 rather than the usual 30%.
+  - paper: "2021_Parzen_beyond-cost-reduction-value-energy-storage.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Cycle-basis KVL at 181 nodes with resistance disregarded (lossless), stated as
+      "PyPSA-Eur typically includes a linearised power flow constraint" — an instance
+      of the formulation being inherited from the workflow rather than chosen.
+  - paper: "2021_Parzen_reducing-model-distortions-unintended-storage.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Lists KVL+KCL among the model constraints and assumes PyPSA-Eur defaults
+      throughout, transmission losses not discussed. Cited here as evidence for the
+      "defaults are invisible" pitfall: the loss setting is load-bearing and unreported.
+  - paper: "2022_Frysztacki_clustering-methods-spatial-reduction_EnergyInformatics.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Cycle-flow LOPF on a FIXED grid (no expansion) with capacities derated to 70% of
+      TYNDP 2018 ratings — the configuration in which the impedance-update question
+      disappears entirely, which is worth knowing before enabling iterations.
+  - paper: "2022_Victoria_Speed-technological-transformations_Joule.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Kirchhoff formulation on a 37-node clustered AC/HVDC network with a 33% N-1
+      derating; transmission fixed in the baseline and co-optimised only in a
+      sensitivity. Representative of sector-coupled studies where the grid is present
+      but not the object of study.
+  - paper: "2022_Parzen_PyPSA-Earth-global-open-energy-model-Africa_ApplEnergy.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      The pypsa-earth reference: LOPF constraints in both the 2020 dispatch-only
+      validation and the 2060 co-optimisation, inheriting the formulation from
+      PyPSA-Eur. Reports the solver comparison that matters for earth users — Gurobi
+      9.5.1 (4 threads) vs HiGHS 1.2.1 (single core) at 10-54 nodes.
+  - paper: "2023_Frysztacki_Inverse-methods-disaggregation_Energy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Lists "applying only a linearised power flow model" as a stated limitation, and
+      distributes inter-cluster flows from a low-resolution solution back onto
+      high-resolution lines proportional to capacity (Eq. 8) — a disaggregation that is
+      only defensible because the linear flow is a linear map.
+  - paper: "2023_Glaum_Offshore-Wind-North-Sea-Floating_EEM.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      A deliberately MIXED formulation: full LOPF on the existing onshore AC network,
+      transport model for new offshore HVDC. The pattern to reach for when new
+      corridors have no meaningful reactance yet; losses excluded and named as a
+      limitation.
+  - paper: "2023_Neumann_Broad-Ranges-Investment-Robust_iScience.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Two-fidelity design that makes the formulation itself the fidelity knob: the
+      high-fidelity model carries cycle KVL (Eq. 12), the low-fidelity model "excludes
+      KVL of Equation (12)" and is a transport model. The corpus's clearest precedent
+      for trading formulation fidelity for solve count.
+  - paper: "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Lossless cycle-based KVL for electricity with a 70% derating, while hydrogen
+      pipelines use a transport model with capacity and nodal balance only. The
+      standard multi-carrier split: physics on the AC layer, transport on every other
+      carrier.
+  - paper: "2024_Chanal_carbon-capture-solvent-cost-energy-system.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Uses the LOSSY TRANSPORT variant at 37 nodes, citing Neumann 2022, justified as
+      "suitable at this resolution". The corpus's example of the resolution-dependent
+      formulation argument being made explicitly rather than by default.
+  - paper: "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      LOPF on AC lines >= 220 kV and all HVDC links at 37 bidding zones, deferring to
+      "standard for the PyPSA-Eur model" without naming the encoding. Notable because
+      the study's question is about hourly matching, yet the grid representation
+      determines whether procurement can be located away from load.
+  - paper: "2024_Riepin_Spatio-temporal-load-shifting-clean-computing_AdvApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      LOPF on the 37-zone background system, but datacenter load shifts travel on
+      virtual links that BYPASS the physical network — a formulation asymmetry worth
+      surfacing to any user who wants to shift demand spatially, because the shifted
+      flow is then unconstrained by the grid the rest of the model respects.
+  - paper: "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The reference implementation of transport-model-ntc as a deliberate substitution:
+      Line components replaced by Link components to remove KVL, with NTC limits only
+      on the five critical cross-zonal boundaries. Records that internal experiments
+      WITH KVL altered the spatial price distribution — the concrete warning for any
+      zonal-pricing study that drops the physics.
+  - paper: "2025_Lindner_PyPSA-DE_EEM.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Cycle-based LOPF with piecewise-linear losses, citing Hörsch 2017 for the
+      formulation and Neumann 2022 for the losses, on an OSM-derived German network
+      validated against official data. The current best-practice combination in one
+      model.
+  - paper: "2025_Neumann_Green-energy-steel-imports-net-zero_NatComms.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Cycle-flow LOPF with piecewise-linear HVAC losses plus explicitly parameterised
+      HVDC losses (2% static converter, 3%/1000 km line) — the corpus's cleanest
+      statement that HVDC losses are a component parameter, not part of the LOPF
+      linearisation.
+  - paper: "2025_Thomassen_JRC_Locational-Price-Signals-Europe_nodal-zonal-national.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Uses PTDFs as the market object: zonal PTDFs against critical network elements
+      with contingencies (CNECs) to build flow-based market coupling domains, with
+      nodal Kirchhoff conditions in the locational scenario. Also applies dynamic line
+      rating with a 50% capacity uplift cap, i.e. s_max_pu made time-varying.
+  - paper: "2025_Che_space-based-solar-power-european-decarbonization.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Standard PyPSA-Eur LOPF for both dispatch and expansion, with the 2020 LOPF
+      output validated against ENTSO-E historical data — the backtesting pattern
+      applied to the flow formulation rather than to capacities.
+  - paper: "2025_Xiong_Modelling-High-Voltage-Grid-Open-Data_NatSciData.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The data side of this method: line impedance and reactance derived from OSM
+      geometry, circuit count and pandapower standard types, then validated per-line
+      against the 50Hertz static grid model. Also the corpus's worst-case compute
+      datapoint for iterative-impedance-update — up to 274 iterations and >18 h on HPC
+      at up to 130 GB.
+  - paper: "2026_Stoeckl_voltage-aware-grid-aggregation-european-network.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Continuous transmission expansion under DC power flow, noting that transformers
+      are effectively lines in a DC formulation and that the same aggregation strategy
+      therefore applies to them — the justification behind step 1 of the procedure.
+      Gurobi barrier without crossover.
+  - paper: "2026_Titz_Cascading-Failures-Critical-Infrastructures.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      DC power flow used twice over: inside the PyPSA-Eur investment optimisation and
+      again at every step of a cascading-failure simulation on the resulting network.
+      The corpus's example of the linear flow being re-evaluated outside the LP, which
+      is where LODFs from the ptdf-formulation variant become the working tool.
+  - paper: "2017_Groissbock_high-renewable-penetration-scenarios.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      "pyPSA ... is able to consider static, linear, and security-constrained linear
+      optimal power flow" — but the run is SINGLE-BUS with no transmission network,
+      active/reactive power and voltage control explicitly out of scope. Retained as
+      the corpus's evidence for the single-bus-copperplate variant and for the pitfall
+      that "we ran LOPF" says nothing about whether a grid was modelled.
+pitfalls:
+  - pitfall: >
+      "We used LOPF" does not tell you whether a grid was modelled. The same phrase
+      covers a 1024-bus meshed network with cycle KVL and a single-bus copperplate
+      with no branches at all, and the two answer different questions.
+    evidence: "2017_Groissbock_high-renewable-penetration-scenarios.pdf"
+    note: >
+      Always establish bus count and whether KVL is enforced before comparing results
+      across studies or promising a grid-aware answer. In a bundle, the discriminator
+      is whether corridors are Line or Link components, not the config.
+  - pitfall: >
+      Dropping KVL (transport / NTC) is not conservative — it is PERMISSIVE. Power is
+      allowed to route around congestion in ways physics forbids, so congestion,
+      curtailment and locational price spread are all understated, and the direction of
+      the bias is not obvious a priori.
+    evidence: "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+    note: >
+      If the user's question is about locational prices, congestion or redispatch, do
+      not accept a transport model silently. Franken 2025 found re-adding KVL moved the
+      spatial price distribution; Neumann 2023 uses the KVL/no-KVL pair explicitly as
+      a fidelity ladder, which is the honest way to use a transport model.
+  - pitfall: >
+      Under transmission expansion the LOPF is bilinear, because susceptance scales
+      with capacity. Solving it as a single LP with FIXED impedances silently answers a
+      different problem: the flow pattern belongs to today's grid, not the expanded one.
+    evidence: "2019_Neumann_Heuristics-Transmission-Expansion_EEM.pdf"
+    note: >
+      `solving.options.skip_iterations` defaults to TRUE in both models, so the default
+      run is the fixed-impedance approximation. Set it false whenever lines are
+      extendable and the grid topology is part of the answer — and budget for it, since
+      Xiong 2025 reports up to 274 iterations. It is auto-skipped when no line is
+      extendable, so the setting is harmless otherwise.
+  - pitfall: >
+      Neglecting losses biases the system toward long-distance transmission and
+      understates required generation, and the error grows with corridor length — but
+      the loss approximation itself is only tight at its tangent points, so too few
+      tangents trades one bias for another.
+    evidence: "2022_Neumann_Linear-power-flow-transmission-loss_ApplEnergy.pdf"
+    note: >
+      pypsa-eur ships 2 tangents; Neumann 2022 used 6 and validated against AC
+      Newton-Raphson. Raise the count for loss-sensitive questions and state the
+      choice. pypsa-earth has no loss surface at all — see that model's section.
+  - pitfall: >
+      The 0.7 line derating that stands in for N-1 across the whole corpus is a uniform
+      guess, not a contingency analysis. It over-constrains lines that are not
+      critical and under-constrains those that are, and it is applied identically to a
+      6-node and a 1024-node network.
+    evidence: "2021_Gazafroudi_N-1-Contingency-Topology_IJEPES.pdf"
+    note: >
+      For security questions, derive per-line buffer factors from PTDF/LODF polytope
+      geometry rather than using the uniform value, and say plainly that neither model
+      wires PyPSA's SCLOPF into its workflow (registry: contingency-scopf `absent` in
+      both). Report the margin used; a result at 0.7 and at 1.0 are different studies.
+  - pitfall: >
+      Linear flows are only as physical as the impedance data and the spatial
+      resolution underneath them. Clustering a meshed network destroys the cycles that
+      KVL constrains, so a coarse network with KVL can be more permissive than a fine
+      network with a transport model.
+    evidence: "2020_Frysztacki_Curtailment-Germany-Spatial-Resolution_EEM.pdf"
+    note: >
+      Reported curtailment moved substantially between 6 and 306 nodes on the same
+      formulation. Never present a formulation upgrade as a fidelity gain without
+      stating the bus count; pair this card with spatial-clustering-and-resolution.
+  - pitfall: >
+      Flow-based analyses built on an UNCONSTRAINED linear flow (f = H p with no
+      capacity limits) describe a grid that is never congested, so flow patterns,
+      tracing and allocation results shift once dispatch is constrained.
+    evidence: "2018_Hofmann_Principal-flow-patterns_EPL.pdf"
+    note: >
+      Fine for structural analysis of a topology; not a substitute for solved flows.
+      If the user wants flow attribution for a scenario, trace the SOLVED network.
+requires_methods: []
+combines_with:
+  - transmission-expansion-cooptimisation
+  - n-1-security-and-contingency
+  - spatial-clustering-and-resolution
+  - zonal-nodal-and-redispatch
+  - shadow-prices-and-marginal-values
+  - cascading-failure-analysis
+  - custom-constraints-with-linopy
+  - distribution-and-voltage-aware-aggregation
+  - model-validation-and-backtesting
+topics:
+  - transmission-expansion-planning
+  - grid-congestion-redispatch
+  - locational-electricity-markets
+  - curtailment-minimization
+  - ultra-high-voltage-transmission
+  - cross-border-interconnection
+  - solver-speed-scalability
+  - high-resolution-spatial-modelling
+pypsa_primitive:
+  symbol: "pypsa/optimization/constraints.py:define_kirchhoff_voltage_constraints"
+  pypsa_version: "0.30.3"
+  exposed_by: "both — every n.optimize() call in either workflow builds it unconditionally"
+  reachable_via: >
+    Nothing to reach: create_model() calls define_kirchhoff_voltage_constraints(n, sns)
+    for every non-empty passive-branch component on every solve. The cycle basis comes
+    from find_cycles in pypsa/pf.py via determine_network_topology, weighted by
+    x_pu_eff on AC sub-networks and r_pu_eff on DC ones. The ONLY user-facing controls
+    are structural: put a corridor in a Line (KVL applies) or a Link (it does not), and
+    pass transmission_losses=n to add define_loss_constraints. The PTDF and LODF
+    matrices exist separately as analysis objects — pypsa/pf.py:calculate_PTDF and
+    pypsa/contingency.py:calculate_BODF — but they are NOT what the LP is built from.
+  note: >
+    The load-bearing fact for this whole card, and the one that overrides both models'
+    documentation: at pypsa 0.30.3 the linopy optimisation module implements exactly
+    ONE KVL formulation, the Kirchhoff cycle form, hardcoded. `pypsa/opf.py` — the
+    Pyomo-era network_lopf(formulation='angle'|'cycles'|'kirchhoff'|'ptdf') that
+    Hörsch 2017 benchmarked — no longer exists in the installed distribution; grepping
+    the whole package for "formulation" returns only unit-commitment and docstring
+    hits. So the seven formulations of the defining paper are NOT a live config choice
+    in either model: angle and PTDF encodings are L5 reformulation work today, and
+    pypsa-earth's `solving.options.formulation: kirchhoff` is a fossil of the removed
+    API. Soft anchor: pypsa is a conda dependency, pinned to a version string not a SHA.
+models:
+  - model: pypsa-eur
+    version_anchor:
+      ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d"
+      date: "2026-07-25"
+    functionality:
+      - id: line-security-margin
+        role: >
+          the flow bound itself: lines.s_max_pu = 0.7 is the derating every corpus
+          paper reports, applied uniformly by prepare_network
+      - id: transmission-losses
+        role: >
+          the loss linearisation, ON by default at 2 tangents — the single largest
+          asymmetry against pypsa-earth, whose registry has no such id at all
+      - id: iterative-impedance-expansion
+        role: >
+          the SLP wrapper for the bilinearity of expansion; skipped by default, so the
+          default expansion run uses fixed impedances
+      - id: post-discretization
+        role: >
+          rounds continuous line/link expansion to unit sizes between SLP iterations —
+          only bites in iterative mode, i.e. it silently does nothing at defaults
+      - id: network-simplification
+        role: >
+          procedure step 1: maps all voltage levels onto a 380 kV layer and removes
+          transformers, which is what makes a single-layer DC formulation well-posed
+      - id: transmission-expansion-limits
+        role: >
+          makes s_nom extendable and bounds it; lines.max_extension = 20000 is what
+          keeps s_nom_max FINITE, which is a hard precondition of the loss constraints
+      - id: lossy-bidirectional-links
+        role: >
+          the loss model for the carriers that are NOT under KVL — DC, H2, gas — via
+          mirrored reversed links with capacities synced at solve time
+      - id: dynamic-line-rating
+        role: >
+          turns the static 0.7 into a weather-dependent time series per line; a
+          capability earth lacks entirely, off by default
+      - id: contingency-scopf
+        role: >
+          registry status `absent`: PyPSA's SCLOPF is not wired in, so the 0.7 margin
+          is the ONLY security representation available at L0/L1
+      - id: solver-choice
+        role: >
+          the formulation's cost is paid at the solver; the barrier/PDLP profiles are
+          what make a large meshed KVL problem tractable
+      - id: copperplate-regions
+        role: >
+          the cheapest way to reach the single-bus-copperplate variant for chosen
+          regions without leaving config
+    available:
+      verdict: turnkey
+      how: >
+        A default `snakemake solve_network` already runs the corpus's best-practice
+        formulation: cycle-based Kirchhoff KVL on all Line components (built
+        unconditionally by pypsa), piecewise-linear losses at 2 tangents
+        (solving.options.transmission_losses: 2), a 0.7 N-1 derating
+        (lines.s_max_pu), and a 380 kV single-layer network from simplify_network.
+        collect_kwargs marshals transmission_losses into create_model, and
+        solve_network chooses between a single pass and the SLP impedance loop from
+        solving.options.skip_iterations. Every variant except the angle and PTDF
+        encodings is reachable at L0/L1.
+      missing: >
+        Procedure steps 2 and 8 have no handle: the linearisation itself is not a
+        choice, and nothing in the workflow runs an ex-post nonlinear AC power flow to
+        measure how wrong it was — Neumann 2022 did that outside the workflow, and no
+        rule was merged. The angle and PTDF encodings are unreachable: pypsa 0.30.3
+        hardcodes the Kirchhoff form, so there is no `formulation` key here (correctly,
+        unlike earth) and nothing to flip.
+      provenance: "scripts/solve_network.py:transmission_losses; scripts/solve_network.py:collect_kwargs; scripts/prepare_network.py:set_line_s_max_pu"
+    levers:
+      - key: "solving.options.transmission_losses"
+        effect: >
+          Number of tangents in the convex loss envelope; false disables losses. 0 or
+          false gives the lossless cycle formulation of most of the corpus; Neumann
+          2022 used 6. Passed straight into create_model as a model kwarg.
+        default: "2"
+        provenance: "config/config.default.yaml:transmission_losses; scripts/solve_network.py:transmission_losses"
+      - key: "lines.s_max_pu"
+        effect: >
+          Uniform per-unit derating of every line's thermal rating — the static N-1 and
+          reactive-power proxy. 0.7 across the whole corpus; 1.0 removes it. Also the
+          upper bound the loss envelope is built against.
+        default: "0.7"
+        provenance: "config/config.default.yaml:s_max_pu; scripts/prepare_network.py:set_line_s_max_pu"
+      - key: "solving.options.skip_iterations"
+        effect: >
+          true = one LP with fixed impedances; false = SLP loop recomputing x and r
+          from optimised capacities. Auto-forced to true when no line is extendable, so
+          it is safe to set false as a policy for expansion studies.
+        default: "true"
+        provenance: "config/config.default.yaml:skip_iterations; scripts/solve_network.py:optimize_transmission_expansion_iteratively"
+      - key: "solving.options.max_iterations"
+        effect: >
+          Iteration cap on the impedance loop. The binding cost control: Xiong 2025
+          needed up to 274 iterations on a large OSM network, against a default of 3.
+        default: "3"
+        provenance: "config/config.default.yaml:max_iterations; scripts/solve_network.py:collect_kwargs"
+      - key: "solving.options.min_iterations"
+        effect: "Floor on the impedance loop regardless of the mean-square convergence threshold."
+        default: "2"
+        provenance: "config/config.default.yaml:min_iterations; scripts/solve_network.py:collect_kwargs"
+      - key: "solving.options.track_iterations"
+        effect: >
+          Records branch capacities and the objective at every SLP iteration — the only
+          way to see whether the impedance loop actually converged rather than hitting
+          max_iterations.
+        default: "false"
+        provenance: "config/config.default.yaml:track_iterations; scripts/solve_network.py:collect_kwargs"
+      - key: "solving.options.post_discretization.enable"
+        effect: >
+          Rounds continuous line/link expansion to integer unit sizes between SLP
+          iterations, a cheap stand-in for the MILP of Neumann 2020. Registry status
+          `partial` for exactly one reason: it is only read in the iterative branch, so
+          it does nothing unless skip_iterations is false.
+        default: "false"
+        provenance: "config/config.default.yaml:post_discretization; scripts/solve_network.py:post_discretization"
+      - key: "lines.max_extension"
+        effect: >
+          Caps each line's expansion in MW, and thereby makes s_nom_max finite via
+          set_line_nom_max. Load-bearing for losses: define_loss_constraints RAISES on
+          non-finite s_nom_max for an extendable branch, so setting this to inf breaks
+          the default loss setting.
+        default: "20000"
+        provenance: "config/config.default.yaml:max_extension; scripts/prepare_network.py:set_line_nom_max"
+      - key: "lines.dynamic_line_rating.activate"
+        effect: >
+          Replaces the static s_max_pu with a weather-dependent per-line time series
+          computed from the cutout — the physically motivated version of the 0.7 guess.
+        default: "false"
+        provenance: "config/config.default.yaml:dynamic_line_rating; scripts/build_line_rating.py:calculate_line_rating"
+      - key: "electricity.transmission_limit"
+        effect: >
+          Makes lines/links extendable under a global volume ('v') or cost ('c')
+          bound; 'v1.0' fixes the grid, which removes the bilinearity and makes
+          skip_iterations irrelevant.
+        default: "'vopt'"
+        provenance: "config/config.default.yaml:transmission_limit; scripts/prepare_network.py:set_transmission_limit"
+      - key: "clustering.copperplate_regions"
+        effect: >
+          Merges the listed regions into one unconstrained bus before clustering — the
+          config route to the single-bus-copperplate variant for part of the map.
+        default: "[] (empty)"
+        provenance: "config/config.default.yaml:copperplate_regions; scripts/cluster_network.py:copperplate_buses"
+    assembly:
+      - step: >
+          Reach the transport-model / NTC variant. There is no config key for it: KVL
+          applies to Line components and not to Link components, so the switch is
+          structural. Replace the AC corridors of interest with Links carrying
+          p_max_pu/p_min_pu bounds, as Franken 2025 did for GB zones, or clear
+          n.lines and route through links.
+        uses: [transmission-expansion-limits, lossy-bidirectional-links]
+        config: "links.p_max_pu / links.p_min_pu for the substituted corridors"
+        code: "scripts/prepare_network.py — post-process the network after set_transmission_limit"
+        provenance: "scripts/prepare_network.py:set_transmission_limit; scripts/prepare_sector_network.py:lossy_bidirectional_links"
+      - step: >
+          Make the security margin non-uniform. s_max_pu is set as a single scalar on
+          all lines, but it is a per-line (and, via DLR, per-snapshot) attribute in
+          PyPSA. Assign a vector to reach the Gazafroudi 2021 per-line buffer factors,
+          or activate dynamic line rating for the weather-driven version.
+        uses: [line-security-margin, dynamic-line-rating]
+        config: "lines.s_max_pu; lines.dynamic_line_rating.activate"
+        code: "scripts/prepare_network.py:set_line_s_max_pu"
+        provenance: "scripts/prepare_network.py:set_line_s_max_pu; scripts/add_transmission_projects_and_dlr.py:attach_line_rating"
+      - step: >
+          Make expansion physically consistent: set skip_iterations false so impedances
+          track capacities, raise max_iterations well above the default 3, and turn on
+          track_iterations to confirm convergence rather than assume it. Add
+          post_discretization only here, since it is ignored in single-pass mode.
+        uses: [iterative-impedance-expansion, post-discretization]
+        config: "solving.options.{skip_iterations,min_iterations,max_iterations,track_iterations,post_discretization.enable}"
+        code: null
+        provenance: "scripts/solve_network.py:optimize_transmission_expansion_iteratively; scripts/solve_network.py:post_discretization"
+      - step: >
+          Validate the linearisation ex post, which nothing in the workflow does. Load
+          the solved network, fix the dispatch, and run a nonlinear AC power flow
+          (n.pf) per snapshot to compare linear against AC line loadings — the Neumann
+          2022 procedure, and the only way to answer "how wrong is this".
+        uses: []
+        config: null
+        code: "new post-processing script; no rule owns this"
+        provenance: "pypsa/pf.py:calculate_PTDF"
+      - step: >
+          Recover PTDF/LODF matrices for contingency or flow-based market work. They
+          are not built by the LP, so compute them off the solved network per
+          sub-network with calculate_PTDF / calculate_BODF and carry them into the
+          analysis yourself.
+        uses: [contingency-scopf]
+        config: null
+        code: "new analysis script"
+        provenance: "pypsa/pf.py:calculate_PTDF; pypsa/contingency.py:calculate_BODF"
+    boundary:
+      - variant: cycle-kirchhoff-formulation
+        rung: L0
+        note: >
+          Nothing to do — pypsa builds Kirchhoff-Voltage-Law constraints on every
+          solve for every non-empty passive-branch component. This is the default and
+          there is no way to turn it off short of removing Lines.
+      - variant: piecewise-linear-losses
+        rung: L0
+        note: >
+          On by default at solving.options.transmission_losses: 2. L0 to change the
+          tangent count or disable. Watch the precondition: losses require finite
+          s_nom_max on extendable lines, which lines.max_extension = 20000 supplies —
+          setting max_extension to inf turns the default loss setting into a crash.
+      - variant: iterative-impedance-update
+        rung: L1
+        note: >
+          Config exists but the default value is the wrong one for expansion studies:
+          skip_iterations defaults to true. L1 because you need a specific non-default
+          combination — skip_iterations false plus a raised max_iterations — and the
+          compute consequence is large.
+      - variant: single-bus-copperplate
+        rung: L1
+        note: >
+          clustering.copperplate_regions merges chosen regions into one unconstrained
+          bus; a one-cluster run reaches the fully degenerate case. L1 rather than L0
+          because it needs a specific region list or cluster count.
+      - variant: transport-model-ntc
+        rung: L2
+        note: >
+          No config key removes KVL. The change is a localised edit that turns the
+          Lines of interest into Links after network preparation — a handful of lines
+          in prepare_network, not new formulation work. Sector-coupled carriers (H2,
+          gas, CO2) are already transport models by construction, so this rung applies
+          only to the electricity layer.
+      - variant: angle-formulation
+        rung: L5
+        note: >
+          Unreachable in the workflow AND in the library: pypsa 0.30.3 hardcodes the
+          Kirchhoff form and the Pyomo-era formulation= argument is gone. Writing it
+          means adding theta variables and the f = b*delta_theta equalities in
+          linopy via custom_extra_functionality, then suppressing the built-in KVL
+          constraint — genuinely new formulation work, and only worth it if
+          susceptances must be decision variables (Neumann 2019).
+      - variant: ptdf-formulation
+        rung: L5
+        note: >
+          Same reason, but cheaper: calculate_PTDF and calculate_BODF exist as library
+          functions, so the matrices are a handle you already have. The L5 work is
+          replacing the KVL constraint block with dense PTDF rows in the LP. For most
+          real needs — contingency screening, flow-based domains, flow tracing — you do
+          not need to change the LP at all: compute PTDF off the solved network, which
+          is the L2 assembly step above.
+    where:
+      - change: "remove KVL on selected corridors (transport / NTC variant)"
+        anchor: "scripts/prepare_network.py, after set_transmission_limit — substitute Link for Line"
+        provenance: "scripts/prepare_network.py:set_transmission_limit"
+      - change: "per-line rather than uniform security margin"
+        anchor: "scripts/prepare_network.py:set_line_s_max_pu (assigns a scalar to n.lines['s_max_pu'])"
+        provenance: "scripts/prepare_network.py:set_line_s_max_pu"
+      - change: "custom KVL encoding (angle or PTDF) in linopy"
+        anchor: "solving.options.custom_extra_functionality -> the user module's entry function"
+        provenance: "scripts/solve_network.py:custom_extra_functionality"
+      - change: "ex-post AC validation of the linearisation"
+        anchor: "new script + rule; nearest existing anchor is the solve_network output network"
+        provenance: "scripts/solve_network.py:solve_network"
+      - change: >
+          PTDF / LODF matrices for contingency or flow-based analysis — computed off a
+          solved network as sub_network.PTDF / sub_network.BODF (pypsa/pf.py:calculate_PTDF,
+          pypsa/contingency.py:calculate_BODF), never built by the workflow's LP
+        anchor: "a new analysis script consuming the solve_network output network"
+        provenance: "scripts/solve_network.py:solve_network"
+    cost_profile:
+      solves: >
+        1 for the default single-pass LP. With skip_iterations false: min_iterations to
+        max_iterations full LPs (2-3 at defaults), each warm-started from the last;
+        Xiong 2025 reports up to 274 on a large OSM-derived network.
+      relative: >
+        Formulation choice changes solve TIME, not the optimum. Against the Kirchhoff
+        baseline, Hörsch 2017 measures the angle formulation 1.4-2.8x slower on average
+        (up to 20x) for dispatch and ~12x slower on average (up to 213x) for joint
+        capacity expansion; PTDF is slower still because its constraints are dense.
+        Dropping KVL for a transport model is the single cheapest fidelity reduction
+        available and is why Neumann 2023 uses it as the low-fidelity leg. Losses add
+        one variable and 2n+1 constraints per branch per snapshot — real but modest;
+        the SLP loop multiplies the whole solve by the iteration count.
+      note: >
+        The mitigations in rough order of value per unit of fidelity lost: coarsen
+        spatially (Frysztacki 2020 — 156 vs 306 nodes was ~30% less RAM and 2x faster),
+        drop KVL on the corridors that are not the question, reduce tangents to 0/1,
+        keep skip_iterations true when the grid is fixed, and switch solver profile
+        (barrier without crossover, per Stöckl 2026). Do NOT reach for an angle or PTDF
+        encoding for speed — it is strictly slower than the default.
+    verifies:
+      - variant: cycle-kirchhoff-formulation
+        check: "'Kirchhoff-Voltage-Law' in n.model.constraints"
+        over: run
+        note: >
+          Absent means the network has no meshed passive branches — every corridor is a
+          Link, or the sub-networks are radial. The run succeeds either way and the
+          result is a transport model whatever the config says.
+      - variant: piecewise-linear-losses
+        check: "any(c.startswith('Line-loss') for c in n.model.constraints)"
+        over: run
+        note: >
+          Absent while transmission_losses is truthy means the kwarg never reached
+          create_model. The classic silent failure of this method: the run completes,
+          losses are simply zero, and long corridors look free.
+      - variant: transport-model-ntc
+        check: "n.lines.empty or not n.sub_networks.obj.map(lambda s: s.C.size).any()"
+        over: run
+        note: >
+          A non-empty cycle basis means KVL is still being enforced on some
+          sub-network, so the intended NTC substitution was incomplete — the usual
+          cause is a handful of Lines left behind inside a zone.
+      - variant: iterative-impedance-update
+        check: "'objective' in getattr(n, 'iteration_objectives', {}) or n.lines.get('x_original') is not None"
+        over: run
+        note: >
+          No iteration trace means the single-pass branch ran, i.e. impedances were
+          never updated. Requires track_iterations to be on; without it, convergence
+          is unobservable and hitting max_iterations is indistinguishable from
+          converging.
+  - model: pypsa-earth
+    version_anchor:
+      ref: "8435f4c8cc05f30088933b37b7db497ff860dc53"
+      date: "2026-07-25"
+    functionality:
+      - id: line-security-margin
+        role: >
+          the flow bound; lines.s_max_pu = 0.7 exactly as in eur, same consumer name,
+          the one part of this method the two models implement identically
+      - id: iterative-impedance-expansion
+        role: >
+          the SLP wrapper for expansion bilinearity — present, wired, and carrying a
+          real defect (see available.missing)
+      - id: hvdc-as-lines
+        role: >
+          earth's UNIQUE lever on this method: electricity.hvdc_as_lines decides
+          whether HVDC corridors are Lines (KVL applies) or Links (transport). This is
+          the formulation choice as a config key, and eur has no equivalent
+      - id: augmented-line-connection
+        role: >
+          generates k-edge-augmentation candidate corridors, which is how a sparse or
+          radial African topology acquires the cycles KVL can actually bind on
+      - id: transmission-expansion-limits
+        role: >
+          makes lines extendable under the ll wildcard; note lines.s_nom_max defaults
+          to inf here, unlike eur's finite max_extension
+      - id: contingency-scopf
+        role: >
+          registry status `absent`, same as eur: no SCLOPF, so 0.7 is the whole of
+          security — and without eur's dynamic-line-rating fallback
+      - id: solver-choice
+        role: >
+          where the formulation's cost is paid; HiGHS-capable, and the earth reference
+          paper benchmarks Gurobi 9.5.1 against HiGHS 1.2.1 at 10-54 nodes
+      - id: custom-constraint-hook
+        role: >
+          the single extra_functionality entry point where a loss constraint or an
+          alternative KVL encoding would have to land
+      - id: spatial-clustering
+        role: >
+          the affordability and fidelity lever; earth studies typically run at far
+          fewer nodes than eur, which changes what KVL can bind on
+    available:
+      verdict: turnkey
+      how: >
+        The core method runs out of the box for the same reason it does in eur: pypsa
+        builds Kirchhoff cycle KVL unconditionally, s_max_pu = 0.7 is applied by
+        prepare_network, and solve_network dispatches between a single n.optimize()
+        and optimize_transmission_expansion_iteratively on
+        solving.options.skip_iterations. Earth additionally exposes one lever eur does
+        not: electricity.hvdc_as_lines makes HVDC corridors Lines or Links, i.e. it
+        puts the KVL-vs-transport decision for DC corridors into config.
+      missing: >
+        Two concrete gaps beyond eur's. (1) LOSSES: there is no
+        solving.options.transmission_losses key, the kwarg is never passed to
+        n.optimize, and `transmission-losses` is absent from earth's registry
+        altogether — every earth run is lossless, which biases toward long-distance
+        transmission exactly where distances are longest. Adding it is a two-line
+        kwarg plus a finite s_nom_max, but lines.s_nom_max defaults to inf here so
+        define_loss_constraints would raise until that is bounded. (2) The iterative
+        branch passes its three settings as 1-TUPLES —
+        kwargs["min_iterations"] = (cf_solving.get("min_iterations", 4),) and likewise
+        for max_iterations and track_iterations — so the SLP loop receives tuples where
+        pypsa expects ints and bools. Verify before promising an impedance-consistent
+        expansion study on earth. Also missing: post_discretization, dynamic line
+        rating, and ex-post AC validation.
+      provenance: "scripts/solve_network.py:optimize_transmission_expansion_iteratively; scripts/prepare_network.py:set_line_s_max_pu; scripts/base_network.py:hvdc_as_lines"
+    levers:
+      - key: "electricity.hvdc_as_lines"
+        effect: >
+          true = HVDC corridors become Line components and are pulled into the cycle
+          KVL constraint with their resistance as the weighting; false = Link
+          components, i.e. a controllable transport model. The only config key in
+          either model that moves a corridor between formulations.
+        default: "false"
+        provenance: "config.default.yaml:hvdc_as_lines; scripts/base_network.py:hvdc_as_lines"
+      - key: "lines.s_max_pu"
+        effect: >
+          Uniform per-unit derating of line thermal ratings, the static N-1 proxy.
+          Identical surface and identical consumer name to pypsa-eur.
+        default: "0.7"
+        provenance: "config.default.yaml:s_max_pu; scripts/prepare_network.py:set_line_s_max_pu"
+      - key: "solving.options.skip_iterations"
+        effect: >
+          true = single LP with fixed impedances; false = SLP loop. Same default and
+          same auto-skip-when-nothing-extendable behaviour as eur, but see
+          available.missing for the tuple defect in the false branch.
+        default: "true"
+        provenance: "config.default.yaml:skip_iterations; scripts/solve_network.py:optimize_transmission_expansion_iteratively"
+      - key: "solving.options.max_iterations"
+        effect: "Cap on the impedance loop. Note the default is 6, twice eur's 3."
+        default: "6"
+        provenance: "config.default.yaml:max_iterations; scripts/solve_network.py:optimize_transmission_expansion_iteratively"
+      - key: "solving.options.min_iterations"
+        effect: "Floor on the impedance loop; default 4 against eur's 2."
+        default: "4"
+        provenance: "config.default.yaml:min_iterations; scripts/solve_network.py:optimize_transmission_expansion_iteratively"
+      - key: "solving.options.formulation"
+        effect: >
+          DEAD KEY — do not cite it and do not set it. It is read by nothing:
+          solve_network's docstring lists it under Relevant Settings, but the value
+          never reaches n.optimize, and pypsa 0.30.3 has no formulation argument to
+          receive it. It is a fossil of the removed Pyomo network_lopf API. Its value
+          'kirchhoff' happens to describe what actually runs, which is why the
+          inconsistency has gone unnoticed. Neither model's FUNCTIONALITY.yaml has an
+          id for it.
+        default: "'kirchhoff'"
+        provenance: "config.default.yaml:formulation; scripts/solve_network.py:formulation"
+      - key: "lines.s_nom_max"
+        effect: >
+          Global cap on line capacity, inf by default. Load-bearing if losses are ever
+          added: define_loss_constraints raises on non-finite s_nom_max for extendable
+          branches, and earth has no lines.max_extension to bound it the way eur does.
+        default: "inf"
+        provenance: "config.default.yaml:s_nom_max; scripts/prepare_network.py:set_line_nom_max"
+      - key: "augmented_line_connection.add_to_snakefile"
+        effect: >
+          Adds k-edge-augmentation candidate corridors to a sparse topology. Relevant
+          to this method specifically: KVL only constrains anything where cycles exist,
+          and many earth regions are near-radial.
+        default: "false"
+        provenance: "config.default.yaml:add_to_snakefile; scripts/augmented_line_connections.py:haversine"
+    assembly:
+      - step: >
+          Add transmission losses, which earth does not have. Bound line capacity
+          first — set lines.s_nom_max finite, since define_loss_constraints raises on
+          inf for extendable branches — then pass transmission_losses=n into the
+          n.optimize / optimize_transmission_expansion_iteratively kwargs alongside the
+          existing solver_name and extra_functionality entries.
+        uses: [transmission-expansion-limits, solver-choice]
+        config: "lines.s_nom_max (finite); a new solving.options.transmission_losses key"
+        code: "scripts/solve_network.py:solve_network — add to the kwargs dict"
+        provenance: "scripts/solve_network.py:solve_network; scripts/prepare_network.py:set_line_nom_max"
+      - step: >
+          Fix the iterative branch before using it. The three SLP settings are wrapped
+          in 1-tuples by trailing commas, so pypsa receives tuples for min_iterations,
+          max_iterations and track_iterations. Strip the commas, or set
+          skip_iterations true and accept fixed impedances.
+        uses: [iterative-impedance-expansion]
+        config: "solving.options.{skip_iterations,min_iterations,max_iterations}"
+        code: "scripts/solve_network.py:solve_network — the else branch"
+        provenance: "scripts/solve_network.py:optimize_transmission_expansion_iteratively"
+      - step: >
+          Decide the DC corridor formulation deliberately rather than by default. With
+          hvdc_as_lines false (the default) all HVDC is a transport model; true pulls
+          it into cycle KVL weighted by resistance. For any question about loop flows
+          around a DC corridor, this is the switch.
+        uses: [hvdc-as-lines]
+        config: "electricity.hvdc_as_lines"
+        code: null
+        provenance: "scripts/base_network.py:hvdc_as_lines"
+      - step: >
+          Check the topology has cycles at all before claiming a grid-physics result.
+          Earth regions are frequently radial or near-radial after clustering, in which
+          case the cycle basis is empty and KVL constrains nothing — the run is a
+          transport model regardless of formulation. Enable connectivity augmentation
+          if candidate corridors are needed.
+        uses: [augmented-line-connection, spatial-clustering]
+        config: "augmented_line_connection.{add_to_snakefile,connectivity_upgrade}"
+        code: null
+        provenance: "scripts/augmented_line_connections.py:haversine"
+    boundary:
+      - variant: cycle-kirchhoff-formulation
+        rung: L0
+        note: >
+          Built unconditionally by pypsa on every solve, as in eur. The caveat is
+          topological, not configurational: on a radial clustered network the cycle
+          basis is empty and the constraint is vacuous.
+      - variant: transport-model-ntc
+        rung: L0
+        note: >
+          Cheaper here than in eur, and the ONLY place either model exposes the
+          formulation as a config key: electricity.hvdc_as_lines false (the default)
+          already gives a transport model on every HVDC corridor. For AC corridors it
+          is still the L2 Line-to-Link substitution.
+      - variant: single-bus-copperplate
+        rung: L1
+        note: >
+          Reached with scenario.clusters = 1; earth has no copperplate_regions
+          equivalent, so it is all-or-nothing rather than per-region.
+      - variant: iterative-impedance-update
+        rung: L2
+        note: >
+          Config exists and is wired, but the kwargs are passed as 1-tuples, so this is
+          a small localised code fix rather than a config flip — L2, not L1. Contrast
+          eur, where the same variant is L1.
+      - variant: piecewise-linear-losses
+        rung: L2
+        note: >
+          Absent from the config surface AND from earth's registry, but the pypsa
+          primitive is the same one eur uses, so this is a small localised edit: a new
+          solving.options key and one kwarg in solve_network, plus a finite
+          lines.s_nom_max. The asymmetry against eur is a wiring gap, not a
+          capability gap.
+      - variant: angle-formulation
+        rung: L5
+        note: >
+          Unreachable, same as eur, and do not be misled by
+          solving.options.formulation — that key is dead and pypsa 0.30.3 has no
+          formulation argument. New linopy constraint work in extra_functionality.
+      - variant: ptdf-formulation
+        rung: L5
+        note: >
+          As eur: L5 to make the LP use PTDF rows, but calculate_PTDF /
+          calculate_BODF are available off any solved network if you only need the
+          sensitivities for analysis.
+    where:
+      - change: "add transmission losses"
+        anchor: "scripts/solve_network.py::solve_network kwargs dict, next to extra_functionality"
+        provenance: "scripts/solve_network.py:extra_functionality"
+      - change: "bound s_nom_max so the loss constraints are well-posed"
+        anchor: "scripts/prepare_network.py:set_line_nom_max (reads lines.s_nom_max)"
+        provenance: "scripts/prepare_network.py:set_line_nom_max"
+      - change: "fix the 1-tuple SLP kwargs in the iterative branch"
+        anchor: "scripts/solve_network.py::solve_network, the not-skip_iterations branch"
+        provenance: "scripts/solve_network.py:optimize_transmission_expansion_iteratively"
+      - change: "remove KVL on AC corridors (transport / NTC)"
+        anchor: "scripts/base_network.py:hvdc_as_lines for DC; a Line-to-Link substitution in prepare_network for AC"
+        provenance: "scripts/base_network.py:hvdc_as_lines; scripts/prepare_network.py:set_transmission_limit"
+      - change: "custom KVL encoding (angle or PTDF)"
+        anchor: "scripts/solve_network.py::extra_functionality"
+        provenance: "scripts/solve_network.py:extra_functionality"
+    data_dependencies:
+      - input: "per-line series reactance x and resistance r"
+        required_for: cycle-kirchhoff-formulation
+        availability: >
+          region-dependent — earth derives line electrical parameters from OSM
+          geometry and standard line types rather than from a TSO dataset, so the
+          impedances KVL is built from are inferred, not measured. Eur has the same
+          derivation but a validation precedent (Xiong 2025 checked reactances against
+          the 50Hertz static grid model); no equivalent per-country validation exists
+          for most earth regions. Check cookbooks/pypsa-earth/data_quality for the
+          region's grid grade before selling a KVL-dependent result.
+      - input: "a meshed (cycle-bearing) clustered topology"
+        required_for: cycle-kirchhoff-formulation
+        availability: >
+          region-dependent — many earth regions are radial or become radial after
+          clustering, leaving an empty cycle basis and a vacuous KVL constraint.
+          augmented_line_connection can synthesise candidate corridors, but those are
+          modelled candidates, not observed lines.
+      - input: "finite line capacity bound (lines.s_nom_max or an equivalent)"
+        required_for: piecewise-linear-losses
+        availability: >
+          must be built — defaults to inf, and define_loss_constraints raises on
+          non-finite s_nom_max for extendable branches. Earth has no
+          lines.max_extension to derive it the way eur does.
+    cost_profile:
+      solves: >
+        1 for the default single pass. With skip_iterations false: min_iterations to
+        max_iterations LPs, defaults 4 to 6 — twice eur's 2 to 3, so the iterative mode
+        is more expensive here by default even though earth networks are smaller.
+      relative: >
+        Same formulation ratios as eur, since the same pypsa code builds the LP.
+        Earth's absolute solves are usually far cheaper — the reference paper reports
+        10-54 nodes against eur's routine 100-1000 — which makes the impedance loop and
+        node-count sweeps affordable where they would not be on a sector-coupled eur
+        run. The tradeoff runs the other way from the usual: earth is the cheaper place
+        to study the formulation, and the harder place to trust the impedance data
+        underneath it.
+      note: >
+        HiGHS is viable at earth's typical sizes (benchmarked against Gurobi 9.5.1 at
+        10-54 nodes in the reference paper), so the formulation can be studied without
+        a commercial licence. Since losses are absent, none of eur's loss-tangent cost
+        applies — the corresponding saving is a silent bias, not a free lunch.
+    verifies:
+      - variant: cycle-kirchhoff-formulation
+        check: "n.sub_networks.obj.map(lambda s: s.C.size).sum() > 0"
+        over: run
+        note: >
+          Zero total cycle-basis size means every sub-network is radial, so KVL
+          constrains nothing and the run is a transport model no matter what the config
+          says. On earth topologies this is a realistic outcome, not a pathological one.
+      - variant: transport-model-ntc
+        check: "n.links.query('carrier == \"DC\"').shape[0] > 0 or n.lines.empty"
+        over: run
+        note: >
+          With hvdc_as_lines false, DC corridors should be Links. If they are Lines
+          instead, the config never reached base_network and the corridors are carrying
+          KVL constraints weighted by resistance.
+      - variant: piecewise-linear-losses
+        check: "not any(c.startswith('Line-loss') for c in n.model.constraints)"
+        over: run
+        note: >
+          Inverted deliberately: at this ref earth CANNOT have loss constraints, so
+          their presence means a bundle wired them in. Flip this check to the eur form
+          once losses are added, and treat the flip as the acceptance test.
+      - variant: iterative-impedance-update
+        check: "n.lines.get('x_original') is not None"
+        over: run
+        note: >
+          Absent means the single-pass branch ran and impedances were never updated —
+          the expected outcome at defaults, and also what you get if the 1-tuple kwargs
+          make the iterative branch fail.

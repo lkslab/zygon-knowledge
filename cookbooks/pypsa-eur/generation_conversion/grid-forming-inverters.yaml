@@ -1,0 +1,96 @@
+id: grid-forming-inverters
+title: Grid-forming inverters
+summary: Inverter-based resources that form (rather than follow) grid voltage/frequency — system strength, synthetic inertia, and stability services from converters.
+when_to_use:
+  - "grid-forming vs grid-following inverters"
+  - "synthetic / virtual inertia from batteries or PV"
+  - "system strength with high renewable shares"
+  - "frequency stability in a 100% renewables grid"
+  - "can the model do inverter dynamics"
+  - "minimum synchronous generation constraint"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Not covered. PyPSA-Eur solves a linearised optimal power flow /
+        capacity-expansion problem (solve_network.py builds and solves via
+        n.optimize / optimize_transmission_expansion_iteratively); there is no
+        frequency or voltage dynamics, no inertia accounting, and no
+        grid-forming/grid-following distinction anywhere in scripts/ (no
+        occurrence of inertia or grid-forming concepts). Inverters exist only
+        as cost rows on storage converters — e.g. "battery inverter" and
+        "home battery inverter" efficiencies/costs applied to
+        charger/discharger links (attach_stores in add_electricity;
+        insert_electricity_distribution_grid for home batteries) — with no
+        behavioural difference between control modes.
+      mechanism: >
+        Nearest stability-adjacent machinery: (a) the GenX-style operational
+        reserve constraint, electricity.operational_reserve
+        (add_operational_reserve_margin adds per-snapshot reserve variables
+        Generator-r with load- and VRES-proportional requirements plus a fixed
+        contingency); (b) the SAFE capacity reserve margin
+        (solving.constraints.SAFE + an electricity.SAFE_reservemargin value
+        the user must add to config — it has no default entry) requiring
+        conventional capacity above peak demand
+        (add_SAFE_constraints); (c) the config-exposed custom-constraint hook
+        solving.options.custom_extra_functionality (a user Python file whose
+        functions are executed inside extra_functionality) — the sanctioned
+        place for a bespoke system-strength constraint without forking
+        solve_network.py.
+      not_covered: >
+        Any dynamic phenomenon (RoCoF, frequency nadir, voltage control,
+        fault ride-through), converter control modes, retrofit costs for
+        grid-forming capability, EMT/RMS studies. Out of scope of a
+        linearised LP.
+      provenance: "scripts/solve_network.py:add_operational_reserve_margin; scripts/solve_network.py:add_SAFE_constraints; scripts/solve_network.py:extra_functionality; scripts/add_electricity.py:attach_stores"
+    levers:
+      - key: electricity.operational_reserve.activate
+        effect: "Adds the reserve-margin constraint (epsilon_load share of demand + epsilon_vres share of VRES feed-in + contingency MW) — the closest existing 'keep flexible headroom online' proxy."
+        default: "false (epsilon_load 0.02, epsilon_vres 0.02, contingency 4000)"
+        provenance: "config/config.default.yaml:operational_reserve; scripts/solve_network.py:add_operational_reserve_margin"
+      - key: solving.constraints.SAFE
+        effect: "true adds a conventional-capacity reserve margin above peak demand; requires adding electricity.SAFE_reservemargin (no default ships) — renewables and storage do not count."
+        default: "false"
+        provenance: "config/config.default.yaml:SAFE; scripts/solve_network.py:add_SAFE_constraints"
+      - key: solving.options.custom_extra_functionality
+        effect: "Path to a user Python module executed at solve time — the config-level hook for bespoke stability-proxy constraints (e.g. minimum share of a labelled grid-forming carrier set)."
+        default: "../data/custom_extra_functionality.py"
+        provenance: "config/config.default.yaml:custom_extra_functionality; scripts/solve_network.py:custom_extra_functionality"
+      - key: electricity.extendable_carriers
+        effect: "Which storage/generator carriers can be built — the assets that would physically host grid-forming converters (battery via Store/StorageUnit, H2, VRES)."
+        default: "Generator: [solar, solar-hsat, onwind, offwind-ac, offwind-dc, offwind-float, OCGT, CCGT]"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_stores"
+    boundary:
+      - variant: "keep reserves/headroom online as renewables grow"
+        rung: L0
+        note: "electricity.operational_reserve.activate: true — a static headroom proxy, no dynamics"
+      - variant: "capacity reserve margin from synchronous plant"
+        rung: L1
+        note: "solving.constraints.SAFE: true plus adding electricity.SAFE_reservemargin (e.g. 0.1) to the config — conventional-only by construction"
+      - variant: "cost premium for grid-forming-capable inverters"
+        rung: L3
+        note: "adjust the 'battery inverter' (or related) cost row via costs.overwrites or data/custom_costs.csv; changes economics only, no behavioural difference"
+      - variant: "minimum grid-forming/synchronous capacity share per snapshot"
+        rung: L5
+        note: "bespoke constraint via solving.options.custom_extra_functionality (preferred, config-wired) or directly in extra_functionality in solve_network.py; needs a user-defined carrier labelling and requirement level"
+      - variant: "actual inverter dynamics / EMT or RMS stability studies"
+        rung: L5
+        note: "outside the model family — requires an external stability tool fed by the LP dispatch"
+    where:
+      - change: "custom stability-proxy constraints"
+        anchor: "solving.options.custom_extra_functionality user module, executed inside scripts/solve_network.py::extra_functionality"
+        provenance: "scripts/solve_network.py:custom_extra_functionality; scripts/solve_network.py:extra_functionality"
+      - change: "reserve-margin proxies"
+        anchor: "scripts/solve_network.py::add_operational_reserve_margin / ::add_SAFE_constraints"
+        provenance: "scripts/solve_network.py:add_operational_reserve_margin; scripts/solve_network.py:add_SAFE_constraints"
+      - change: "inverter cost rows"
+        anchor: "scripts/process_cost_data.py::prepare_costs (rows 'battery inverter', 'home battery inverter') + costs.overwrites"
+        provenance: "scripts/process_cost_data.py:prepare_costs; config/config.default.yaml:overwrites"
+    data_dependencies:
+      - input: "cost rows for inverter technologies ('battery inverter', 'home battery inverter')"
+        required_for: "cost-premium variant"
+        availability: "exists by default (technology-data); grid-forming-specific rows absent — must be added"
+      - input: "system-strength requirement parameters (minimum share per region/snapshot)"
+        required_for: "custom L5 constraint"
+        availability: "absent — user-provided assumption"

@@ -1,0 +1,19 @@
+--- a/config.default.yaml	2026-08-02 15:24:10.225420393 +0200
++++ b/config.default.yaml	2026-08-02 15:24:10.256254396 +0200
+@@ -462,6 +462,16 @@
+     length_factor: 1.25 #to estimate offwind connection costs
+ 
+ 
++# Investment geography (zygon methods payload: investment-geography)
++# Consumed by rules/investment_geography.smk -> scripts/distribute_investment.py;
++# docs in the method spec cookbooks/methods/investment-geography/spec.yaml.
++investment_geography:
++  snapshots:
++    start: "2013-03-01"
++    end: "2013-03-02"
++  targets: {}            # {country: {technology: MW of new capacity}}
++  auction_effectiveness: 0.6  # eta: 1 = pure cost-optimal, 0 = even land spread
++
+ monte_carlo:
+   # Description: Specify Monte Carlo sampling options for uncertainty analysis.
+   # Define the option list for Monte Carlo sampling.

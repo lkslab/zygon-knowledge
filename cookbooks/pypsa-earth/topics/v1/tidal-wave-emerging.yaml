@@ -1,0 +1,44 @@
+id: tidal-wave-emerging
+title: Tidal / wave (emerging)
+rank: 100
+question: >
+  Can marine renewables — tidal stream/range and wave energy — contribute
+  as predictable variable generation? Emerging and small globally, but
+  live in a few coastal systems (UK, France, Korea, island grids).
+when_to_use:
+  - "tidal energy in the system mix"
+  - "wave power contribution"
+  - "marine renewables scenario"
+  - "predictable-cycle variable generation"
+  - "add a new renewable carrier with a custom profile"
+recipes:
+  generation_conversion: [tidal-wave]
+  demand: []
+functionality:
+  - id: weather-year-selection
+    role: "cutouts carry no tidal or wave variables — the profile cannot come from atlite"
+  - id: carrier-attribute-scaling
+    role: "once a marine carrier exists, cost/potential tokens apply like any other"
+  - id: country-carrier-capacity-limits
+    role: "CCL caps as crude marine-resource limits for a proxy carrier"
+  - id: scenario-matrix
+    role: "with/without-marine scenarios once a carrier is wired in"
+gap_assessment: >
+  Nothing exists: no tidal or wave carrier, no resource conversion method
+  (the profile builder's methods are wind/pv/csp/hydro only), no
+  marine-energy cost rows — the only 'wave' hit in config is a plotting
+  colour. The mitigating structure, documented in the tidal-wave recipe, is
+  that the renewable chain is technology-parametrised end to end, so the
+  shape of the fix is known: add a renewable.<tech> config section and the
+  carrier to renewable_carriers/extendable_carriers, add a cost row, and
+  supply profile_<tech>.nc in the standard format — but because no atlite
+  method covers tidal/wave, the profile needs a new producer rule fed by
+  external hydrodynamic or wave-climate data (L4 plumbing, L5 for native
+  resource assessment). The crude stand-in is site-specific plants via
+  custom_powerplants with a fixed p_max_pu series set after the fact.
+  Offshore region shapes and GEBCO bathymetry exist for siting/eligibility;
+  the resource data and device costs do not.
+coverage: gap
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

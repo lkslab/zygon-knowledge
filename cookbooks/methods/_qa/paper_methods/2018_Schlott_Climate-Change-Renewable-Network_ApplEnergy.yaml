@@ -1,0 +1,154 @@
+paper: "2018_Schlott_Climate-Change-Renewable-Network_ApplEnergy.pdf"
+tier: 1
+model_used: >
+  Bespoke PyPSA model; 30-node electricity-only network (one node per country),
+  3-hourly resolution, greenfield investment; PyPSA library (ref [55]) used as solver
+  substrate.
+scope: >
+  Quantifies the impact of strong climate change (RCP 8.5, three EURO-CORDEX ensemble
+  members, 1970–2100) on wind, solar and hydro resources and on the cost-optimal design
+  of a highly renewable European electricity system, comparing historical and
+  climate-affected weather inputs.
+methods:
+  - slug: weather-year-ensembles
+    role: canonical-use
+    evidence: >
+      "We use three ensemble members of the EURO-CORDEX project … with a spatial
+      resolution of 12 km and a temporal resolution of 3 hours under representative
+      concentration pathway 8.5 … until 2100." Four distinct periods (HIS 1970–2005,
+      BOC 2006–2037, MOC 2038–2069, EOC 2070–2100) are analysed separately (Sec. 2.1,
+      Table 2). The full power-system optimisation is run for each ensemble member in
+      each period (Sec. 5).
+    procedure_notes: >
+      Three EURO-CORDEX GCMs (CNRM-CM5, EC-EARTH, MPI-ESM-LR) downscaled with the
+      same RCA-4 regional climate model. Each member provides sfcWind, rsds, rsus, tas,
+      and mrro at 0.11° / 3-hourly. Time series split into non-overlapping 6–8-year
+      sub-intervals within each period; each sub-interval is independently optimised
+      (Fig. 7). Ensemble mean and spread of system costs reported (Table 5).
+    variant: multi-gcm-rcp85-periods
+    parameters:
+      ensemble_members: 3
+      scenario: "RCP 8.5"
+      spatial_resolution: "0.11 deg (~12 km)"
+      temporal_resolution: "3-hourly"
+      periods: "HIS 1970-2005 / BOC 2006-2037 / MOC 2038-2069 / EOC 2070-2100"
+      sub_interval_length: "6-8 years"
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "For each period, the problem is solved as a green field investment problem, i.e.,
+      without initial capacities." (Sec. 5.1). Each 6–8-year sub-interval is an
+      independent overnight optimisation with no capacity carried forward (Fig. 7).
+    procedure_notes: >
+      Pure greenfield/overnight: all generation, storage and transmission capacities are
+      decision variables in each run with no inherited stock. The fluctuations in
+      installed capacities between sub-intervals within a period are attributed to
+      year-to-year differences in capacity factors, not to any myopic or perfect-foresight
+      pathway logic.
+    variant: overnight-greenfield
+    parameters:
+      sub_interval_length: "6-8 years"
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      "The European power system studied in this work is simplified in such a way that
+      each country is represented by a single node and countries are interconnected by
+      links via transmission lines representing today's topology." (Sec. 3.3). The network
+      covers 30 countries (Table 4).
+    procedure_notes: >
+      Administrative clustering at country level (30 nodes). The paper cites Hörsch/Brown
+      [61] for the known bias: "the need for additional capacities is over-estimated by a
+      model, where countries are aggregated to single nodes" (Sec. 5.1). Renewable
+      distribution within a node is proportional to site-quality capacity factors (Sec. 3.3).
+    variant: country-level-30-nodes
+    parameters:
+      nodes: 30
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "The maximal capacity of the renewable generator types was determined in accordance
+      with Hoersch/Brown et al. [57] invoking the Corine and Natura2000 land use data
+      [58, 59]." (Sec. 3.3). Weather data converted to capacity-factor time series via
+      the Aarhus Renewable Atlas [40] (Sec. 3.1).
+    procedure_notes: >
+      Corine Land Cover 2012 and Natura 2000 exclusion zones used to set per-node
+      installable capacity maxima, following the PyPSA-Eur methodology (ref [57]).
+      Capacity factors computed from EURO-CORDEX weather fields using Aarhus Renewable
+      Atlas conversion routines (wind power curve, PV panel model, hydro runoff potential
+      energy approach). PV capacity factors globally corrected downward by 21% to match
+      observed averages (Sec. 3.1).
+    variant: corine-natura2000-exclusion
+    parameters: {}
+
+  - slug: linearised-optimal-power-flow
+    role: routine-use
+    evidence: >
+      "The power system is formulated as a linear optimisation model that minimises total
+      system costs." (Sec. 3.3). "The linearised power flows fl through each link are
+      determined from the linearised AC power flow equations" (Eq. 15, Sec. 3.3).
+    procedure_notes: >
+      Standard linearised (DC) OPF embedded in the cost minimisation LP. Flow constraint:
+      |fl,t| ≤ Fl. Solved using PyPSA (ref [55]). No loss representation mentioned;
+      no cycle/PTDF formulation described beyond the incidence-matrix nodal balance
+      (Eq. 11).
+    variant: null
+    parameters: {}
+
+  - slug: transmission-expansion-cooptimisation
+    role: routine-use
+    evidence: >
+      "Line capacities are treated as free parameters and hence are unlimitedly expandable.
+      However, if a global limit of transmission capacities is set, the total sum of line
+      capacities can not exceed this limit" (Eq. 13, Sec. 3.3). "The cost-optimal power
+      system analysed in Sec. 5 makes no use of these line constraints and hence
+      transmission capacities are unlimitedly expandable." (Sec. 3.3).
+    procedure_notes: >
+      Transmission capacity co-optimised with generation and storage in the same LP.
+      Investment cost for lines: 16,450 mEuro/TWkm/a (Table 3). The unconstrained
+      (no volume cap) scenario is the primary result; constrained variants are referenced
+      from Schlachtberger et al. [49] but not run in this paper.
+    variant: unconstrained-cooptimised
+    parameters:
+      line_cost: "16450 mEuro/TWkm/a"
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "A CO2 emission constraint is enforced … CO2 emissions are limited to 5% of the
+      electricity related emissions in the reference year 1990 in Europe
+      (CAPCO2 = 77.5 Mt/a)." (Eq. 14, Sec. 3.3).
+    procedure_notes: >
+      Annual CO2 cap applied across all nodes and time steps via a single budget
+      constraint (Eq. 14). Only OCGT contributes emissions (η × e terms). The 77.5 Mt/a
+      cap is derived from 3.1 Gt/a total 1990 emissions × ~50% electricity share × 5%
+      residual target. No CO2 price used; only the cap formulation.
+    variant: annual-cap
+    parameters:
+      cap: "77.5 Mt/a"
+      reference_year: 1990
+      target: "5% of 1990 electricity-sector emissions"
+
+  - slug: storage-sizing-and-duration
+    role: routine-use
+    evidence: >
+      "Besides OCGT and the different types of renewable power sources … the model
+      incorporates transmission lines and different types of energy storage units, i.e.,
+      hydrogen storage, batteries, and pumped hydroelectric storage (PHS)." (Sec. 3).
+      Storage state of charge with cyclic constraint modelled (Eq. for socn,s,t, Sec. 3.3).
+    procedure_notes: >
+      Three storage technologies co-optimised: hydrogen storage (580%/750% dispatch/uptake
+      efficiency), batteries (90%/90%), PHS (86.6%/86.6%). Capital costs annualised
+      (Table 3). Cyclic SoC constraint enforced (socn,s,t=0 = socn,s,t=tmax). Hydro
+      reservoir capacity fixed to today's values; not an investment variable. No explicit
+      energy-to-power ratio constraint mentioned; duration is implicitly determined by
+      the optimiser.
+    variant: multi-technology-cooptimised
+    parameters:
+      technologies: "hydrogen storage, batteries, PHS"
+      H2_cost: "195363 Euro/GW/a"
+      battery_cost: "120389 Euro/GW/a"
+
+unmatched_methods: []

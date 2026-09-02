@@ -1,0 +1,90 @@
+id: uhv-dc
+title: Ultra-high-voltage (UHV) DC
+summary: UHV DC transmission (roughly ±800 kV and above, China-style bulk corridors) — beyond the voltage classes and line types the model ships with.
+when_to_use:
+  - "model an 800 kV / 1100 kV DC corridor"
+  - "UHVDC bulk power transfer"
+  - "long-distance ultra-high-voltage transmission"
+  - "China-style UHV lines"
+  - "add a higher DC voltage class"
+  - "why is my 800 kV line treated as 500 kV"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        Not covered as a distinct class. The voltage ladder tops out at 750 kV
+        (electricity.voltages: [132., 220., 300., 380., 500., 750.]) and the DC
+        type map has a single entry, lines.dc_types: {500.: "HVDC XLPE 1000"}.
+        Any OSM DC line — whatever its actual voltage — is snapped to the nearest
+        configured dc_types voltage by _get_linetype_by_voltage, so a real ±800 kV
+        UHVDC line entering via OSM is assigned the 500 kV "HVDC XLPE 1000" type
+        and its p_nom derived from that type's i_nom (v_nom * i_nom in
+        base_network). _get_linetypes_config only warns when voltages and type maps
+        disagree; it does not fail.
+      mechanism: >
+        Same pipeline as ordinary HVDC (see hvdc-interconnectors): clean_osm_data
+        keeps assets above threshold_voltage; base_network assigns a type from
+        lines.dc_types per voltage and imports DC assets as Links (default) or
+        Lines (electricity.hvdc_as_lines). Costing uses generic 'HVDC overhead' /
+        'HVDC submarine' / 'HVDC inverter pair' rows — there is no UHV-specific
+        cost row in data/costs.csv.
+      not_covered: >
+        No UHV voltage class, no UHV line type (pypsa's shipped standard types end
+        at 'HVDC Oil filled 1400'; the configured 'HVDC XLPE 1000' has i_nom
+        2500 A), no UHV-specific costs, no converter-station modelling beyond the
+        generic B2B Links.
+      provenance: "scripts/base_network.py:_get_linetype_by_voltage"
+    levers:
+      - key: electricity.voltages
+        effect: "Add the UHV nominal voltage (e.g. 800.) so it is retained as a distinct class rather than snapped away."
+        default: "[132., 220., 300., 380., 500., 750.]"
+        provenance: "config.default.yaml:voltages"
+      - key: lines.dc_types
+        effect: "Map the new DC voltage to a line type; entries must name a type known to pypsa (standard types include 'HVDC XLPE 1000' and 'HVDC Oil filled 1400')."
+        default: "{500.: 'HVDC XLPE 1000'}"
+        provenance: "scripts/base_network.py:_set_electrical_parameters_dc_lines"
+      - key: electricity.hvdc_as_lines
+        effect: "Whether the UHV DC asset ends up as a Line or Link component."
+        default: "false"
+        provenance: "scripts/base_network.py:hvdc_as_lines_config"
+      - key: clean_osm_data_options.threshold_voltage
+        effect: "Lower voltage cut-off — irrelevant upward: there is no upper cut-off, so UHV OSM assets are not dropped, only mis-typed."
+        default: "51000"
+        provenance: "scripts/clean_osm_data.py:filter_voltage"
+    boundary:
+      - variant: "Keep a UHV OSM line but accept approximate rating"
+        rung: L0
+        note: "Nothing to do — it flows through and is snapped to the nearest dc_types entry (500 kV type today)."
+      - variant: "Add a UHV voltage class mapped to an existing pypsa type"
+        rung: L1
+        note: "Append e.g. 800. to electricity.voltages and 800.: 'HVDC Oil filled 1400' to lines.dc_types (i_nom 3000 A — still not a true ±800 kV bipole rating; p_nom = v_nom * i_nom scales with the higher v_nom)."
+      - variant: "A true UHV line type (correct impedance/ampacity for ±800 kV+)"
+        rung: L2
+        note: "pypsa standard types have no UHV entry; register a custom line type on the network in base_network before _set_lines_s_nom_from_linetypes, then reference it from lines.dc_types."
+      - variant: "UHV-specific investment costs"
+        rung: L3
+        note: "Add cost rows (or override 'HVDC overhead'/'HVDC submarine'/'HVDC inverter pair') in the costs file; attach_dc_costs in add_electricity.py reads those names, so a differently-named UHV row also needs the L2 edit there."
+      - variant: "Greenfield UHV corridor as an investment candidate"
+        rung: L5
+        note: "Same gap as user-specified HVDC candidates: add an extendable Link row programmatically (pattern: n.madd('Link', ...) in scripts/augmented_line_connections.py) with UHV cost and rating; no config/data path exposes it."
+    where:
+      - change: "Voltage class and type mapping"
+        anchor: "config electricity.voltages + lines.dc_types, consumed by scripts/base_network.py:_get_linetypes_config"
+        provenance: "scripts/base_network.py:_get_linetypes_config"
+      - change: "Custom line type registration"
+        anchor: "scripts/base_network.py:base_network (before _set_lines_s_nom_from_linetypes; DC p_nom uses n.line_types.i_nom)"
+        provenance: "scripts/base_network.py:_set_lines_s_nom_from_linetypes"
+      - change: "UHV costing"
+        anchor: "scripts/add_electricity.py:attach_dc_costs + costs file rows"
+        provenance: "scripts/add_electricity.py:attach_dc_costs"
+    data_dependencies:
+      - input: "OSM extracts containing the UHV asset with correct voltage tags"
+        required_for: "existing UHV lines"
+        availability: "region-dependent (UHV corridors exist mainly in CN/IN/BR; OSM tagging quality varies)"
+      - input: "costs file row(s) for UHV DC investment"
+        required_for: "UHV-specific costing"
+        availability: "absent — must be added (default file only has generic HVDC rows)"
+      - input: "custom lines geojson"
+        required_for: "manually drawn UHV corridor via clean_osm_data_options.use_custom_lines"
+        availability: "absent — user-provided"

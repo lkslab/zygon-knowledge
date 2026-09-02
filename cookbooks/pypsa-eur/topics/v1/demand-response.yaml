@@ -1,0 +1,59 @@
+id: demand-response
+title: "Demand response"
+rank: 13
+question: >
+  How much flexibility can the demand side deliver — smart EV charging,
+  industrial load-shifting, heat-pump flexibility — and what is it worth
+  against batteries and peakers? The hottest cross-cutting theme of
+  2025-2026 (IEA Electricity 2026 flexibility chapter, Agora, Ember's
+  "clean flexibility"), with aggregators and TSOs as buyers.
+when_to_use:
+  - "value of demand-side response vs storage or peakers"
+  - "how much load can shift and at what timescale"
+  - "EV / heat-pump / industrial flexibility potential"
+  - "clean flexibility instead of fossil peakers"
+  - "price-responsive demand scenarios"
+recipes:
+  generation_conversion: [smart-ev-chargers, vehicle-to-grid, smart-meters,
+                          virtual-power-plants, behind-the-meter-der,
+                          desalination-flexible-load]
+  demand: [building-heat-dsm, land-transport-demand, electricity-load,
+           demand-temporal-profiles]
+functionality:
+  - id: bev-dsm-v2g
+    role: "core — EV battery demand-shifting (and V2G) within mobility availability windows"
+  - id: residential-heat-dsm
+    role: "core — building thermal inertia as shiftable heat demand within comfort bands, endogenous in the solve"
+  - id: industry-t-endogenous
+    role: "industrial process heat chooses its fuel/tech endogenously — fuel-switching flexibility, though not intra-day load-shifting"
+  - id: sector-master-switches
+    role: "all DR channels live in the sector layers; the power-only chain has fixed loads"
+  - id: demand-elasticity
+    role: "price-elastic or tariff-responsive demand is absent — shifting is planner-optimal, not price-driven"
+  - id: market-design-mechanisms
+    role: "no DR products, aggregator bids, or capacity remuneration to value against"
+  - id: operational-reserves
+    role: "reserve requirement DR could serve is a system constraint, not a procured product"
+  - id: nodal-marginal-prices
+    role: "shadow prices give the competitive-benchmark value of shifted load"
+  - id: summary-outputs
+    role: "shifted-charge and shifted-heat patterns readable from solved network time series"
+gap_assessment: >
+  Meaningfully broader than pypsa-earth's EV-only story: pypsa-eur
+  co-optimizes two genuine endogenous DR channels — EV battery
+  demand-shifting with V2G, and residential heating DSM that exploits
+  building thermal inertia within comfort bands — plus endogenous
+  industrial process-heat technology choice as a fuel-switching (if not
+  load-shifting) margin. That covers the two biggest household flexibility
+  levers with real mechanisms rather than profile reshaping. Still missing
+  for the full DR question: intra-day industrial load-shifting has no
+  mechanism, price-elastic demand is absent (all shifting is
+  perfect-foresight planner control, so tariff-design and behaviourally
+  realistic DR-program studies cannot be represented), and there is no
+  market layer, so DR value must be read from shadow prices rather than
+  simulated revenues or products. Verdict stays partial, but the covered
+  half is substantially larger than in earth.
+coverage: partial
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

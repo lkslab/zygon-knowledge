@@ -1,0 +1,57 @@
+id: distribution-hosting-capacity
+title: "Distribution hosting capacity"
+rank: 19
+question: >
+  How much rooftop solar, EV charging, and heat-pump load can distribution
+  feeders host before voltage or thermal limits bind, and where must DSOs
+  reinforce first? The distribution-level face of grid bottlenecks — a core
+  DSO/regulator question as electrification lands on LV networks.
+when_to_use:
+  - "feeder / LV hosting capacity for PV, EVs, heat pumps"
+  - "where do distribution networks bind under electrification"
+  - "DSO reinforcement need and cost"
+  - "voltage or thermal limits on DER uptake"
+  - "distribution grid impact of mass EV adoption"
+recipes:
+  generation_conversion: [electricity-distribution-grid,
+                          rooftop-distributed-solar, behind-the-meter-der,
+                          smart-ev-chargers, air-source-heat-pumps]
+  demand: [residential-electricity-demand, electricity-load,
+           electricity-distribution-losses]
+functionality:
+  - id: distribution-power-flow
+    role: "core capability for this topic — absent: no feeder-level network, no voltage/thermal limits"
+  - id: distribution-grid-lv
+    role: "nearest surface — one LV bus per node with a linear reinforcement-cost link (sector runs)"
+  - id: distribution-grid-cost-factor
+    role: "the advertised cost knob is dead — read by no script; scale the LV link via adjustments.sector instead"
+  - id: sector-master-switches
+    role: "the LV layer and its loads (rooftop PV, EVs, heat pumps, home batteries) exist only in sector runs"
+  - id: bev-dsm-v2g
+    role: "smart charging shifts LV load in time, changing the reinforcement bill"
+  - id: residential-heat-dsm
+    role: "heat DSM flattens the LV-level heat-pump peak, a lever earth lacks"
+  - id: spatial-clustering
+    role: "even the finest clustering stops at transmission substations — feeders are below the model floor"
+  - id: summary-outputs
+    role: "distribution reinforcement spend appears as a cost line, not a network result"
+gap_assessment: >
+  Out of scope at the physics level, exactly as in pypsa-earth: pypsa-eur
+  has no feeder topology, no distribution power flow, and no voltage or
+  thermal constraints, so hosting capacity — an inherently feeder-specific,
+  power-flow question — cannot be computed. What exists is a stylized
+  proxy: sector runs attach one LV bus per cluster with a linear
+  reinforcement-cost link (see the electricity-distribution-grid recipe),
+  behind which rooftop PV, home batteries, EV charging, and electrified
+  heat sit, so the model prices aggregate distribution reinforcement and
+  shows how smart charging, heat DSM, or home batteries reduce that bill —
+  useful for national reinforcement-cost envelopes, useless for "which
+  feeder saturates first". One trap: the distribution_grid_cost_factor
+  config knob and dist wildcard are dead at this ref — use an
+  adjustments.sector capital-cost factor on the distribution link instead.
+  Pair pypsa-eur's system-level electrification scenarios with a dedicated
+  distribution tool (pandapower, OpenDSS) for the hosting computation.
+coverage: gap
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

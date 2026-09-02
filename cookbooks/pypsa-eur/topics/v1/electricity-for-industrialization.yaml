@@ -1,0 +1,62 @@
+id: electricity-for-industrialization
+title: Electricity-for-industrialization
+rank: 37
+question: >
+  What power system does industrialization need — if a country grows mining,
+  manufacturing, and processing loads (the African productive-use agenda),
+  where does that demand land, what supply and grid must be built ahead of
+  it, and at what cost and carbon intensity?
+when_to_use:
+  - "power system for an industrialization strategy"
+  - "productive-use demand growth scenarios"
+  - "can the grid support new mining / manufacturing load"
+  - "build-ahead generation and transmission for industry"
+  - "industrial demand scenarios for a developing country"
+recipes:
+  generation_conversion: [utility-scale-solar-pv, onshore-wind,
+                          hv-transmission-lines, gas-power-plants,
+                          grid-scale-batteries, conventional-hydropower]
+  demand: [industrial-material-production-drivers,
+           demand-scenarios-and-growth, industrial-crosscutting-electricity,
+           light-manufacturing-demand, mining-construction-demand]
+functionality:
+  - id: sector-master-switches
+    role: "core machinery — bottom-up industry subsector demands enter the network at site-keyed nodes"
+  - id: scenario-matrix
+    role: "industrialization futures as scenario-file overrides on production drivers — eur's sweep workhorse"
+  - id: myopic-foresight
+    role: "stage supply/grid build-out ahead of demand across horizons"
+  - id: administrative-clustering
+    role: "results by NUTS/bidding zone — the admin unit European industrial policy is written in"
+  - id: transmission-expansion-limits
+    role: "grid build-ahead co-optimized with generation"
+  - id: carbon-intensity-metrics
+    role: "carbon intensity of the industrializing grid (partial, post-processing)"
+  - id: demand-elasticity
+    role: "absent — no feedback from electricity cost to industrial competitiveness or demand"
+  - id: geospatial-access-electrification
+    role: "absent — and diagnostic: the whole data pipeline is Europe-only; the topic's target geographies need pypsa-earth"
+gap_assessment: >
+  The machinery is all here and battle-tested — bottom-up industrial demand
+  by subsector from JRC-IDEES production data, distributed to real site
+  locations, scaled per horizon via config/scenario overrides, then
+  generation, storage and transmission co-optimized to serve it, with a
+  validated scenario-management layer earth lacks. But the topic as posed
+  is a developing-country question, and pypsa-eur's entire input pipeline
+  (JRC-IDEES, Hotmaps, NUTS shapes, ENTSO-E/OSM-Europe grid, Eurostat
+  balances) is hard-wired to Europe: you cannot point it at Ghana or
+  Vietnam, which is precisely where the productive-use agenda lives — that
+  is pypsa-earth's territory. What eur answers well is the European
+  homologue: reindustrialization, new gigafactory/data-hall-scale
+  industrial load, or onshoring scenarios — grow subsector production
+  drivers in a scenario file and read off build-ahead capacity, grid
+  reinforcement, cost and carbon intensity per future. Shared caveats with
+  earth remain: future plant siting is exogenous, there is no
+  cost-competitiveness feedback on demand (loads fixed per scenario), and
+  reliability is a planning margin, not outage statistics. Scored partial
+  purely for geographic scope: the machinery is ready, the topic's home
+  turf is out of reach.
+coverage: partial
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

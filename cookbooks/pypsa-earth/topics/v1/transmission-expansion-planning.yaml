@@ -1,0 +1,51 @@
+id: transmission-expansion-planning
+title: Transmission expansion planning
+rank: 1
+question: >
+  Where and when should transmission be built, what does congestion or
+  non-building cost, and which corridors are robust across scenarios? The
+  highest-urgency topic globally: FERC 1920 (US), UHV (China), power pools
+  (Africa/ASEAN), REZs (Australia).
+when_to_use:
+  - "where should we build transmission"
+  - "grid expansion plan / TYNDP-style study"
+  - "cost of not building the grid"
+  - "corridor selection under uncertainty"
+  - "co-optimize generation and transmission"
+recipes:
+  generation_conversion: [hv-transmission-lines, hvdc-interconnectors, uhv-dc]
+  demand: [electricity-load, demand-spatial-disaggregation]
+functionality:
+  - id: transmission-expansion-limits
+    role: "core — line/link expansion co-optimized under lv/lc volume or cost bounds"
+  - id: iterative-impedance-expansion
+    role: "keeps impedances consistent as capacities grow"
+  - id: spatial-clustering
+    role: "choose zonal resolution; corridor detail dies below ~substation resolution"
+  - id: augmented-line-connection
+    role: "candidate corridors beyond the existing OSM topology (off by default)"
+  - id: line-security-margin
+    role: "s_max_pu proxies N-1 — no true contingency planning"
+  - id: contingency-scopf
+    role: "true security-constrained planning is not wired in"
+  - id: scenario-matrix
+    role: "FERC-1920-style multi-scenario sweeps via the scenario lists"
+  - id: mga-near-optimal
+    role: "robust corridor choice wants near-optimal spaces — absent"
+gap_assessment: >
+  Strong core: pypsa-earth co-optimizes generation + storage + line/link
+  expansion on the real OSM-derived grid at any clustering, with cost/volume
+  caps (lv/lc) and iterative impedance updates — the standard "value of
+  transmission" study (build vs constrained counterfactual, congestion rent
+  from nodal duals) runs out of the box. Three real gaps: (1) candidate
+  corridors are limited to existing topology unless augmented-line-connection
+  is switched on (k-edge candidates, not project lists — no TYNDP-style
+  candidate database); (2) reliability is a static s_max_pu margin, no N-1 /
+  SCOPF; (3) robustness machinery is thin — scenario sweeps and monte-carlo
+  exist, MGA does not. Grid data quality outside Europe varies by country:
+  check the data_quality scorecard (osm-grid, measured fragmentation) before
+  trusting corridor-level results.
+coverage: ready
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

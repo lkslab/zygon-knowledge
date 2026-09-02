@@ -1,0 +1,49 @@
+id: prosumer-behind-the-meter
+title: "Prosumer / behind-the-meter"
+rank: 75
+question: >
+  How do households and businesses with their own solar, storage, and EVs
+  behave — self-consumption, net metering, tariff response — and what does
+  prosumage do to the rest of the system? The customer-side twin of the DER
+  topic: same assets, but the question is behaviour and bills.
+when_to_use:
+  - "prosumer self-consumption modelling"
+  - "behind-the-meter solar + battery economics"
+  - "net metering / feed-in tariff scenarios"
+  - "grid defection / self-sufficiency of households"
+  - "what prosumers do to utility load shapes"
+recipes:
+  generation_conversion: [behind-the-meter-der, rooftop-distributed-solar,
+                          smart-meters, vehicle-to-grid]
+  demand: [residential-electricity-demand, services-electricity-demand]
+functionality:
+  - id: distribution-grid-lv
+    role: "core proxy — BTM PV/battery/EV sit on an LV bus behind a costed grid link"
+  - id: sector-coupled-workflow
+    role: "prosumer assets exist only in the sector chain, none in power-only runs"
+  - id: demand-elasticity
+    role: "absent — no tariff-responsive demand, so no behavioural prosumer"
+  - id: financial-viability-actors
+    role: "absent — no retail tariff, net metering, or bill; single social planner"
+  - id: nodal-marginal-prices
+    role: "everything trades at system marginal value — the anti-prosumer assumption"
+  - id: bev-dsm-v2g
+    role: "the one endogenously flexible BTM asset (EV charging/V2G on the LV bus)"
+gap_assessment: >
+  Partial, with a hard behavioural ceiling. The physics of prosumage is
+  there: rooftop PV and home batteries on a low-voltage bus, connected
+  through a costed distribution link, so implicit self-consumption emerges
+  whenever local generation is cheaper than importing across that link, and
+  the system-side effect of BTM buildout (duck-curve load shapes, displaced
+  utility solar) falls out of the sector LP. What is structurally missing is
+  the prosumer as an actor: there are no retail tariffs, no net-metering or
+  feed-in rules, and no price-elastic demand — all flows are valued at
+  system marginal cost by a single planner, so questions about bill savings,
+  tariff-driven adoption, or grid defection under bad tariff design cannot
+  be posed (behind-the-meter-der marks tariff behaviour L5). Use it for
+  "what optimal prosumage does to the system"; use a household-level
+  bill-optimization model for "what prosumers will actually do".
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

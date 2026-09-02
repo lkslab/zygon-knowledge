@@ -1,0 +1,161 @@
+id: green-energy-imports
+title: Green energy imports (H2, ammonia, methanol, e-fuels, biomass)
+summary: >
+  Importing carbon-neutral energy carriers from outside the modelled region —
+  price-based hydrogen, ammonia, methanol, synthetic gas and oil imports at
+  real entry infrastructure, plus solid biomass imports, with an overall
+  import volume limit.
+when_to_use:
+  - "green energy imports"
+  - "hydrogen imports"
+  - "ammonia imports / NH3 shipping"
+  - "e-fuel / synthetic fuel imports"
+  - "green methanol or e-methane imports"
+  - "import limit / import dependency"
+  - "biomass imports"
+  - "energy imports from outside Europe (MENA, global)"
+  - "pypsa-eur carrier names: import H2, import NH3, import methanol, import gas, import oil, solid biomass import"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        First-class but OFF by default. With sector.imports.enable: true,
+        add_import_options adds, per carrier priced in sector.imports.price
+        (defaults: H2 74, NH3 97, methanol 121, gas 122, oil 125 EUR/MWh):
+        "import H2" Generators at gas pipeline entry-point nodes, capacity
+        capped by the real pipeline entry capacity (gas_input_nodes
+        "pipeline" column — imported H2 arrives through repurposed border
+        pipelines); "import NH3" Generators on the ammonia buses (requires
+        sector.ammonia, else skipped with a warning); and — the clever
+        carbon-accounting part — "import methanol" / "import oil" /
+        "import gas" as LINKS whose bus0 is "co2 atmosphere": importing one
+        MWh of carbon-containing green fuel WITHDRAWS its combustion CO2 from
+        the atmosphere balance first (efficiency = 1/CO2-intensity), so
+        burning it later nets to zero — these are green synthetic fuels by
+        construction, not fossil. Green gas import capacity is capped at
+        LNG terminal regasification capacity per node (gas_input_nodes "lng"
+        column; e-methane/bio-LNG arrives by ship). A total import volume
+        limit exists: sector.imports.limit (TWh/a, sense
+        sector.imports.limit_sense) is enforced in the solver by
+        add_import_limit_constraint over everything whose carrier contains
+        "import" — links counted at fuel-side efficiency. Separately,
+        sector.solid_biomass_import (default false) adds a priced,
+        volume-capped "solid biomass import" Store+Link chain onto the solid
+        biomass nodes with an upstream_emissions_factor share of biomass CO2
+        intensity emitted to the atmosphere.
+      mechanism: >
+        rule prepare_sector_network calls add_import_options when
+        sector.imports.enable is true (gas_input_nodes from rule
+        build_gas_input_locations supply the entry geography);
+        add_biomass handles solid biomass import. solve_network.py::
+        extra_functionality calls add_import_limit_constraint whenever
+        sector.imports.enable is true. Fossil LNG/pipeline imports are a
+        DIFFERENT mechanism (capacity-limited fossil gas supply generators —
+        see fossil-fuel-supply recipe); the two share the same entry-point
+        data but different carriers and CO2 treatment.
+      not_covered: >
+        Prices are flat scalars per carrier — no supply-cost curves, no
+        exporter-region differentiation (no MENA vs Chile), no time-varying
+        or seasonal import prices, no shipping/transport modelling, no
+        dedicated import terminals to build (H2/gas import capacity is fixed
+        to today's entry infrastructure; NH3/methanol/oil import capacity is
+        effectively unlimited p_nom = 1e7). The import limit is one global
+        constraint over all green import carriers together — no per-carrier
+        or per-country limits without editing add_import_limit_constraint.
+        No green electricity imports (e.g. HVDC from North Africa) and no
+        steel/HBI or other material imports. NH3 import needs the ammonia
+        carrier enabled; with sector.ammonia false it is silently skipped.
+        Upstream emissions of synthetic imports are assumed zero (only the
+        biomass import has an upstream emissions factor).
+      provenance: "scripts/prepare_sector_network.py:add_import_options; scripts/solve_network.py:add_import_limit_constraint; scripts/prepare_sector_network.py:solid biomass import; scripts/build_gas_input_locations.py:build_gas_input_locations"
+    levers:
+      - key: sector.imports.enable
+        effect: "Master switch for green import options AND the import limit constraint in the solver."
+        default: "false"
+        provenance: "config/config.default.yaml:imports; scripts/prepare_sector_network.py:add_import_options; scripts/solve_network.py:add_import_limit_constraint"
+      - key: sector.imports.price
+        effect: "EUR/MWh price per import carrier; REMOVING a key removes that import option entirely (add_import_options only builds carriers present in the dict)."
+        default: "{H2: 74, NH3: 97, methanol: 121, gas: 122, oil: 125}"
+        provenance: "config/config.default.yaml:imports; scripts/prepare_sector_network.py:add_import_options"
+      - key: sector.imports.limit
+        effect: "Total green import volume bound in TWh/a across all import carriers (fuel-side energy)."
+        default: ".inf (unlimited)"
+        provenance: "config/config.default.yaml:imports; scripts/solve_network.py:add_import_limit_constraint"
+      - key: sector.imports.limit_sense
+        effect: "Direction of the volume constraint — '<=' caps imports, '>=' forces a minimum import share."
+        default: "<="
+        provenance: "config/config.default.yaml:imports; scripts/solve_network.py:add_import_limit_constraint"
+      - key: sector.solid_biomass_import
+        effect: "enable/price/max_amount (TWh/a)/upstream_emissions_factor for overseas solid biomass imports onto the biomass nodes."
+        default: "{enable: false, price: 54, max_amount: 1390, upstream_emissions_factor: 0.1}"
+        provenance: "config/config.default.yaml:solid_biomass_import; scripts/prepare_sector_network.py:solid biomass import"
+      - key: sector.ammonia
+        effect: "Must be truthy for NH3 imports to be added (creates the ammonia buses; 'regional' resolves them per node so imports land regionally)."
+        default: "true"
+        provenance: "config/config.default.yaml:ammonia; scripts/prepare_sector_network.py:add_import_options"
+      - key: sector.gas_network
+        effect: "Determines whether green gas imports land at individual LNG-terminal nodes (true) or one EU gas bus with summed capacity (false)."
+        default: "true"
+        provenance: "config/config.default.yaml:gas_network; scripts/prepare_sector_network.py:add_import_options"
+      - key: sector.H2_network
+        effect: "With the H2 pipeline network enabled, entry-point H2 imports can flow onward; without it imports are stranded at their entry nodes."
+        default: "true"
+        provenance: "config/config.default.yaml:H2_network; scripts/prepare_sector_network.py:add_h2_gas_infrastructure"
+    boundary:
+      - variant: "allow green imports of all five carriers"
+        rung: L0
+        note: "sector.imports.enable: true"
+      - variant: "hydrogen-only (or any subset of) import options"
+        rung: L1
+        note: "prune sector.imports.price to the desired keys"
+      - variant: "cap or force total import volume"
+        rung: L1
+        note: "sector.imports.limit + limit_sense ('>=' models import-dependency scenarios)"
+      - variant: "different import price scenario"
+        rung: L1
+        note: "sector.imports.price values; for horizon-varying prices in myopic runs use per-horizon scenario configs (run.scenarios), since the values are scalars"
+      - variant: "solid biomass imports"
+        rung: L1
+        note: "sector.solid_biomass_import.enable: true (own price/volume/upstream-emissions knobs; NOT counted by the green import limit constraint, which matches carriers containing 'import' — 'solid biomass import' DOES match, so it is included; check limit accounting when combining)"
+      - variant: "expand H2/gas import capacity beyond today's entry infrastructure"
+        rung: L2
+        note: "capacities are fixed p_nom from gas_input_nodes in add_import_options; make the import generators/links extendable with a terminal capital cost there — or patch the entry data (L3)"
+      - variant: "per-carrier or per-country import limits"
+        rung: L2
+        note: "split the single lhs in add_import_limit_constraint by carrier/bus — localised solver-constraint edit"
+      - variant: "exporter supply curves / regional price differentiation"
+        rung: L5
+        note: "needs new data and generator structure (stepwise supply curves per origin); nothing in the codebase — the upstream pypsa-eur import branch (Hampp et al.) is not merged at this ref"
+      - variant: "green electricity imports (HVDC from outside scope)"
+        rung: L5
+        note: "no external electricity nodes exist; would need new buses, links and boundary data"
+      - variant: "seasonal / time-varying import prices"
+        rung: L2
+        note: "marginal_cost of the import components is static; assign a marginal_cost time series to them in add_import_options"
+    where:
+      - change: "import generators/links, prices, entry-capacity caps, CO2-atmosphere accounting"
+        anchor: "scripts/prepare_sector_network.py::add_import_options (called in __main__ when sector.imports.enable)"
+        provenance: "scripts/prepare_sector_network.py:add_import_options"
+      - change: "total import volume constraint"
+        anchor: "scripts/solve_network.py::add_import_limit_constraint (called from ::extra_functionality)"
+        provenance: "scripts/solve_network.py:add_import_limit_constraint; scripts/solve_network.py:extra_functionality"
+      - change: "solid biomass import chain"
+        anchor: "scripts/prepare_sector_network.py::add_biomass (solid_biomass_import block)"
+        provenance: "scripts/prepare_sector_network.py:solid biomass import"
+      - change: "entry-point geography (which nodes can import H2/gas and how much)"
+        anchor: "scripts/build_gas_input_locations.py::build_gas_input_locations (rule build_gas_input_locations; GEM + SciGRID data)"
+        provenance: "scripts/build_gas_input_locations.py:build_gas_input_locations; rules/build_sector.smk:build_gas_input_locations"
+    data_dependencies:
+      - input: "gas_input_nodes_simplified.csv (lng and pipeline columns per region)"
+        required_for: "green gas import capacity (LNG) and H2 import capacity (pipeline entries)"
+        availability: "must be built (rule build_gas_input_locations); default in sector workflow"
+      - input: "cost rows 'methanolisation' (carbondioxide-input), 'gas'/'oil' (CO2 intensity), 'solid biomass' (CO2 intensity)"
+        required_for: "the CO2-atmosphere withdrawal accounting of carbonaceous imports; biomass upstream emissions"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "ammonia buses (sector.ammonia)"
+        required_for: "NH3 imports"
+        availability: "exists by default (sector.ammonia: true)"
+      - input: "H2 pipeline network (H2_network / H2_retrofit)"
+        required_for: "distributing entry-point H2 imports to demand"
+        availability: "exists by default (sector.H2_network: true)"

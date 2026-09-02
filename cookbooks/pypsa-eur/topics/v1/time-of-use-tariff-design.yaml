@@ -1,0 +1,53 @@
+id: time-of-use-tariff-design
+title: "Time-of-use tariff design"
+rank: 76
+question: >
+  What tariff structure — time-of-use bands, critical-peak pricing, dynamic
+  retail prices — shifts demand where the system needs it, and what is the
+  system value of customers responding? A regulator/retailer question riding
+  the smart-meter rollout in every liberalizing market.
+when_to_use:
+  - "design a time-of-use tariff"
+  - "system value of ToU / dynamic pricing"
+  - "how much load shifts under peak pricing"
+  - "cost-reflective retail tariff bands"
+  - "smart meter enabled tariff scenarios"
+recipes:
+  generation_conversion: [smart-meters, smart-ev-chargers, behind-the-meter-der]
+  demand: [demand-temporal-profiles, residential-electricity-demand,
+           building-heat-dsm, electricity-load]
+functionality:
+  - id: demand-elasticity
+    role: "absent — the core mechanism (price-responsive demand) does not exist"
+  - id: market-design-mechanisms
+    role: "absent — no retail layer, tariffs, or billing to design"
+  - id: nodal-marginal-prices
+    role: "the one usable output: nodal duals as the cost-reflective ToU shape to band"
+  - id: bev-dsm-v2g
+    role: "EV shifting is an upper bound on what a perfect ToU signal could achieve"
+  - id: residential-heat-dsm
+    role: "the heat-side analogue: perfect-foresight thermal-mass shifting, no tariff in the loop"
+  - id: operations-only-solve
+    role: "evaluate hand-reshaped load profiles at fixed capacities — the tariff-response counterfactual runner"
+  - id: scenario-matrix
+    role: "sweep assumed tariff-response reshapes and compare system costs"
+gap_assessment: >
+  Gap, exactly as in pypsa-earth. Tariff design needs three things the model
+  does not have: a retail price layer, demand that responds to it, and a
+  customer/retailer actor — all absent (loads are fixed exogenous profiles;
+  the endogenous shifters — EV DSM/V2G and, if enabled, residential heat
+  DSM — respond to system cost directly, not to any tariff, so they bound
+  what a perfect signal could harvest rather than predict a tariff's yield).
+  Two honest indirect uses. First, a solved network's nodal marginal prices
+  are exactly the cost-reflective signal a ToU tariff approximates —
+  time-banding those duals (weighted_prices in the summary tables) is
+  legitimate tariff-shape input. Second, hand-built counterfactuals: reshape
+  load profiles under an assumed elasticity, re-run — cleanly done as an
+  operations-only solve against fixed capacities — and compare system
+  costs; a what-if on the response, never a prediction of it. Endogenous
+  tariff response would be a code addition (elastic demand bands); welfare
+  analysis of tariff design is a different model class altogether.
+coverage: gap
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

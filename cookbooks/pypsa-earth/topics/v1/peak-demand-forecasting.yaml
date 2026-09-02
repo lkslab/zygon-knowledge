@@ -1,0 +1,49 @@
+id: peak-demand-forecasting
+title: Peak demand forecasting
+rank: 26
+question: >
+  How high does peak demand go, when does it bind, and what drives it —
+  cooling (India's brutal AC peaks), electrification, data centers (US ~166 GW
+  five-year peak growth)? The forecast feeds every adequacy and buildout
+  decision downstream.
+when_to_use:
+  - "peak load forecast to 2030 / 2050"
+  - "what drives the evening / summer peak"
+  - "cooling-driven peak growth"
+  - "peak vs energy demand growth divergence"
+  - "coincident peak across regions"
+recipes:
+  generation_conversion: [gas-power-plants, grid-scale-batteries]
+  demand: [demand-scenarios-and-growth, demand-temporal-profiles, electricity-load, space-cooling-demand, residential-electricity-demand]
+functionality:
+  - id: demand-elasticity
+    role: "demand is fixed exogenous profiles — no behavioural or price response, absent"
+  - id: weather-year-selection
+    role: "peak height is weather-year-dependent; pick the hot/cold year deliberately"
+  - id: safe-reserve-margin
+    role: "SAFE anchors firm capacity to the modelled peak — garbage peak in, garbage margin out"
+  - id: scenario-matrix
+    role: "demand wildcard (AB/BU/NZ...) x horizon sweeps span forecast uncertainty"
+  - id: temporal-resolution-nh
+    role: "caution: nH averaging shaves the peak — keep hourly (or TSAM) for peak questions"
+  - id: load-shedding-voll
+    role: "shows where an underestimated peak actually breaks the system"
+gap_assessment: >
+  Peak demand is an input here, not an output: pypsa-earth is not a
+  forecasting tool. What it provides is the machinery to ASSEMBLE a peak —
+  annual sectoral totals grown by per-country CAGRs (demand-scenarios-and-
+  growth), shaped into hourly profiles partly weather-driven (heating/cooling
+  via temperature, sector chain), plus electrification-driven additions (EVs,
+  heat pumps, H2) that move the peak endogenously in sector runs — and then
+  test its system consequences. So "what does a CEA-style 2030 peak imply"
+  works; "forecast the 2030 peak from first principles" does not (no
+  econometric/bottom-up appliance forecasting, no data-center load category).
+  Structural weakness for the India cooling question: the power-only chain
+  scales a historical hourly shape, so it will not steepen the evening AC
+  ramp unless the sector chain's cooling demand is used; and growth CAGRs for
+  many countries fall back to DEFAULT rows — check the data_quality scorecard
+  and replace defaults with national studies before quoting peaks.
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

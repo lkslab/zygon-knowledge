@@ -1,0 +1,186 @@
+paper: "2025_DiBella_European-green-industrial-transformation.pdf"
+tier: 1
+model_used: >
+  PyPSA-Eur, extended with detailed industrial sector modelling (iron/steel,
+  cement, ammonia, methanol, HVCs), 39 nodes, 34 European countries, 3-hourly
+  temporal resolution, myopic pathway for 2030/2040/2050.
+scope: >
+  European industrial decarbonization pathways examining trade-offs between
+  deep emissions cuts and competitiveness across three industrial production
+  scenarios (deindustrialisation, stabilisation, reindustrialisation), with
+  intra-European relocation, green intermediate imports, and subsidy options.
+methods:
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "The PyPSA-Eur model is operated in myopic mode with a three-hourly
+      temporal resolution for the years 2030, 2040, and 2050 using Gurobi
+      solver." (Sec. 3.2 Parameters and assumptions). The paper also contrasts
+      this with the greenfield 2050 optimisation of Neumann et al., explicitly
+      noting the myopic framework captures investment timing effects on prices
+      (Sec. 4.1).
+    procedure_notes: >
+      Three investment periods: 2030, 2040, 2050. Myopic means each period is
+      solved independently without knowing future costs. Technology costs updated
+      per period from the Technology-Data package. The paper notes "Modelling
+      myopic transition pathways captures how investment timing affects final
+      prices."
+    variant: myopic-pathway
+    parameters: {years: "2030, 2040, 2050", solver: "Gurobi"}
+
+  - slug: brownfield-and-capacity-vintaging
+    role: routine-use
+    evidence: >
+      "The modelling framework follows a brownfield approach, incorporating
+      existing power and heating generation, transmission infrastructure,
+      industrial hubs, enhanced in this study with data on existing plants added
+      to the original PyPSA-Eur model." (Sec. 3.2). Plant location, type, and
+      age data obtained from Global Energy Monitor, Spatial Finance Initiative,
+      and Neuwirth et al.
+    procedure_notes: >
+      Existing fleet carried forward. Industrial plants include location, type,
+      and construction year sourced from multiple databases. Minimum partial load
+      constraints imposed on industrial technologies to reflect limited
+      operational flexibility. A scrap use upper bound growing from 52% (2014
+      historical) to 75% cap by 2050 is imposed on EAF steel to reflect fleet
+      legacy constraints (Sec. A.1).
+    variant: null
+    parameters: {scrap_eaf_cap_2050: "75%"}
+
+  - slug: sector-coupled-network-assembly
+    role: extends
+    evidence: >
+      "PyPSA-Eur was extended to represent five key sectors, iron and steel,
+      cement, ammonia, methanol, and High Value Chemicals (HVCs), which account
+      for nearly two-thirds of EU27 industrial CO2 emissions." (Sec. 3.1). The
+      paper details conversion efficiencies, emission factors, CAPEX/OPEX and
+      lifetimes for each technology in Table A.1. This extends the existing
+      PyPSA-Eur industrial module (Victoria et al.) from exogenous to endogenous
+      technology and fuel-mix choice.
+    procedure_notes: >
+      Multi-carrier network includes electricity, hydrogen, biomass, natural gas,
+      CO2 buses. Steel processes: BF-BOF, NG-DRI-EAF, H2-DRI-EAF, Scrap-EAF,
+      BF-BOF+TGR retrofit. Cement: dry clinker + CCS retrofit. Chemicals:
+      Haber-Bosch ammonia, methanolisation, naphtha steam cracker, bio-naphtha
+      Fischer-Tropsch. Minimum partial load per technology included. EOL
+      emissions on methanol and HVCs accounted for in CO2 balance.
+    variant: extended-industrial-sectors
+    parameters: {sectors: "iron/steel, cement, ammonia, methanol, HVCs",
+                  nodes: 39, countries: 34}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      Climate Policy scenarios "implement EU targets: 55% GHG reduction by 2030,
+      90% by 2040, and Net-Zero by 2050." CO2 price reported as the shadow price
+      of the emissions cap constraint: "in a linear energy system optimisation
+      model, arises as the shadow price (or dual variable) associated with the
+      constraint on total allowable CO2 emissions." (Sec. A.2, Eq. A.3).
+    procedure_notes: >
+      Annual CO2 cap tightened across three milestones. No Climate Policy
+      scenarios also run for comparison (no GHG target). Carbon price endogenous
+      as dual variable. CDR (BECCS + DAC) limited to 50 MtCO2/a (2030),
+      250 MtCO2/a (2040), 400 MtCO2/a (2050) per EU targets.
+    variant: annual-cap-milestones
+    parameters: {ghg_reduction_2030: "55%", ghg_reduction_2040: "90%",
+                  ghg_reduction_2050: "net-zero",
+                  cdr_limit_2030: "50 MtCO2/a", cdr_limit_2040: "250 MtCO2/a",
+                  cdr_limit_2050: "400 MtCO2/a"}
+
+  - slug: shadow-prices-and-marginal-values
+    role: routine-use
+    evidence: >
+      "Prices are derived from Lagrange (Karush-Kuhn-Tucker or KKT) multipliers
+      λn,t, representing marginal costs by region and time." (Sec. 4.1, Prices
+      of industrial goods). Electricity prices and CO2 prices both extracted as
+      duals. Industrial commodity prices weighted by production volume for
+      comparison with import cost ranges.
+    procedure_notes: >
+      Production-weighted average of nodal-temporal KKT multipliers used to
+      derive commodity prices (Eq. A.1 for electricity). CO2 price is dual of
+      emissions cap (Eq. A.3). Used to compute subsidy requirements as
+      difference between PyPSA-Eur marginal prices and literature import prices
+      (Eq. 2, Sec. 3.2). No correction for snapshot weights or clustering bias
+      discussed.
+    variant: null
+    parameters: {}
+
+  - slug: import-and-trade-representation
+    role: extends
+    evidence: >
+      "This strategy retains high-value industrial segments in Europe while
+      outsourcing energy-intensive stages to regions with lower renewable costs.
+      Imports considered include green methanol and ammonia for 2040 and 2050,
+      using literature-based average prices, and green Hot Briquetted Iron for
+      EAF at 395 EUR/ton." (Sec. 3.2, Scenario framework). Available from 2040
+      as exogenous supply option at fixed price.
+    procedure_notes: >
+      Green intermediates (HBI, ammonia, methanol) modelled as exogenous import
+      supply at fixed literature prices from 2040. Imports treated as alternative
+      supply nodes competing with domestic production. Import prices for
+      ammonia/methanol from Wang et al. [72] and Neumann et al. [14]; HBI at
+      395 EUR/ton from Trollip et al. [15]. Price ranges for sensitivity shown
+      as gray band in Figure 3. No volume cap on imports stated.
+    variant: green-intermediate-imports
+    parameters: {hbi_price: "395 EUR/ton", available_from: "2040",
+                  carriers: "HBI, ammonia, methanol"}
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "Renewable generation from onshore and offshore wind, and solar PV can
+      expand based on land eligibility via atlite" (Sec. 3.2). Weather-dependent
+      resource time series derived from climate projections (Antonini et al.
+      [50]) rather than standard ERA5 single year.
+    procedure_notes: >
+      atlite used for land eligibility and capacity factor time series.
+      Climate-adjusted weather data from CNRM-CERFACS-CM5 global model
+      downscaled with CNRM-ALADIN63, RCP 4.5 scenario, covering EU27 (excl.
+      Cyprus and Malta), UK, Norway, Switzerland, Serbia. Hydropower fixed.
+    variant: climate-adjusted
+    parameters: {climate_scenario: "RCP 4.5", model: "CNRM-ALADIN63"}
+
+  - slug: transmission-expansion-cooptimisation
+    role: routine-use
+    evidence: >
+      "Grid expansion is allowed, but line use is capped at 70% to approximate
+      N-1 security." (Sec. 3.2). Transmission co-optimised with generation and
+      storage; a robustness check also tests hydrogen pipeline alternatives
+      (Sec. A.3).
+    procedure_notes: >
+      Line expansion co-optimised; no explicit volume cap mentioned beyond the
+      70% utilisation cap as N-1 proxy. H2 pipeline infrastructure excluded from
+      main scenarios due to deployment uncertainty; robustness check in Fig. A.3
+      shows modest commodity price effect of including H2 grid.
+    variant: null
+    parameters: {line_utilisation_cap: "70%"}
+
+  - slug: n-1-security-and-contingency
+    role: routine-use
+    evidence: >
+      "Grid expansion is allowed, but line use is capped at 70% to approximate
+      N-1 security." (Sec. 3.2).
+    procedure_notes: >
+      N-1 represented as a derating margin (70% utilisation cap on all lines),
+      not as explicit contingency constraints. Standard PyPSA-Eur approach.
+    variant: utilisation-cap-proxy
+    parameters: {s_max_pu: "0.70"}
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: routine-use
+    evidence: >
+      A robustness analysis considers repurposing existing gas pipelines or
+      investing in new H2 infrastructure (Supplementary Fig. A.3). The main
+      scenario matrix (Table 1) sweeps across climate policy, industrial
+      production trajectory, relocation, and intermediate imports dimensions.
+    procedure_notes: >
+      Scenario matrix spans: climate policy (yes/no) x industrial trajectory
+      (decline/stabilisation/reindustrialisation) x relocation (yes/no) x
+      intermediate imports (yes/no) = 10 scenarios. H2 infrastructure robustness
+      check as additional sensitivity. Import price ranges shown as literature
+      band. No formal one-at-a-time or Monte Carlo sweep; sensitivity is
+      scenario-based.
+    variant: scenario-matrix
+    parameters: {scenarios: 10}
+
+unmatched_methods: []

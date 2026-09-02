@@ -1,0 +1,50 @@
+id: hydropower-drought-risk
+title: Hydropower drought risk
+rank: 50
+question: >
+  What happens to a hydro-dominant system in a dry year — how much firming,
+  storage or imports does drought resilience need? The defining reliability
+  question for Brazil, Colombia, the Andes, and much of Africa's
+  hydro-dependent grids under climate variability.
+when_to_use:
+  - "dry-year / drought stress test for a hydro system"
+  - "hydro inflow sensitivity scenarios"
+  - "firming a hydro-dominant grid (Brazil, Colombia, East Africa)"
+  - "climate variability of reservoir inflows"
+  - "hydro generation looks too high — calibrate to statistics"
+recipes:
+  generation_conversion: [conventional-hydropower, run-of-river-hydro, pumped-hydro-storage, gas-power-plants]
+  demand: [electricity-load]
+functionality:
+  - id: hydro-inflow-normalization
+    role: "core lever — inflow rescaled to IRENA/EIA statistics; drought scenarios via normalization year and multiplier"
+  - id: weather-year-selection
+    role: "pick a historically dry cutout year for physically consistent runoff + VRE + demand"
+  - id: multi-weather-year
+    role: "absent — no multi-year or probabilistic hydrology in one solve"
+  - id: scenario-matrix
+    role: "sweep inflow multipliers / weather years as parallel runs"
+  - id: monte-carlo-sampling
+    role: "LHS fan-out over inflow scalings for a distributional view (off by default)"
+  - id: load-shedding-voll
+    role: "unserved energy under drought quantifies the resilience gap"
+gap_assessment: >
+  Deterministic drought scenarios work well; stochastic hydrology does not
+  exist. Plant-level inflows come from ERA5 runoff over HydroBASINS catchments,
+  normalised to national annual generation (renewable.hydro.normalization:
+  irena default, or eia / hydro_capacities) — so a dry year is one config
+  change (multiplier 0.7, or a dry normalization year / cutout year), and
+  sweeping multipliers x weather years via the scenario matrix is the standard
+  study. Limits: one weather year per solve, no probabilistic inflow ensemble,
+  no cascade/river-chain coupling, no reservoir operating rules beyond cyclic
+  state of charge, and the existing fleet is non-extendable (firming comes
+  from other carriers). Data caveats matter here (data_quality): IRENA
+  normalization is the robust default; the EIA table hard-crashes
+  build_renewable_profiles for countries it does not list; reservoir
+  max_hours statistics (hydro_capacities.csv) cover ~50 African countries
+  only, others fall back to a 6 h default — check before trusting
+  energy-limited drought results.
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

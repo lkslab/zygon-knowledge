@@ -1,0 +1,132 @@
+paper: "2017_Hoersch_Linear-Optimal-Power-Flow-Cycle-Flows_EPSR.pdf"
+tier: 1
+model_used: >
+  PyPSA library only — the paper implements and benchmarks LOPF formulations
+  inside PyPSA (the toolbox, not a specific country model) using MATPOWER test
+  cases (case118 through case2869pegase) and the SciGRID Germany network (585
+  buses, 948 branches), 24-period multi-period problems.
+scope: >
+  Introduces and benchmarks cycle-flow LOPF formulations (Kirchhoff and Pure
+  Cycle) against angle- and PTDF-based formulations in PyPSA, showing that the
+  Kirchhoff formulation solves up to 20x faster for dispatch and up to 213x
+  faster for joint generation-and-transmission capacity expansion.
+methods:
+  - slug: linearised-optimal-power-flow
+    role: defines
+    evidence: >
+      "In this article we provide a review of existing methods and describe a new
+      formulation that expresses the loading constraints directly in terms of the
+      flows themselves, using a decomposition of the network graph into a spanning
+      tree and closed cycles." (Abstract). Seven distinct LOPF formulations are
+      formally defined in Sections 2–3: Pure Angle, Angle+Flow, Pure PTDF,
+      PTDF+Flow, Kirchhoff, Pure Cycle, Cycle+Flow. Table 2 tabulates variables,
+      equality constraints, inequality constraints and matrix sparsity for each.
+    procedure_notes: >
+      All formulations are implemented in PyPSA. Linear programs are written to
+      CPLEX .lp format and solved with Gurobi (primal simplex, dual simplex,
+      interior point run in parallel; fastest taken). Benchmark uses 7 network
+      topologies, 3 generation modes (plain, renewables, renewables+storage), 24
+      time periods, 100 random instances per case/mode. The Kirchhoff formulation
+      imposes KCL and KVL directly on flow variables fℓ with no auxiliary
+      variables — resulting in fewer, sparser constraints than the angle
+      formulation. The Cycle formulation decomposes flows into a spanning-tree
+      component gℓ and cycle flows hc (Eq. 10–12), giving fewer variables than
+      Kirchhoff but semi-sparse constraints.
+    variant: cycle-and-kirchhoff-formulations
+    parameters:
+      networks: "case118, case300, case1354pegase, case1951rte, case2383wp, case2869pegase, scigrid (585 buses)"
+      periods: "24"
+      instances_per_case: "100 (10 for PTDF variants)"
+      solver: "Gurobi"
+      speedup_kirchhoff_dispatch: "avg 1.4x–2.8x; up to 20x"
+      speedup_kirchhoff_capacity_expansion: "avg 12x; up to 213x"
+
+  - slug: transmission-expansion-cooptimisation
+    role: routine-use
+    evidence: >
+      Section 4.2 ("Generation investment optimization") and Section 5.4 extend
+      the benchmark to joint generation and transmission capacity expansion:
+      "the capacities of all generators and storage units were included in the
+      optimization." Section 6 notes that in [44] "the joint optimisation of
+      generation, storage and transmission capacities for networks with 362 nodes
+      over 2920 representative time periods" was solved with the Kirchhoff
+      formulation.
+    procedure_notes: >
+      Capital costs Ci,s are added to the objective (Eq. 28); Di,s become
+      optimization variables. Solved for mode 'rs' (renewables + storage) over
+      24 periods. A time-out of 10^4 seconds was enforced; Pure Angle exceeded
+      this for larger cases in 55% of instances. Results in Table 4.
+    variant: null
+    parameters:
+      periods: "24"
+      timeout_seconds: "10000"
+
+  - slug: n-1-security-and-contingency
+    role: routine-use
+    evidence: >
+      Section 4.3 ("Security-Constrained LOPF") describes how SCLOPF is
+      implemented: "It is required that no lines become overloaded if there is an
+      outage of any branches in a critical subset." Two implementation paths are
+      described — adding copies of network constraints, or using Line Outage
+      Distribution Factors (LODFs): "| fℓ^(k) | = | fℓ + LODFℓ,k fk | ≤ Fℓ ∀ℓ≠k"
+      (Eq. 28). For investment problems the paper states it is common to
+      approximate contingency constraints by "limiting loading to 70% of thermal
+      limits" (Sec. 4.2).
+    procedure_notes: >
+      SCLOPF is described as an extension but not benchmarked in the main
+      results; the paper notes that LODF density may blunt sparse-formulation
+      benefits and defers trade-off analysis to "a forthcoming paper." LODFs can
+      also be computed efficiently using cycle flows (citing [25]).
+    variant: lodf-formalism
+    parameters:
+      contingency_derating_proxy: "70% of thermal limits (for investment problems)"
+
+  - slug: storage-sizing-and-duration
+    role: routine-use
+    evidence: >
+      Multi-period storage dispatch is a core benchmark scenario. Section 4.1
+      defines storage state-of-charge constraints (Eq. 27): "soci,s,t = soci,s,t−1
+      + η1 di,s,t,charge − η2^{-1} di,s,t,discharge; 0 ≤ soci,s,t ≤ SOCi,s".
+      Mode 'rs' adds "storage units with a power capacity of a third of the nodal
+      mean load … energy capacity of 6 hours at full power capacity" at the 15
+      highest-load buses (Sec. 5.1).
+    procedure_notes: >
+      Storage is placed at 15 buses (more made computation intractable). Fixed
+      energy-to-power ratio of 6 h used throughout. Storage introduces
+      inter-temporal linkage between snapshots; this is one reason sparser
+      formulations (Kirchhoff) show greater speed-up in mode 'rs' than mode 'p'.
+    variant: fixed-duration
+    parameters:
+      power_capacity: "1/3 of nodal mean load"
+      energy_capacity: "6 h at full power"
+      n_storage_buses: "15"
+
+  - slug: unit-commitment-and-ramping
+    role: routine-use
+    evidence: >
+      The introduction mentions unit commitment as a canonical application of
+      multi-period LOPF: "clearing markets with nodal pricing (particularly with
+      multi-period storage constraints and/or generator unit commitment)" (Sec. 1).
+      The benchmark mode 'p' uses only conventional generators without
+      inter-temporal linkage, which is the dispatch-only analogue.
+    procedure_notes: >
+      Unit commitment is listed as a motivation for the LOPF formulation study
+      but is not explicitly implemented in the benchmark runs. Mode 'p' (plain)
+      has no inter-temporal constraints; unit commitment constraints are not
+      added. Mentioned as context, not a method the paper exercises.
+    variant: null
+    parameters: {}
+
+  - slug: zonal-nodal-and-redispatch
+    role: routine-use
+    evidence: >
+      Nodal pricing and redispatch are named as the two primary use cases of
+      LOPF in the introduction: "clearing markets with nodal pricing [4]" and
+      "determining redispatch measures in markets with zonal pricing [5]" (Sec. 1).
+    procedure_notes: >
+      Named as motivation only; the paper's benchmark uses a nodal formulation
+      throughout. No zonal vs nodal comparison is performed.
+    variant: null
+    parameters: {}
+
+unmatched_methods: []

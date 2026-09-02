@@ -1,0 +1,62 @@
+id: demand-electrification-pathways
+title: Demand electrification pathways
+rank: 81
+question: >
+  How fast do transport, heating, cooking, and industry switch from fuels to
+  electricity, what does each trajectory do to load level and shape, and what
+  supply mix does the electrified demand pull in? The demand-side twin of
+  net-zero pathways, acute wherever load growth is the planning driver.
+when_to_use:
+  - "electrification scenario for transport / heat / cooking"
+  - "what if EV or heat-pump uptake doubles by 2035"
+  - "load growth from fuel switching"
+  - "electricity demand under deep electrification"
+  - "staged electrification across planning horizons"
+recipes:
+  generation_conversion: [battery-electric-cars, air-source-heat-pumps,
+                          electric-cooking, electric-process-heat,
+                          industry-process-heat-endogenous, electric-boilers]
+  demand: [land-transport-demand, residential-space-heating-demand,
+           cooking-energy-demand, demand-scenarios-and-growth]
+functionality:
+  - id: sector-master-switches
+    role: "core — fuel-vs-electricity competition per sector lives in the sector chain (T/H/I/A layers)"
+  - id: exogenous-transport-shares
+    role: "the central pathway lever — EV/FCEV/ICE shares imposed per planning horizon, interpolated between years"
+  - id: industry-t-endogenous
+    role: "the exception to exogenous shares: industrial process-heat bands CHOOSE electric vs H2 vs biomass endogenously (off by default)"
+  - id: building-retrofit-endogenous
+    role: "heat demand itself becomes a decision variable when retro_endogen is on; default is exogenous reduction factors"
+  - id: bev-dsm-v2g
+    role: "electrified transport arrives with its own flexibility (DSM/V2G from mobility profiles)"
+  - id: residential-heat-dsm
+    role: "electrified heat can shift within comfort bands — softens the peak impact of heat-pump uptake"
+  - id: myopic-foresight
+    role: "stage switch shares across planning_horizons with capacity carry-forward"
+  - id: scenario-matrix
+    role: "fast-vs-slow electrification variants expand into parallel runs via scenario yaml"
+  - id: temporal-resolution-nh
+    role: "electrified heat/EV peaks are profile-shaped; coarse averaging hides them"
+  - id: demand-elasticity
+    role: "no price- or cost-driven adoption — uptake cannot respond to the model"
+gap_assessment: >
+  The machinery is exogenous shares, wired more deeply than anywhere else in
+  the PyPSA family: land transport splits into EV/FCEV/ICE fractions per
+  horizon, heating electrifies through endogenous heat-pump/boiler competition
+  in four building archetypes, and — unlike pypsa-earth — two demand-side
+  choices are genuinely endogenous when switched on: industrial process heat
+  per temperature band (industry_t) and building retrofit depth compete on
+  cost inside the optimization, so part of "how fast does industry/buildings
+  electrify" can be an output, not an input. Myopic pathways stage the shares
+  over horizons and the scenario matrix sweeps fast-vs-slow variants cleanly.
+  What remains outside the model is adoption itself for transport and
+  appliances: no consumer cost comparison, no S-curves, no price response
+  (demand-elasticity absent), so the headline electrification rates are
+  inputs you must defend externally, and the feedback of cheap clean power
+  accelerating uptake never closes. Data side is strong for Europe (JRC-IDEES
+  sector splits, real mobility profiles) — none of earth's proxy-profile
+  caveats apply.
+coverage: partial
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

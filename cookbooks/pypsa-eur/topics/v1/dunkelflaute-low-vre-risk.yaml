@@ -1,0 +1,59 @@
+id: dunkelflaute-low-vre-risk
+title: "Dunkelflaute / low-VRE risk"
+rank: 14
+question: >
+  What happens in a multi-day cold, dark, still spell — how deep and long are
+  the worst wind+solar droughts, what firm capacity or storage bridges them,
+  and at what cost of unserved energy? The defining adequacy fear of
+  high-VRE systems, coincident with heating peaks in winter climates.
+when_to_use:
+  - "worst-case wind drought / dunkelflaute stress test"
+  - "how long must storage or backup bridge a low-VRE spell"
+  - "cold-snap plus wind-lull coincidence with heat demand"
+  - "unserved energy risk at high renewable shares"
+  - "which weather year is the system-stress year"
+recipes:
+  generation_conversion: [gas-power-plants, long-duration-storage,
+                          hydrogen-storage-salt-caverns, stationary-fuel-cells,
+                          methanol-to-power]
+  demand: [electricity-load, residential-space-heating-demand]
+functionality:
+  - id: weather-year-selection
+    role: "core — pick known dunkelflaute years (cutout + demand weather year consistently)"
+  - id: scenario-matrix
+    role: "weather-year sweep as parallel runs; compare firm capacity and shedding across years"
+  - id: operations-only-solve
+    role: "re-dispatch a fixed capacity mix against a different stress year — the key robustness check, wired as a rule"
+  - id: rolling-horizon-dispatch
+    role: "sequential-window dispatch removes perfect annual foresight, a more honest storage-depletion test"
+  - id: load-shedding-voll
+    role: "VOLL slack quantifies unserved energy in the stress year instead of infeasibility"
+  - id: time-segmentation-tsam
+    role: "nSEG segmentation preserves the extreme spell when coarsening; uniform nH can smear it"
+  - id: safe-reserve-margin
+    role: "deterministic firm-capacity floor — but electricity.SAFE_reservemargin must be added to config by hand at this ref"
+  - id: multi-weather-year
+    role: "cutout concatenation exists, but sizing against many winters in one standard solve is not the workflow"
+  - id: probabilistic-adequacy
+    role: "no LOLE/EUE or outage draws; adequacy stays deterministic"
+  - id: sector-master-switches
+    role: "heat electrification makes the cold snap a demand spike too — only visible with heating on"
+gap_assessment: >
+  Workable and better-tooled than pypsa-earth: with a chosen stress weather
+  year, hourly chronology, VOLL load shedding, and TSAM segmentation that
+  keeps extremes, the model answers "does this system survive the
+  2012-style dunkelflaute and what does bridging cost" — and the two-step
+  robustness check that earth requires manual assembly for is wired here:
+  size capacities on one year, then re-dispatch the fixed system against
+  other years with the operations-only rule (optionally rolling-horizon, to
+  strip perfect storage foresight). The heating layer adds the crucial
+  cold-snap demand coincidence with well-validated European heat profiles.
+  Remaining structural gaps: each optimization still sees one weather year
+  (multi-year sizing in a single solve is not the standard workflow), there
+  are no probabilistic adequacy metrics (LOLE/EUE) and no forced outages —
+  results are weather stress tests, not reliability statistics — and the
+  SAFE reserve-margin backstop needs a user-added config key.
+coverage: partial
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

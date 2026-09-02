@@ -1,0 +1,53 @@
+id: resource-adequacy
+title: Resource adequacy
+rank: 5
+question: >
+  Will there be enough firm capacity to keep the lights on at every hour —
+  what is the loss-of-load risk during low-wind, low-sun, high-demand
+  stress periods, and how much reserve margin does a high-VRE system need?
+when_to_use:
+  - "do we have enough capacity to meet peak"
+  - "loss of load / unserved energy risk"
+  - "reserve margin for a high-renewables system"
+  - "dunkelflaute stress test"
+  - "capacity contribution of wind/solar/storage"
+recipes:
+  generation_conversion: [gas-power-plants, grid-scale-batteries, pumped-hydro-storage,
+                          conventional-hydropower]
+  demand: [electricity-load, demand-temporal-profiles, space-cooling-demand]
+functionality:
+  - id: safe-reserve-margin
+    role: "core — firm capacity >= (1+margin) x peak, deterministic"
+  - id: load-shedding-voll
+    role: "unserved energy priced at VOLL; where and when shedding bites"
+  - id: probabilistic-adequacy
+    role: "LOLE/EUE with forced-outage draws — the industry metric — absent"
+  - id: multi-weather-year
+    role: "inter-annual variability in one solve — absent, sweep instead"
+  - id: weather-year-selection
+    role: "re-run across weather years to sample stress periods"
+  - id: operational-reserves
+    role: "hourly reserve requirement layered on top of energy adequacy"
+  - id: unit-commitment
+    role: "no outage/ramp realism — committable attrs exist but unpopulated"
+  - id: scenario-matrix
+    role: "weather-year and demand sweeps as parallel runs"
+gap_assessment: >
+  Deterministic adequacy only. The workflow gives you the engineering
+  triangle — SAFE reserve margin on peak, load shedding at VOLL to expose
+  unserved energy by bus and hour, and operational reserves — and running
+  the same system across several weather years (one solve per year) is a
+  respectable stress test that catches dunkelflaute-type periods within the
+  chosen years. What a TSO or regulator means by adequacy is probabilistic:
+  LOLE/EUE against forced-outage distributions over many weather years in
+  one framework — that machinery is absent, there is no outage sampling,
+  and capacity-credit numbers can only be inferred by hand from marginal
+  experiments. Chronology caveats matter too: temporal averaging (3h/24h)
+  smooths exactly the peaks adequacy cares about, so adequacy runs should
+  stay near-hourly or use segmentation. Demand peaks are synthetic
+  (GEGIS-style), so check the data_quality electricity-demand grade — an
+  adequacy answer built on a mis-shaped peak is worthless.
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

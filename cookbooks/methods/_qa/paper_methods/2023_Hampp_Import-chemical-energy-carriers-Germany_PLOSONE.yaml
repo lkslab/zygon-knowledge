@@ -1,0 +1,171 @@
+paper: "2023_Hampp_Import-chemical-energy-carriers-Germany_PLOSONE.pdf"
+tier: 1
+model_used: >
+  Bespoke PyPSA model — nine islanded Energy Supply Chain (ESC) models, one per
+  carrier/route combination, each covering electricity generation, conversion,
+  storage and transport at hourly resolution for 2030, 2040 and 2050. Uses PyPSA
+  library only (not PyPSA-Eur or PyPSA-Earth); driven by a Snakemake workflow.
+scope: >
+  Techno-economic comparison of nine chemical energy supply chains (hydrogen,
+  methane, ammonia, methanol, Fischer-Tropsch fuels, LOHC) imported to Germany
+  from seven exporting countries, comparing levelised cost of energy and levelised
+  cost of hydrogen across carriers, exporters and financing assumptions (5 % vs
+  10 % p.a. WACC, 2030–2050).
+methods:
+  - slug: import-and-trade-representation
+    role: defines
+    evidence: >
+      "We model and investigate ESCs for chemical energy carriers starting at the
+      energy source in an exporting country until the energy carriers are available
+      in the importing country" (Sec. "Design of Energy Supply Chains"). Nine
+      end-to-end supply chains — HVDC, H2 pipeline, CH4 pipeline, H2/CH4/NH3/
+      MeOH/LOHC/FT ship — are each implemented as a separate PyPSA model,
+      constituting the central methodological contribution of the paper.
+    procedure_notes: >
+      Each ESC covers electricity generation (PV, onshore/offshore wind from GIS
+      potentials), electrolysis, feedstock sourcing (DAC, seawater desalination,
+      ASU), synthesis, conditioning (compression or liquefaction), transport
+      (pipeline or ship schedule), and optional cracking at the importer. Domestic
+      electricity demand of the exporter is carved out of the cheapest supply-curve
+      classes before the optimisation. The model is greenfield and islanded:
+      no interaction with external grids or heat systems. Import volume fixed at
+      120 TWh/yr based on German Hydrogen Strategy 2030 estimate. Nine ESCs x
+      8 exporters (including DE domestic) = 72 scenarios per year, 3 years.
+    variant: multi-carrier-supply-chain
+    parameters:
+      import_volume_TWh: 120
+      years: [2030, 2040, 2050]
+      exporters: [AR, AU, DE, DK, EG, ES, MA, SA]
+      carriers: [H2_pipeline, H2_ship, LOHC_ship, CH4_pipeline, CH4_ship, NH3_ship, MeOH_ship, FTF_ship, HVDC_to_H2]
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "We use a greenfield approach for our model and disregard existing
+      infrastructure" (Sec. "Investment optimisation problem"). Technology costs
+      and efficiencies are fixed exogenously per target year (2030, 2040, 2050);
+      each year is solved independently as an overnight scenario.
+    procedure_notes: >
+      Three separate overnight optimisations — 2030, 2040, 2050 — using
+      exogenously projected CAPEX from Danish Energy Agency Technology Data
+      (Table 3). No capacity vintaging or retirement; results are compared
+      across years to show technology-cost-driven LCoE trends. Electrolysis
+      efficiency improves from 68 % (2030) to 75 % (2050) exogenously.
+    variant: overnight-greenfield
+    parameters:
+      horizon_years: [2030, 2040, 2050]
+
+  - slug: discounting-and-cost-of-capital
+    role: defines
+    evidence: >
+      "The choice of the costs of capital influences all cost calculations and is
+      therefore crucial for meaningful results" (Sec. "Choice of WACC"). The paper
+      makes WACC the primary sensitivity, runs two full scenarios at 5 % and 10 %
+      p.a. WACC, and analyses its dominance in one-at-a-time sensitivity
+      (Fig. 8: WACC shows −14 % / +15 % effect vs −13 % / +12 % for RES CAPEX).
+    procedure_notes: >
+      Technology- and country-independent WACC used uniformly for all ESC
+      components. Annuity factor calculated via EAC method (Eq. 1–2). Baseline
+      scenario: 10 % p.a. WACC. Lower-WACC scenario: 5 % p.a. WACC
+      (reduces LCoE/LCoH by ~35 %). Motivated by IRENA's inhomogeneous
+      10 %/7.5 % split for non-OECD/OECD countries.
+    variant: uniform-technology-country-independent
+    parameters:
+      WACC_baseline_pct: 10
+      WACC_low_scenario_pct: 5
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "For each country we model RES potentials and time-series based on results
+      from a GIS-analysis and historical weather data using the GlobalEnergyGIS
+      (GEGIS) model" (Sec. "Electricity supply, demand and supply curves"). Eligible
+      areas determined on a 1 km2 grid by exclusion of protected areas, unsuitable
+      land types, high population density, and areas outside a 400 km radius of
+      GDP density 100 000 USD/km2.
+    procedure_notes: >
+      100 quality classes (0–100 % CF) per RES technology per country. Deployable
+      potential: 1.45 MW/km2 (PV), 3 MW/km2 (onshore/offshore wind). ERA5 2013
+      as representative weather year; Global Wind Atlas used for wind. Domestic
+      electricity demand projected for 2050 via GEGIS machine-learning demand
+      model (SSP2-34) and deducted from the cheapest supply-curve segment before
+      the optimisation. Up to 300 independent hourly RES time-series per exporter.
+    variant: gegis-supply-curves
+    parameters:
+      grid_resolution_km2: 1
+      CF_quality_classes: 100
+      PV_density_MW_km2: 1.45
+      wind_density_MW_km2: 3
+      weather_year: 2013
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: routine-use
+    evidence: >
+      "The sensitivities to exogenous parameter changes are visualised in Fig 8.
+      … For both ESCs one additional major cost contributor based on the cost
+      composition analysis was added" (Sec. "Sensitivity analysis"). One-at-a-time
+      ±20 % variation of WACC, RES CAPEX, electrolysis CAPEX, pipeline/MeOH
+      synthesis CAPEX, import volume, domestic demand, battery CAPEX.
+    procedure_notes: >
+      Two selected scenarios analysed: H2 (g) pipeline ES→DE 2030, and MeOH
+      ship ES→DE 2030. Each parameter varied by ±20 %; resulting LCoE reported
+      as percentage change. Full lower-WACC scenario (5 % p.a.) also run as a
+      scenario variant rather than local sensitivity. No Monte Carlo or Latin
+      hypercube; analysis is purely one-at-a-time.
+    variant: one-at-a-time
+    parameters:
+      variation_pct: 20
+      parameters_varied: [WACC, RES_CAPEX, electrolysis_CAPEX, pipeline_or_MeOH_CAPEX, import_volume, domestic_demand, battery_CAPEX]
+
+  - slug: storage-sizing-and-duration
+    role: routine-use
+    evidence: >
+      "Storage capacities are endogenously determined by the model and represent
+      optimal capacities under the given constraints minimising the objective
+      function" (Sec. "Battery and chemical storage"). Multiple storage media
+      sized simultaneously: battery, compressed H2, compressed CO2 (l), liquid
+      H2, liquid CH4, NH3 (l), methanol, FT fuel, LOHC chemical.
+    procedure_notes: >
+      Battery and chemical storage capacities are co-optimised with generation and
+      conversion. Storage types differ by form (gas/liquid) and temperature
+      requirement. Must-run constraints for methanation (30 %) and Haber-Bosch
+      (30 %) drive feedstock buffer storage requirements. Cavern storage excluded
+      to keep ESCs location-independent. Paper notes that cost-reduction levers
+      include cavern storage for H2 and increased synthesis flexibility.
+    variant: co-optimised-multi-carrier-storage
+    parameters:
+      methanation_must_run_pct: 30
+      haber_bosch_must_run_pct: 30
+      methanol_FT_min_availability_pct: 94.25
+
+  - slug: unit-commitment-and-ramping
+    role: routine-use
+    evidence: >
+      "Most components may be freely dispatched without restrictions on ramping
+      rates and minimum must-run capacities … Must-run capacities are only enforced
+      for the synthesis of methane, ammonia, methanol and FT fuel" (Sec.
+      "Investment optimisation problem"). Must-run constraints implemented as
+      minimum availability fractions on synthesis plant capacity.
+    procedure_notes: >
+      Must-run fraction applied as aggregated availability factor: methanation and
+      Haber-Bosch at 30 %, methanol and FT synthesis at 94.25 % (max 3 weeks
+      downtime/year). No binary on/off or start-up costs; treated as a continuous
+      minimum load constraint. Ramping excluded for all other components.
+    variant: minimum-load-continuous-no-binary
+    parameters:
+      methanation_must_run_pct: 30
+      haber_bosch_must_run_pct: 30
+      methanol_FT_min_availability_pct: 94.25
+
+unmatched_methods:
+  - name: "energy-supply-chain-levelised-cost-decomposition"
+    evidence: >
+      The paper's core analytical output is a levelised cost decomposition by
+      component (RES, electrolysis, synthesis, storage, transport, DAC) across
+      72 ESC/exporter combinations (Fig. 6). This is not an optimisation method
+      but a post-processing step: annualised component costs divided by annual
+      energy delivered. No existing slug captures supply-chain LCoE decomposition
+      as a distinct methodology — it is a reporting convention, not a model choice,
+      and does not fit carrier-network-routing-h2-co2 (no endogenous routing),
+      shadow-prices-and-marginal-values (no duals read), or import-and-trade-
+      representation (already logged above for the ESC construction).

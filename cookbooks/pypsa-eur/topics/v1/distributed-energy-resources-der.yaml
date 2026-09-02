@@ -1,0 +1,59 @@
+id: distributed-energy-resources-der
+title: "Distributed energy resources (DER)"
+rank: 74
+question: >
+  How much rooftop PV, home storage, and other customer-sited resources will
+  the system take up, what do they displace at transmission level, and what
+  does the distribution grid cost? The system-side DER question behind
+  hosting-capacity, VPP, and rooftop-saturation debates.
+when_to_use:
+  - "distributed energy resources in the system mix"
+  - "rooftop PV + home battery uptake"
+  - "DER vs utility-scale build trade-off"
+  - "distribution grid reinforcement cost of DER"
+  - "low-voltage layer in a sector-coupled run"
+recipes:
+  generation_conversion: [behind-the-meter-der, rooftop-distributed-solar,
+                          electricity-distribution-grid, smart-meters,
+                          virtual-power-plants]
+  demand: [residential-electricity-demand, electricity-distribution-losses,
+           demand-spatial-disaggregation, electricity-load]
+functionality:
+  - id: distribution-grid-lv
+    role: "core — LV bus per node (default ON) hosting rooftop PV, home batteries, EVs, heat; cost proxy only"
+  - id: sector-master-switches
+    role: "the LV layer and all BTM assets exist only in the sector chain, none in power-only runs"
+  - id: bev-dsm-v2g
+    role: "EV batteries on the LV bus are the flexible DER in the set"
+  - id: residential-heat-dsm
+    role: "building thermal mass as shiftable BTM flexibility (off by default) — a DER earth lacks"
+  - id: carrier-attribute-scaling
+    role: "the WORKING way to scale distribution-grid cost or cap home-battery/rooftop adoption (adjustments.sector)"
+  - id: distribution-grid-cost-factor
+    role: "dead-key — the dist knob/wildcard is read by nothing; do not use it"
+  - id: distribution-power-flow
+    role: "no feeders, voltage, or hosting-capacity limits — one LV bus per region"
+  - id: demand-elasticity
+    role: "no adoption behaviour or tariff response — uptake is planner-optimal"
+gap_assessment: >
+  Partial, and stronger than pypsa-earth: the LV layer ships ON by default
+  in sector runs — one low-voltage bus per cluster with a costed, lossy
+  reinforcement link, rooftop PV bounded by a per-node potentials rule, an
+  unconditional home-battery store, EV and heat-pump loads re-pointed onto
+  it, plus optional micro-CHP and residential heat DSM — so "DER vs
+  utility-scale including the distribution-grid cost wedge" is answerable in
+  one LP, and existing rooftop vintages even enter brownfield pathways
+  (solar_rooftop_ratio). Known warts at this ref: the rooftop density
+  assumption (0.1 kW/m2 x 20 m2/person) is hardcoded with no config key, and
+  sector.electricity_distribution_grid_cost_factor plus the dist wildcard
+  are dead — scale via adjustments.sector instead (the shipped config
+  example). What is missing is everything sub-regional and behavioural: no
+  feeder topology, voltage or hosting-capacity constraints, no tariffs or
+  net metering, so DER deployment is cost-optimal social-planner uptake, not
+  adoption; and no BTM assets at all in the electricity-only workflow.
+  Off-grid DER (solar home systems) is out of geographic scope entirely.
+  Good for system-level DER shares; wrong tool for hosting capacity.
+coverage: partial
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

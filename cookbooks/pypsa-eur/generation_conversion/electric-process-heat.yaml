@@ -1,0 +1,148 @@
+id: electric-process-heat
+title: Electric industrial process heat
+summary: >
+  Direct electrification of industrial process heat — furnaces, kilns, dryers
+  and steam — replacing gas, coal, oil or biomass firing with electricity.
+when_to_use:
+  - "electrify industry"
+  - "electric process heat"
+  - "industrial electrification"
+  - "switch industry from gas to electricity"
+  - "electric furnaces and kilns"
+  - "fuel switching in industry"
+  - "industry electricity demand growth"
+  - "industry_t temperature bands"
+  - "pypsa-eur terms: industry electricity, heat100-200 industry, sector_ratios_fraction_future"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Two distinct mechanisms. (1) Exogenous, on by default: deep
+        electrification is BAKED INTO the future sector ratios of
+        build_industry_sector_ratios — steel furnaces/refining/rolling and
+        product finishing "assume fully electrified", chemicals furnaces and
+        process cooling fully electrified, ceramics "Everything is
+        electrified" (microwave drying/sintering, electric kilns), glass
+        electric melting tanks, aluminium fully electric secondary route, etc.
+        Each country's intensity is blended from today's JRC-IDEES values
+        towards these electrified ratios by
+        industry.sector_ratios_fraction_future (default 0 in 2020 -> 1.0 in
+        2050), so industry electricity demand grows along the pathway and
+        lands as the flat "industry electricity" Load per node in
+        add_industry (today's industrial electricity is first subtracted from
+        the base load via the "current electricity" column). (2) Endogenous,
+        off by default: sector.industry_t.endogen: true replaces the fixed
+        fuel split of the endogenised sectors with temperature-band heat buses
+        per node (heat100-200, heat200-500, heat>500 industry) where supply
+        technologies compete: at 100-200 °C electricity can win directly
+        (industrial heat pump, electric boiler steam); at 200-500 and >500 °C
+        the menus hold biomass/methane/hydrogen and methane/hydrogen — so
+        high-temperature electrification is only INDIRECT via
+        electrolytic hydrogen.
+      mechanism: >
+        Exogenous chain: rule build_industry_sector_ratios ->
+        build_industry_sector_ratios_intermediate (fraction_future blend) ->
+        build_industrial_energy_demand_per_node -> add_industry loads
+        ("industry electricity", "gas for industry", "solid biomass for
+        industry", "low-temperature heat for industry"). Endogenous chain:
+        rule build_industry_sector_ratios_endogenous splits today's fuel use
+        of the sectors in sector.industry_t.endogenise_sectors into bands
+        (Fleiter et al. 2025 shares); add_industry selects the "endogenous"
+        block and calls add_t_industry100_200 / add_t_industry200_500 /
+        add_t_industry500; heat<100 folds into the low-temperature heat load
+        on district-heating buses.
+      not_covered: >
+        No direct-electric technology above 200 °C in the endogenous menus
+        (no electric kiln, plasma, induction or resistance furnace link) —
+        adding one is a code edit. The two mechanisms interact subtly: with
+        endogen: true the endogenised sectors are rebuilt from TODAY'S
+        country intensities (build_industry_sector_ratios_endogenous divides
+        today's demand by today's production) — the
+        sector_ratios_fraction_future electrification blend no longer applies
+        to them; efficiency progress must instead come from the band
+        technologies. Steel is excluded from the bands (handled by the
+        exogenous EAF/DRI route levers), as are "HVC (mechanical recycling)",
+        "HVC (chemical recycling)" and "DRI + Electric arc"
+        (sectors_copied_from_exogenous). No endogenous fuel switching exists
+        in exogenous mode — the model cannot trade a gas-for-industry MWh
+        against an industry-electricity MWh. All industry loads are flat
+        (annual/8760), with band supply forced near-baseload by
+        sector.industry_t.must_run.
+      provenance: "scripts/build_industry_sector_ratios.py:chemicals_industry; scripts/build_industry_sector_ratios_intermediate.py:sector_ratios_fraction_future; scripts/prepare_sector_network.py:industry electricity; scripts/prepare_sector_network.py:add_t_industry200_500; scripts/build_industry_sector_ratios_endogenous.py:process_temperature_band_mapper; scripts/build_industrial_energy_demand_per_node.py:sectors_copied_from_exogenous"
+    levers:
+      - key: industry.sector_ratios_fraction_future
+        effect: "Pace of the exogenous electrification pathway: 0 keeps today's country fuel mixes, 1 applies the fully electrified best-in-class ratios."
+        default: "{2020: 0.0, 2025: 0.05, 2030: 0.2, 2035: 0.45, 2040: 0.7, 2045: 0.85, 2050: 1.0}"
+        provenance: "config/config.default.yaml:sector_ratios_fraction_future; scripts/build_industry_sector_ratios_intermediate.py:sector_ratios_fraction_future"
+      - key: sector.industry_t.endogen
+        effect: "true switches the endogenised sectors from fixed fuel loads to temperature-band buses with competing supply technologies."
+        default: "false"
+        provenance: "config/config.default.yaml:industry_t; scripts/prepare_sector_network.py:add_t_industry100_200"
+      - key: sector.industry_t.endogenise_sectors
+        effect: "Which sectors join the bands; a sector set false keeps its exogenous flat fuel treatment."
+        default: "all listed sectors true (Al, alumina, other non-ferrous, HVC, cement, ceramics, glass, pulp, paper, printing, food, pharma, transport eq., machinery, wood, textiles, other)"
+        provenance: "config/config.default.yaml:endogenise_sectors; rules/build_sector.smk:endogenise_sectors"
+      - key: sector.industry_t.heat100-200
+        effect: "Tech menu of the 100-200 °C band (biomass/methane/heat_pumps/electric_boiler flags) — the band where direct electrification competes."
+        default: "{biomass: true, methane: true, heat_pumps: true, electric_boiler: true}"
+        provenance: "config/config.default.yaml:industry_t; scripts/prepare_sector_network.py:electric_boiler"
+      - key: sector.industry_t.must_run
+        effect: "p_min_pu floor on band supply links; shapes how flexibly electric heat can run."
+        default: "0.8"
+        provenance: "config/config.default.yaml:must_run; scripts/prepare_sector_network.py:must_run"
+      - key: sector.industry
+        effect: "Master switch for all industry demand."
+        default: "true"
+        provenance: "config/config.default.yaml:industry; scripts/prepare_sector_network.py:add_industry"
+    boundary:
+      - variant: "faster/slower exogenous industrial electrification"
+        rung: L1
+        note: "reshape industry.sector_ratios_fraction_future (per horizon)"
+      - variant: "endogenous electric vs fuel competition for process heat up to 200 °C"
+        rung: L0
+        note: "sector.industry_t.endogen: true (heat pumps + electric boiler in the default menu)"
+      - variant: "force-electrify the 100-200 °C band"
+        rung: L1
+        note: "endogen: true and set heat100-200 biomass/methane false"
+      - variant: "direct electric furnace/kiln for 200-500 °C or >500 °C"
+        rung: L2
+        note: "no electric branch exists in add_t_industry200_500 / add_t_industry500 — clone the 100-200 electric_boiler block with an appropriate cost row (L3; none exists for high-T electric heat)"
+      - variant: "electrify only selected industries"
+        rung: L1
+        note: "flip individual sector.industry_t.endogenise_sectors entries"
+      - variant: "change a specific sector's electric intensity in the exogenous path"
+        rung: L2
+        note: "edit the sector function in build_industry_sector_ratios.py (e.g. chemicals_industry, nonmetalic_mineral_products) — no config hook"
+      - variant: "endogenous fuel switching WITHOUT the band machinery (exogenous mode)"
+        rung: L5
+        note: "the flat carrier loads are structurally fixed; only the band machinery provides substitution"
+      - variant: "time-flexible electrified process heat (load shifting)"
+        rung: L2
+        note: "lower must_run frees band-link dispatch; true demand-side shifting of the band Load itself is bespoke (L5)"
+    where:
+      - change: "future electrified intensities per sector"
+        anchor: "scripts/build_industry_sector_ratios.py sector functions (iron_and_steel, chemicals_industry, nonmetalic_mineral_products, non_ferrous_metals, pulp_paper_printing)"
+        provenance: "scripts/build_industry_sector_ratios.py:nonmetalic_mineral_products; scripts/build_industry_sector_ratios.py:non_ferrous_metals"
+      - change: "today-to-future blending"
+        anchor: "scripts/build_industry_sector_ratios_intermediate.py::build_industry_sector_ratios_intermediate"
+        provenance: "scripts/build_industry_sector_ratios_intermediate.py:build_industry_sector_ratios_intermediate"
+      - change: "temperature-band demand construction"
+        anchor: "scripts/build_industry_sector_ratios_endogenous.py::build_industry_sector_ratios_endogenous (band_mapper, backup_temperature_band_shares)"
+        provenance: "scripts/build_industry_sector_ratios_endogenous.py:backup_temperature_band_shares"
+      - change: "band supply technology menus"
+        anchor: "scripts/prepare_sector_network.py::add_t_industry100_200 / ::add_t_industry200_500 / ::add_t_industry500"
+        provenance: "scripts/prepare_sector_network.py:add_t_industry500"
+      - change: "industry electricity load attachment and base-load rescaling"
+        anchor: "scripts/prepare_sector_network.py::add_industry ('industry electricity', 'current electricity')"
+        provenance: "scripts/prepare_sector_network.py:current electricity"
+    data_dependencies:
+      - input: "JRC-IDEES industry sheets (fec/ued/emi per sector)"
+        required_for: "both today's mixes and the electrified future ratios"
+        availability: "retrieved by the workflow (rule retrieve_jrc_idees)"
+      - input: "data/ente202300981-sup-0001-suppdata-s1.xlsx (Fleiter et al. 2025 temperature-band shares)"
+        required_for: "endogenous band split"
+        availability: "exists by default (checked into data/)"
+      - input: "cost rows for band technologies (electric boiler steam, industrial heat pump high temperature, gas boiler steam, direct firing gas, direct firing solid fuels)"
+        required_for: "endogenous supply competition"
+        availability: "exists by default via retrieve_cost_data"

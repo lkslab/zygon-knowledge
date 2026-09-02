@@ -1,0 +1,151 @@
+id: onshore-wind
+title: Onshore wind
+summary: Land-based wind turbine generation with weather-driven hourly output and land-availability-limited expansion potential.
+
+when_to_use:
+  - add wind power on land
+  - onshore wind farms / wind parks
+  - wind turbines
+  - increase / limit onshore wind potential
+  - change the wind turbine model
+  - keep wind away from cities or forests
+  - wind capacity factors look wrong
+  - how much wind can this country build on land
+  - "known in pypsa-eur as: onwind, onshore wind"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        Onshore wind is a default renewable carrier ('onwind' in electricity.renewable_carriers)
+        and default extendable. Hourly per-bus capacity-factor profiles and installable potentials
+        are computed by rule build_renewable_profiles from the ERA5 cutout with atlite (wind method,
+        turbine power curve from renewable.onwind.resource.turbine), excluding land by Copernicus
+        land-cover class, a buffer distance around urban areas, and natura protected areas.
+        Generators are attached per bus in add_electricity with existing capacity from
+        powerplants.csv (technology 'Onshore' forced to carrier 'onwind') and country capacity
+        gaps filled to IRENA statistics.
+      mechanism: >
+        rule build_renewable_profiles (technology wildcard 'onwind') builds profile_onwind.nc
+        (profile, p_nom_max, weight) using an atlite ExclusionContainer: copernicus grid_codes
+        select eligible classes, copernicus.distance buffers distance_grid_codes (urban class 50)
+        by 1000 m, natura raster excluded when renewable.onwind.natura is true. attach_wind_and_solar
+        in scripts/add_electricity.py adds one Generator per bus with p_max_pu from the profile,
+        p_nom_max from the potential, capital_cost = costs.at['onwind', 'capital_cost'], and
+        p_nom_extendable if 'onwind' is in electricity.extendable_carriers.Generator.
+      not_covered: >
+        No hub-height or wake-loss modelling beyond the single turbine power curve and optional
+        correction_factor (correction_factor is commented out by default for onwind); no
+        turbine-type mix per region (one turbine model per carrier); no setback rules other than
+        the raster distance buffer.
+      provenance: "scripts/add_electricity.py:attach_wind_and_solar"
+
+    levers:
+      - key: electricity.renewable_carriers
+        effect: "Include/exclude 'onwind' as a modelled carrier."
+        default: "[solar, onwind, offwind-ac, offwind-dc, hydro]"
+        provenance: "config.default.yaml:renewable_carriers"
+      - key: electricity.extendable_carriers.Generator
+        effect: "Whether onwind capacity is optimisable beyond existing plants."
+        default: "[solar, onwind, offwind-ac, offwind-dc, OCGT]"
+        provenance: "config.default.yaml:extendable_carriers"
+      - key: renewable.onwind.resource.turbine
+        effect: "atlite turbine power curve used for the wind-to-power conversion."
+        default: "Vestas_V112_3MW"
+        provenance: "config.default.yaml:Vestas_V112_3MW"
+      - key: renewable.onwind.capacity_per_sqkm
+        effect: "MW installable per km2 of eligible land; linearly scales p_nom_max."
+        default: "3"
+        provenance: "scripts/build_renewable_profiles.py:capacity_per_sqkm"
+      - key: renewable.onwind.copernicus.grid_codes
+        effect: "Copernicus land-cover classes counted as eligible for wind."
+        default: "[20, 30, 40, 60, 100, 111..126]"
+        provenance: "scripts/build_renewable_profiles.py:grid_codes"
+      - key: renewable.onwind.copernicus.distance
+        effect: "Buffer distance [m] around distance_grid_codes classes excluded from siting."
+        default: "1000"
+        provenance: "scripts/build_renewable_profiles.py:distance_grid_codes"
+      - key: renewable.onwind.copernicus.distance_grid_codes
+        effect: "Land-cover classes (urban=50) that get the exclusion buffer."
+        default: "[50]"
+        provenance: "scripts/build_renewable_profiles.py:distance_grid_codes"
+      - key: renewable.onwind.natura
+        effect: "If true, exclude natura protected-area raster cells from siting."
+        default: "true"
+        provenance: "scripts/build_renewable_profiles.py:natura"
+      - key: renewable.onwind.potential
+        effect: "'simple' or 'conservative' method for p_nom_max."
+        default: "simple"
+        provenance: "scripts/build_renewable_profiles.py:potential"
+      - key: renewable.onwind.clip_p_max_pu
+        effect: "Capacity factors below this are set to 0."
+        default: "1.e-2"
+        provenance: "scripts/build_renewable_profiles.py:clip_p_max_pu"
+      - key: renewable.onwind.cutout
+        effect: "Which atlite cutout supplies weather data; 'auto' resolves to atlite.default."
+        default: "auto"
+        provenance: "scripts/_helpers.py:update_cutout_config"
+      - key: costs.marginal_cost.onwind
+        effect: "Overwrites onwind marginal cost in the costs table."
+        default: "0.015"
+        provenance: "scripts/process_cost_data.py:load_costs"
+      - key: electricity.estimate_renewable_capacities
+        effect: "IRENA-based gap filling of existing onshore wind capacity (technology_mapping Onshore -> onwind)."
+        default: "stats: irena, year: 2023"
+        provenance: "scripts/add_electricity.py:get_irena_targets_for_carrier"
+
+    boundary:
+      - variant: "enable/disable onwind or make it non-extendable"
+        rung: L0
+        note: "electricity.renewable_carriers / extendable_carriers.Generator."
+      - variant: "stricter siting (larger urban buffer, fewer land classes, density)"
+        rung: L0
+        note: "renewable.onwind.copernicus.distance / grid_codes / capacity_per_sqkm."
+      - variant: "different turbine model"
+        rung: L1
+        note: "renewable.onwind.resource.turbine — any turbine name shipped with atlite (or an atlite custom turbine spec)."
+      - variant: "wake/loss derating"
+        rung: L1
+        note: "renewable.onwind.correction_factor (commented out in config.default.yaml; setting it is supported — build_renewable_profiles reads config.get('correction_factor', 1.0))."
+      - variant: "different weather year"
+        rung: L3
+        note: "new ERA5 cutout: snapshots + enable.build_cutout (CDS API) or retrieved cutout."
+      - variant: "country-wise min/max wind build limits"
+        rung: L1
+        note: "electricity.agg_p_nom_limits with data/agg_p_nom_minmax.csv."
+      - variant: "two competing turbine classes (e.g. low-wind-speed turbines) as separate carriers"
+        rung: L3
+        note: "add a second renewable.<name> block with a different turbine + add to renewable_carriers (rule is wildcarded over config['renewable']); needs a costs row for the new carrier name in the costs csv."
+      - variant: "explicit setback distances from individual infrastructure (roads, buildings)"
+        rung: L5
+        note: "no data/hook beyond the Copernicus raster buffer; needs new exclusion data and custom logic in build_renewable_profiles."
+
+    where:
+      - change: "profile and potential computation (exclusions, turbine, correction)"
+        anchor: "rule build_renewable_profiles -> scripts/build_renewable_profiles.py"
+        provenance: "Snakefile:rule build_renewable_profiles"
+      - change: "generator attachment and IRENA gap filling"
+        anchor: "attach_wind_and_solar in scripts/add_electricity.py"
+        provenance: "scripts/add_electricity.py:attach_wind_and_solar"
+      - change: "cost overwrites"
+        anchor: "load_costs in scripts/process_cost_data.py"
+        provenance: "scripts/process_cost_data.py:load_costs"
+
+    data_dependencies:
+      - input: "ERA5 cutout (cutouts/<name>.nc)"
+        required_for: "all wind profiles"
+        availability: "retrieved via enable.retrieve_cutout; built via build_cutout for other years"
+      - input: "Copernicus land cover raster data/copernicus/PROBAV_LC100_global_v3.0.1_2019-nrt_Discrete-Classification-map_EPSG-4326.tif"
+        required_for: "land eligibility and urban buffer"
+        availability: "retrieved by databundle; global"
+      - input: "natura.tiff exclusion raster"
+        required_for: "protected-area exclusion"
+        availability: "pregenerated by default; rebuild via enable.build_natura_raster"
+      - input: "powerplants.csv (powerplantmatching + OSM)"
+        required_for: "existing onshore wind capacity per bus"
+        availability: "built by rule build_powerplants; coverage region-dependent"
+      - input: "technology-data costs file resources/costs_<year>.csv (onwind row)"
+        required_for: "capex/opex"
+        availability: "retrieved by rule retrieve_cost_data (exists by default)"

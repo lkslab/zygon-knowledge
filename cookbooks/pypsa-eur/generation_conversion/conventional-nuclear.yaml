@@ -1,0 +1,218 @@
+id: conventional-nuclear
+title: Conventional nuclear
+summary: >
+  Large-scale nuclear power stations as dispatchable low-carbon thermal
+  generators, with an existing fleet, optional expansion, availability
+  derating and phase-out handling.
+when_to_use:
+  - "add nuclear power"
+  - "model existing nuclear plants"
+  - "nuclear capacity expansion / new nuclear build"
+  - "remove nuclear / nuclear phase-out"
+  - "nuclear availability factors / outages"
+  - "limit or force nuclear capacity per country"
+  - "atomic energy in the power mix"
+  - "nuclear ramping / minimum load / unit commitment"
+  - "uranium fuel for nuclear"
+  - "pypsa-eur carrier names: nuclear, uranium"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Existing fleet fully covered. "nuclear" is in
+        electricity.conventional_carriers; plants come from powerplantmatching
+        (rule build_powerplants) and attach_conventional_generators adds them
+        as non-extendable Generators aggregated by (bus, carrier), with
+        efficiency, lifetime, capital and marginal cost from the "nuclear"
+        cost row (fuel price copied from the uranium commodity; e.g. in the
+        2050 processed costs efficiency 0.326 and fuel 3.41 EUR/MWh_th give a
+        marginal cost near 14 EUR/MWh). A country-specific availability
+        derating is applied by default: conventional.nuclear.p_max_pu points
+        at data/nuclear_p_max_pu.csv (per-country annual factors 2009-2024);
+        attach_conventional_generators maps buses to countries and picks the
+        column matching the first snapshot year, falling back to the last
+        column. Optional per-carrier unit commitment via
+        conventional.unit_commitment (data/unit_commitment.csv nuclear column:
+        ramp limits 0.3, p_min_pu 0.5, min up/down 10 h, start-up cost 250).
+        Sector runs: nuclear is the ONLY conventional carrier in the pypsa_eur
+        keep-list, so the existing nuclear Generators survive
+        remove_elec_base_techs and keep operating in sector networks (with
+        implicit unlimited uranium priced into their marginal cost). Myopic /
+        perfect foresight: add_existing_baseyear rebuilds the fleet as
+        "nuclear-<grouping year>" Links drawing from the single "EU uranium"
+        bus (rename_fuel Nuclear -> nuclear, carrier map nuclear -> uranium;
+        existing_capacities.conventional_carriers includes uranium so
+        add_carrier_buses creates the EU uranium bus and Store), retiring by
+        DateOut/lifetime; prepare_perfect_foresight additionally applies
+        HARDCODED national nuclear phase-out years in set_all_phase_outs
+        (DE 2022, BE 2025, ES 2027) — a Python table, not config, and it acts
+        on Links only, so the keep-list nuclear Generators are not touched by
+        it.
+      mechanism: >
+        rule build_powerplants -> powerplants_s_{clusters}.csv; rule
+        add_electricity runs attach_conventional_generators (fleet + any
+        extendable conventional carriers; the conventional_nuclear_p_max_pu
+        input generated from the conventional config block applies the
+        per-country derating); costs from rule process_cost_data. Sector:
+        remove_elec_base_techs keeps carriers listed under pypsa_eur; myopic
+        brownfield nuclear enters via rule add_existing_baseyear
+        (add_power_capacities_installed_before_baseyear).
+      not_covered: >
+        No expansion by default ("nuclear" not in
+        electricity.extendable_carriers.Generator); when added there,
+        candidates appear only at buses already hosting nuclear plants unless
+        electricity.everywhere_powerplants seeds zero-capacity 'Nuclear'
+        plants at all substations. No time-varying outage profiles — the
+        derating is one static factor per country-year. No fuel-cycle detail
+        in the electricity workflow (uranium is just a fuel price on the
+        cost row). In myopic/perfect sector runs the uranium supply side is
+        incomplete at this ref: add_carrier_buses only adds a fuel-supply
+        Generator for carriers in its fossils list [coal, gas, oil, lignite],
+        so the "EU uranium" bus gets a bus + extendable cyclic Store but NO
+        priced uranium source feeding the brownfield nuclear Links; and
+        because the keep-list nuclear Generators also survive there, the
+        existing fleet is represented twice (Generators with implicit fuel +
+        fuel-starved uranium Links) — inspect and reconcile before trusting
+        myopic nuclear results. sector.conventional_generation has no nuclear
+        entry by default, so there is no greenfield nuclear Link in sector
+        runs (and adding "nuclear: uranium" there hits the same missing
+        uranium supply). No SMR or fusion technology exists (see the
+        small-modular-reactors and nuclear-fusion recipes).
+      provenance: "scripts/add_electricity.py:attach_conventional_generators; config/config.default.yaml:nuclear; scripts/prepare_sector_network.py:remove_elec_base_techs; scripts/prepare_sector_network.py:add_carrier_buses; scripts/add_existing_baseyear.py:rename_fuel; scripts/prepare_perfect_foresight.py:set_all_phase_outs"
+    levers:
+      - key: electricity.conventional_carriers
+        effect: "Include/exclude the existing nuclear fleet (remove 'nuclear' to phase out existing plants in the electricity workflow)."
+        default: "[nuclear, oil, OCGT, CCGT, coal, lignite, geothermal, waste, biomass]"
+        provenance: "config/config.default.yaml:conventional_carriers; scripts/add_electricity.py:attach_conventional_generators"
+      - key: electricity.extendable_carriers.Generator
+        effect: "Add 'nuclear' to allow capacity expansion; candidates only at buses with existing nuclear plants unless everywhere_powerplants is used."
+        default: "[solar, solar-hsat, onwind, offwind-ac, offwind-dc, offwind-float, OCGT, CCGT]"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_conventional_generators"
+      - key: electricity.everywhere_powerplants
+        effect: "['Nuclear'] places zero-capacity nuclear plants at ALL substations (add_everywhere_powerplants) — greenfield expansion candidates at every bus when combined with extendable_carriers."
+        default: "[] (empty)"
+        provenance: "config/config.default.yaml:everywhere_powerplants; scripts/build_powerplants.py:add_everywhere_powerplants"
+      - key: conventional.nuclear.p_max_pu
+        effect: "Availability derating: a path starting 'data/' becomes a per-country per-year CSV input (default IAEA-style factors); a plain number instead applies one static p_max_pu to all nuclear generators."
+        default: "data/nuclear_p_max_pu.csv"
+        provenance: "config/config.default.yaml:nuclear; scripts/add_electricity.py:attach_conventional_generators"
+      - key: conventional.unit_commitment
+        effect: "true attaches committable attributes (ramp limits, min up/down time, start-up cost, p_min_pu) to nuclear (and OCGT/CCGT/coal/lignite) from data/unit_commitment.csv; solved as linearized UC."
+        default: "false"
+        provenance: "config/config.default.yaml:unit_commitment; scripts/add_electricity.py:attach_conventional_generators"
+      - key: electricity.powerplants_filter
+        effect: "Pandas query on DateIn/DateOut — retire or exclude nuclear units by commissioning/retirement year (the config-level phase-out knob for the static fleet)."
+        default: "(DateOut > 2025 or DateOut != DateOut) and (DateIn < 2026 or DateIn != DateIn)"
+        provenance: "config/config.default.yaml:powerplants_filter; scripts/build_powerplants.py:add_custom_powerplants"
+      - key: electricity.custom_powerplants
+        effect: "Pandas query (or true) to inject rows from data/custom_powerplants.csv (Fueltype Nuclear) — e.g. planned or under-construction reactors."
+        default: "false"
+        provenance: "config/config.default.yaml:custom_powerplants; scripts/build_powerplants.py:add_custom_powerplants"
+      - key: solving.constraints.CCL
+        effect: "true activates per-country per-carrier capacity min/max from data/agg_p_nom_minmax.csv (solving.agg_p_nom_limits.file) — the hook for national nuclear build caps/floors on extendable nuclear."
+        default: "false"
+        provenance: "config/config.default.yaml:CCL; scripts/solve_network.py:add_CCL_constraints"
+      - key: costs.overwrites
+        effect: "Per-technology overwrites of investment/lifetime/FOM/VOM/efficiency/fuel applied in prepare_costs (e.g. {investment: {nuclear: 6000}}); deprecated in favour of data/custom_costs.csv (costs.custom_cost_fn)."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+      - key: pypsa_eur.Generator
+        effect: "Sector-run keep-list — 'nuclear' is in it by default, which is why existing nuclear (alone among conventionals) survives into sector networks; remove it for a nuclear-free sector run."
+        default: "[onwind, offwind-ac, offwind-dc, offwind-float, solar-hsat, solar, ror, nuclear]"
+        provenance: "config/config.default.yaml:pypsa_eur; scripts/prepare_sector_network.py:remove_elec_base_techs"
+      - key: existing_capacities.conventional_carriers
+        effect: "Myopic/perfect: 'uranium' in this list makes prepare_sector_network create the EU uranium bus/store that the brownfield nuclear Links of add_existing_baseyear draw from."
+        default: "[lignite, coal, oil, uranium]"
+        provenance: "config/config.default.yaml:conventional_carriers; scripts/prepare_sector_network.py:add_carrier_buses"
+      - key: sector.conventional_generation
+        effect: "Sector runs: adding 'nuclear: uranium' makes add_generation create extendable nuclear Links at every node from the EU uranium bus — but see the missing uranium supply caveat (boundary)."
+        default: "{OCGT: gas, CCGT: gas} — no nuclear entry"
+        provenance: "config/config.default.yaml:conventional_generation; scripts/prepare_sector_network.py:add_generation"
+    boundary:
+      - variant: "run with the existing nuclear fleet incl. country availability derating"
+        rung: L0
+        note: "default — nuclear in conventional_carriers, derating CSV wired via conventional.nuclear.p_max_pu"
+      - variant: "nuclear phase-out"
+        rung: L1
+        note: "remove 'nuclear' from electricity.conventional_carriers; for sector runs also remove it from pypsa_eur.Generator (otherwise nothing changes there — the fleet survives via the keep-list)"
+      - variant: "new nuclear build at existing sites"
+        rung: L1
+        note: "add 'nuclear' to electricity.extendable_carriers.Generator"
+      - variant: "greenfield nuclear candidates at every bus"
+        rung: L1
+        note: "electricity.everywhere_powerplants: ['Nuclear'] + 'nuclear' in extendable_carriers.Generator (zero-capacity plants seeded at all substations by add_everywhere_powerplants)"
+      - variant: "single availability factor instead of the per-country CSV"
+        rung: L1
+        note: "set conventional.nuclear.p_max_pu to a number; any generator attribute can be set the same way (the conventional_params block applies attributes per carrier)"
+      - variant: "change per-country availability factors"
+        rung: L3
+        note: "edit data/nuclear_p_max_pu.csv (country rows, year columns; the column matching the first snapshot year is used, else the last)"
+      - variant: "cap or force nuclear capacity per country"
+        rung: L1
+        note: "solving.constraints.CCL: true + rows for carrier nuclear in data/agg_p_nom_minmax.csv"
+      - variant: "unit commitment (min load, ramping, start-up cost)"
+        rung: L0
+        note: "conventional.unit_commitment: true — nuclear column in data/unit_commitment.csv; edit that CSV for different values (L3)"
+      - variant: "add a planned/under-construction reactor"
+        rung: L3
+        note: "row in data/custom_powerplants.csv (Fueltype Nuclear) + electricity.custom_powerplants: true"
+      - variant: "greenfield nuclear in sector runs (extendable Link from uranium)"
+        rung: L2
+        note: "sector.conventional_generation: add 'nuclear: uranium' (spatial.uranium exists, cost rows nuclear/uranium exist) — but add_carrier_buses gives uranium no fuel-supply Generator (its fossils list is [coal, gas, oil, lignite]), so also add a marginal-cost generator on the EU uranium bus (one-line extension of add_carrier_buses or the fossils list)"
+      - variant: "fix/trust nuclear in myopic-foresight sector runs"
+        rung: L2
+        note: "two reconciliations needed at this ref: the fuel-starved EU uranium bus (as above) and the double representation of the existing fleet (keep-list Generators + brownfield Links) — drop 'nuclear' from pypsa_eur.Generator or the Nuclear row from rename_fuel in add_existing_baseyear"
+      - variant: "change the hardcoded national phase-out years (perfect foresight)"
+        rung: L2
+        note: "the planned list in set_all_phase_outs (prepare_perfect_foresight.py) is a Python table, not config; note it adjusts Link lifetimes only"
+      - variant: "time-varying outage schedules per plant"
+        rung: L5
+        note: "no outage-profile machinery; the derating hook is static per country — a p_max_pu time series would need bespoke code in attach_conventional_generators plus data"
+      - variant: "override nuclear cost/efficiency assumptions"
+        rung: L1
+        note: "costs.overwrites (config, deprecated) or a row in data/custom_costs.csv (costs.custom_cost_fn)"
+    where:
+      - change: "fleet attachment + extendable candidates + per-country p_max_pu derating + UC attributes"
+        anchor: "scripts/add_electricity.py::attach_conventional_generators (rule add_electricity; conventional_params/conventional_inputs from the conventional config block and input_conventional in rules/build_electricity.smk)"
+        provenance: "scripts/add_electricity.py:attach_conventional_generators; rules/build_electricity.smk:input_conventional"
+      - change: "greenfield seeding at all substations / custom reactors"
+        anchor: "scripts/build_powerplants.py::add_everywhere_powerplants / ::add_custom_powerplants (rule build_powerplants)"
+        provenance: "scripts/build_powerplants.py:add_everywhere_powerplants; scripts/build_powerplants.py:add_custom_powerplants"
+      - change: "nuclear survival into sector networks"
+        anchor: "scripts/prepare_sector_network.py::remove_elec_base_techs (pypsa_eur keep-list)"
+        provenance: "scripts/prepare_sector_network.py:remove_elec_base_techs"
+      - change: "uranium bus/store creation and the missing uranium fuel generator"
+        anchor: "scripts/prepare_sector_network.py::add_carrier_buses (fossils list); spatial.uranium in define_spatial"
+        provenance: "scripts/prepare_sector_network.py:add_carrier_buses; scripts/prepare_sector_network.py:spatial.uranium"
+      - change: "brownfield nuclear Links in myopic/perfect foresight"
+        anchor: "scripts/add_existing_baseyear.py::add_power_capacities_installed_before_baseyear (rename_fuel, carrier map nuclear->uranium)"
+        provenance: "scripts/add_existing_baseyear.py:add_power_capacities_installed_before_baseyear"
+      - change: "hardcoded national nuclear phase-out years"
+        anchor: "scripts/prepare_perfect_foresight.py::set_all_phase_outs / ::set_phase_out"
+        provenance: "scripts/prepare_perfect_foresight.py:set_all_phase_outs; scripts/prepare_perfect_foresight.py:set_phase_out"
+      - change: "country-wise capacity limits"
+        anchor: "scripts/solve_network.py::add_CCL_constraints (solving.constraints.CCL)"
+        provenance: "scripts/solve_network.py:add_CCL_constraints"
+      - change: "nuclear cost row / overwrites"
+        anchor: "scripts/process_cost_data.py::prepare_costs / ::overwrite_costs; data/custom_costs.csv (costs.custom_cost_fn)"
+        provenance: "scripts/process_cost_data.py:prepare_costs; config/config.default.yaml:custom_cost_fn"
+    data_dependencies:
+      - input: "powerplantmatching database (Fueltype Nuclear)"
+        required_for: "existing fleet and (without everywhere_powerplants) siting of extendable candidates"
+        availability: "retrieved by the workflow; archive shipped under data/powerplants/"
+      - input: "data/nuclear_p_max_pu.csv (per-country annual availability factors)"
+        required_for: "default availability derating; countries missing from the CSV keep p_max_pu = 1"
+        availability: "exists by default in the repo"
+      - input: "cost rows 'nuclear' and 'uranium' in the processed technology-data costs file"
+        required_for: "capital/marginal cost, efficiency, lifetime, fuel price"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "data/unit_commitment.csv (nuclear column)"
+        required_for: "unit commitment attributes when conventional.unit_commitment is true"
+        availability: "exists by default in the repo"
+      - input: "data/agg_p_nom_minmax.csv"
+        required_for: "country capacity caps/floors (CCL)"
+        availability: "template exists by default; nuclear rows user-authored"
+      - input: "uranium fuel supply on the EU uranium bus"
+        required_for: "brownfield/greenfield nuclear Links in sector runs"
+        availability: "absent at this ref — add_carrier_buses adds bus + store but no supply generator for uranium (code edit needed)"

@@ -1,0 +1,164 @@
+id: electrolytic-chemicals
+title: Electrolytic and electricity-based chemicals
+summary: >
+  Producing basic chemicals with electricity and electrolytic hydrogen instead
+  of fossil feedstocks — chlor-alkali electrolysis, electrolytic ammonia
+  (H2 + Haber-Bosch), e-methanol, and electricity-driven recycling of
+  plastics.
+when_to_use:
+  - "electrolytic chemicals / power-to-chemicals"
+  - "chlor-alkali electrolysis"
+  - "chlorine production"
+  - "green ammonia for industry"
+  - "e-methanol for industry"
+  - "electrify the chemical industry"
+  - "HVC chemical / mechanical recycling electricity"
+  - "chemicals hydrogen demand"
+  - "pypsa-eur terms: MWh_elec_per_tCl, Haber-Bosch, methanolisation, industry methanol"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        The chemicals block of build_industry_sector_ratios carves dedicated
+        electro-chemical sectors out of "Basic chemicals": (1) Chlorine —
+        chlor-alkali intensities industry.MWh_elec_per_tCl (3.6) and
+        industry.MWh_H2_per_tCl (-0.9372): the NEGATIVE hydrogen value is the
+        electrolysis H2 byproduct, so chlorine production REDUCES the net
+        "H2 for industry" load. (2) Methanol — demand of
+        industry.MWh_MeOH_per_tMeOH (5.528) per tonne lands as the "industry
+        methanol" load, supplied by extendable "methanolisation" Links
+        (H2 + electricity + captured CO2 in), so industrial methanol is
+        e-methanol whenever the optimum says so. (3) Ammonia — with
+        sector.ammonia true (default) an "NH3" Load is served by extendable
+        "Haber-Bosch" Links (electricity bus0, H2 bus2) plus ammonia cracker
+        and storage (add_ammonia); with sector.ammonia false the ammonia
+        demand is folded directly into hydrogen and electricity at the
+        electrolysis-route intensities (MWh_H2_per_tNH3_electrolysis 5.93,
+        MWh_elec_per_tNH3_electrolysis 0.2473). (4) HVC recycling — "HVC
+        (mechanical recycling)" and "HVC (chemical recycling)" are pure
+        electricity sectors (0.547 / 6.9 MWh/t), phased in by the
+        HVC_*_recycling_fraction ramps. In all cases the ORIGIN of the
+        hydrogen/electricity is endogenous (electrolysis vs SMR vs SMR CC on
+        the shared H2 buses) — so "electrolytic vs blue" chemicals is decided
+        by the optimiser at the hydrogen level, while production volumes and
+        routes are exogenous.
+      mechanism: >
+        rule build_industry_sector_ratios (chemicals_industry: subtracts
+        today's ammonia/chlorine/methanol energy from Basic chemicals, then
+        defines Ammonia, Chlorine, Methanol, HVC recycling sectors) -> demand
+        chain to build_industrial_energy_demand_per_node -> add_industry
+        attaches "H2 for industry" (net of the chlorine byproduct), "industry
+        electricity", "industry methanol" (+ methanolisation links) and NH3
+        loads; add_ammonia (gated by sector.ammonia) builds Haber-Bosch,
+        "ammonia cracker" and "ammonia store" components.
+      not_covered: >
+        Production volumes are static EU-wide config scalars
+        (industry.chlorine_production_today 9.58 Mt,
+        methanol_production_today 1.5 Mt) held constant across horizons — no
+        growth lever, no per-country data. No chlor-alkali plant component
+        (chlorine electricity is inside the flat "industry electricity" load —
+        no capacity, no flexibility, no membrane vs diaphragm detail). No
+        endogenous route choice for HVC feedstock electrification (no
+        electric steam cracker exists; primary HVC runs on naphtha), and the
+        recycling fractions are exogenous ramps. Chemicals ARE largely
+        excluded from the endogenous heat bands: only the "other" HVC
+        processes map via Fleiter, while "HVC (mechanical recycling)" and
+        "HVC (chemical recycling)" sit in sectors_copied_from_exogenous.
+      provenance: "scripts/build_industry_sector_ratios.py:chemicals_industry; scripts/build_industry_sector_ratios.py:MWh_H2_per_tCl; scripts/prepare_sector_network.py:add_ammonia; scripts/prepare_sector_network.py:methanolisation; scripts/prepare_sector_network.py:industry methanol; scripts/build_industrial_energy_demand_per_node.py:sectors_copied_from_exogenous"
+    levers:
+      - key: sector.ammonia
+        effect: "true models NH3 explicitly (Haber-Bosch links + cracker + storage, industrial NH3 load); false folds ammonia into H2 + electricity demand at electrolysis intensities. 'regional' resolves NH3 per node."
+        default: "true"
+        provenance: "config/config.default.yaml:ammonia; scripts/prepare_sector_network.py:add_ammonia"
+      - key: industry.MWh_elec_per_tCl
+        effect: "Chlor-alkali electricity intensity."
+        default: "3.6"
+        provenance: "config/config.default.yaml:MWh_elec_per_tCl; scripts/build_industry_sector_ratios.py:MWh_elec_per_tCl"
+      - key: industry.MWh_H2_per_tCl
+        effect: "Chlorine hydrogen coefficient — negative means H2 byproduct credited against industrial hydrogen demand."
+        default: "-0.9372"
+        provenance: "config/config.default.yaml:MWh_H2_per_tCl; scripts/build_industry_sector_ratios.py:MWh_H2_per_tCl"
+      - key: industry.chlorine_production_today
+        effect: "EU chlorine production (Mt/a) carved out of Basic chemicals and held constant."
+        default: "9.58"
+        provenance: "config/config.default.yaml:chlorine_production_today; scripts/build_industry_sector_ratios.py:chlorine_production_today"
+      - key: industry.methanol_production_today
+        effect: "EU methanol production (Mt/a) becoming the 'industry methanol' load."
+        default: "1.5"
+        provenance: "config/config.default.yaml:methanol_production_today; scripts/build_industry_sector_ratios.py:methanol_production_today"
+      - key: industry.MWh_MeOH_per_tMeOH
+        effect: "Methanol energy content used to size the industry methanol load."
+        default: "5.528"
+        provenance: "config/config.default.yaml:MWh_MeOH_per_tMeOH; scripts/build_industry_sector_ratios.py:MWh_MeOH_per_tMeOH"
+      - key: industry.MWh_H2_per_tNH3_electrolysis
+        effect: "Hydrogen intensity of electrolytic ammonia (used for the folded route and Haber-Bosch waste-heat accounting)."
+        default: "5.93"
+        provenance: "config/config.default.yaml:MWh_H2_per_tNH3_electrolysis; scripts/build_industry_sector_ratios.py:MWh_H2_per_tNH3_electrolysis"
+      - key: industry.HVC_mechanical_recycling_fraction
+        effect: "Per-horizon share of HVC from all-electric mechanical recycling."
+        default: "{2020: 0.12, ..., 2050: 0.3}"
+        provenance: "config/config.default.yaml:HVC_mechanical_recycling_fraction; scripts/build_industrial_production_per_country_tomorrow.py:HVC_mechanical_recycling_fraction"
+      - key: industry.HVC_chemical_recycling_fraction
+        effect: "Per-horizon share of HVC from electricity-intensive chemical recycling (6.9 MWh/t)."
+        default: "{2020: 0.0, ..., 2050: 0.2}"
+        provenance: "config/config.default.yaml:HVC_chemical_recycling_fraction; scripts/build_industrial_production_per_country_tomorrow.py:HVC_chemical_recycling_fraction"
+      - key: sector.methanol.regional_methanol_demand
+        effect: "Resolve the industry methanol load per node instead of one EU bus."
+        default: "false"
+        provenance: "config/config.default.yaml:regional_methanol_demand; scripts/prepare_sector_network.py:regional_methanol_demand"
+      - key: sector.HVC_demand_factor
+        effect: "Scale total HVC (and thus naphtha/recycling electricity) demand."
+        default: "1.0"
+        provenance: "config/config.default.yaml:HVC_demand_factor; scripts/prepare_sector_network.py:HVC_demand_factor"
+    boundary:
+      - variant: "green vs blue chemical hydrogen (electrolysis vs SMR)"
+        rung: L0
+        note: "endogenous on the shared H2 buses; force green by disabling sector.SMR / sector.SMR_cc (L1)"
+      - variant: "explicit ammonia economy with Haber-Bosch capacity"
+        rung: L0
+        note: "sector.ammonia: true is the default; 'regional' for nodal NH3"
+      - variant: "more plastics recycling instead of naphtha crackers"
+        rung: L1
+        note: "raise HVC_mechanical/chemical_recycling_fraction and lower HVC_primary_fraction"
+      - variant: "growing chlorine or methanol production"
+        rung: L1
+        note: "raise chlorine_production_today / methanol_production_today — but they are single constants for all horizons and countries; per-horizon values need a code edit (L2)"
+      - variant: "electric steam cracker for primary HVC"
+        rung: L2
+        note: "no electric cracker exists; shift the naphtha/methane rows towards elec in the Basic chemicals block of chemicals_industry (build_industry_sector_ratios.py) — or add a dedicated route column plus production split (L2+L3 for costs)"
+      - variant: "chlor-alkali demand response / flexible operation"
+        rung: L5
+        note: "chlorine electricity is part of a flat Load; flexibility needs a bespoke Link+Store demand model"
+      - variant: "site chlorine/methanol at real plant locations"
+        rung: L2
+        note: "distributed via hotmaps 'Chemical industry' keys; a dedicated plant list needs a new branch in build_industrial_distribution_key (ammonia already has one: prepare_ammonia_database + data/ammonia_plants.csv)"
+    where:
+      - change: "chemical sector definitions and intensities (Chlorine, Methanol, Ammonia, HVC recycling)"
+        anchor: "scripts/build_industry_sector_ratios.py::chemicals_industry"
+        provenance: "scripts/build_industry_sector_ratios.py:chemicals_industry"
+      - change: "Haber-Bosch / ammonia cracker / ammonia storage components"
+        anchor: "scripts/prepare_sector_network.py::add_ammonia (sector.ammonia)"
+        provenance: "scripts/prepare_sector_network.py:add_ammonia"
+      - change: "industry methanol load + methanolisation supply links"
+        anchor: "scripts/prepare_sector_network.py::add_industry (industry methanol block)"
+        provenance: "scripts/prepare_sector_network.py:industry methanol"
+      - change: "recycling-route phase-in"
+        anchor: "scripts/build_industrial_production_per_country_tomorrow.py (HVC fractions)"
+        provenance: "scripts/build_industrial_production_per_country_tomorrow.py:HVC_mechanical_recycling_fraction"
+      - change: "ammonia plant siting"
+        anchor: "scripts/build_industrial_distribution_key.py::prepare_ammonia_database (data/ammonia_plants.csv)"
+        provenance: "scripts/build_industrial_distribution_key.py:prepare_ammonia_database"
+    data_dependencies:
+      - input: "cost rows 'Haber-Bosch', 'Ammonia cracker', 'methanolisation', 'NH3 (l) storage tank incl. liquefaction'"
+        required_for: "explicit ammonia and e-methanol supply"
+        availability: "exists by default via retrieve_cost_data"
+      - input: "ammonia production statistics (rule build_ammonia_production) + data/ammonia_plants.csv"
+        required_for: "carving ammonia out of Basic chemicals; nodal NH3 distribution"
+        availability: "exists by default (USGS data retrieved; plant list in repo)"
+      - input: "JRC-IDEES Chemicals Industry sheets"
+        required_for: "Basic chemicals baseline the carve-outs subtract from"
+        availability: "retrieved by the workflow (rule retrieve_jrc_idees)"
+      - input: "co2 stored buses (capture chain)"
+        required_for: "methanolisation CO2 input"
+        availability: "exists by default (add_co2_tracking)"

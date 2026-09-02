@@ -1,0 +1,57 @@
+id: green-hydrogen-siting
+title: Green hydrogen siting
+rank: 24
+question: >
+  Where should electrolysers sit — at the renewables, at demand, or at the
+  export port — and does the project pencil at delivered cost? The post-hype
+  question ("where does H2 actually make sense") for Gulf/Chile/Africa
+  exporters, national H2 strategies, and industrial off-takers.
+when_to_use:
+  - "where to put electrolysers"
+  - "green hydrogen production siting / cost map"
+  - "electrolysis at renewables vs at demand vs at port"
+  - "H2 delivered cost incl. transport"
+  - "European H2 backbone / import-terminal siting"
+recipes:
+  generation_conversion: [electrolysers, green-hydrogen, hydrogen-pipelines, hydrogen-pipeline-retrofitting, hydrogen-storage-salt-caverns, green-ammonia, green-energy-imports]
+  demand: [hydrogen-export-demand, electricity-load, industrial-crosscutting-electricity]
+functionality:
+  - id: sector-master-switches
+    role: "core — electrolysers, H2 buses, storage and industrial/transport H2 demands per cluster node in one solve"
+  - id: h2-network-retrofit
+    role: "greenfield H2 pipelines plus retrofit of REAL gas pipes (SciGRID-derived, capacity-coupled) — the siting-vs-transport trade-off"
+  - id: pipe-retrofit-constraint
+    role: "retrofitted H2 capacity is subtracted from the parent gas pipe at solve time — the coupling is genuinely wired"
+  - id: renewable-potentials-land-eligibility
+    role: "per-node VRE quality classes and land exclusions drive WHERE cheap electrolysis power exists"
+  - id: nodal-marginal-prices
+    role: "nodal power and H2 prices reveal WHY a site wins (cheap surplus vs grid draw)"
+  - id: spatial-clustering
+    role: "siting granularity = cluster count; electrolysers compete across nodes"
+  - id: green-energy-imports
+    role: "priced H2/NH3/methanol import routes at entry points — Europe's side of the export question"
+  - id: equity-self-sufficiency
+    role: "EQ guardrail on national self-supply — give it a value (EQ0.7c); the bare token crashes"
+  - id: h2-export-chain
+    role: "absent — no export wildcard or endogenous export volumes (earth has this); exports need custom loads"
+gap_assessment: >
+  Ready for the European version of the question: electrolysis capacity is
+  optimized per node against nodal renewable quality (with real land
+  eligibility), H2 transport runs over greenfield pipelines or retrofitted
+  REAL gas pipes with the retrofit capacity coupling enforced at solve time —
+  a step beyond earth's routing — plus salt-cavern vs steel-tank storage and
+  first-class ammonia/methanol legs. "Inland cheap-wind node vs coastal
+  demand cluster, pipe vs wire" is answered endogenously in one LP, and
+  green-energy-imports prices the competing import option at entry points.
+  The frame flips versus earth: Europe is the IMPORTER, and the exporter-side
+  machinery is the gap — there is no h2export chain, so a NEOM/Atacama-style
+  export project or an endogenous export-volume-vs-price study needs custom
+  loads via the constraint hook. Second-order gaps: no temporal-matching /
+  RFNBO additionality constraint (green shares are not certified hourly — no
+  h2-color accounting at all, electrolysers just draw from the grid bus), and
+  no water-scarcity screen on siting. For delivered-cost numbers mind that
+  transmission_efficiency adds pipeline losses/compression by default.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

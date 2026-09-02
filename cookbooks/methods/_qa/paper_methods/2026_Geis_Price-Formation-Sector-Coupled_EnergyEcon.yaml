@@ -1,0 +1,204 @@
+paper: "2026_Geis_Price-Formation-Sector-Coupled_EnergyEcon.pdf"
+tier: 1
+model_used: >
+  PyPSA-DE, single-node (copper-plate Germany), sector-coupled, 3-hourly resolution,
+  myopic foresight in 5-year steps 2020–2045.
+scope: >
+  Introduces a KKT-dual method to reconstruct full supply and demand bidding curves
+  ex-post from a sector-coupled optimisation model, then applies it to analyse how
+  price-setting technologies evolve during Germany's decarbonisation 2020–2045.
+methods:
+  - slug: price-formation-and-scarcity-rents
+    role: defines
+    evidence: >
+      "We introduce a new method to investigate price formation based on a mapping from
+      the dual variables of the energy system optimisation problem to the bids and asks
+      of electricity suppliers and consumers. This allows us to build the full supply and
+      demand curves in each hour." (Abstract). The KKT stationarity conditions for
+      generators, converters, and storage are derived explicitly in Sec. 2.1 (Eqs. 5–9),
+      and the full sector-coupled extension (multi-carrier incidence matrix M_ikt) is
+      the paper's core methodological contribution.
+    procedure_notes: >
+      For each technology category (generators, converters, storage-as-converter), the
+      paper derives the bid/ask price from the stationarity condition of the Lagrangian
+      at each timestep. Market clearing price = dual of the electricity nodal balance
+      constraint λ_electricity,t. Price setter is identified by a candidate-set algorithm
+      (Sec. 2.2, A.1.7): candidate must have bid within 0.01 €/MWh of clearing price,
+      capacity utilisation 1%–99%, and a minimum dispatch of 10 MWh. Among multiple
+      candidates, supply preferred over demand; within supply (or demand), least-variance
+      bidder is selected. Results compared between long-term (LT, co-optimised investment
+      + dispatch) and short-term (ST, dispatch-only with fixed capacities) models (Sec.
+      4.3, Figs. 17–18).
+    variant: kkt-bidding-curves-sector-coupled
+    parameters:
+      candidate_price_tolerance: "0.01 €/MWh"
+      capacity_utilisation_window: "1%–99%"
+      minimum_dispatch: "10 MWh"
+      years_modelled: "2020, 2025, 2030, 2035, 2040, 2045"
+
+  - slug: shadow-prices-and-marginal-values
+    role: canonical-use
+    evidence: >
+      "To approximate electricity prices, we use the dual variable of the electricity
+      balance constraint." (Sec. 2.1). Marginal storage values (MSV) λ_i,t are the
+      shadow prices of the nodal balance constraint for each carrier, used as the
+      'fuel cost' of storage technologies and as cross-carrier opportunity costs for
+      converters (Sec. 2.1, Eq. 7; A.1.4, Eqs. 19–20).
+    procedure_notes: >
+      Shadow prices extracted from the solved LP via PyPSA's dual variables. Temporal
+      weighting factors w_t scale the duals when snapshot weights differ from 1 h
+      (A.1.1, Eqs. 10–12). The CO2 atmosphere is modelled as a storage unit; its binding
+      capacity constraint at the final period propagates backward as a constant CO2 price
+      λ_CO2,t = μ̄_CO2,T across all timesteps (Sec. 2.1, after Eq. 4).
+    variant: null
+    parameters: {}
+
+  - slug: sector-coupled-network-assembly
+    role: routine-use
+    evidence: >
+      "We use a sector-coupled model of the Germany energy system: PyPSA-DE. … The model
+      co-optimises the investment and operation of generation, storage, conversion and
+      transmission infrastructures … across a range of sectors including electricity,
+      heating, transport, agriculture, and industry." (Sec. 2.3.1). Energy carriers
+      include electricity, heat, (bio-)methane, coal, oil, hydrogen and derivatives, and
+      biomass; connected via a lossy incidence matrix M_ikt (Sec. 2.1, Eq. 2).
+    procedure_notes: >
+      Germany modelled as a single copper-plated node with no cross-border connections
+      (Sec. 2.3.2). Heating sector disaggregated into rural, urban decentral, urban
+      central with district heating. Transport divided into land, shipping, aviation;
+      land fully electrified in the model. Industry sub-sectors (steel, chemicals,
+      non-metallic minerals, non-ferrous metals) modelled separately with exogenous
+      transition paths. CO2 cycle managed via carbon capture (DAC, BECCS), direct
+      air capture, synthetic fuels. Biomass import range 32–80 TWh/a.
+    variant: null
+    parameters:
+      spatial_scope: "Germany single node"
+      temporal_resolution: "3-hourly"
+      sectors: "electricity, heating, transport, agriculture, industry"
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "We use … PyPSA-DE … with high temporal resolution and myopic foresight in
+      5-year steps from 2020 until full decarbonisation in 2045." (Abstract). "As we
+      use a myopic modelling approach with independent yearly optimisations, the time
+      value of money across years is not considered." (Sec. 2.1).
+    procedure_notes: >
+      Six independent optimisations for years 2020, 2025, 2030, 2035, 2040, 2045.
+      Each year is treated as an overnight investment problem; capital costs converted
+      to annuities. Cross-year discounting not applied. A short-term (ST) dispatch-only
+      variant is also run for comparison using LT-optimised capacities as fixed input
+      (Sec. 4.3).
+    variant: myopic-5yr-steps
+    parameters:
+      investment_periods: "2020, 2025, 2030, 2035, 2040, 2045"
+      step_size_years: 5
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "The atmosphere is represented as a storage unit with limited total capacity,
+      where inflows correspond to emissions and the state of charge (SOC) to the
+      cumulative stock of CO2. The capacity represents the CO2 emissions budget.
+      The binding capacity constraint in the final period T implies a shadow price
+      μ̄_CO2,T, which corresponds to the CO2 price." (Sec. 2.1, after Eq. 3).
+    procedure_notes: >
+      CO2 budget caps set per investment period consistent with Germany's GHG targets
+      (Table 1: 706 Mt in 2020 falling to −52 Mt net negative in 2045). Non-CO2 GHGs
+      accounted for by tightening the CO2 budget. Maximum carbon sequestration of 30
+      Mt at 300 €/tCO2 modelled for 2045 as an offset outside Germany. CO2 price
+      emerges endogenously as the dual variable and propagates uniformly across all
+      timesteps within a period (Sec. 2.1).
+    variant: budget-as-storage-unit
+    parameters:
+      co2_budget_2020_Mt: 706
+      co2_budget_2045_Mt: -52
+      sequestration_cap_Mt: 30
+      sequestration_price: "300 €/tCO2"
+
+  - slug: demand-side-flexibility-representation
+    role: routine-use
+    evidence: >
+      "Demand side management is also modelled, with battery electric vehicles (BEV)
+      shifting loads during charging and electrolysis processes adjusting electricity use
+      based on its price." (Sec. 2.3.1). BEV chargers and electrolysis emerge as
+      important price setters from 2035 onward (Sec. 3.2, Fig. 1).
+    procedure_notes: >
+      Flexible demand categories include: air and ground heat pumps, resistive heaters,
+      methanolisation, direct air capture (DAC), BEV chargers, and electrolysis. These
+      bid into the electricity market at ask prices derived from the opportunity cost of
+      their output carrier (e.g. hydrogen MSV for electrolysis). Inelastic demand
+      (residential, commercial, industry, agriculture) represented as fixed load profiles
+      with load-shedding at 2000 €/MWh. Price elasticity was tested but excluded due to
+      computational infeasibility (Sec. 4.4).
+    variant: null
+    parameters:
+      voll: "2000 €/MWh"
+
+  - slug: storage-sizing-and-duration
+    role: routine-use
+    evidence: >
+      "PyPSA-DE encompasses a range of storage options … Electricity can be stored in
+      batteries (home, utility-scale, electric vehicles), pumped hydro (PHS), hydrogen
+      … and synthetic energy carriers like methane and methanol. Thermal energy storage
+      is provided by large water pits for seasonal needs … and short-term storage in
+      individual home applications." (Sec. 2.3.1).
+    procedure_notes: >
+      Two storage types distinguished (A.1.6): (1) SOC-only-constrained (gas, hydrogen
+      tanks/caverns) — volume bid limited by current SOC and discharge efficiency; (2)
+      capacity-constrained (batteries, PHS, hydro) — volume bid is min of converter
+      dispatch capacity and SOC. Energy and power capacities co-optimised. Cyclic SOC
+      boundary condition applied (A.1.2, Eq. 15). Battery bidding derived via stationarity
+      conditions of storage-as-converter formulation (A.1.4, Eqs. 19–20).
+    variant: null
+    parameters:
+      storage_types: "batteries (home/utility/EV), PHS, H2 (tanks+caverns), synthetic methane/methanol, thermal pits"
+
+  - slug: temporal-aggregation-and-segmentation
+    role: routine-use
+    evidence: >
+      "The weather data from 2019 is used, with a temporal resolution of 3 hours."
+      (Sec. 2.3.2). Snapshot weights w_t are included in the objective function so that
+      quantities in MW and MWh remain consistent; formulation shown in A.1.1 (Eqs. 10–12).
+    procedure_notes: >
+      3-hourly snapshots from a single weather year (2019). Weights w_t applied to
+      operational costs and dual variables. The paper states the temporal weighting
+      "does not affect the underlying economic relationships or price formation
+      mechanisms" and defers the weighted formulation to A.1.1. No typical-period or
+      TSAM reduction is applied — full 8760/3 = 2920 snapshots per year implied.
+    variant: n-hourly
+    parameters:
+      resolution_hours: 3
+      weather_year: 2019
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "Renewable potentials and time series for wind and solar electricity generation
+      are calculated using atlite, taking into account land eligibility constraints
+      such as nature reserves and distance criteria from settlements." (Sec. 2.3.1,
+      citing Hofmann et al. [37]).
+    procedure_notes: >
+      atlite used for renewable capacity factors and installable potential derivation.
+      Land eligibility filters applied (nature reserves, settlement distance criteria).
+      No further detail on the specific exclusion layers is given in the paper; referred
+      to PyPSA-DE documentation and Lindner et al. [38].
+    variant: null
+    parameters: {}
+
+unmatched_methods:
+  - name: "KKT-based ex-post bidding curve reconstruction for sector-coupled systems"
+    evidence: >
+      The paper's central contribution is extending the Brown et al. [5] KKT-dual
+      price-formation method from a power-sector model to a full sector-coupled
+      multi-carrier model via the lossy incidence matrix M_ikt (Sec. 2.1, Eqs. 5–9).
+      This is analytically distinct from shadow-prices-and-marginal-values (which
+      covers reading duals as prices) and from price-formation-and-scarcity-rents
+      (which covers where prices come from). The novel element is the systematic
+      reconstruction of per-technology bid/ask curves and identification of the marginal
+      price-setting technology at every timestep in a multi-carrier optimisation. The
+      existing slugs do not capture the algorithmic procedure of reconstructing the
+      merit order ex-post from duals, which is this paper's stated methodological
+      innovation. Logged under price-formation-and-scarcity-rents as role=defines with
+      variant kkt-bidding-curves-sector-coupled, but flagged here because it may warrant
+      its own slug in a future vocabulary update.

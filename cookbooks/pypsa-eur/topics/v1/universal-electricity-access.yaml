@@ -1,0 +1,51 @@
+id: universal-electricity-access
+title: Universal electricity access
+rank: 22
+question: >
+  What is the cheapest national path to universal electricity access by 2030,
+  and what does the grid need to deliver it? Africa's dominant modelling
+  question (World Bank/ESMAP GEP over 58 countries, IRENA, AfDB) — the purest
+  "need over money" topic: institutional buyers, open-source tooling expected.
+when_to_use:
+  - "universal access by 2030 plan"
+  - "national electrification strategy / least-cost access"
+  - "how much generation and grid does full access need"
+  - "SDG7 / energy-access scenario"
+  - "electrify the unserved population"
+recipes:
+  generation_conversion: [solar-mini-grids, solar-home-systems, rooftop-distributed-solar, utility-scale-solar-pv]
+  demand: [electricity-load, demand-spatial-disaggregation, residential-electricity-demand, demand-scenarios-and-growth]
+functionality:
+  - id: geospatial-access-electrification
+    role: "the core missing capability — no settlement tiers, connection status, or access-cost optimization"
+  - id: administrative-clustering
+    role: "NUTS/bidding-zone clustering is the admin-unit machinery an access study would want — built for Europe, not GADM"
+  - id: spatial-clustering
+    role: "resolution lever, but the network floor is the transmission grid — never settlements"
+  - id: distribution-grid-lv
+    role: "one aggregate LV bus per node with linear reinforcement cost — the only distribution stand-in"
+  - id: distribution-power-flow
+    role: "absent — no feeder model, so connection-cost realism below the substation does not exist"
+  - id: scenario-matrix
+    role: "could sweep demand-growth variants, but there is no access target to sweep"
+gap_assessment: >
+  A gap, but for a different reason than in pypsa-earth: pypsa-eur is a
+  European model and Europe is essentially fully electrified, so the access
+  question does not exist in its domain — there is no unserved population to
+  connect, no access-rate input anywhere in the workflow, and the demand
+  chain starts from measured ENTSO-E/OPSD load, which by construction already
+  covers everyone. This is not (only) missing machinery, it is a missing
+  question. Nothing in the model represents electrification status, OnSSET/
+  GEP-style settlement tiers, or grid-vs-off-grid connection-cost choice, and
+  the coverage footprint (European countries, NUTS shapes, ENTSO-E data) does
+  not include the geographies where the question lives. Anyone with an
+  access-planning mandate should start from pypsa-earth (whose GADM+WorldPop
+  demand machinery at least sizes the bulk system for an access-driven demand
+  projection, paired with OnSSET/GEP for the settlement layer) — porting
+  pypsa-eur to an access country means replacing the entire data layer, at
+  which point it IS pypsa-earth. The solar-mini-grids and solar-home-systems
+  recipes in the eur book document the same absence from the technology side.
+coverage: gap
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

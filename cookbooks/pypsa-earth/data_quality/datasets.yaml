@@ -1,0 +1,271 @@
+# Dataset registry for the pypsa-earth data-quality cookbook.
+# Every country-resolved data source the workflow consumes, with the recipe
+# slugs (cookbooks/generation_conversion + cookbooks/demand) that depend on it.
+# All consumer symbols are grep-verified against the scripts named.
+
+- id: demand-growth-cagr
+  title: "Demand growth factors (CAGR per sector-carrier)"
+  path: data/demand/growth_factors_cagr.csv
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/prepare_energy_totals.py:fill_country_data"
+  missing_behavior: "no country row -> DEFAULT row copied by fill_country_data with logged warning ('No growth factors CAGR data for {country} — using default data instead.'); NaN cells also filled from DEFAULT"
+  tier_when_missing: C
+  used_by: [agriculture-energy-demand, aviation-demand, demand-scenarios-and-growth, electric-farm-machinery, land-transport-demand, rail-electrification, rail-transport-demand, residential-electricity-demand, residential-space-heating-demand, services-electricity-demand, shipping-demand]
+  notes: "only rows DEFAULT, MA, TN, NA, US present; 30 sector-carrier columns; every other country inherits the DEFAULT CAGRs"
+
+- id: demand-efficiency-cagr
+  title: "Demand efficiency gains (CAGR per sector-carrier)"
+  path: data/demand/efficiency_gains_cagr.csv
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/prepare_energy_totals.py:fill_country_data"
+  missing_behavior: "no country row -> DEFAULT row copied by fill_country_data with logged warning ('No efficiency gains CAGR data for {country} — using default data instead.')"
+  tier_when_missing: C
+  used_by: [agriculture-energy-demand, clean-cookstoves, demand-scenarios-and-growth, electric-farm-machinery, land-transport-demand, rail-electrification, rail-transport-demand, residential-electricity-demand, residential-space-heating-demand, services-electricity-demand, shipping-demand]
+  notes: "only rows DEFAULT, MA, TN, US present (no NA row, unlike the growth file); 34 sector-carrier columns"
+
+- id: industry-growth-cagr
+  title: "Industry production growth (CAGR per subsector)"
+  path: data/demand/industry_growth_cagr.csv
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/build_industry_demand.py:industry_growth_cagr"
+  missing_behavior: "no country row -> cagr.loc[country] = cagr.loc['DEFAULT'] inline with logged warning ('No industry growth data for {country} using default data instead.'); NaN cells filled from DEFAULT"
+  tier_when_missing: C
+  used_by: [cement-minerals-demand, demand-scenarios-and-growth, electric-arc-furnace, electric-process-heat, food-beverages-demand, industrial-efficiency-diffusion, industrial-material-production-drivers, light-manufacturing-demand, mining-construction-demand, pulp-paper-demand, steel-demand]
+  notes: "only rows DEFAULT, MA, TN, NA, US present; 14 industry subsector columns incl. ammonia; DEFAULT row is 0.03 for most subsectors"
+
+- id: fuel-shares
+  title: "Residential fuel shares and electrification-switch shares"
+  path: data/demand/fuel_shares.csv
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/prepare_energy_totals.py:fill_country_data"
+  missing_behavior: "no country row -> DEFAULT row copied by fill_country_data with logged warning ('No fuel share data for {country} — using default data instead.')"
+  tier_when_missing: C
+  used_by: [clean-cookstoves, cooking-energy-demand, demand-scenarios-and-growth, electric-cooking, heat-pump-water-heaters, residential-electricity-demand, residential-space-heating-demand, residential-water-heating-demand]
+  notes: "only rows DEFAULT, MA, TN, NA, US present; 10 columns (oil/biomass/gas residential heat shares plus X-to-elec switch shares and space-to-water split)"
+
+- id: district-heating-share
+  title: "District heating current/potential shares"
+  path: data/demand/district_heating.csv
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/prepare_energy_totals.py:fill_country_data"
+  missing_behavior: "no country row -> DEFAULT row copied by fill_country_data with logged warning ('No heating data for {country} — using default data instead.'); DEFAULT is zero, so missing countries get zero district heat share"
+  tier_when_missing: C
+  used_by: [demand-scenarios-and-growth, district-heating, district-heating-demand-share, residential-space-heating-demand]
+  notes: "only rows DEFAULT, MA, TN present and ALL values (current, potential) are 0 — no country gets district heating out of the box unless this file is edited"
+
+- id: salt-cavern-potentials
+  title: "Hydrogen salt-cavern potentials"
+  path: data/hydrogen_salt_cavern_potentials.csv
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/prepare_sector_network.py:underground_storage"
+  missing_behavior: "no country row -> country's buses are excluded from cavern_nodes, so no 'H2 UHS' Store is added there — silently; only overground tank storage remains"
+  tier_when_missing: D
+  used_by: [hydrogen-pipelines, hydrogen-storage-salt-caverns, long-duration-storage]
+  notes: "only DZ (1000 TWh), MA (300), TN (100), NG (100), BJ (20) present; country totals split equally over nodes; branch is OFF by default (sector.hydrogen.underground_storage: false)"
+
+- id: al-production
+  title: "Aluminium production per country (BGS)"
+  path: data/AL_production.csv
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/build_industry_demand.py:AL_production"
+  missing_behavior: "country absent for the configured aluminium_year -> reindex(fill_value=0.0) with logged warning ('No aluminum production data found for {country}. Filled with 0.0.') — zero aluminium production/emissions"
+  tier_when_missing: D
+  used_by: [aluminium-nonferrous-demand, industrial-ccs, industrial-process-emissions, inert-anode-aluminium]
+  notes: "41 countries, years 2015-2022, 328 rows; source British Geological Survey; only used in the custom aluminium branch of build_industry_demand"
+
+- id: unsd-energy-balances
+  title: "UNSD energy balances (base energy totals)"
+  path: data/demand/unsd/data/
+  code_convention: country-name
+  coverage_class: global-listed
+  consumer: "scripts/build_base_energy_totals.py:calc_sector"
+  missing_behavior: "country with no rows for a sector -> the sector's energy_totals columns are set to np.NaN with logged warning ('No data for {country} in the sector {sector}.'); NaNs propagate into energy totals"
+  tier_when_missing: D
+  used_by: [agriculture-energy-demand, agriculture-machinery-demand, air-source-heat-pumps, aluminium-nonferrous-demand, ammonia-ships, aviation-demand, battery-electric-cars, biomass-bioenergy, building-retrofit, catenary-trucks, cement-minerals-demand, chemicals-demand, clean-cookstoves, cooking-energy-demand, demand-scenarios-and-growth, district-heating, e-kerosene-saf, electric-arc-furnace, electric-boilers, electric-buses, electric-cooking, electric-farm-machinery, electric-ferries, electric-heavy-trucks, electric-process-heat, electric-resistance-heating, electrolytic-chemicals, food-beverages-demand, ground-source-heat-pumps, h2-dri-steel, heat-pump-water-heaters, hydrogen-aircraft, hydrogen-fuel-cell-trucks, industrial-ccs, industrial-feedstocks-nonenergy, industrial-heat-pumps, industrial-process-heat-temperature-bands, inert-anode-aluminium, land-transport-demand, light-manufacturing-demand, low-clinker-cement, mechanical-vapour-recompression, methanol-ships, mining-construction-demand, pulp-paper-demand, rail-electrification, rail-transport-demand, residential-electricity-demand, residential-space-heating-demand, residential-water-heating-demand, services-electricity-demand, services-heat-demand, shipping-demand, space-cooling-demand, steel-demand, waste-heat-recovery]
+  notes: "52 semicolon-separated UNdata_Export_*.txt files with ~248 'Country or Area' names, mapped to ISO2 via country_converter; years up to 2024; downloaded to data/demand/unsd/data if absent"
+
+- id: electricity-demand-forecast
+  title: "Electricity demand forecasts (GEGIS SSP NetCDFs + DemandCast parquet)"
+  path:
+    - data/ssp2-2.6/
+    - data/demand/forecasts_on_historical_period.parquet
+  code_convention: ISO2
+  coverage_class: continent-file
+  consumer: "scripts/build_demand_profiles.py:get_load_paths_gegis; scripts/build_demand_profiles.py:compose_gegis_load; scripts/build_demand_profiles.py:read_demcast_load"
+  missing_behavior: "load is filtered with el_load.region_code.isin(countries); a country absent from the GEGIS/DemandCast data yields an empty demand series for its buses with no warning (missing parquet file itself raises an Exception)"
+  tier_when_missing: D
+  used_by: [electric-cooking, electricity-load, residential-electricity-demand, services-electricity-demand, smart-meters]
+  notes: "GEGIS: continent files Africa/Asia/Europe/NorthAmerica/Oceania/SouthAmerica per prediction year 2030/2040/2050/2100 and weather year era5_2011/2013/2018 (ISO2 region_code inside); DemandCast parquet 372 MB with 184 ISO3 entities; selected via config load_options (source/weather_year/prediction_year)"
+
+- id: gadm-boundaries
+  title: "GADM administrative boundaries"
+  path:
+    - data/gadm/gadm_410.gpkg
+    - data/gadm/
+  code_convention: ISO3
+  coverage_class: global-listed
+  consumer: "scripts/build_shapes.py:get_GADM_layer; scripts/build_shapes.py:download_GADM; scripts/stage_gadm_from_global.py:slice_country"
+  missing_behavior: "missing per-country gadm41_<ISO3>.gpkg -> download_GADM fetches it from geodata.ucdavis.edu on demand; unreachable server raises Exception (hard stop); stage_gadm_from_global.py can slice countries offline from the global gadm_410.gpkg"
+  tier_when_missing: B
+  used_by: [air-source-heat-pumps, aviation-demand, demand-spatial-disaggregation, electricity-load, residential-electricity-demand, shipping-demand]
+  notes: "global gadm_410.gpkg (2.6 GB) plus 105 gadm41_<ISO3>/ per-country slices on disk; GADM covers all countries; special ISO cases handled via get_GADM_filename"
+
+- id: osm-grid
+  title: "OpenStreetMap grid extracts (geofabrik PBF)"
+  path: data/osm/pbf/
+  code_convention: geofabrik
+  coverage_class: global-listed
+  consumer: "scripts/download_osm_data.py:convert_iso_to_geofk; scripts/download_osm_data.py:save_osm_data"
+  missing_behavior: "missing PBF is downloaded on demand by earth_osm (eo.save_osm_data); ISO2 codes mapped to geofabrik regions via iso_to_geofk_dict (configs/regions_definition_config.yaml) — unmapped codes pass through unchanged and fail at download; grid data quality/completeness is region-dependent, sparse tagging silently yields a sparse network"
+  tier_when_missing: B
+  used_by: [dynamic-line-rating-facts, hv-transmission-lines, hvdc-interconnectors, uhv-dc]
+  notes: "97 geofabrik-named .osm.pbf files on disk (e.g. algeria-latest.osm.pbf); some countries only exist aggregated (e.g. SN+GM as senegal-and-gambia)"
+
+- id: worldpop-population
+  title: "WorldPop population rasters"
+  path: data/WorldPop/
+  code_convention: ISO3
+  coverage_class: global-listed
+  consumer: "scripts/build_shapes.py:download_WorldPop"
+  missing_behavior: "missing <iso3>_ppp_2020_UNadj_constrained.tif is downloaded on demand from data.worldpop.org (API or standard method); on failure only logger.error('Impossible to download ...') is emitted and the returned path points to a missing/truncated file, which breaks population aggregation later"
+  tier_when_missing: B
+  used_by: [air-source-heat-pumps, demand-spatial-disaggregation, district-heating, electricity-load, ground-source-heat-pumps, rooftop-distributed-solar, solar-home-systems, solar-mini-grids]
+  notes: "106 country tifs on disk, pattern <iso3>_ppp_2020_UNadj_constrained.tif (KOS special-cased); truncated downloads are common enough that scripts/clean_corrupt_worldpop.py exists to purge them"
+
+- id: gdp-raster
+  title: "Gridded GDP PPP raster (Kummu et al.)"
+  path:
+    - data/GDP/GDP_PPP_1990_2015_5arcmin_v2.nc
+    - data/GDP/GDP_PPP_1990_2015_5arcmin_v2.tif
+  code_convention: gridded
+  coverage_class: global-gridded
+  consumer: "scripts/build_shapes.py:load_GDP"
+  missing_behavior: "if the .nc file is absent an OSError is raised: 'File GDP_PPP_1990_2015_5arcmin_v2.nc not found, please download it from https://datadryad.org/... ' (hard stop); years outside 1990-2015 fall back to the most recent layer with a log message"
+  tier_when_missing: B
+  used_by: [aluminium-nonferrous-demand, chemicals-demand, demand-spatial-disaggregation, electric-arc-furnace, electric-process-heat, electricity-load, food-beverages-demand, light-manufacturing-demand, mechanical-vapour-recompression, mining-construction-demand, pulp-paper-demand]
+  notes: "global 5-arcmin raster, latest layer 2015; converted to GeoTIFF by convert_GDP; feeds GADM shape gdp attributes and clustered_gdp_layout used for demand/industry disaggregation"
+
+- id: era5-cutout
+  title: "ERA5 weather cutouts (continental)"
+  path: cutouts/cutout-2013-era5-<continent>.nc
+  code_convention: continent
+  coverage_class: continent-file
+  consumer: "scripts/build_renewable_profiles.py:check_cutout_match"
+  missing_behavior: "region entirely outside the cutout bounds -> AssertionError ('The requested region is completely out of the cutout area.') — hard stop; partial coverage only logs a warning ('Weather data does not fully cover the requester region.'); a missing cutout file must be built (build_cutout) or fetched via a bundle"
+  tier_when_missing: B
+  used_by: [air-source-heat-pumps, battery-electric-cars, building-retrofit, concentrated-solar-power, conventional-hydropower, demand-temporal-profiles, dynamic-line-rating-facts, electric-resistance-heating, floating-offshore-wind, floating-solar, ground-source-heat-pumps, industrial-heat-pumps, land-transport-demand, offshore-wind, onshore-wind, residential-space-heating-demand, run-of-river-hydro, services-heat-demand, solar-thermal, space-cooling-demand, thermal-storage, tidal-wave, utility-scale-solar-pv]
+  notes: "7 continental cutouts on disk (africa, asia, northamerica, northeurasia, oceania, southamerica, westasia; no europe file staged); coverage per bundle defined by 'countries' lists in configs/bundle_config.yaml (e.g. bundle_cutouts_mainland_africa: [Africa], bundle_cutouts_asia: KVR/WAS/... region codes); staged by scripts/stage_continental_cutouts.py; ERA5 itself is global so any region can be built"
+
+- id: powerplant-fleet
+  title: "Conventional powerplant fleet (powerplantmatching + OSM)"
+  path: resources/<run>/powerplants.csv
+  code_convention: ISO2
+  coverage_class: global-listed
+  consumer: "scripts/build_powerplants.py:pm.powerplants; scripts/add_electricity.py:load_powerplants"
+  missing_behavior: "countries with no powerplantmatching/OSM entries simply have no rows — no warning; the model then has no existing conventional capacity there (attach_conventional/attach_hydro add nothing); can be patched via data/custom_powerplants.csv"
+  tier_when_missing: B
+  used_by: [biomass-bioenergy, coal-power-plants, combined-heat-and-power, concentrated-solar-power, conventional-hydropower, conventional-nuclear, enhanced-geothermal, gas-power-plants, geothermal-conventional, nuclear-fusion, offshore-wind, oil-power-plants, onshore-wind, pumped-hydro-storage, run-of-river-hydro, small-modular-reactors, utility-scale-solar-pv, waste-to-energy]
+  notes: "built per run (many resources/<run>/powerplants.csv on disk, ISO2 Country column, GEM/OSM projectIDs); global coverage but completeness varies strongly by region — OSM fallback via convert_osm_to_pm"
+
+- id: hydro-capacities
+  title: "Hydro storage/discharge capacities per country"
+  path: data/hydro_capacities.csv
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/add_electricity.py:attach_hydro"
+  missing_behavior: "country absent from the csv -> max_hours cannot be derived; logged warning 'Assuming max_hours={hydro_max_hours_default} for hydro reservoirs in the countries: ...' and fallback to hydro_max_hours_default (6.0)"
+  tier_when_missing: C
+  used_by: [conventional-hydropower, run-of-river-hydro]
+  notes: "50 African countries only (country_name + ISO2 Country columns, p_nom_discharge/p_nom_store/E_store/inflow); non-African countries always hit the default-max_hours fallback. Impact is limited to reservoir storage duration: hydro plant MW/locations come from powerplantmatching (powerplant-fleet) and inflow normalization defaults to IRENA stats (renewable.hydro.normalization.method 'irena'; setting method 'hydro_capacities' would consume this file via build_renewable_profiles.py:get_hydro_capacities_annual_hydro_generation)"
+
+- id: eia-hydro-generation
+  title: "EIA annual hydro generation statistics"
+  path: data/eia_hydro_annual_generation.csv
+  code_convention: country-name
+  coverage_class: global-listed
+  consumer: "scripts/build_renewable_profiles.py:get_eia_annual_hydro_generation"
+  missing_behavior: "country not present in the EIA table -> KeyError at df.T[countries] (hard crash of build_renewable_profiles for hydro when normalization method 'eia' is set); NaN years within a present country propagate into rescale_hydro"
+  tier_when_missing: B
+  used_by: [conventional-hydropower, run-of-river-hydro]
+  notes: "EIA international statistics 1980-2023, country names converted to ISO2 via country_converter (Kosovo merged into Serbia, East/West Germany summed); used to normalize hydro inflow when renewable.hydro.normalization method is 'eia'"
+
+- id: industrial-plant-database
+  title: "Industrial plant database (steel/cement/refineries/paper/ammonia)"
+  path: resources/industrial_database.csv
+  code_convention: ISO2
+  coverage_class: global-listed
+  consumer: "scripts/build_industrial_distribution_key.py:build_nodal_distribution_key"
+  missing_behavior: "no facilities for a (country, technology) pair -> nodal distribution key silently falls back to the country's GDP share (keys.loc[regions_ct, 'gdp']) — industry demand is spread by GDP instead of sited at plants"
+  tier_when_missing: C
+  used_by: [chemicals-demand, demand-spatial-disaggregation, electric-arc-furnace, electric-process-heat, industrial-ccs, industrial-process-emissions, mining-construction-demand, pulp-paper-demand, steel-demand, waste-heat-recovery]
+  notes: "7732 facilities in 166 countries on disk, built by scripts/build_industrial_database.py from GEM steel, SFI cement, refineries, SFI pulp/paper (LatAm sample only) and ammonia plants; per-sector coverage very uneven"
+
+- id: ammonia-plants
+  title: "Ammonia plants and production"
+  path:
+    - resources/ammonia_plants.csv
+    - resources/ammonia_production.csv
+    - data/industry/ammonia_plants.csv
+  code_convention: ISO2
+  coverage_class: country-listed
+  consumer: "scripts/build_industrial_database.py:create_ammonia_db; scripts/prepare_sector_network.py:add_ammonia"
+  missing_behavior: "country with no plant rows / no USGS production entry -> zero ammonia production, so the NH3 Load added by add_ammonia (p_set from industrial_demand 'ammonia' column) is zero — silently"
+  tier_when_missing: D
+  used_by: [chemicals-demand, electrolytic-chemicals, green-ammonia, industrial-feedstocks-nonenergy, industrial-material-production-drivers]
+  notes: "built by rule build_ammonia_production (scripts/build_ammonia_production.py) from data/industry/ammonia_plants.csv + USGS dataset (rule retrieve_ammonia_dataset); plants file has 61 plants in 19 countries (Europe/US/UA-heavy), country-level ammonia_production.csv covers 63 countries with many NULL years"
+
+- id: german-traffic-proxy
+  title: "German traffic count profiles (emobility proxy)"
+  path: data/emobility/
+  code_convention: global
+  coverage_class: proxy-global
+  consumer: "scripts/prepare_transport_data.py:traffic_data_KFZ; scripts/prepare_transport_data.py:generate_periodic_profiles"
+  missing_behavior: "no per-country data exists at all — the German KFZ/Pkw weekly traffic count shape is applied to every country's transport demand and EV availability via generate_periodic_profiles, silently"
+  tier_when_missing: C
+  used_by: [battery-electric-cars, catenary-trucks, demand-temporal-profiles, electric-buses, electric-ferries, electric-heavy-trucks, hydrogen-fuel-cell-trucks, land-transport-demand, smart-ev-chargers, vehicle-to-grid]
+  notes: "German BASt-style count files (KFZ__count, Pkw__count, Bus__count, Lkw__count, ...) plus European_countries_car_ownership.csv; identical weekly shape for all modelled countries regardless of region"
+
+- id: bdew-heat-proxy
+  title: "BDEW intraday heat load profiles (German proxy)"
+  path: data/heat_load_profile_BDEW.csv
+  code_convention: global
+  coverage_class: proxy-global
+  consumer: "scripts/prepare_heat_data.py:heat_profile"
+  missing_behavior: "no per-country data exists at all — the same German BDEW weekday/weekend hourly shapes (residential/services x space/water) are applied to every node worldwide via generate_periodic_profiles, silently (code comment 'TODO GHALAT' flags it)"
+  tier_when_missing: C
+  used_by: [demand-temporal-profiles, district-heating-demand-share, heat-pump-water-heaters, residential-space-heating-demand, residential-water-heating-demand, services-heat-demand]
+  notes: "24-hour normalized shapes, 8 columns; consumed via Snakefile input heat_profile of the build_heat_demand/prepare_heat_data rule — grounded consumer found, so it IS used in pypsa-earth"
+
+- id: global-gis-layers
+  title: "Global GIS exclusion/shape layers (natura, Copernicus landcover, GEBCO, EEZ, hydrobasins)"
+  path:
+    - data/natura/natura.tiff
+    - data/copernicus/PROBAV_LC100_global_v3.0.1_2019-nrt_Discrete-Classification-map_EPSG-4326.tif
+    - data/gebco/GEBCO_2025_sub_ice.nc
+    - data/eez/eez_v11.gpkg
+    - data/hydrobasins/hybas_world.shp
+  code_convention: gridded
+  coverage_class: global-gridded
+  consumer: "scripts/build_renewable_profiles.py:ExclusionContainer; scripts/build_shapes.py:load_EEZ"
+  missing_behavior: "layers are global, so no country is 'missing'; an absent file fails the Snakemake rule (natura falls back to the shipped data/natura/natura.tiff via rule copy_defaultnatura_tiff when build_natura_raster is disabled); layer switches (renewable.<tech>.natura/copernicus/max_depth) silently skip an exclusion when disabled"
+  tier_when_missing: B
+  used_by: [concentrated-solar-power, conventional-hydropower, floating-offshore-wind, floating-solar, offshore-wind, onshore-wind, run-of-river-hydro, tidal-wave, utility-scale-solar-pv]
+  notes: "all present on disk: natura.tiff, Copernicus PROBAV 100 m landcover, GEBCO_2025_sub_ice.nc bathymetry (Snakefile ancient_data path), eez_v11.gpkg (+ eez_boundaries_v11.gpkg), HydroBASINS level-6 per-continent shapefiles + hybas_world.shp, WDPA protected areas under data/landcover/world_protected_areas"
+
+- id: ggit-gas-network
+  title: "Existing natural-gas pipeline network (GEM GGIT / IGGIELGN)"
+  path: "GEM-GGIT-Gas-Pipelines-December-2022.xlsx (in-memory) -> resources/<run>/gas_networks/gas_network_elec_s<simpl>_<clusters>.csv"
+  code_convention: global
+  coverage_class: global-listed
+  consumer: "scripts/prepare_gas_network.py:download_GGIT_gas_network; scripts/prepare_sector_network.py:add_hydrogen"
+  missing_behavior: "no pipeline crossing >=2 bus regions -> prepare_gas_network logs the countries and writes an EMPTY clustered csv; add_hydrogen then prints 'No existing gas network; applying greenfield for H2 network' and routes H2 pipelines along the electricity topology instead; nodal gas supply itself is unaffected (every gas bus keeps an unlimited fuel-priced generator)"
+  tier_when_missing: C
+  used_by: [natural-gas-pipelines, hydrogen-pipelines]
+  notes: "runtime-fetched: GGIT xlsx is downloaded inside rule prepare_gas_network (pypsa-meets-earth temporary_storage mirror) and read in-memory, never stored in data/; the IGGIELGN alternative (sector.gas.network_data: IGGIELGN) unzips to data/gas_network/scigrid-gas but covers Europe only. Attribution to countries is purely geometric (10-km point interpolation vs clustered bus regions, no country column). NOTE sector.gas.network is a dead flag ('ALWAYS FALSE for now') — the clustered gas network's only consumer is H2 pipeline routing/repurposing in add_hydrogen; no methane transmission links are built"

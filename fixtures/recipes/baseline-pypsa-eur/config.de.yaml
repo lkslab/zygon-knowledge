@@ -1,0 +1,12 @@
+# Germany baseline — overlay on the template's installed config/config.yaml
+# (snakemake deep-merges; everything not listed here is inherited from the GB
+# baseline: 5 clusters, 168H sector-opts, overnight 2050, europe-2013 cutout,
+# gurobi). DE is in JRC-IDEES (EU-27), so no companion country needed (the
+# GB+IE pairing exists only because GB is absent from IDEES).
+# Prepared 2026-07-30 at submodule 849c8858; built in the write-enabled
+# template (the eur pattern — no authoring twin exists at this SHA).
+run:
+  name: germany
+
+countries:
+- DE

@@ -1,0 +1,186 @@
+country: MK
+name: North Macedonia
+fleet_evidence:
+  plants: 93
+  capacity_mw: 2925.5
+  fueltypes:
+  - Hydro
+  - Lignite
+  - Natural Gas
+  - Oil
+  - Solar
+  - Wind
+families:
+  demand-balances:
+    grade: C
+    detail:
+      jrc-idees: C
+      eurostat-balances: A
+      swiss-energy-balances: B
+      jrc-energy-atlas: C
+  electricity-load:
+    grade: B
+    detail:
+      electricity-demand-historic: A
+      gb-national-demand: B
+      synthetic-demand: B
+  power-fleet:
+    grade: C
+    detail:
+      powerplantmatching-fleet: A
+      eia-hydro-annual: A
+      hydro-capacities: C
+  grid:
+    grade: B
+    detail:
+      osm-grid: B
+      tyndp-transmission-projects: A
+  gas-h2-co2:
+    grade: C
+    detail:
+      scigrid-gas-network: A
+      gas-input-locations: B
+      h2-salt-caverns: C
+      co2stop-sequestration: C
+  renewables-land:
+    grade: C
+    detail:
+      era5-sarah-cutout: B
+      corine-landcover: B
+      natura-and-offshore-exclusions: C
+      eez: B
+  industry:
+    grade: D
+    detail:
+      hotmaps-industrial-sites: C
+      gem-steel-cement-trackers: B
+      ammonia-production-usgs: D
+  biomass:
+    grade: A
+    detail:
+      enspreso-biomass: A
+  heat-buildings:
+    grade: C
+    detail:
+      district-heating-potentials: C
+      retro-building-stock: B
+      heat-profile-bdew: C
+  spatial-population:
+    grade: A
+    detail:
+      nuts3-population-gdp: A
+      worldbank-urban-population: A
+  transport:
+    grade: C
+    detail:
+      transport-data-emobility: C
+  parameters:
+    grade: C
+    detail:
+      unit-commitment-parameters: B
+      technology-costs: C
+datasets:
+  jrc-idees:
+    grade: C
+    detail: "no IDEES dir \u2014 industry falls back to EU27-average ratios (add_non_eu27_industrial_energy_demand),\
+      \ residential/services to Eurostat + EU28 splits"
+  eurostat-balances:
+    grade: A
+    detail: national energy-balance rows (nrg_bal_c)
+  swiss-energy-balances:
+    grade: B
+    detail: "not applicable \u2014 Eurostat covers this country"
+  electricity-demand-historic:
+    grade: A
+    detail: ENTSO-E transparency + OPSD historical load columns
+  gb-national-demand:
+    grade: B
+    detail: "not applicable \u2014 ENTSO-E/OPSD cover this country"
+  synthetic-demand:
+    grade: B
+    detail: synthetic profile column available as gap-fill layer
+  powerplantmatching-fleet:
+    grade: A
+    detail: 93 plants, 2925.5 MW (Hydro, Lignite, Natural Gas, Oil, Solar, Wind)
+  osm-grid:
+    grade: B
+    detail: Europe-wide OSM prebuilt grid; completeness is volunteer-dependent (thinner
+      in the Balkans)
+  tyndp-transmission-projects:
+    grade: A
+    detail: TYNDP 2020 project endpoint(s) in country
+  scigrid-gas-network:
+    grade: A
+    detail: IGGIELGN pipe segments present
+  gas-input-locations:
+    grade: B
+    detail: GEM Europe Gas Tracker + IGGIELGN border/LNG/storage points
+  enspreso-biomass:
+    grade: A
+    detail: ENSPRESO NUTS2 biomass potential rows
+  hotmaps-industrial-sites:
+    grade: C
+    detail: "no hotmaps sites \u2014 industrial demand distributed by population share\
+      \ (build_industrial_distribution_key)"
+  gem-steel-cement-trackers:
+    grade: B
+    detail: global GEM trackers (probe unavailable)
+  ammonia-production-usgs:
+    grade: D
+    detail: "no ammonia plants listed \u2014 zero NH3 production assumed"
+  h2-salt-caverns:
+    grade: C
+    detail: "no cavern geology \u2014 H2 storage limited to steel tanks"
+  eia-hydro-annual:
+    grade: A
+    detail: EIA annual hydro generation rows (inflow normalization)
+  hydro-capacities:
+    grade: C
+    detail: "no row \u2014 reservoir max_hours falls back to defaults"
+  era5-sarah-cutout:
+    grade: B
+    detail: gridded ERA5 + SARAH3 cutout covers the full domain (single weather year
+      2013 on disk)
+  corine-landcover:
+    grade: B
+    detail: EEA39 CORINE raster covers the full default scope
+  natura-and-offshore-exclusions:
+    grade: C
+    detail: "outside Natura 2000 \u2014 protected-area exclusions silently skipped,\
+      \ renewable potentials overstated"
+  eez:
+    grade: B
+    detail: "not applicable \u2014 landlocked"
+  nuts3-population-gdp:
+    grade: A
+    detail: JRC ARDECO NUTS3 GDP + population rows
+  worldbank-urban-population:
+    grade: A
+    detail: World Bank urban-population share row (XKX included)
+  jrc-energy-atlas:
+    grade: C
+    detail: "explicit EU27-only skip \u2014 demand distributed by NUTS3 GDP/population\
+      \ keys instead"
+  district-heating-potentials:
+    grade: C
+    detail: "outside the EU-scoped DH/geothermal datasets \u2014 handle_missing_countries\
+      \ fallback / zero limited heat sources"
+  retro-building-stock:
+    grade: B
+    detail: floor area from the curated patch file
+  co2stop-sequestration:
+    grade: C
+    detail: "co2stop probe failed \u2014 no readable shapefiles"
+  transport-data-emobility:
+    grade: C
+    detail: German BASt kfz/pkw weekly profiles applied as proxy
+  unit-commitment-parameters:
+    grade: B
+    detail: per-carrier global UC parameters (no oil column)
+  technology-costs:
+    grade: C
+    detail: "uniform European cost table \u2014 no country-specific capital costs\
+      \ or WACC"
+  heat-profile-bdew:
+    grade: C
+    detail: German BDEW intraday heat profile applied as proxy

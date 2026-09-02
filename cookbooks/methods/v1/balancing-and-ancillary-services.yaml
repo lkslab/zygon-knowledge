@@ -1,0 +1,1179 @@
+id: balancing-and-ancillary-services
+title: "Balancing and ancillary-service representation (reserve requirements, reserve products, sequential market stages)"
+summary: >
+  Represent the services that keep the system in balance after the energy schedule is
+  set — operating reserve held back from dispatch, the reserve/balancing products that
+  procure it, and the sequential market stages (day-ahead, then balancing) in which
+  they clear.
+question: >
+  How much reserve does the system need to hold, who provides it, what does it cost to
+  procure, and what does the balancing stage do to the day-ahead schedule?
+aliases:
+  - "balancing market"
+  - "balancing energy market"
+  - "balancing mechanism"
+  - "ancillary services"
+  - "ancillary services acquisition"
+  - "reserve requirement"
+  - "operating reserve"
+  - "operational reserve margin"
+  - "spinning reserve"
+  - "reserve procurement"
+  - "reserve product co-optimisation"
+  - "energy and reserve co-optimisation"
+  - "aFRR"
+  - "mFRR"
+  - "FCR / frequency containment reserve"
+  - "frequency restoration reserve"
+  - "frequency response"
+  - "capacity remuneration mechanism"
+  - "capacity market"
+  - "imbalance mechanism"
+  - "sequential market clearing"
+when_to_use:
+  - "simulate the balancing market"
+  - "what would balancing cost under this design"
+  - "how much reserve do we need to hold with this much wind"
+  - "can batteries earn money from frequency response or aFRR"
+  - "co-optimise energy and reserve instead of procuring them separately"
+  - "model a day-ahead market then a balancing stage"
+  - "what does the imbalance price look like"
+  - "value flexibility in the balancing timeframe"
+  - "should we build a capacity market and what would it procure"
+  - "how do reserve requirements change the generation mix"
+  - "does the model hold anything back for contingencies"
+  - "who is the marginal provider of reserve"
+family: markets-and-prices
+prevalence:
+  papers: 3
+  tier1: 1
+  tier2: 2
+  sweep_hits: 21
+  basis: >
+    Hand-coded pass 1 over all 100 PDFs (2026-07-25) found 3 papers that actually
+    represent a balancing or reserve product. The regex screen returned 21 — the widest
+    over-count in the book, and diagnostically so: the screen fires on the phrase
+    "balancing" wherever a paper says its model "balances" supply and demand, and on
+    "ancillary services" wherever a paper lists it as a caveat it did NOT model.
+    2018_Brown_Response-Burden-of-proof-100-renewable_RSER.pdf is the clearest example
+    and is deliberately EXCLUDED: it argues about ancillary-service feasibility criteria
+    at length but runs no model at all (pass 1 filed it under the unmatched method
+    "qualitative feasibility-criteria review"). The three real papers are also
+    revealing in what they share: NONE of them uses pypsa-eur or pypsa-earth. All three
+    build a bespoke model on the PyPSA library. That is the single most important fact
+    on this card — the method has no home in either workflow, and the literature says so
+    by voting with its feet.
+procedure:
+  - step: >
+      Fix the scope: which service, which direction, which timeframe. Upward reserve
+      versus downward, capacity (MW held) versus energy (MWh activated), and where in
+      the sequence it sits (co-optimised with the day-ahead, or procured in a separate
+      later stage). The corpus splits exactly here, and the split decides everything
+      downstream — a co-optimised requirement is one LP, a sequential stage is two.
+    handle: null
+    provenance: null
+  - step: >
+      Determine the reserve REQUIREMENT — how much must be held at each timestep. Two
+      routes in practice: derive it as a rule of thumb from load and VRE output
+      (%load + %VRE + a fixed contingency MW), or take it exogenously as observed or
+      TSO-published volumes per period. Both models implement only the first.
+    handle: "electricity.operational_reserve.{epsilon_load,epsilon_vres,contingency}"
+    provenance: "scripts/solve_network.py:add_operational_reserve_margin"
+  - step: >
+      Introduce a reserve DECISION VARIABLE per provider per timestep, distinct from the
+      energy dispatch variable. Without a separate variable there is no way to say "this
+      unit is holding headroom" as opposed to "this unit is not running".
+    handle: "n.model.add_variables(... name='Generator-r')"
+    provenance: "scripts/solve_network.py:add_operational_reserve_margin"
+  - step: >
+      Constrain the requirement: summed reserve across providers >= requirement at every
+      timestep. In both models the VRE-proportional term is moved to the left-hand side
+      as a coefficient on the extendable VRE capacity variables, which makes the
+      constraint bilinear-free but couples reserve to the investment decision.
+    handle: "n.model.add_constraints(lhs >= rhs, name='reserve_margin')"
+    provenance: "scripts/solve_network.py:add_operational_reserve_margin"
+  - step: >
+      Constrain DELIVERABILITY: energy plus held reserve must fit inside the unit's
+      available capacity (p + r <= p_max_pu * p_nom). This is the constraint that makes
+      reserve cost something — it displaces energy. Storage additionally needs an
+      energy-content condition (the German rule the corpus applies is that a battery
+      must be able to sustain its aFRR bid for one hour), which neither model has.
+    handle: "n.model.add_constraints(lhs <= rhs, name='Generator-p-reserve-upper')"
+    provenance: "scripts/solve_network.py:add_operational_reserve_margin"
+  - step: >
+      Couple reserve to the commitment state if start-up realism matters: a committed
+      unit's reserve is bounded by [p_min, p_max] around its output, and an off unit can
+      offer none. This is the step that turns a headroom constraint into something a
+      thermal operator would recognise, and it needs unit commitment underneath.
+    handle: null
+    provenance: null
+  - step: >
+      (product route) Define the PRODUCT: a bid — volume at a price — per provider per
+      period, plus an acceptance rule. The corpus discretises bid prices, uses a binary
+      acceptance indicator against the clearing price, and adds pay-as-bid revenue to
+      the objective. This is where a requirement becomes a market.
+    handle: null
+    provenance: null
+  - step: >
+      (sequential route) Clear the stages in order: solve the earlier market, FIX the
+      resulting schedule or capacities, then re-solve the later stage against the
+      residual. Volumes and prices from the later stage are the answer; the fixing step
+      is what makes the stages sequential rather than one joint optimum.
+    handle: "n.optimize.fix_optimal_capacities() then re-solve"
+    provenance: "scripts/solve_operations_network.py:fix_optimal_capacities"
+  - step: >
+      Limit foresight to the stage's real information set. A balancing stage that sees
+      the whole year perfectly does not balance anything — it pre-empts. Rolling windows
+      of the market's actual gate-closure horizon are the corpus's device.
+    handle: "solving.options.rolling_horizon + horizon/overlap"
+    provenance: "scripts/solve_network.py:optimize_with_rolling_horizon"
+  - step: >
+      Extract the answer: procured volume per period and provider, the requirement's
+      shadow price as the reserve price, procurement cost, and — for a sequential
+      design — the volume and cost of the balancing actions themselves. The cheapest
+      honest substitute for a cleared price is to pool OBSERVED balancing costs and
+      assign them proportionally to modelled volumes.
+    handle: null
+    provenance: null
+variants:
+  - id: reserve-margin-constraint
+    what: >
+      The one thing that already exists: a GenX-style hourly upward-reserve requirement
+      (%load + %VRE + fixed MW) co-optimised with dispatch and investment via a separate
+      Generator-r variable and a p+r headroom constraint. It changes the capacity mix
+      and the dispatch, and it is NOT a market — no bids, no product price you can bill,
+      no procurement cost line, no sequential stage. Correct use is as a proxy for
+      "the system must hold something back", nothing more.
+    papers: []
+  - id: exogenous-reserve-demand
+    what: >
+      Do not derive the requirement — take it as an input. Reserve, redispatch or
+      balancing volumes per period come from observed data or a TSO forecast and enter
+      as a load (or a constraint RHS) that must be served by the eligible providers.
+      Glismann's redispatch clearing does exactly this: the grid operator hands the
+      market a MW volume per area and PyPSA clears it. The cheapest honest route to a
+      balancing answer, because it sidesteps the requirement-derivation argument
+      entirely and replaces it with a data question.
+    papers:
+      - "2021_Glismann_ancillary-services-acquisition-model.pdf"
+  - id: sequential-market-stages
+    what: >
+      Two or more clearings in order — day-ahead, then intraday/redispatch/balancing —
+      each seeing only its own information set, with the earlier schedule fixed as the
+      reference the later stage deviates from. The balancing quantity is the DIFFERENCE
+      between stages, and its cost is what the study is usually after. Franken's GB work
+      is the minimal form: the wholesale schedule versus the transmission-feasible
+      dispatch defines the balancing volume without ever optimising a balancing market.
+    papers:
+      - "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+      - "2021_Glismann_ancillary-services-acquisition-model.pdf"
+  - id: volume-matched-cost-pooling
+    what: >
+      The pragmatic pricing shortcut, and the one to offer a user who wants a balancing
+      COST rather than a balancing market. Do not model the bids: take the real observed
+      accepted bid/offer costs for the period, pool them, and assign them pro rata to
+      the modelled balancing volume (Franken pools daily Elexon costs and applies a
+      £30/MWh balancing mark-up). Buys a defensible cost number for zero new
+      optimisation, at the price of only working retrospectively on a market with
+      published settlement data.
+    papers:
+      - "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+  - id: reserve-product-cooptimisation
+    what: >
+      Explicit named products with prices: positive and negative aFRR/mFRR bid at
+      discrete price levels, accepted by a binary indicator against the market clearing
+      price, pay-as-bid revenue in the objective, plus physical reservation constraints
+      per provider — generators bounded by [P_min, P_max] around committed output,
+      batteries bounded by a state-of-charge deliverability rule. This is what a user
+      means by "balancing market simulation" and it is the full L5 build.
+    papers:
+      - "2024_Welfonder_open-source-stochastic-unit-commitment-PyPSA.pdf"
+  - id: agent-based-market-clearing
+    what: >
+      Replace the single central optimisation with agents that bid according to
+      configurable strategies into a configurable market: acquisition method, pricing
+      method, order types (limit, all-or-none, multi-period block), gate-opening and
+      gate-closure times, provider accreditation. The optimisation shrinks to an
+      embedded per-agent dispatch engine called once per clearing step. The only route
+      in the corpus that yields market-DESIGN findings (mark-ups, over- and
+      under-procurement) rather than system-cost findings, and structurally incompatible
+      with a snakemake single-solve workflow.
+    papers:
+      - "2021_Glismann_ancillary-services-acquisition-model.pdf"
+  - id: capacity-remuneration
+    what: >
+      Procure firm capacity rather than reserve energy: a capacity market, strategic
+      reserve or reliability option, with a demand curve, a clearing price and a payment
+      stream. Nothing in either model's capacity-adequacy machinery (the SAFE planning
+      margin) produces a price or a payment — it is a constraint, so the "capacity
+      price" would be its dual, not a market outcome. No corpus paper does this on
+      PyPSA; listed because users ask for it constantly and the honest answer is that
+      it does not exist.
+    papers: []
+literature:
+  - paper: "2021_Glismann_ancillary-services-acquisition-model.pdf"
+    tier: 2
+    role: defines
+    note: >
+      The reference design for what a real ancillary-services market model contains, and
+      the clearest statement of why it cannot be a config flip. ASAM couples MESA
+      (agent-based) to PyPSA (used purely as an embedded dispatch engine, instantiated
+      per agent and per clearing step on one-node grids) and implements day-ahead,
+      intraday, redispatch, balancing-energy and imbalance mechanisms, each with
+      configurable design variables: acquisition method, pricing method, order types
+      (limit, all-or-none, multi-MTU block), gate-opening/closure time, provider
+      accreditation. Two details to carry into any bundle. First, redispatch demand is
+      EXOGENOUS — the grid operator supplies MW volumes per area and no power flow is
+      computed — which is the cheap route this card recommends. Second, the
+      balancing-energy order book is implemented but its clearing is still
+      exogenous/simplified even in this purpose-built model: if the paper that defines
+      the method leaves BEM clearing simplified, a bundle that promises it is
+      overpromising. Contributes the performance indicators worth extracting
+      (over-procurement, under-procurement, redispatch-induced imbalance, price
+      mark-up). Validated only on a stylised two-agent scenario: 96 ISPs of 15 minutes,
+      flat residual load at 0.85 p.u., one congestion and one forecast-error event.
+  - paper: "2024_Welfonder_open-source-stochastic-unit-commitment-PyPSA.pdf"
+    tier: 2
+    role: defines
+    note: >
+      The only corpus paper that formulates an actual reserve PRODUCT inside a PyPSA
+      optimisation, and therefore the template for reserve-product-cooptimisation.
+      Positive and negative aFRR bids at discrete price levels; acceptance by a binary
+      indicator comparing bid price to the market clearing price; pay-as-bid revenue
+      (bid price x accepted volume) added to the objective. The physical constraints are
+      the transferable part: generator reserve bounded by [P_min, P_max] around
+      committed output — which is why this method needs unit commitment underneath, not
+      beside it — and BESS reserve gated by a one-hour deliverability requirement
+      enforced through state-of-charge constraints, per German regulation. Scope is a
+      single-node single-portfolio network (waste-to-energy CHP + BESS + heat storage,
+      hourly, Germany) co-trading day-ahead (pay-as-clear) and aFRR (pay-as-bid), with
+      price and heat-demand uncertainty. Read it as a portfolio-bidding tool, not a
+      system model: nothing here scales to a clustered European network as written.
+  - paper: "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The reference for answering a balancing question WITHOUT simulating a balancing
+      market, and the most directly reusable paper here. GBPower is a bespoke PyPSA GB
+      model (~300 GSP buses, DC/NTC approximation with Kirchhoff's law removed,
+      electricity-only, operations-only, no investment) re-solved day-by-day at
+      30-minute resolution across 2022-2024. The balancing market is APPROXIMATED, not
+      optimised: the difference between the wholesale schedule and the
+      transmission-compliant nodal dispatch defines the balancing volume, and real daily
+      Elexon accepted bid/offer costs are pooled and assigned proportionally to that
+      volume, with a £30/MWh balancing mark-up. Scope is deliberately narrowed to
+      congestion-flagged BM actions; energy-imbalance (non-flagged) actions are excluded
+      — a scoping decision to copy verbatim, because it is what makes the observed-cost
+      pooling defensible. Notable that the headline result (socioeconomic welfare gain
+      from zonal pricing) is DOMINATED by the reduced-balancing-cost term: the balancing
+      layer this method addresses is where the money was, in a study that never once
+      cleared a balancing product. Also demonstrates the day-by-day re-solve as a
+      working substitute for rolling-horizon foresight limitation.
+pitfalls:
+  - pitfall: >
+      The operational-reserve constraint is a PROXY, not a market. It produces no
+      product price, no procurement cost, no bid, no accepted volume and no sequential
+      stage. It changes the capacity mix and the dispatch, which is a real and useful
+      effect — and it is not what a user asking for "balancing market simulation" is
+      asking for. Presenting its output as a balancing result is the single most likely
+      failure mode on this card.
+    evidence: "2021_Glismann_ancillary-services-acquisition-model.pdf"
+    note: >
+      Say this in the interview, before scoping. Then route: if the user wants system
+      cost or mix effects, reserve-margin-constraint is honest and cheap. If they want
+      volumes and costs, offer exogenous-reserve-demand plus
+      volume-matched-cost-pooling. If they want prices, mark-ups or design comparison,
+      quote the L5 build and the agent-based architecture it implies.
+  - pitfall: >
+      The reserve requirement is UPWARD ONLY, and only generators can provide it. There
+      is no downward reserve variable, and storage units, links and demand-side
+      resources are absent from the formulation in both models — despite the reserve
+      formulation being advertised as GenX-style, whose selling point is precisely that
+      DERs and demand response contribute. A study about batteries providing frequency
+      response gets nothing from this constraint.
+    evidence: "2024_Welfonder_open-source-stochastic-unit-commitment-PyPSA.pdf"
+    note: >
+      Check the user's provider set first. If it includes storage, links or demand, the
+      constraint must be extended (L5, in the custom-constraints hook), and the storage
+      case additionally needs the state-of-charge deliverability condition the corpus
+      uses — reserve headroom on an empty battery is not reserve.
+  - pitfall: >
+      The requirement constraint is added only when there are BOTH extendable generators
+      and time-varying generators, but the p+r headroom constraint is added
+      unconditionally. In an operations-only or fully-brownfield run — exactly the
+      sequential-market-stages setup — the requirement is therefore skipped in pypsa-eur
+      while the headroom penalty remains: the run succeeds, reserve is held nowhere, and
+      the answer silently ignores the setting.
+    evidence: "2021_Glismann_ancillary-services-acquisition-model.pdf"
+    note: >
+      Never combine activate:true with a fixed-capacity re-solve without asserting that
+      the constraint exists in the built model (see `verifies`). Ordering matters: put
+      the reserve requirement in the expansion stage, not the operations stage, or
+      reformulate it against p_nom rather than the capacity variable.
+  - pitfall: >
+      A balancing stage solved with full foresight over the whole horizon does not
+      balance — it pre-positions. Perfect foresight makes the later stage anticipate the
+      very deviations it is supposed to correct, which understates balancing volume and
+      cost, usually severely.
+    evidence: "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+    note: >
+      Limit the stage's information set explicitly: rolling_horizon at the market's real
+      gate-closure window in pypsa-eur, or the corpus's simpler device of re-solving
+      day-by-day and chaining storage state, which is also the only route available in
+      pypsa-earth.
+  - pitfall: >
+      Reserve is not free even when it looks free. Because the deliverability constraint
+      displaces energy, activating the requirement changes the objective and the mix,
+      and the effect is entirely driven by three numbers (epsilon_load, epsilon_vres,
+      contingency) that have no empirical basis in either default config — and whose
+      defaults differ between the models (contingency is 4000 MW in pypsa-eur and 0 in
+      pypsa-earth for the same nominal formulation).
+    evidence: "2021_Glismann_ancillary-services-acquisition-model.pdf"
+    note: >
+      Treat the three parameters as an explicit assumption to sign off with the user,
+      and sweep them rather than defending a point value. Never carry pypsa-eur's
+      4000 MW contingency into a small-country pypsa-earth study — it can exceed peak
+      load.
+  - pitfall: >
+      Pooling observed balancing costs onto modelled volumes only works where settlement
+      data is published and only for periods that already happened. It is a backcast
+      device. Applied to a 2040 scenario it silently assumes today's balancing cost
+      structure survives, which is the thing most likely to change.
+    evidence: "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+    note: >
+      Restrict volume-matched-cost-pooling to historical or near-term studies with a
+      published settlement source, and scope the action types deliberately (Franken uses
+      congestion-flagged actions only). For forward-looking studies say plainly that no
+      cheap route to a balancing cost exists.
+requires_methods:
+  - custom-constraints-with-linopy
+combines_with:
+  - unit-commitment-and-ramping
+  - operational-dispatch-and-rolling-horizon
+  - zonal-nodal-and-redispatch
+  - price-formation-and-scarcity-rents
+  - shadow-prices-and-marginal-values
+  - stochastic-and-robust-optimisation
+  - storage-sizing-and-duration
+  - demand-side-flexibility-representation
+  - model-validation-and-backtesting
+topics:
+  - ancillary-services-co-optimization
+  - balancing-market-valuation
+  - capacity-market-design
+  - system-flexibility-need
+  - grid-congestion-redispatch
+pypsa_primitive:
+  symbol: "pypsa/optimization/optimize.py:fix_optimal_capacities"
+  pypsa_version: "0.30.3"
+  exposed_by: "pypsa-eur, via scripts/solve_operations_network.py; not exposed in pypsa-earth"
+  reachable_via: >
+    n.optimize.fix_optimal_capacities() copies every extendable component's *_opt back
+    onto its nominal attribute and sets *_extendable = False, turning a solved expansion
+    network into a fixed-capacity operations network. Paired with
+    optimize_with_rolling_horizon(n, snapshots=None, horizon=100, overlap=0, **kwargs),
+    which slices the snapshot range into consecutive windows and chains storage state
+    (stores.e_initial / storage_units.state_of_charge_initial) between them, these two
+    are the whole primitive layer available for this method.
+  note: >
+    The sharp fact on this card: pypsa the LIBRARY has NO reserve or ancillary-service
+    primitive whatsoever — grepping pypsa 0.30.3 for reserve returns nothing relevant.
+    Unlike MGA, where optimize_mga makes the work a harness, there is nothing one layer
+    down to lean on for the product formulation. What the library does supply is
+    SEQUENCING (fix capacities, roll the horizon), which is the market-STAGE half of the
+    method, not the market-PRODUCT half. So sequential-market-stages is
+    L5-with-a-handle while reserve-product-cooptimisation is L5-from-scratch, and the
+    interview should route accordingly. Soft anchor: pypsa is a conda dependency, not a
+    submodule, so this claim is pinned to a version string rather than a SHA.
+models:
+  - model: pypsa-eur
+    version_anchor:
+      ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d"
+      date: "2026-07-25"
+    functionality:
+      - id: market-design-mechanisms
+        role: >
+          the method's product half — registry status `absent`. No bids, no capacity
+          remuneration, no product co-optimisation. The registry itself names the only
+          substitutes: the operational-reserve constraint and nodal duals as a
+          competitive-benchmark price.
+      - id: operational-reserves
+        role: >
+          the one piece that genuinely exists and the entry point for
+          reserve-margin-constraint: a separate Generator-r variable, an hourly
+          requirement (%load + %VRE + fixed MW), and a p+r headroom constraint,
+          co-optimised with dispatch and investment. Registry `working`, off by default.
+      - id: operations-only-solve
+        role: >
+          the sequential-stage machinery: a dedicated rule that fixes capacities from a
+          prior expansion run and re-solves dispatch. This is the second market stage,
+          and it is pypsa-eur's decisive advantage on this card.
+      - id: rolling-horizon-dispatch
+        role: >
+          limits the later stage's foresight to its real information set — without it a
+          balancing stage pre-empts the deviations it should correct
+      - id: linearized-unit-commitment
+        role: >
+          needed for the commitment-coupled reserve bound the corpus's product
+          formulation uses ([P_min, P_max] around committed output); registry `partial`
+      - id: custom-constraint-hook
+        role: >
+          the sanctioned landing point for every product constraint the built-ins lack
+          — down-reserve, storage deliverability, bid acceptance, per-product balances
+      - id: nodal-marginal-prices
+        role: >
+          the price surface. The requirement's dual is the only reserve "price"
+          obtainable, and energy duals are the competitive-benchmark price the registry
+          points at in place of a cleared market price.
+      - id: load-shedding-voll
+        role: >
+          the diagnostic that keeps a tight reserve requirement from turning into a
+          bare infeasibility, and the crude proxy for the cost of unserved balancing
+      - id: summary-outputs
+        role: >
+          where procured volumes, reserve duals and per-stage cost differences get
+          aggregated; already computes prices, weighted_prices and market_values
+      - id: scenario-matrix
+        role: >
+          the fan-out for sweeping the three unfounded reserve parameters, and for
+          running the market-design comparison as parallel managed runs
+    available:
+      verdict: assemble
+      how: >
+        Four surfaces exist and none of them is the method; the value of this card is
+        the wiring. (1) electricity.operational_reserve.activate adds a real hourly
+        upward-reserve requirement with its own variable, co-optimised with dispatch and
+        investment — a config flip, and the only turnkey piece. (2) rule
+        solve_operations_network fixes capacities from a prior solve and re-solves
+        dispatch, which is a second market stage. (3) solving.options.rolling_horizon
+        (with horizon/overlap) limits that stage's foresight. (4)
+        solving.options.custom_extra_functionality imports a user module after the
+        built-in constraints, which is where any actual product constraint lands. Wire
+        1+2+3 and you have a sequential dispatch study with a reserve proxy; wire 4 on
+        top and you can add products.
+      missing: >
+        Procedure steps 1, 6, 7 and 10 have no handle, and step 5 is only half
+        implemented. Concretely: no reserve PRODUCT (no bid, no volume-price pair, no
+        acceptance rule, no pay-as-bid or pay-as-clear settlement, no procurement cost
+        line item); no DOWNWARD reserve; no provider other than Generator (storage
+        units, links and demand-side resources cannot offer reserve, despite the
+        GenX formulation this is modelled on being sold on exactly that); no storage
+        state-of-charge deliverability condition; no commitment-coupled reserve bound;
+        no capacity remuneration of any kind; and no reserve price you can bill —
+        assign_all_duals is NOT a key in config.default.yaml or schema.default.json at
+        this ref, only a .get() fallback in the solver kwargs, so the reserve
+        constraint's dual is not retrievable without a code change. The three
+        requirement parameters have no empirical basis. Every corpus paper that did
+        this built a bespoke model on the PyPSA library instead of using this workflow.
+      provenance: "scripts/solve_network.py:add_operational_reserve_margin; scripts/solve_operations_network.py:fix_optimal_capacities; scripts/solve_network.py:custom_extra_functionality"
+    levers:
+      - key: "electricity.operational_reserve.activate"
+        effect: >
+          Turns on the GenX-style hourly reserve requirement: adds the Generator-r
+          variable, the reserve_margin constraint and the Generator-p-reserve-upper
+          headroom constraint. The whole of reserve-margin-constraint is this one flip.
+        default: "false"
+        provenance: "config/config.default.yaml:operational_reserve; scripts/solve_network.py:add_operational_reserve_margin"
+      - key: "electricity.operational_reserve.epsilon_load"
+        effect: >
+          Share of total load at each snapshot that must be held as reserve. First of
+          the three numbers that entirely determine the proxy's severity.
+        default: "0.02"
+        provenance: "config/config.default.yaml:epsilon_load; scripts/solve_network.py:add_operational_reserve_margin"
+      - key: "electricity.operational_reserve.epsilon_vres"
+        effect: >
+          Share of VRE output held as reserve. Applied on the LHS as a coefficient on
+          extendable VRE capacity and on the RHS as a share of non-extendable VRE
+          potential — so it couples the reserve requirement to the investment decision,
+          not just to dispatch.
+        default: "0.02"
+        provenance: "config/config.default.yaml:epsilon_vres; scripts/solve_network.py:add_operational_reserve_margin"
+      - key: "electricity.operational_reserve.contingency"
+        effect: >
+          Fixed reserve requirement in MW, added to the RHS at every snapshot — the
+          stand-in for the largest-single-infeed-loss criterion. Scale it to the study
+          region; the default is a Europe-wide number.
+        default: "4000 (MW)"
+        provenance: "config/config.default.yaml:contingency; scripts/solve_network.py:add_operational_reserve_margin"
+      - key: "solving.options.rolling_horizon"
+        effect: >
+          Splits the solve into consecutive snapshot windows with chained storage state,
+          the device for restricting a market stage to its real foresight. Also
+          disables cyclic storage and, in solve_network, skips the solve-status and
+          objective-value checks — read the pitfalls before enabling.
+        default: "false"
+        provenance: "config/config.default.yaml:rolling_horizon; scripts/solve_network.py:optimize_with_rolling_horizon"
+      - key: "solving.options.horizon"
+        effect: >
+          Snapshots per rolling window. Set it to the market's real gate-closure
+          horizon: 24-48 for a day-ahead-then-balancing sequence, not the 365 default.
+        default: "365"
+        provenance: "config/config.default.yaml:horizon; scripts/solve_network.py:optimize_with_rolling_horizon"
+      - key: "solving.options.overlap"
+        effect: >
+          Snapshots shared between consecutive windows, which softens the end-of-window
+          storage-emptying artefact that otherwise contaminates every balancing volume
+          at the window boundary.
+        default: "0"
+        provenance: "config/config.default.yaml:overlap; scripts/solve_network.py:optimize_with_rolling_horizon"
+      - key: "solving.options.custom_extra_functionality"
+        effect: >
+          Path to a user module imported and called with (n, snapshots, snakemake) after
+          the built-in constraints — where down-reserve, storage deliverability, bid
+          acceptance and any per-product balance land. The key IS present and populated
+          at this ref, pointing at a no-op stub.
+        default: "'../data/custom_extra_functionality.py' (a no-op stub)"
+        provenance: "config/config.default.yaml:custom_extra_functionality; scripts/solve_network.py:custom_extra_functionality"
+      - key: "conventional.unit_commitment"
+        effect: >
+          Reads data/unit_commitment.csv and marks conventional carriers committable
+          with p_min_pu, ramp limits, min up/down times and start-up costs — the
+          prerequisite for a commitment-coupled reserve bound. Note the csv covers only
+          OCGT, CCGT, coal, lignite and nuclear.
+        default: "false"
+        provenance: "config/config.default.yaml:unit_commitment; scripts/add_electricity.py:attach_conventional_generators"
+      - key: "solving.options.linearized_unit_commitment"
+        effect: >
+          Solves commitment as an LP relaxation instead of a MILP, which is what keeps a
+          reserve-plus-commitment study tractable at network scale. Already true by
+          default here — meaning the "commitment" state is fractional, and a fractional
+          on/off is a weak basis for a reserve bound.
+        default: "true"
+        provenance: "config/config.default.yaml:linearized_unit_commitment; scripts/solve_network.py:linearized_unit_commitment"
+      - key: "solving.options.load_shedding"
+        effect: >
+          Per-bus slack generators at a stated cost. Keeps a tight reserve requirement
+          or a constrained balancing stage from returning a bare infeasible instead of a
+          priced shortfall, and gives an unserved-balancing cost proxy.
+        default: "{enable: false, default_cost: 100000, all_carriers: true}"
+        provenance: "config/config.default.yaml:load_shedding; scripts/solve_network.py:add_load_balance_components"
+      - key: "run.scenarios.enable"
+        effect: >
+          Fans the config into managed parallel runs — the harness for sweeping the three
+          unfounded reserve parameters and for running a market-design comparison.
+        default: "false"
+        provenance: "config/config.default.yaml:scenarios; Snakefile:get_scenarios"
+    assembly:
+      - step: >
+          STAGE 1 (the reserve proxy, L0). Flip
+          electricity.operational_reserve.activate and set the three parameters to
+          values you can defend for the study region — not the defaults, whose 4000 MW
+          contingency is a Europe-scale number. Solve normally. You now have an hourly
+          upward-reserve requirement co-optimised with dispatch and investment, with the
+          mix and cost effects that implies. Stop here if the user's question is about
+          system cost or capacity mix; go on only if they want volumes, prices or stages.
+        uses: [operational-reserves]
+        config: "electricity.operational_reserve.{activate,epsilon_load,epsilon_vres,contingency}"
+        code: null
+        provenance: "scripts/solve_network.py:add_operational_reserve_margin"
+      - step: >
+          Extract what the proxy can actually yield: per-generator Generator-r time
+          series (procured volume by provider and hour) and the reserve_margin
+          constraint's dual as a shadow reserve price. The dual needs assign_all_duals,
+          which is NOT in config.default.yaml or the schema at this ref — it is only a
+          .get() fallback in the solver kwargs, so retrieving the reserve price is an L2
+          edit, not a config setting. Volume is free; price is not.
+        uses: [nodal-marginal-prices, summary-outputs]
+        config: null
+        code: "scripts/solve_network.py (solve kwargs: assign_all_duals); scripts/make_summary.py"
+        provenance: "scripts/solve_network.py:assign_all_duals; scripts/make_summary.py:calculate_prices"
+      - step: >
+          STAGE 2 (the sequential stage, L1). Build rule solve_operations_network on the
+          expansion result. fix_optimal_capacities() copies every *_opt onto its nominal
+          attribute and clears *_extendable, then dispatch is re-solved on the fixed
+          fleet — a genuine second market stage rather than a re-run. CRITICAL ORDERING:
+          because there are now no extendable generators, the reserve REQUIREMENT
+          constraint is skipped (its guard needs a non-empty extendable set) while the
+          p+r headroom constraint is still added. Put the requirement in stage 1, and if
+          you need it in stage 2 reformulate it against p_nom in the custom hook.
+        uses: [operations-only-solve, operational-reserves]
+        config: "the solve_operations_network target; no new key"
+        code: "scripts/solve_operations_network.py"
+        provenance: "scripts/solve_operations_network.py:fix_optimal_capacities; rules/solve_electricity.smk:solve_operations_network"
+      - step: >
+          Limit stage 2's foresight. Set solving.options.rolling_horizon true with
+          horizon at the market's real gate-closure window (24-48 half-hours or hours,
+          not the 365 default) and a non-zero overlap to blunt the end-of-window storage
+          artefact. Note that rolling horizon disables cyclic storage and sets initial
+          state to zero, and that solve_network skips its status and objective-value
+          checks in this mode — validate the run yourself.
+        uses: [rolling-horizon-dispatch]
+        config: "solving.options.{rolling_horizon,horizon,overlap}"
+        code: null
+        provenance: "scripts/solve_operations_network.py:optimize_with_rolling_horizon; scripts/solve_network.py:optimize_with_rolling_horizon"
+      - step: >
+          Add commitment underneath, if the user's providers are thermal and start-up
+          realism matters. conventional.unit_commitment true reads
+          data/unit_commitment.csv (OCGT, CCGT, coal, lignite, nuclear only) and marks
+          those carriers committable with p_min_pu, ramp limits and start-up costs.
+          Leave linearized_unit_commitment at its default true for tractability, but
+          record that the commitment state is then fractional — a weak footing for a
+          [P_min, P_max]-around-committed-output reserve bound.
+        uses: [linearized-unit-commitment]
+        config: "conventional.unit_commitment; solving.options.linearized_unit_commitment"
+        code: null
+        provenance: "scripts/add_electricity.py:attach_conventional_generators; scripts/solve_network.py:linearized_unit_commitment"
+      - step: >
+          L5 — the product itself, in the custom hook. This is the boundary the card
+          exists to mark. Write into the custom_extra_functionality module, which is
+          called with (n, snapshots, snakemake) after the built-ins so Generator-r
+          already exists and can be referenced or superseded: a downward-reserve
+          variable; reserve variables for StorageUnit and Link so storage and DSR can
+          provide; a state-of-charge deliverability constraint (the corpus's rule is one
+          hour of sustained delivery); bid volume-price variables with a binary
+          acceptance indicator against the clearing price; and a pay-as-bid or
+          pay-as-clear revenue term. There is no library primitive for any of this —
+          pypsa 0.30.3 has no reserve concept at all.
+        uses: [custom-constraint-hook, operational-reserves]
+        config: "solving.options.custom_extra_functionality"
+        code: "the user module named by that key; scripts/solve_network.py:custom_extra_functionality"
+        provenance: "scripts/solve_network.py:custom_extra_functionality; rules/common.smk:input_custom_extra_functionality"
+      - step: >
+          ALTERNATIVE to the L5 build, and the route to recommend first. Take the
+          requirement or the balancing volume EXOGENOUSLY — observed or TSO-published MW
+          per period entering as a load or a constraint RHS — and price it by pooling
+          observed settlement costs onto the modelled volume rather than clearing a
+          market. Franken's GB study gets its headline number this way. Buys a
+          defensible balancing cost with no new optimisation; only valid retrospectively
+          on a market with published settlement data.
+        uses: [summary-outputs, scenario-matrix]
+        config: null
+        code: "a post-processing script alongside scripts/make_summary.py; load time series via scripts/add_electricity.py"
+        provenance: "scripts/make_summary.py:calculate_prices; scripts/add_electricity.py:attach_conventional_generators"
+      - step: >
+          Sweep, do not defend. epsilon_load, epsilon_vres and contingency have no
+          empirical basis in the config; run them as a scenario matrix and report the
+          range, and use the same harness for a stage-design comparison (co-optimised
+          versus sequential).
+        uses: [scenario-matrix, summary-outputs]
+        config: "run.scenarios.enable; run.scenarios.file"
+        code: null
+        provenance: "Snakefile:get_scenarios; rules/common.smk:scenario_config"
+    boundary:
+      - variant: reserve-margin-constraint
+        rung: L0
+        note: >
+          One config flip. electricity.operational_reserve.activate is in
+          config.default.yaml and in schema.default.json, and
+          add_operational_reserve_margin is called from solve_network's constraint
+          assembly whenever it is truthy. This is the ONLY rung on this card below L4,
+          and it buys a proxy, not a market — say so before flipping it.
+      - variant: sequential-market-stages
+        rung: L1
+        note: >
+          Every piece exists as config or an existing rule: rule
+          solve_operations_network plus fix_optimal_capacities gives the fixed-capacity
+          re-solve, and rolling_horizon/horizon/overlap restricts its foresight. L1
+          rather than L0 because the combination is non-default in three places at once
+          and because of the reserve-requirement guard interaction — the stages run, the
+          reserve silently does not. Sector-coupled networks are excluded: the schema
+          states rolling_horizon has no effect there, so a sector study is L4 (replicate
+          the operations rule on the sector chain).
+      - variant: exogenous-reserve-demand
+        rung: L3
+        note: >
+          Not a code problem — a data problem, which is why it is the cheapest honest
+          route. Reserve or redispatch volumes per period must be sourced (TSO
+          publication, observed settlement) and attached as an extra load or constraint
+          RHS on the eligible providers. Nothing in the workflow ingests such a series,
+          so it needs a new input and a small attach step; the optimisation is unchanged.
+      - variant: volume-matched-cost-pooling
+        rung: L3
+        note: >
+          Pure post-processing on two solved networks plus one external cost series
+          (Franken: daily Elexon accepted bid/offer costs, congestion-flagged only, plus
+          a £30/MWh mark-up). L3 for the settlement data, not for code — the arithmetic
+          is a few lines next to make_summary. Historical periods only.
+      - variant: reserve-product-cooptimisation
+        rung: L5
+        note: >
+          The full build, and L5-from-scratch rather than L5-with-a-handle: pypsa 0.30.3
+          contains no reserve primitive to lean on. Needs new variables (down-reserve,
+          per-product, per-provider-class), bid volume-price pairs with a BINARY
+          acceptance indicator — which makes the problem a MILP and interacts badly with
+          linearized_unit_commitment's LP relaxation — storage deliverability
+          constraints, and an objective term. All of it lands in the
+          custom_extra_functionality hook, so the landing point is sanctioned even
+          though nothing there is written. Budget weeks, and expect the MILP to force a
+          much smaller network than the study would otherwise want.
+      - variant: agent-based-market-clearing
+        rung: L5
+        note: >
+          Highest rung on the card and the one to be blunt about: it is not a pypsa-eur
+          study. The corpus's implementation puts an agent framework OUTSIDE the
+          optimisation and calls PyPSA per agent per clearing step on one-node grids —
+          structurally incompatible with a snakemake single-solve DAG. If a user needs
+          bidding behaviour, mark-ups or design comparison, the honest answer is a
+          separate model built on the PyPSA library, with pypsa-eur used only to supply
+          the network and cost data.
+      - variant: capacity-remuneration
+        rung: L5
+        note: >
+          Nothing exists. The nearest surface is the SAFE planning margin, and it is a
+          constraint rather than a mechanism: it yields a dual, not a clearing price, and
+          no payment stream at all. It is also weaker than the registry suggests —
+          electricity.SAFE_reservemargin has NO entry in config.default.yaml at this ref,
+          so even the adequacy constraint needs a config addition before its dual can be
+          read. A demand curve, clearing rule and payment settlement are all new.
+    where:
+      - change: "reserve requirement, headroom and any new product constraint"
+        anchor: "the module named by solving.options.custom_extra_functionality, called from scripts/solve_network.py::extra_functionality; built-ins at scripts/solve_network.py::add_operational_reserve_margin"
+        provenance: "scripts/solve_network.py:custom_extra_functionality; scripts/solve_network.py:add_operational_reserve_margin"
+      - change: "the second market stage (fixed-capacity re-solve)"
+        anchor: "rule solve_operations_network in rules/solve_electricity.smk -> scripts/solve_operations_network.py"
+        provenance: "rules/solve_electricity.smk:solve_operations_network; scripts/solve_operations_network.py:fix_optimal_capacities"
+      - change: "foresight limitation for the later stage"
+        anchor: "solving.options.rolling_horizon/horizon/overlap -> n.optimize.optimize_with_rolling_horizon"
+        provenance: "scripts/solve_operations_network.py:optimize_with_rolling_horizon"
+      - change: "retrieving the reserve constraint's dual as a reserve price"
+        anchor: "the solve kwargs assembly in scripts/solve_network.py (assign_all_duals); no config key exists at this ref"
+        provenance: "scripts/solve_network.py:assign_all_duals"
+      - change: "commitment data for a commitment-coupled reserve bound"
+        anchor: "data/unit_commitment.csv consumed by scripts/add_electricity.py::attach_conventional_generators"
+        provenance: "scripts/add_electricity.py:attach_conventional_generators"
+      - change: "exogenous reserve/balancing volumes and observed-cost pooling"
+        anchor: "a new post-processing script beside scripts/make_summary.py; volume series attached in the electricity chain"
+        provenance: "scripts/make_summary.py:calculate_prices"
+    data_dependencies:
+      - input: >
+          reserve or balancing volume per settlement period for the study region (TSO
+          publication, or observed activated volumes)
+        required_for: exogenous-reserve-demand
+        availability: >
+          absent from the workflow — nothing ingests it. Published for most European
+          TSOs (ENTSO-E Transparency, national platforms), so for a European study this
+          is a fetch-and-attach job rather than a research problem
+      - input: >
+          observed accepted bid/offer settlement costs for the same periods, with an
+          action-type flag so congestion-related actions can be separated from
+          energy-imbalance actions
+        required_for: volume-matched-cost-pooling
+        availability: >
+          region-dependent and the binding constraint on this variant. GB (Elexon) is
+          the corpus's source and is unusually complete; most markets publish less
+          granularity, and the flagged/non-flagged split Franken relies on may not exist
+      - input: >
+          per-carrier commitment parameters (p_min_pu, ramp limits, min up/down, start-up
+          cost) for the providers offering reserve
+        required_for: reserve-product-cooptimisation
+        availability: >
+          exists by default for five carriers via data/unit_commitment.csv (OCGT, CCGT,
+          coal, lignite, nuclear); anything else — oil, biomass, storage — has none and
+          must be added
+      - input: >
+          product definitions and bid-price ladders for the named products (aFRR/mFRR
+          up/down, FCR), with the market's deliverability rules
+        required_for: reserve-product-cooptimisation
+        availability: >
+          absent — no such data exists anywhere in the repo. The corpus's German aFRR
+          parameterisation is per-market regulation and must be sourced per jurisdiction
+    cost_profile:
+      solves: >
+        reserve-margin-constraint: 1 (same solve, more constraints). Adding
+        Generator-r doubles the per-generator per-snapshot variable count and adds two
+        constraint blocks, so expect a noticeably harder LP, not a free one.
+        sequential-market-stages: 2 per case (expansion + operations), or 2 + one
+        operations solve per rolling window. volume-matched-cost-pooling: 2 (the two
+        schedules being differenced) plus post-processing. Franken's design is 2 solves
+        x ~1100 days = ~2200 solves, deliberately tiny per solve.
+        reserve-product-cooptimisation: 1 MILP, which is the wrong unit — the binary
+        acceptance indicators change the cost class, not the count.
+      relative: >
+        ~1.2-2x a single solve for the reserve proxy; ~2x for the two-stage design;
+        potentially 10-100x or non-terminating for the MILP product build.
+      note: >
+        The mitigations differ per variant and that is the interview-relevant part. The
+        reserve proxy is cheap and can stay at full network resolution. The sequential
+        design gets cheap by shrinking the horizon, not the network — the corpus's
+        device is to solve day-by-day at 30-minute resolution on a ~300-bus network,
+        which is many tiny solves rather than one large one, and is the natural fit for
+        rolling_horizon. The product build goes the other way: binaries force the
+        network down, and the corpus's only working example is a SINGLE-NODE portfolio.
+        If a user wants both named reserve products and a European network, say plainly
+        that no corpus study has done it.
+    verifies:
+      - variant: reserve-margin-constraint
+        check: "'reserve_margin' in n.model.constraints and 'Generator-r' in n.model.variables"
+        over: run
+        note: >
+          The card's most important check, because of the guard: the requirement
+          constraint is only added when there are BOTH extendable and time-varying
+          generators, while the headroom constraint is added unconditionally. On a
+          fixed-capacity or fully-brownfield network the run succeeds with activate:true,
+          holds no reserve anywhere, and still pays the headroom penalty. Nothing warns.
+      - variant: reserve-margin-constraint
+        check: "n.model.variables['Generator-r'].solution.sum('Generator').min() > 0"
+        over: run
+        note: >
+          Reserve was required at every snapshot but nothing was held at some of them,
+          which means the requirement is not binding anywhere — usually because
+          contingency was left at 0 and both epsilons at defaults on a small system, so
+          the setting was cosmetic.
+      - variant: sequential-market-stages
+        check: "not n_op.generators.p_nom_extendable.any() and (n_op.generators.p_nom - n_exp.generators.p_nom_opt).abs().max() < 1e-6"
+        over: ensemble
+        note: >
+          The operations stage did not actually inherit the expansion stage's fleet, so
+          the two "stages" are two unrelated runs and the balancing volume between them
+          is meaningless. The usual cause is the operations rule reading the prepared
+          network instead of the solved one.
+      - variant: sequential-market-stages
+        check: "len(set(n_da.snapshots) ^ set(n_bal.snapshots)) == 0"
+        over: ensemble
+        note: >
+          The two stages cover different snapshot sets, so the differenced volume mixes
+          real deviations with missing periods. Silent and easy to cause with a rolling
+          horizon whose windows do not tile the range.
+  - model: pypsa-earth
+    version_anchor:
+      ref: "8435f4c8cc05f30088933b37b7db497ff860dc53"
+      date: "2026-07-25"
+    functionality:
+      - id: market-design-mechanisms
+        role: >
+          the product half — registry status `absent`, identically to pypsa-eur. The one
+          symmetry on this card: neither model has bids, capacity remuneration or
+          product co-optimisation.
+      - id: operational-reserves
+        role: >
+          the surprising symmetry: earth carries the SAME GenX-style reserve
+          formulation, registry `working`, with the same four config keys and the same
+          Generator-r variable. This is the rare case where earth is not behind — but
+          the implementation differs in a way that matters (see available.how).
+      - id: operations-only-solve
+        role: >
+          registry status `absent`, and the decisive asymmetry on this card: there is no
+          operations rule, so the sequential market stage has to be built
+      - id: custom-constraint-hook
+        role: >
+          the landing point for product constraints, but it is a hardcoded function
+          rather than a config-pointed user module — an in-repo edit, not a setting
+      - id: unit-commitment
+        role: >
+          registry `partial`, and weaker than eur's: PyPSA supports committable
+          generators but no earth script ever sets committable=True and no ramp data
+          ships, so a commitment-coupled reserve bound needs data first
+      - id: nodal-marginal-prices
+        role: "the only price surface — energy duals as a competitive benchmark"
+      - id: load-shedding-voll
+        role: "keeps a tight reserve requirement from returning a bare infeasible"
+      - id: monte-carlo-sampling
+        role: >
+          earth's one harness advantage: an LHS multi-solve fan-out over arbitrary
+          network quantities, directly reusable for sweeping the three unfounded reserve
+          parameters
+      - id: summary-outputs
+        role: "where procured volumes and per-stage differences get aggregated"
+      - id: scenario-matrix
+        role: "combinatorial run expansion for design comparison"
+    available:
+      verdict: assemble
+      how: >
+        Exactly ONE of pypsa-eur's four surfaces is present. The reserve requirement is
+        there and is genuinely the same method — electricity.operational_reserve with
+        the same four keys, the same Generator-r variable, the same GenX citation, split
+        across add_operational_reserve_margin_constraint (the requirement) and
+        update_capacity_constraint (the p+r headroom), both called by
+        add_operational_reserve_margin from extra_functionality. Everything else you
+        would wire it to is missing, so the assembly is mostly construction.
+      missing: >
+        The same product gap as pypsa-eur (no bid, no acceptance rule, no settlement, no
+        downward reserve, no provider beyond Generator, no deliverability condition, no
+        capacity remuneration) PLUS the entire staging layer that pypsa-eur has: there is
+        NO operations-only rule, no fix_optimal_capacities call and no
+        solve_operations_network anywhere; grepping the repo for rolling_horizon returns
+        a single COMMENTED-OUT mention in solve_network.py and nothing else, and
+        solving.options has no rolling_horizon, horizon, overlap,
+        custom_extra_functionality or linearized_unit_commitment key at all. So
+        procedure steps 6-10 have no handle here, and step 8 (fix the earlier stage) has
+        to be built from scratch rather than configured. Two further sharp differences
+        from eur: the requirement's guard is placed such that with nothing extendable
+        `lhs` is never assigned and the function raises rather than silently skipping —
+        louder, and preferable; and contingency defaults to 0 rather than 4000 MW, so
+        the out-of-box requirement is purely proportional.
+      provenance: "scripts/solve_network.py:add_operational_reserve_margin_constraint; scripts/solve_network.py:update_capacity_constraint; scripts/solve_network.py:extra_functionality"
+    levers:
+      - key: "electricity.operational_reserve.activate"
+        effect: >
+          Turns on the hourly reserve requirement via extra_functionality: adds
+          Generator-r, the reserve_margin constraint and the
+          gen_updated_capacity_constraint headroom constraint. The whole of
+          reserve-margin-constraint, same as eur.
+        default: "false"
+        provenance: "config.default.yaml:operational_reserve; scripts/solve_network.py:add_operational_reserve_margin"
+      - key: "electricity.operational_reserve.epsilon_load"
+        effect: "Share of load held as reserve at each snapshot."
+        default: "0.02"
+        provenance: "config.default.yaml:epsilon_load; scripts/solve_network.py:add_operational_reserve_margin_constraint"
+      - key: "electricity.operational_reserve.epsilon_vres"
+        effect: >
+          Share of VRE held as reserve; on the LHS a coefficient on extendable VRE
+          capacity, on the RHS a share of non-extendable VRE potential.
+        default: "0.02"
+        provenance: "config.default.yaml:epsilon_vres; scripts/solve_network.py:add_operational_reserve_margin_constraint"
+      - key: "electricity.operational_reserve.contingency"
+        effect: >
+          Fixed MW added to the requirement at every snapshot. Defaults to 0 here, not
+          4000 as in pypsa-eur — so out of the box earth's requirement has no
+          contingency term at all, and a user copying an eur parameterisation into a
+          single-country earth study can set a contingency exceeding peak load.
+        default: "0 (MW)"
+        provenance: "config.default.yaml:contingency; scripts/solve_network.py:add_operational_reserve_margin_constraint"
+      - key: "solving.options.load_shedding"
+        effect: >
+          Slack generators per bus at a stated cost. Note this is a scalar here, not
+          eur's dict — a tight reserve requirement on a small system otherwise returns
+          infeasible rather than a priced shortfall.
+        default: "100"
+        provenance: "config.default.yaml:load_shedding; scripts/solve_network.py:get_load_shedding_capacity"
+      - key: "cluster_options.aggregation_strategies.generators.committable"
+        effect: >
+          Preserves the committable flag through clustering, so a commitment-coupled
+          reserve bound survives spatial aggregation. Necessary but nowhere near
+          sufficient: no earth script sets committable=True and no ramp/start-up data
+          ships, so the flag it preserves is always False by default.
+        default: "'any'"
+        provenance: "config.default.yaml:aggregation_strategies; scripts/cluster_network.py:busmap_for_n_clusters"
+      - key: "monte_carlo.options.add_to_snakefile"
+        effect: >
+          Wires the LHS multi-solve fan-out into the DAG. The reserve parameters are
+          exactly the kind of unfounded scalars this harness exists to sweep, and the
+          {unc} wildcard is already plumbed through the scenario dict.
+        default: "false"
+        provenance: "config.default.yaml:add_to_snakefile; scripts/monte_carlo.py:monte_carlo_sampling"
+      - key: "monte_carlo.options.samples"
+        effect: "Number of solves in the sweep over the reserve parameters."
+        default: "9"
+        provenance: "config.default.yaml:samples; scripts/monte_carlo.py:validate_parameters"
+    assembly:
+      - step: >
+          STAGE 1 (L0, identical to eur). Flip electricity.operational_reserve.activate
+          and set the three parameters. Watch the contingency default: it is 0 here, so
+          leaving it alone gives a purely proportional requirement — and importing an
+          eur parameterisation gives a 4000 MW contingency that can exceed a single
+          African or Asian country's peak load outright.
+        uses: [operational-reserves]
+        config: "electricity.operational_reserve.{activate,epsilon_load,epsilon_vres,contingency}"
+        code: null
+        provenance: "scripts/solve_network.py:add_operational_reserve_margin"
+      - step: >
+          Read out the procured volume from Generator-r. Earth exposes no
+          assign_all_duals option at all, so the reserve constraint's dual — the only
+          reserve price available anywhere in either model — needs an edit to the solver
+          kwargs in solve_network.py. Volumes are free; the price is an L2 change.
+        uses: [nodal-marginal-prices, summary-outputs]
+        config: null
+        code: "scripts/solve_network.py (solver kwargs); scripts/make_summary.py"
+        provenance: "scripts/solve_network.py:solve_network; scripts/make_summary.py:calculate_prices"
+      - step: >
+          STAGE 2 must be BUILT — this is the earth-specific work and the reason
+          sequential-market-stages costs a rung more here. There is no
+          solve_operations_network rule and no fix_optimal_capacities call in the repo.
+          Two routes. (a) L4: add a rule mirroring solve_network that loads the solved
+          network, calls n.optimize.fix_optimal_capacities() and re-solves, with its own
+          wildcard suffix — the pypsa primitive does the actual work, so the new code is
+          plumbing. (b) L1-ish and worse: empty electricity.extendable_carriers and
+          re-solve, which the registry names as the nearest existing route; it fixes
+          nothing to the first stage's RESULT, so the two runs are not stages at all.
+          Prefer (a) and say why.
+        uses: [operations-only-solve]
+        config: "electricity.extendable_carriers (route b only)"
+        code: "a new rule in Snakefile + a new scripts/solve_operations_network.py"
+        provenance: "Snakefile:solve_network; scripts/solve_network.py:solve_network"
+      - step: >
+          Limit stage 2's foresight — also from scratch. There is no rolling_horizon
+          key and no call to optimize_with_rolling_horizon; the only occurrence in the
+          repo is a commented-out reference. Either call
+          n.optimize.optimize_with_rolling_horizon(horizon=, overlap=) from the new
+          rule's script, or use the corpus's simpler device of solving day-by-day and
+          chaining storage state between days, which is what Franken's GB study does and
+          which needs no library feature.
+        uses: [operations-only-solve]
+        config: "no key exists — a script-level argument"
+        code: "the new operations script"
+        provenance: "scripts/solve_network.py:solve_network"
+      - step: >
+          L5 — the product, in extra_functionality. Note the difference from eur: this
+          is a HARDCODED function in scripts/solve_network.py, not a module named by a
+          config key, so every product constraint is an in-repo edit to a tracked file
+          rather than a user module the config points at. Add it beside the existing
+          add_operational_reserve_margin call, keeping the opts-token conditioning
+          pattern the surrounding constraints use. Same content as eur: down-reserve,
+          storage/link reserve variables, deliverability, bid acceptance binaries,
+          objective term — and the same absence of any pypsa primitive to lean on.
+        uses: [custom-constraint-hook, operational-reserves]
+        config: null
+        code: "scripts/solve_network.py:extra_functionality"
+        provenance: "scripts/solve_network.py:extra_functionality; scripts/solve_network.py:add_operational_reserve_margin"
+      - step: >
+          Sweep the three reserve parameters through the monte-carlo harness rather than
+          defending point values — the {unc} wildcard is already built into the scenario
+          dict, and the harness rewrites arbitrary network quantities per sample. This is
+          the one place earth is ahead of eur on this card.
+        uses: [monte-carlo-sampling, scenario-matrix]
+        config: "monte_carlo.options.{add_to_snakefile,samples}"
+        code: "scripts/monte_carlo.py"
+        provenance: "scripts/monte_carlo.py:monte_carlo_sampling; scripts/monte_carlo.py:validate_parameters"
+      - step: >
+          If the question is a balancing COST, check data before promising anything.
+          Volume-matched cost pooling needs published settlement data with an action-type
+          flag; outside a handful of markets it does not exist, and for most earth
+          regions neither the volumes nor the costs are published. In that case the
+          honest deliverable is the reserve proxy plus a stated caveat, not a cost.
+        uses: [summary-outputs]
+        config: null
+        code: "a post-processing script beside scripts/make_summary.py"
+        provenance: "scripts/make_summary.py:calculate_prices"
+    boundary:
+      - variant: reserve-margin-constraint
+        rung: L0
+        note: >
+          One config flip, same as eur, and the rare capability where earth is at parity.
+          Two implementation differences worth relaying: contingency defaults to 0
+          instead of 4000 MW, and the extendable-set guard is placed so that a
+          fixed-capacity network raises inside the function rather than silently dropping
+          the requirement — a better failure mode than eur's.
+      - variant: sequential-market-stages
+        rung: L4
+        note: >
+          Three rungs above eur, and the sharpest asymmetry on this card. No operations
+          rule, no fix_optimal_capacities call, no rolling-horizon key or call anywhere —
+          only a commented-out mention. A new snakemake rule plus a new script with
+          wildcard plumbing is required. The pypsa primitives
+          (fix_optimal_capacities, optimize_with_rolling_horizon) are available in the
+          same environment, so the new code is plumbing rather than formulation, which
+          keeps this at L4 rather than L5.
+      - variant: exogenous-reserve-demand
+        rung: L3
+        note: >
+          Same shape as eur but a materially harder data problem: reserve and balancing
+          volumes are published for European TSOs and generally NOT for the regions earth
+          targets. Check cookbooks/pypsa-earth/data_quality for the country before
+          offering this variant; absent volumes turn it into an assumption, at which point
+          it is no better than the proxy.
+      - variant: volume-matched-cost-pooling
+        rung: L3
+        note: >
+          Data-blocked in most earth regions. It needs published accepted bid/offer
+          settlement costs with a congestion-versus-imbalance flag; the corpus's source
+          (GB Elexon) is among the most transparent markets in the world and is not
+          representative. Where the data is absent, this variant is unavailable at any
+          rung — not expensive, impossible.
+      - variant: reserve-product-cooptimisation
+        rung: L5
+        note: >
+          As eur, plus two handicaps. The constraint hook is a hardcoded function rather
+          than a config-pointed user module, so the product code is an in-repo edit to a
+          tracked file. And there is no unit-commitment foundation at all: no earth
+          script sets committable=True and no ramp/start-up data ships, so the
+          [P_min, P_max]-around-committed-output bound the corpus uses needs the
+          commitment layer built first. Also no linearized_unit_commitment escape hatch,
+          so commitment here means a genuine MILP.
+      - variant: agent-based-market-clearing
+        rung: L5
+        note: >
+          Not an earth study, for the same structural reason as eur: the agent framework
+          sits outside the optimisation and calls PyPSA per agent per clearing step. The
+          honest routing is a separate library-level model, with earth supplying network
+          and cost data for a region eur does not cover — which is the one thing earth
+          uniquely contributes to this method.
+      - variant: capacity-remuneration
+        rung: L5
+        note: >
+          Nothing exists. As in eur the nearest surface is the SAFE margin, and it is
+          weaker than the registry's `working` implies: electricity.SAFE_reservemargin
+          has no entry in config.default.yaml at this ref, so add_SAFE_constraints would
+          KeyError on the opts token alone. A mechanism with a demand curve, clearing
+          price and payment stream is entirely new work.
+    where:
+      - change: "reserve requirement, headroom and any new product constraint"
+        anchor: "scripts/solve_network.py::extra_functionality (hardcoded, not config-pointed); built-ins at add_operational_reserve_margin_constraint and update_capacity_constraint"
+        provenance: "scripts/solve_network.py:extra_functionality; scripts/solve_network.py:add_operational_reserve_margin_constraint"
+      - change: "the second market stage — a new operations rule and script"
+        anchor: "a new rule beside rule solve_network in the Snakefile, calling fix_optimal_capacities in a new script"
+        provenance: "Snakefile:solve_network; scripts/solve_network.py:solve_network"
+      - change: "foresight limitation for the later stage"
+        anchor: "the new operations script (no config key and no existing call site exist)"
+        provenance: "scripts/solve_network.py:solve_network"
+      - change: "retrieving the reserve constraint's dual as a reserve price"
+        anchor: "the solver-kwargs assembly in scripts/solve_network.py::solve_network; no assign_all_duals option exists here at all"
+        provenance: "scripts/solve_network.py:solve_network"
+      - change: "sweeping the three unfounded reserve parameters"
+        anchor: "monte_carlo.uncertainties entries + scripts/monte_carlo.py; the {unc} wildcard is already plumbed"
+        provenance: "scripts/monte_carlo.py:monte_carlo_sampling"
+    data_dependencies:
+      - input: >
+          reserve or balancing volume per settlement period for the study region
+        required_for: exogenous-reserve-demand
+        availability: >
+          region-dependent and usually ABSENT — the transparency platforms the European
+          version of this variant relies on have no counterpart in most earth regions.
+          Verify per country in cookbooks/pypsa-earth/data_quality before offering it
+      - input: >
+          observed accepted bid/offer settlement costs with an action-type flag
+        required_for: volume-matched-cost-pooling
+        availability: >
+          absent for most earth regions. Where there is no balancing market there are no
+          settlement costs to pool, and the variant is not available at any rung
+      - input: >
+          per-carrier commitment parameters (p_min_pu, ramp limits, min up/down,
+          start-up cost) for reserve providers
+        required_for: reserve-product-cooptimisation
+        availability: >
+          absent — unlike eur there is no unit_commitment.csv equivalent and no script
+          sets committable=True, so the commitment layer is data work before it is code
+          work
+      - input: >
+          product definitions and bid-price ladders per jurisdiction (aFRR/mFRR up/down,
+          FCR) with deliverability rules
+        required_for: reserve-product-cooptimisation
+        availability: >
+          absent, and in many earth target regions the products themselves do not exist
+          in the market — which is a scoping conversation, not a data-fetch task
+    cost_profile:
+      solves: >
+        reserve-margin-constraint: 1, with the same doubling of per-generator
+        per-snapshot variables. sequential-market-stages: 2 per case once the rule
+        exists, but budget the BUILD (a new rule + script) rather than the solves —
+        that is where the cost sits here, unlike eur. Parameter sweep via the
+        monte-carlo harness: `samples` solves, 9 by default.
+      relative: >
+        ~1.2-2x a single solve for the reserve proxy; ~2x for the two-stage design once
+        built. Absolute solve times are usually LOWER than eur's because earth studies
+        are typically single-country and electricity-only.
+      note: >
+        The cost asymmetry runs opposite to the capability asymmetry, and both matter to
+        the routing. Earth's solves are cheaper (smaller regions, electricity-only), so
+        a many-solve sequential or day-by-day design is more tractable here than on a
+        sector-coupled eur network — but earth has none of the machinery to run it, so
+        the cost is engineering time rather than compute. eur has the machinery and the
+        expensive solves. For a balancing question the usual model-choice logic inverts:
+        pick eur for the staging surfaces even when the region argues for earth, unless
+        the region is outside eur's coverage entirely.
+    verifies:
+      - variant: reserve-margin-constraint
+        check: "'reserve_margin' in n.model.constraints and 'Generator-r' in n.model.variables"
+        over: run
+        note: >
+          Same check as eur but a different failure signature: earth's guard placement
+          means a fixed-capacity network raises inside the constraint function instead of
+          silently skipping the requirement. If this assertion fails on earth without an
+          exception in the log, something else dropped the constraint — most likely
+          activate was not read because the config was overridden per scenario.
+      - variant: reserve-margin-constraint
+        check: "n.model.variables['Generator-r'].solution.sum('Generator').min() > 0"
+        over: run
+        note: >
+          Nothing held at some snapshot. On earth this is the DEFAULT-parameter trap:
+          contingency is 0 out of the box, so with both epsilons at 0.02 on a small
+          single-country system the requirement can be satisfied by incidental headroom
+          and the setting does nothing. Set contingency explicitly.
+      - variant: sequential-market-stages
+        check: "not n_op.generators.p_nom_extendable.any() and (n_op.generators.p_nom - n_exp.generators.p_nom_opt).abs().max() < 1e-6"
+        over: ensemble
+        note: >
+          The operations stage did not inherit the expansion fleet. On earth this is the
+          expected failure of the cheap route (emptying extendable_carriers and
+          re-solving): that produces a network with nothing extendable which satisfies
+          the first half of the check and fails the second, because capacities came from
+          the input data rather than from stage 1's result. The two runs are not stages.

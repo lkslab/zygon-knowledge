@@ -1,0 +1,149 @@
+id: biomass-to-methanol
+title: Biomass to methanol (with and without carbon capture)
+summary: >
+  Gasification of solid biomass to green methanol — a biogenic fuel-synthesis
+  route that turns spatially-resolved biomass into a Europe-wide methanol pool,
+  optionally capturing the process CO2 by-product stream for negative emissions
+  (BECCS-methanol).
+when_to_use:
+  - "biomass to methanol / bio-methanol"
+  - "green methanol from biomass gasification"
+  - "BECCS via fuel synthesis / negative emissions from biofuels"
+  - "biogenic methanol supply for shipping or industry"
+  - "methanol production routes (vs methanolisation from H2+CO2)"
+  - "capture CO2 from biofuel production"
+  - "pypsa-eur carrier names: biomass-to-methanol, biomass-to-methanol CC, methanol, solid biomass"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        ON by default in sector runs. add_methanol (gated on any true flag under
+        sector.methanol) first creates the methanol carrier via add_carrier_buses
+        — a SINGLE "EU methanol" bus with an extendable cyclic Store (storage
+        cost from the "General liquid hydrocarbon storage (product)" row
+        converted per MWh via 5.54 kWh/kg * 791 kg/m3) and NO fuel generator
+        (methanol is not in the fossils list, so supply only comes from
+        conversion technologies or imports). Then, because sector.biomass and
+        sector.methanol.biomass_to_methanol are both true, add_biomass_to_methanol
+        adds one extendable "biomass-to-methanol" Link per solid-biomass bus
+        (per-node "{node} solid biomass" buses, since sector.biomass_spatial is
+        true) with bus1 = "EU methanol" and bus2 = "co2 atmosphere". Energetics
+        from the "biomass-to-methanol" cost row (DEA renewable-fuels datasheet):
+        efficiency 0.65 MWh_MeOH/MWh_biomass, investment 1553 EUR/kW_MeOH
+        (capital_cost is multiplied by efficiency to express it per MW of
+        biomass input, the link's p_nom unit), VOM 14.47 EUR/MWh_MeOH, lifetime
+        20 a. CO2 accounting: efficiency2 = -(solid biomass CO2 intensity,
+        0.3667 t/MWh) + (biomass-to-methanol "CO2 stored" by-product stream,
+        0.2053 t/MWh) = -0.1614 t/MWh_biomass — i.e. the link WITHDRAWS from
+        the atmosphere exactly the carbon embodied in the methanol produced
+        (0.65 * 0.248 t/MWh_MeOH), which is re-emitted downstream wherever the
+        methanol is burned; the 0.2053 process by-product is implicitly vented.
+        The CC variant (add_biomass_to_methanol_cc, sector.methanol.
+        biomass_to_methanol_cc, default false) adds bus3 = the co2 stored buses
+        and captures 90% of the by-product stream ("capture rate" 0.9 on the
+        biomass-to-methanol row): efficiency3 = 0.185 t/MWh_biomass to "co2
+        stored" — genuine negative emissions since the atmosphere credit grows
+        to -0.346 t/MWh_biomass. Its extra capital cost uses the "biomass CHP
+        capture" row (NOT "cement capture", which the methanol reforming and
+        CCGT-methanol CC variants use) scaled by the CO2 stored coefficient.
+      mechanism: >
+        rule prepare_sector_network runs scripts/prepare_sector_network.py:
+        add_methanol -> add_carrier_buses("methanol") + add_biomass_to_methanol
+        (+ add_biomass_to_methanol_cc). Feedstock buses and potentials come from
+        add_biomass consuming rule build_biomass_potentials output; spatial
+        resolution of both feedstock and product is fixed in define_spatial
+        (spatial.biomass.nodes per node, spatial.methanol.nodes hardcoded
+        ["EU methanol"]). Cost rows via rule process_cost_data.
+      not_covered: >
+        Methanol output is always pooled on the single EU methanol bus — the
+        model resolves WHERE the plant stands (feedstock side, competing for
+        node-level biomass with CHP, industry, BtL, BioSNG) but methanol
+        transport is implicitly free and unlimited; only DEMAND can be
+        regionalised (sector.methanol.regional_methanol_demand), not supply.
+        No existing bio-methanol plants (greenfield only, no brownfield entry in
+        add_existing_baseyear). No minimum part load (unlike methanolisation,
+        which gets p_min_pu from sector.min_part_load_methanolisation — the
+        biomass route has no such option). Single Europe-wide cost row: no
+        regional efficiency or capture-rate variation. Capture rate (0.9) and
+        efficiency are cost-file values, not config keys. No heat or electricity
+        auxiliary demands of the gasification/synthesis process are modelled,
+        and no use of its waste heat (use_methanolisation_waste_heat applies
+        only to methanolisation).
+      provenance: "scripts/prepare_sector_network.py:add_biomass_to_methanol; scripts/prepare_sector_network.py:add_biomass_to_methanol_cc; scripts/prepare_sector_network.py:add_methanol; scripts/prepare_sector_network.py:add_carrier_buses; scripts/prepare_sector_network.py:define_spatial"
+    levers:
+      - key: sector.methanol.biomass_to_methanol
+        effect: "Switch for the uncaptured route; false removes the biomass-to-methanol Links (methanolisation then remains the only domestic methanol source)."
+        default: "true"
+        provenance: "config/config.default.yaml:biomass_to_methanol; scripts/prepare_sector_network.py:add_methanol"
+      - key: sector.methanol.biomass_to_methanol_cc
+        effect: "true adds the parallel 'biomass-to-methanol CC' Links with 90% of the process CO2 by-product routed to the co2 stored buses (BECCS)."
+        default: "false"
+        provenance: "config/config.default.yaml:biomass_to_methanol_cc; scripts/prepare_sector_network.py:add_biomass_to_methanol_cc"
+      - key: sector.biomass
+        effect: "Master gate — false skips both variants regardless of the methanol flags (checked inside add_methanol)."
+        default: "true"
+        provenance: "config/config.default.yaml:biomass; scripts/prepare_sector_network.py:add_methanol"
+      - key: sector.biomass_spatial
+        effect: "false collapses the feedstock to one 'EU solid biomass' bus — a single aggregate biomass-to-methanol plant instead of per-node siting (biomass transport costs then vanish)."
+        default: "true"
+        provenance: "config/config.default.yaml:biomass_spatial; scripts/prepare_sector_network.py:define_spatial"
+      - key: sector.methanol.regional_methanol_demand
+        effect: "true regionalises methanol DEMAND buses (industry/shipping methanol per node); production still feeds the EU pool."
+        default: "false"
+        provenance: "config/config.default.yaml:regional_methanol_demand; scripts/prepare_sector_network.py:define_spatial"
+      - key: costs.overwrites
+        effect: "Override efficiency/investment/VOM/lifetime of the 'biomass-to-methanol' row (config route, deprecated in favour of costs.custom_cost_fn / data/custom_costs.csv); note 'CO2 stored' and 'capture rate' are cost-file columns too."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+    boundary:
+      - variant: "run with biomass-to-methanol production"
+        rung: L0
+        note: "default — sector.methanol.biomass_to_methanol: true with sector.biomass: true"
+      - variant: "add the carbon-capture (BECCS) variant"
+        rung: L0
+        note: "sector.methanol.biomass_to_methanol_cc: true; captured CO2 lands on the node's co2 stored bus and competes with sequestration/utilisation (see co2-transport-and-sequestration recipe)"
+      - variant: "remove the route entirely"
+        rung: L1
+        note: "biomass_to_methanol and biomass_to_methanol_cc both false (or sector.biomass: false, which also removes all other biomass technologies)"
+      - variant: "change conversion efficiency, capture rate or investment cost"
+        rung: L1
+        note: "costs.overwrites or a row in data/custom_costs.csv (costs.custom_cost_fn); the 'capture rate' and 'CO2 stored' columns drive the CO2 split"
+      - variant: "single aggregated European plant (no siting)"
+        rung: L1
+        note: "sector.biomass_spatial: false — feedstock and plant collapse to the EU biomass bus"
+      - variant: "regionalised methanol PRODUCT buses (transport-constrained methanol)"
+        rung: L2
+        note: "spatial.methanol.nodes is hardcoded ['EU methanol'] in define_spatial; regionalising supply means editing define_spatial plus every consumer of spatial.methanol.nodes and adding a methanol transport representation — no config key"
+      - variant: "restrict siting to specific countries/nodes"
+        rung: L2
+        note: "add_biomass_to_methanol builds at ALL spatial.biomass.nodes; subset the index in that function (or post-process p_nom_max)"
+      - variant: "represent an existing bio-methanol plant"
+        rung: L2
+        note: "no brownfield path; set p_nom/p_nom_min on the corresponding link in add_biomass_to_methanol or via the adjustments mechanism"
+      - variant: "add process electricity/heat demand or waste-heat recovery"
+        rung: L2
+        note: "extend the Link with extra buses/efficiencies in add_biomass_to_methanol (methanolisation and add_waste_heat show the pattern)"
+    where:
+      - change: "the production links and their CO2 accounting"
+        anchor: "scripts/prepare_sector_network.py::add_biomass_to_methanol / add_biomass_to_methanol_cc (called from add_methanol)"
+        provenance: "scripts/prepare_sector_network.py:add_biomass_to_methanol; scripts/prepare_sector_network.py:add_biomass_to_methanol_cc"
+      - change: "methanol bus + store creation (EU-level pool)"
+        anchor: "scripts/prepare_sector_network.py::add_carrier_buses (carrier 'methanol') and define_spatial (spatial.methanol)"
+        provenance: "scripts/prepare_sector_network.py:add_carrier_buses; scripts/prepare_sector_network.py:define_spatial"
+      - change: "feedstock spatial resolution and potentials"
+        anchor: "scripts/prepare_sector_network.py::add_biomass (rule build_biomass_potentials input); sector.biomass_spatial"
+        provenance: "scripts/prepare_sector_network.py:add_biomass; rules/build_sector.smk:build_biomass_potentials"
+      - change: "cost row values"
+        anchor: "scripts/process_cost_data.py::prepare_costs / overwrite_costs (rows 'biomass-to-methanol', 'biomass CHP capture', 'solid biomass')"
+        provenance: "scripts/process_cost_data.py:prepare_costs; scripts/process_cost_data.py:overwrite_costs"
+    data_dependencies:
+      - input: "biomass potentials per node (biomass_potentials_s_{clusters}_{planning_horizons}.csv)"
+        required_for: "feedstock supply at the solid biomass buses"
+        availability: "must be built (rule build_biomass_potentials); exists by default in the sector workflow"
+      - input: "cost rows 'biomass-to-methanol' (efficiency, CO2 stored, capture rate, VOM), 'solid biomass' (CO2 intensity), 'biomass CHP capture' (CC capex)"
+        required_for: "energetics, CO2 split and costs of both variants"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "methanol demand (shipping methanol share, industry methanol) or methanol-consuming technologies"
+        required_for: "any dispatch of the route — without a methanol sink the links sit idle"
+        availability: "exists by default (sector.shipping_methanol_share ramps from 2030; industry methanol demand from industrial_energy_demand)"

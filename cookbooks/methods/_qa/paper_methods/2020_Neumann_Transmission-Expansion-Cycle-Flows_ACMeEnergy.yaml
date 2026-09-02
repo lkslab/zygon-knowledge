@@ -1,0 +1,126 @@
+paper: "2020_Neumann_Transmission-Expansion-Cycle-Flows_ACMeEnergy.pdf"
+tier: 1
+model_used: >
+  PyPSA-Eur, 250–1000 nodes, electricity-only, 1–75 representative snapshots;
+  custom TEP branch of PyPSA (github.com/pypsa/pypsa/tree/tep-v2).
+scope: >
+  Develops and benchmarks a cycle-based (vs. angle-based) MILP reformulation
+  for transmission expansion planning with linearised optimal power flow,
+  including novel treatment of multi-synchronous-zone connection combinatorics;
+  evaluated on 672 European generation+transmission co-expansion problems.
+methods:
+  - slug: linearised-optimal-power-flow
+    role: defines
+    evidence: >
+      "The common linear optimal power flow (LOPF) formulation … uses bus voltage
+      angles as auxiliary optimization variables to describe Kirchhoff's voltage law …
+      it is possible to circumvent these auxiliary variables … by expressing Kirchhoff's
+      voltage law directly in terms of the power flows, based on a cycle decomposition
+      of the network graph." (Abstract; Sec. 2 Linear Optimal Power Flow Formulations).
+      The paper derives and formally proves both the angle-based and the novel
+      cycle-based KVL formulations for LOPF.
+    procedure_notes: >
+      Two equivalent LOPF formulations are developed and compared: (i) angle-based
+      (standard, uses auxiliary theta variables and |L0|+|N| variables/constraints)
+      and (ii) cycle-based (uses only |L0| flow variables and a cycle incidence matrix
+      C built from a minimum spanning tree). The cycle-based formulation reduces
+      constraint count to 95.3% and variable count to 90.5% of the angle-based on
+      the benchmark set. Post-facto voltage angle recovery is described (Sec. 2.3.1,
+      Eq. 11–13). Implemented in PyPSA.
+    variant: cycle-flow
+    parameters: {}
+
+  - slug: transmission-expansion-cooptimisation
+    role: defines
+    evidence: >
+      "This paper develops a novel cycle-based reformulation for the TEP problem
+      with LOPF and compares it to the standard angle-based formulation." (Abstract).
+      Binary investment variables iℓ ∈ {0,1} are introduced per candidate line;
+      big-M disjunctive relaxation enforces KVL conditionally on investment decisions
+      (Sec. 3, Eqs. 14–29). Co-optimisation with generation capacity expansion is
+      run subject to a 40 MtCO2 carbon budget (Sec. 4).
+    procedure_notes: >
+      MILP formulation: candidate lines added to objective (Eq. 1) and KCL (Eq. 3);
+      KVL enforced conditionally via big-M inequalities (angle-based: Eq. 15;
+      cycle-based: Eq. 29). Big-M derivations provided for intra-zone candidates
+      (Theorem 3.1, shortest-path bound), inter-zone candidates (Eq. 22), and slack
+      constraints (Eq. 28). Synchronisation of disconnected networks handled via a
+      subnetwork-graph forest structure (Sec. 3.1.3–3.1.4). Benchmark: 672 problems,
+      nodes {250,500,750,1000}, snapshots {1,5,25,50,75}, MIP gap {0.5%,1%}, candidate
+      lines per corridor {1,2}; solved with Gurobi 9.0, 6-hour wall-time limit.
+      Generation technologies: solar PV, onshore/offshore wind, OCGT, run-of-river
+      (no storage). Standard 380 kV line type, ~1.7 GW capacity per candidate line.
+    variant: cycle-flow-milp
+    parameters:
+      co2_budget_MtCO2: "40"
+      mip_gap: "0.5% or 1%"
+      nodes: "250, 500, 750, 1000"
+      snapshots: "1, 5, 25, 50, 75"
+      candidate_lines_per_corridor: "1 or 2"
+      n_benchmark_problems: "672"
+      solver: "Gurobi 9.0"
+      wall_time_h: "6"
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      "we vary the number of clustered nodes in Europe {1000, 750, 500, 250}"
+      (Sec. 4 Experimental Setup). Figure 7 shows the clustered European transmission
+      networks at each resolution used as the basis for regional extracts.
+    procedure_notes: >
+      PyPSA-Eur spatial clustering applied to produce four network sizes. Regional
+      extracts (coloured areas in Figure 7) are formed from each clustered network
+      to create the benchmark cases. Speed-up sensitivity to node count is reported
+      in Figure 10.
+    variant: null
+    parameters:
+      node_counts: "250, 500, 750, 1000"
+
+  - slug: temporal-aggregation-and-segmentation
+    role: routine-use
+    evidence: >
+      "representative snapshots t are weighted by wt such that their total duration
+      accumulates to one year" (Sec. 2, Eq. 1). "we vary … the number of selected
+      hours from a whole year {1, 5, 25, 50, 75}" (Sec. 4).
+    procedure_notes: >
+      Snapshot selection (not TSAM) used: 1, 5, 25, 50, 75 hours drawn from a full
+      year, weighted to sum to one year. Storage units excluded to maintain
+      independence of hourly snapshots. Speed-up sensitivity to snapshot count
+      reported in Figure 10.
+    variant: null
+    parameters:
+      snapshot_counts: "1, 5, 25, 50, 75"
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "This contribution considers long-term investment planning problems that seek
+      to find cost-effective solutions to reduce greenhouse gas emissions in the power
+      system" (Sec. 2). The model minimises total annual system cost with annualised
+      capital costs (Eq. 1, footnote 1: annuity factor).
+    procedure_notes: >
+      Single-period overnight investment optimisation: all capacity decisions are
+      co-optimised simultaneously for a single target state, no pathway or myopic
+      rolling. Annuity factor (1-(1+r)^-n)*r^-1 used to convert overnight capital
+      cost; discount rate r and asset lifetime n stated in footnote 1 but values
+      taken from PyPSA-Eur defaults (not enumerated in this paper).
+    variant: overnight
+    parameters: {}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "The benchmark problems consider simultaneous generation and transmission
+      capacity expansion each given a carbon budget of 40 MtCO2" (Sec. 4
+      Experimental Setup).
+    procedure_notes: >
+      Annual CO2 emissions cap of 40 MtCO2 applied as a constraint in all 672
+      benchmark problems. Listed as one of the constraints in Sec. 2 (item iii:
+      "the budget of greenhouse-gas emissions"). No shadow price analysis performed;
+      the cap is a modelling boundary condition enabling co-optimisation of both
+      generation and transmission.
+    variant: null
+    parameters:
+      co2_cap_MtCO2: "40"
+
+unmatched_methods: []

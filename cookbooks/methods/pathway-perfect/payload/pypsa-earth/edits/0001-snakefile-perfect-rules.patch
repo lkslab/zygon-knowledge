@@ -1,0 +1,142 @@
+--- a/Snakefile
++++ b/Snakefile
+@@ -2352,3 +2352,139 @@
+                 for c in Path("configs/scenarios").glob("config.*.yaml")
+             ],
+         ),
++
++
++if config["foresight"] == "perfect":
++
++    HEAT_BASEYEAR_PERFECT = {
++        "cop_soil_total": "resources/"
++        + SECDIR
++        + "cops/cop_soil_total_elec_s{simpl}_{clusters}_{planning_horizons}.nc",
++        "cop_air_total": "resources/"
++        + SECDIR
++        + "cops/cop_air_total_elec_s{simpl}_{clusters}_{planning_horizons}.nc",
++        "existing_heating_distribution": "resources/"
++        + SECDIR
++        + "heating/existing_heating_distribution_{demand}_s{simpl}_{clusters}_{planning_horizons}.csv",
++    }
++
++    rule add_existing_baseyear:
++        params:
++            baseyear=config["scenario"]["planning_horizons"][0],
++            sector=config["sector"],
++            existing_capacities=config["existing_capacities"],
++            costs=config["costs"],
++        input:
++            **branch(sector_enable["heat"], HEAT_BASEYEAR_PERFECT),
++            network=RESDIR
++            + "prenetworks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{sopts}_{planning_horizons}_{discountrate}_{demand}_{h2export}export.nc",
++            powerplants="resources/" + RDIR + "powerplants.csv",
++            busmap_s="resources/" + RDIR + "bus_regions/busmap_elec_s{simpl}.csv",
++            busmap="resources/"
++            + RDIR
++            + "bus_regions/busmap_elec_s{simpl}_{clusters}.csv",
++            costs="resources/" + RDIR + "costs_{planning_horizons}_sec.csv",
++        output:
++            RESDIR
++            + "prenetworks-brownfield/elec_s{simpl}_{clusters}_l{ll}_{opts}_{sopts}_{planning_horizons}_{discountrate}_{demand}_{h2export}export.nc",
++        wildcard_constraints:
++            planning_horizons=config["scenario"]["planning_horizons"][0],  #only applies to baseyear
++        threads: 1
++        resources:
++            mem_mb=2000,
++        log:
++            RESDIR
++            + "logs/add_existing_baseyear_elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{sopts}_{planning_horizons}_{discountrate}_{demand}_{h2export}export.log",
++        script:
++            "scripts/add_existing_baseyear.py"
++
++    def perfect_prenetwork_paths(w):
++        # first horizon enters via add_existing_baseyear's brownfield output,
++        # later horizons via their plain prepared prenetworks
++        first = str(config["scenario"]["planning_horizons"][0])
++        paths = []
++        for h in config["scenario"]["planning_horizons"]:
++            if str(h) == first:
++                paths.append(
++                    RESDIR
++                    + "prenetworks-brownfield/elec_s{simpl}_{clusters}_l{ll}_{opts}_{sopts}_"
++                    + str(h)
++                    + "_{discountrate}_{demand}_{h2export}export.nc"
++                )
++            else:
++                paths.append(
++                    RESDIR
++                    + "prenetworks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{sopts}_"
++                    + str(h)
++                    + "_{discountrate}_{demand}_{h2export}export.nc"
++                )
++        return paths
++
++    rule prepare_perfect_foresight:
++        params:
++            planning_horizons=config["scenario"]["planning_horizons"],
++            social_discountrate=config["costs"].get("social_discountrate", 0.02),
++        input:
++            networks=perfect_prenetwork_paths,
++        output:
++            RESDIR
++            + "prenetworks-brownfield/elec_s{simpl}_{clusters}_l{ll}_{opts}_{sopts}_all_years_{discountrate}_{demand}_{h2export}export.nc",
++        threads: 2
++        resources:
++            mem_mb=10000,
++        log:
++            RESDIR
++            + "logs/prepare_perfect_foresight_elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{sopts}_all_years_{discountrate}_{demand}_{h2export}export.log",
++        script:
++            "./scripts/prepare_perfect_foresight.py"
++
++    rule solve_network_perfect:
++        params:
++            solving=config["solving"],
++            foresight=config["foresight"],
++            planning_horizons=config["scenario"]["planning_horizons"],
++            co2_sequestration_potential=config["scenario"].get(
++                "co2_sequestration_potential", 200
++            ),
++            augmented_line_connection=config["augmented_line_connection"],
++            policy_config=config["policy_config"],
++        input:
++            network=RESDIR
++            + "prenetworks-brownfield/elec_s{simpl}_{clusters}_l{ll}_{opts}_{sopts}_all_years_{discountrate}_{demand}_{h2export}export.nc",
++            costs="resources/"
++            + RDIR
++            + "costs_"
++            + str(config["scenario"]["planning_horizons"][0])
++            + "_sec.csv",
++            configs=SDIR + "configs/config.yaml",  # included to trigger copy_config rule
++            agg_p_nom_minmax=config["electricity"]["agg_p_nom_limits"]["file"],
++        output:
++            network=RESDIR
++            + "postnetworks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{sopts}_all_years_{discountrate}_{demand}_{h2export}export.nc",
++        shadow:
++            "copy-minimal" if os.name == "nt" else "shallow"
++        log:
++            solver="logs/"
++            + SECDIR
++            + "solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{sopts}_all_years_{discountrate}_{demand}_{h2export}export_solver.log",
++            python="logs/"
++            + SECDIR
++            + "solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{sopts}_all_years_{discountrate}_{demand}_{h2export}export_python.log",
++            memory="logs/"
++            + SECDIR
++            + "solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{sopts}_all_years_{discountrate}_{demand}_{h2export}export_memory.log",
++        threads: 25
++        resources:
++            mem_mb=config["solving"]["mem"],
++        script:
++            "./scripts/solve_network.py"
++
++    rule solve_sector_networks_perfect:
++        input:
++            networks=expand(
++                RESDIR
++                + "postnetworks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{sopts}_all_years_{discountrate}_{demand}_{h2export}export.nc",
++                **config["scenario"],
++                **config["costs"],
++                **config["export"],
++            ),

@@ -1,0 +1,210 @@
+id: aviation-demand
+title: Aviation demand (kerosene for aviation)
+summary: >
+  Jet-fuel (kerosene) energy demand of domestic and international aviation, its
+  spatial allocation, scaling, and alternative-fuel supply hooks.
+
+when_to_use:
+  - "add or change aviation / air travel / flight demand"
+  - "jet fuel / kerosene demand"
+  - "sustainable aviation fuel / SAF / e-kerosene"
+  - "airports in the model"
+  - "scale aviation demand up or down"
+  - "count or exclude international aviation emissions"
+  - "hydrogen or electric aircraft"
+  - "known in pypsa-eur as: kerosene for aviation"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        A constant 'kerosene for aviation' load on the (spatial) oil buses, sized from the
+        country energy-totals columns 'total international aviation' + 'total domestic
+        aviation' and allocated to the regions that contain airports; plus a negative
+        'oil emissions' load ('aviation oil emissions') on the co2 atmosphere bus, counting
+        either all aviation or only the domestic share.
+      mechanism: >
+        rule prepare_airports (scripts/prepare_airports.py) downloads the OurAirports
+        registry, keeps scheduled medium/large commercial airports, weights large airports
+        by sector.airport_sizing_factor and computes each airport's per-country 'fraction'.
+        add_aviation in scripts/prepare_sector_network.py maps airports to GADM regions via
+        locate_bus, sets p_set = fraction * country aviation demand * 1e6 / 8760, and adds
+        the load over spatial.nodes on spatial.oil.nodes. CO2: with
+        sector.international_bunkers true the full kerosene burn is counted, otherwise only
+        the domestic_to_total share. Country totals come from UNSD balances
+        (build_base_energy_totals.py, calc_sector 'aviation') scaled per scenario/horizon
+        by prepare_energy_totals.py CAGRs.
+      not_covered: >
+        No demand-factor multiplier key (scaling goes through the CAGR data); no hourly or
+        seasonal flight profile (flat load); no alternative aviation fuels as demand-side
+        options (the load always sits on oil buses; synthetic kerosene can only enter by
+        supplying the oil bus); no hydrogen/electric aircraft; regions without qualifying
+        airports get zero aviation demand.
+      provenance: "scripts/prepare_sector_network.py:add_aviation;scripts/prepare_airports.py:preprocess_airports;scripts/build_base_energy_totals.py:total international aviation"
+    levers:
+      - key: sector.enable.aviation
+        effect: "Toggles add_aviation on/off."
+        default: "true"
+        provenance: "config.default.yaml:aviation;scripts/prepare_sector_network.py:add_aviation"
+      - key: sector.airport_sizing_factor
+        effect: "Weight of a large airport relative to a medium one when splitting national aviation demand across airports."
+        default: "3"
+        provenance: "config.default.yaml:airport_sizing_factor;scripts/prepare_airports.py:airport_sizing_factor"
+      - key: sector.international_bunkers
+        effect: "If true, international aviation (and navigation) emissions are counted in the CO2 balance; if false only the domestic share."
+        default: "false"
+        provenance: "config.default.yaml:international_bunkers;scripts/prepare_sector_network.py:international_bunkers"
+      - key: custom_data.airports
+        effect: "If true, data/custom/airports.csv (same format as the generated airports.csv) is used instead of the OurAirports download."
+        default: "false"
+        provenance: "config.default.yaml:airports;scripts/prepare_airports.py:airport_custom_data"
+      - key: scenario.demand
+        effect: "Demand-scenario wildcard selecting the CAGR pathway that scales aviation totals to the horizon."
+        default: "[AB]"
+        provenance: "config.default.yaml:demand:;scripts/prepare_energy_totals.py:growth_factors_cagr"
+    boundary:
+      - variant: "turn aviation on/off or count international emissions"
+        rung: L0
+        note: "sector.enable.aviation / sector.international_bunkers."
+      - variant: "re-weight demand between large and medium airports"
+        rung: L0
+        note: "sector.airport_sizing_factor."
+      - variant: "use a custom airport list (e.g. add/remove airports, own fractions)"
+        rung: L1
+        note: "Set custom_data.airports true and place data/custom/airports.csv (needs country, x, y, fraction columns as produced by prepare_airports)."
+      - variant: "scale aviation demand growth per scenario"
+        rung: L3
+        note: "Edit 'total domestic aviation' / 'total international aviation' columns of data/demand/growth_factors_cagr.csv (and efficiency_gains_cagr.csv); no single multiplier key exists."
+      - variant: "hourly/seasonal aviation profile"
+        rung: L2
+        note: "p_set is flat in add_aviation; a time-series p_set is a localised edit (external schedule data would push it to L3/L4)."
+      - variant: "hydrogen aviation or a dedicated SAF demand carrier"
+        rung: L5
+        note: "No option exists; needs new carrier/load logic in prepare_sector_network.py (supply-side Fischer-Tropsch fuel into the oil bus is covered in the generation_conversion book)."
+    where:
+      - change: "aviation load sizing, allocation and emissions"
+        anchor: "scripts/prepare_sector_network.py:add_aviation"
+        provenance: "scripts/prepare_sector_network.py:add_aviation"
+      - change: "airport list, filtering and per-airport fractions"
+        anchor: "rule prepare_airports -> scripts/prepare_airports.py:preprocess_airports"
+        provenance: "Snakefile:rule prepare_airports;scripts/prepare_airports.py:preprocess_airports"
+      - change: "country aviation totals and scenario scaling"
+        anchor: "scripts/build_base_energy_totals.py:calc_sector + data/demand/growth_factors_cagr.csv"
+        provenance: "scripts/build_base_energy_totals.py:calc_sector;data/demand/growth_factors_cagr.csv:total domestic aviation"
+    data_dependencies:
+      - input: "OurAirports airports.csv + runways.csv (live download) or data/custom/airports.csv"
+        required_for: "spatial allocation to regions"
+        availability: "downloaded at runtime (global coverage); custom file must be supplied if custom_data.airports"
+      - input: "UNSD energy balances aviation columns"
+        required_for: "demand level"
+        availability: "must be built (build_base_energy_totals; global)"
+      - input: "GADM shapes (shapes_path) for locate_bus mapping"
+        required_for: "airport-to-region assignment"
+        availability: "must be built (region-dependent)"
+      - input: "data/demand/growth_factors_cagr.csv aviation columns"
+        required_for: "scenario scaling"
+        availability: "exists by default (DEFAULT row fallback)"
+    demand_dimensions:
+      driver: "Country domestic + international aviation final energy from UNSD balances"
+      spatial: "Airport locations, size-weighted (airport_sizing_factor) within each country, mapped to GADM regions"
+      temporal: "Annual-constant (p_set = annual TWh * 1e6 / 8760)"
+      scenario: "CAGR csvs per {demand} wildcard compounded to the planning horizon"
+
+  - model: pypsa-eur
+    version_anchor: {ref: "3e32e3c619f6ab79ada87759d6b915e9d5f3ff56", date: "2026-06-16"}
+    out_of_box:
+      covers: >
+        A constant 'kerosene for aviation' load (domestic + international aviation energy
+        totals), regional or EU-aggregated, supplied from the oil buses through a
+        'kerosene for aviation' link that books CO2 to the atmosphere; total demand
+        scalable by a single factor; optional methanol-to-kerosene synthesis route.
+      mechanism: >
+        add_aviation in scripts/prepare_sector_network.py sums the population-weighted
+        energy totals columns 'total international aviation' + 'total domestic aviation'
+        per node, multiplies by sector.aviation_demand_factor, and creates p_set = demand
+        * 1e6 / nhours on dedicated 'kerosene for aviation' buses (per-region if
+        sector.regional_oil_demand, else one EU bus). A Link from spatial.oil.nodes with
+        efficiency2 = oil CO2 intensity carries emissions. If
+        sector.methanol.methanol_to_kerosene, a 'methanol-to-kerosene' link (methanol +
+        H2 -> kerosene) can serve the same bus. Energy totals come from JRC-IDEES
+        aviation rows in build_energy_totals.py, spatially distributed by population
+        (rule build_population_weighted_energy_totals).
+      not_covered: >
+        Spatial allocation is by population, not by airport location; flat profile (no
+        flight schedules or seasonality); aviation_demand_factor is a scalar (not a
+        per-year dict in the default read); no hydrogen or electric aircraft demand
+        carrier; efficiency improvements of aircraft are not a separate lever.
+      provenance: "scripts/prepare_sector_network.py:add_aviation;scripts/build_energy_totals.py:total international aviation;rules/build_sector.smk:rule build_population_weighted_energy_totals"
+    levers:
+      - key: sector.aviation
+        effect: "Toggles add_aviation on/off."
+        default: "true"
+        provenance: "config/config.default.yaml:aviation;scripts/prepare_sector_network.py:add_aviation"
+      - key: sector.aviation_demand_factor
+        effect: "Multiplies total aviation demand (e.g. 0.7 = -30% air traffic; logged as a warning when != 1)."
+        default: "1.0"
+        provenance: "config/config.default.yaml:aviation_demand_factor;scripts/prepare_sector_network.py:aviation_demand_factor"
+      - key: sector.regional_oil_demand
+        effect: "If true, kerosene demand sits on per-region buses (regional balancing/prices); if false a single EU bus."
+        default: "true"
+        provenance: "config/config.default.yaml:regional_oil_demand;scripts/prepare_sector_network.py:regional_oil_demand"
+      - key: sector.methanol.methanol_to_kerosene
+        effect: "Enables the methanol+H2 -> kerosene synthesis link as an alternative supply of the aviation load."
+        default: "false"
+        provenance: "config/config.default.yaml:methanol_to_kerosene;scripts/prepare_sector_network.py:methanol_to_kerosene"
+      - key: energy.energy_totals_year
+        effect: "Statistics year of the aviation energy totals baseline."
+        default: "2023"
+        provenance: "config/config.default.yaml:energy_totals_year;rules/build_sector.smk:energy_totals_year"
+      - key: adjustments.sector
+        effect: >
+          Generic factor/absolute override on static component attributes per carrier —
+          can scale the static p_set of the 'kerosene for aviation' Load per investment
+          year (applied via maybe_adjust_costs_and_potentials).
+        default: "factor: Link: electricity distribution grid: capital_cost: 1.0 (example stub)"
+        provenance: "config/config.default.yaml:adjustments;scripts/prepare_network.py:modify_attribute;scripts/prepare_sector_network.py:maybe_adjust_costs_and_potentials"
+    boundary:
+      - variant: "scale aviation demand"
+        rung: L0
+        note: "sector.aviation_demand_factor (scalar); per-year scaling via adjustments.sector factor on the Load p_set keyed by investment year."
+      - variant: "e-kerosene / SAF supply (Fischer-Tropsch or methanol route)"
+        rung: L0
+        note: "methanol route: flip sector.methanol.methanol_to_kerosene; FT synfuel serves the oil buses out of the box (supply side, see generation_conversion book)."
+      - variant: "per-year aviation demand pathway"
+        rung: L1
+        note: "Use adjustments.sector with a {year: factor} dict on Load 'kerosene for aviation' p_set; the direct options read in add_aviation does not use get()."
+      - variant: "airport-based spatial allocation instead of population"
+        rung: L3
+        note: "Needs an airports dataset and a small edit in add_aviation (population weighting comes pre-baked via pop_weighted_energy_totals); with a new rule for the allocation input it becomes L4."
+      - variant: "seasonal/hourly flight profile"
+        rung: L2
+        note: "p_set is static; replace with a time series in add_aviation (schedule data would add L3)."
+      - variant: "hydrogen aircraft demand carrier"
+        rung: L5
+        note: "No option; new carrier, load and supply logic required."
+    where:
+      - change: "aviation load, kerosene bus/link, methanol-to-kerosene"
+        anchor: "scripts/prepare_sector_network.py:add_aviation"
+        provenance: "scripts/prepare_sector_network.py:add_aviation"
+      - change: "aviation columns of energy totals"
+        anchor: "scripts/build_energy_totals.py (rule build_energy_totals)"
+        provenance: "scripts/build_energy_totals.py:total domestic aviation;rules/build_sector.smk:rule build_energy_totals"
+      - change: "post-hoc demand scaling per year"
+        anchor: "adjustments.sector -> scripts/prepare_network.py:modify_attribute"
+        provenance: "scripts/prepare_network.py:modify_attribute"
+    data_dependencies:
+      - input: "JRC-IDEES + eurostat aviation energy balances"
+        required_for: "demand level"
+        availability: "must be built (retrieved archives; Europe only)"
+      - input: "pop_weighted_energy_totals_s_{clusters}.csv"
+        required_for: "nodal allocation"
+        availability: "must be built (rule build_population_weighted_energy_totals)"
+      - input: "methanol and H2 buses (sector.methanol options)"
+        required_for: "methanol_to_kerosene route"
+        availability: "exists by default when sector network is built"
+    demand_dimensions:
+      driver: "Country domestic + international aviation final energy (JRC-IDEES/eurostat), times aviation_demand_factor"
+      spatial: "Population-weighted energy totals per clustered region (or single EU bus if not regional_oil_demand)"
+      temporal: "Annual-constant static p_set"
+      scenario: "Scalar aviation_demand_factor; per-year pathways via adjustments.sector; baseline via energy.energy_totals_year"

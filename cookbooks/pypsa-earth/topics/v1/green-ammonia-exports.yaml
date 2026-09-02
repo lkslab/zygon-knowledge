@@ -1,0 +1,48 @@
+id: green-ammonia-exports
+title: Green ammonia exports
+rank: 41
+question: >
+  Can a country produce and ship green ammonia competitively — at what delivered
+  cost, from which ports, backed by how much wind/solar/electrolysis? The Gulf
+  ("barrels to molecules": NEOM, Oman), Chile's Atacama, Brazil and Australia all
+  frame their export strategies around NH3, not just H2.
+when_to_use:
+  - "green ammonia export study"
+  - "NH3 export terminal / shipping economics"
+  - "Haber-Bosch sizing against an export offtake"
+  - "hydrogen vs ammonia as the export vector"
+  - "Gulf / Chile / Australia molecule-export strategy"
+recipes:
+  generation_conversion: [green-ammonia, green-hydrogen, electrolysers, ammonia-ships]
+  demand: [hydrogen-export-demand, chemicals-demand]
+functionality:
+  - id: h2-export-chain
+    role: "core export machinery — but H2-only: export bus, port links, ship profile, exogenous TWh or endogenous price"
+  - id: sector-coupled-workflow
+    role: "carries the NH3 value chain (Haber-Bosch, cracker, NH3 store) via sector.ammonia"
+  - id: h2-color-accounting
+    role: "green/temporal-matching certification of the hydrogen feeding Haber-Bosch"
+  - id: h2-pipeline-routing
+    role: "moves H2 from inland renewables to coastal synthesis/port nodes"
+  - id: scenario-matrix
+    role: "the h2export wildcard sweeps export volumes across parallel runs"
+  - id: nodal-marginal-prices
+    role: "delivered-cost decomposition from H2/NH3 bus duals at port nodes"
+gap_assessment: >
+  Two half-chains that do not meet. The NH3 value chain is first-class
+  (sector.ammonia default on: per-node NH3 buses, extendable Haber-Bosch with
+  H2+electricity inputs, ammonia cracker, liquid NH3 store, industrial demand
+  from USGS-geolocated plants), and the export machinery is first-class — but
+  only for hydrogen (add_export: offshore export bus, port links, ship-batch or
+  flat profile, endogenous price option, RE-additionality constraints). There
+  is no ammonia export bus or NH3 ship chain: exporting NH3 rather than H2 is
+  an L4 code job mirroring add_export onto spatial.ammonia.nodes (green-ammonia
+  recipe, boundary "Ammonia export"). Workable proxy today: run the H2 export
+  chain and treat NH3 conversion/shipping as an offline cost adder — losing the
+  optimizer's choice between shipping H2 vs NH3 and the flexibility value of
+  the NH3 store at the port. Greenness is inherited from the H2 bus
+  (electrolysis-only production_technologies or h2-color shares).
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

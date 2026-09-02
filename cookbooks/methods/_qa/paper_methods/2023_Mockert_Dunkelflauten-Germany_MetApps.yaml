@@ -1,0 +1,94 @@
+paper: "2023_Mockert_Dunkelflauten-Germany_MetApps.pdf"
+tier: 1
+model_used: >
+  no model (meteorological analysis paper; uses atlite as a data-conversion
+  library to derive renewable capacity factor time series from ERA5 — not a
+  network optimisation model)
+scope: >
+  Characterises meteorological conditions during Dunkelflauten (multi-day
+  low-wind/low-solar episodes) in Germany over 1979–2018 using ERA5 reanalysis,
+  links events to seven large-scale North-Atlantic-European weather regimes, and
+  analyses regime life-cycle properties and coincident electricity-demand
+  anomalies to inform energy-system planning and subseasonal forecasting.
+methods:
+  - slug: extreme-event-and-dunkelflaute-analysis
+    role: defines
+    evidence: >
+      Sec. 2.4 defines Dunkelflauten as periods where the 48 h running-mean
+      combined capacity factor of solar PV, onshore wind and offshore wind falls
+      below 0.06 for at least two consecutive days. 169 events are detected over
+      1979–2018 (avg. 4.3 per year). The paper then links each event to the
+      dominant weather regime, analyses their seasonal distribution, life-cycle
+      embedding, and meteorological composites (Secs. 3.1–3.3).
+    procedure_notes: >
+      Combined capacity factor is a weighted mean of solar PV (44%), onshore
+      wind (50%) and offshore wind (6%) capacity factors, weights based on
+      installed capacity in Germany in 2018. Threshold 0.06 chosen to match
+      Kaspar et al. (2019) event frequency (~3–4 per year). Sensitivity to
+      threshold (0.05, 0.10) confirmed not to change central findings. Events
+      categorised by dominant weather regime (most hours, or onset regime in
+      case of tie). Duration statistics: mean 3.4 days (82 h), max 8 days.
+      Weather-regime duration comparison uses bootstrapping with 1000 random
+      draws to assess significance (Sec. 3.3).
+    variant: threshold-running-mean
+    parameters:
+      threshold_cf: "0.06"
+      minimum_duration_hours: "48"
+      analysis_period: "1979–2018"
+      bootstrapping_draws: "1000"
+
+  - slug: weather-year-ensembles
+    role: routine-use
+    evidence: >
+      Sec. 2.1 states ERA5 reanalysis for 1979–2018 (40 years) forms the data
+      basis. Capacity factors, weather-regime assignments and electricity-demand
+      anomalies are all derived from this 40-year record. Inter-annual
+      variability of Dunkelflaute counts is explicitly discussed in Sec. 3.1
+      (range: 0–10 events per extended winter).
+    procedure_notes: >
+      ERA5 used at 0.5° / 3 h for weather-regime computation and composites;
+      0.25° / 1 h for atlite capacity-factor input. 40-year record treated as a
+      climatological sample — no model runs, no design-year selection; the full
+      record is the ensemble. Supplementary material S1 shows year-by-year
+      Dunkelflaute counts.
+    variant: full-reanalysis-climatology
+    parameters:
+      reanalysis: "ERA5"
+      period: "1979–2018"
+      years: "40"
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      Sec. 2.3 describes how atlite (Hofmann et al., 2021) converts ERA5 weather
+      data to capacity factor time series for solar PV, onshore wind and offshore
+      wind. Geographic distribution of installed capacities is assumed proportional
+      to each technology's capacity factor ("more wind farms in windy areas").
+      A linear regression correction to OPSD observed time series is applied.
+    procedure_notes: >
+      Solar panel model: Huld et al. (2010), azimuth 180°, slope 35°. Onshore
+      reference turbine: Vestas V112 3 MW. Offshore: 5 MW NREL Reference
+      Turbine. ERA5 input at 0.25°/1 h. Capacity weights: solar 44% (45.9 GW),
+      onshore wind 50% (53.0 GW), offshore wind 6% (6.4 GW) — Germany 2018
+      (IRENA, 2019). Combined capacity factor scaled by actual OPSD output to
+      correct for optimistic spatial assumption.
+    variant: atlite-proportional-distribution
+    parameters:
+      solar_model: "Huld et al. 2010"
+      onshore_turbine: "Vestas V112 3MW"
+      offshore_turbine: "5MW NREL Reference"
+      era5_resolution: "0.25deg / 1h"
+
+unmatched_methods:
+  - name: "weather-regime classification (EOF + k-means on Z500)"
+    evidence: >
+      Sec. 2.2 describes identifying seven year-round weather regimes via EOF
+      analysis of 10-day low-pass filtered geopotential height anomalies at
+      500 hPa and k-means clustering over the North Atlantic-European region
+      (30–90°N, 80°W–40°E), following Grams et al. (2017). A weather-regime
+      index (IWR) is computed by projecting instantaneous Z500 anomalies onto
+      cluster means, normalised by ERA5-period standard deviation (Michel &
+      Rivière, 2011). An active regime requires IWR > 1.0 for at least 5 days.
+      This is the primary analytical tool of the paper and has no matching slug
+      in the vocabulary (it is a meteorological classification method, not an
+      energy-system modelling method).

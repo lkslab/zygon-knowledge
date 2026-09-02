@@ -1,0 +1,135 @@
+id: electrolytic-chemicals
+title: Green / electrolytic chemicals
+summary: >
+  Producing chemicals (ammonia, methanol, HVC/olefins) from electrolytic
+  hydrogen and electricity instead of fossil feedstocks.
+
+when_to_use:
+  - "green ammonia"
+  - "electrolytic chemicals"
+  - "e-methanol"
+  - "green hydrogen for chemicals"
+  - "power-to-X chemicals"
+  - "fossil-free fertiliser"
+  - "chemical industry decarbonisation"
+  - "naphtha / HVC feedstock switch"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        Ammonia is the genuinely endogenous piece. When sector.ammonia.enable is
+        true, build_industry_demand carves ammonia out of "chemical and
+        petrochemical" using production data (resources/ammonia_production.csv,
+        year sector.ammonia.production_year) and the gas_MWh_per_tNH3 /
+        elec_MWh_per_tNH3 intensities, and add_ammonia builds an NH3 bus per
+        node with an NH3 demand Load, an extendable Haber-Bosch Link consuming
+        H2 + electricity, an ammonia cracker, and NH3 storage. Since H2 supply
+        (electrolysis vs SMR/SMR CC) is optimised, GREEN ammonia emerges
+        endogenously. The rest of the chemical sector is a demand-side
+        aggregate: "chemical and petrochemical" fuel/electricity rows from UNSD
+        become flat loads, naphtha feedstock is a fixed "naphtha for industry"
+        load on the oil buses with an accompanying atmosphere CO2 load, and
+        refinery process emissions are derived from refinery capacities x 0.51
+        x 0.136 x 365 x industry_util_factor.
+      mechanism: >
+        add_ammonia in prepare_sector_network (Haber-Bosch / ammonia cracker /
+        ammonia store Links against the endogenous H2 system); add_industry for
+        the residual chemical loads; build_industry_demand for the
+        ammonia carve-out and refinery process emissions.
+      not_covered: >
+        No methanol carrier, no HVC/steam-cracker process, no
+        methanol-to-olefins, no endogenous switch of naphtha feedstock to
+        e-fuels for chemicals (Fischer-Tropsch exists as a fuel technology but
+        the naphtha industry load simply draws from the oil bus — decarbonised
+        only insofar as the oil bus is). No electrolytic routes for chlorine or
+        other chemicals.
+      provenance: "scripts/prepare_sector_network.py:add_ammonia"
+
+    levers:
+      - key: sector.ammonia.enable
+        effect: "Splits ammonia out of chemicals and adds the endogenous Haber-Bosch/NH3 system."
+        default: "true"
+        provenance: "config.default.yaml:ammonia"
+      - key: sector.ammonia.production_year
+        effect: "Year of ammonia production data used for the NH3 demand (2019-2023 available)."
+        default: "2019"
+        provenance: "config.default.yaml:production_year"
+      - key: sector.ammonia.gas_MWh_per_tNH3
+        effect: "Gas intensity subtracted from chemical and petrochemical when carving out ammonia."
+        default: "7.81"
+        provenance: "config.default.yaml:gas_MWh_per_tNH3"
+      - key: sector.ammonia.elec_MWh_per_tNH3
+        effect: "Electricity intensity subtracted from chemical and petrochemical when carving out ammonia."
+        default: "1.278"
+        provenance: "config.default.yaml:elec_MWh_per_tNH3"
+      - key: sector.hydrogen.production_technologies
+        effect: "Determines whether the Haber-Bosch H2 input can/must be electrolytic (drop SMR/SMR CC to force green)."
+        default: '["H2 Electrolysis", "SMR", "SMR CC"]'
+        provenance: "config.default.yaml:production_technologies"
+      - key: sector.fischer_tropsch
+        effect: "Adds Fischer-Tropsch synthesis into the oil buses that feed 'naphtha for industry' — indirect e-feedstock route."
+        default: "true"
+        provenance: "config.default.yaml:fischer_tropsch"
+      - key: sector.industry_util_factor
+        effect: "Scales refinery process emissions from plant capacities."
+        default: "0.7"
+        provenance: "config.default.yaml:industry_util_factor"
+
+    boundary:
+      - variant: "green (electrolytic) ammonia"
+        rung: L0
+        note: "endogenous once sector.ammonia.enable is true; force it by restricting sector.hydrogen.production_technologies to H2 Electrolysis or via CO2 limits."
+      - variant: "adjust ammonia energy intensities or production year"
+        rung: L1
+        note: "sector.ammonia.gas_MWh_per_tNH3 / elec_MWh_per_tNH3 / production_year."
+      - variant: "shift remaining chemical fuel demand (gas/oil) to electricity or hydrogen"
+        rung: L3
+        note: >
+          Edit the 'chemical and petrochemical' column of the industry totals
+          via data/custom/industry_demand_{demand}_{planning_horizons}.csv
+          (custom_data.industry_demand: true) or industry_base_totals in
+          build_industry_demand — the hydrogen carrier is already plumbed
+          through to 'H2 for industry' loads.
+      - variant: "custom ammonia plant locations"
+        rung: L3
+        note: "data/industry/ammonia_plants.csv feeds create_ammonia_db (technology 'Haber-Bosch') via rule build_industrial_database."
+      - variant: "e-methanol / electrolytic HVC as explicit processes"
+        rung: L5
+        note: "no methanol/HVC carriers or process links exist — new buses, links and cost rows in prepare_sector_network."
+
+    where:
+      - change: "endogenous ammonia system"
+        anchor: "add_ammonia in prepare_sector_network (Haber-Bosch, ammonia cracker, ammonia store)"
+        provenance: "scripts/prepare_sector_network.py:add_ammonia"
+      - change: "ammonia carve-out from chemicals"
+        anchor: "build_industry_demand — ammonia block gated by snakemake.params.ammonia_enable"
+        provenance: "scripts/build_industry_demand.py:country_to_nodal"
+      - change: "naphtha feedstock load and its CO2 accounting"
+        anchor: "add_industry — 'naphtha for industry' Load + 'industry oil emissions' Load"
+        provenance: "scripts/prepare_sector_network.py:add_industry"
+      - change: "refinery process emissions"
+        anchor: "build_industry_demand — refinery_emissons from create_refineries_df capacities"
+        provenance: "scripts/build_industrial_database.py:create_refineries_df"
+      - change: "chemical fuel rows (exogenous switch point)"
+        anchor: "rule build_industry_demand — industry_base_totals; custom data/custom/industry_demand_{demand}_{planning_horizons}.csv"
+        provenance: "scripts/build_industry_demand.py:all_carriers"
+
+    data_dependencies:
+      - input: "resources/ammonia_production.csv (rule build_ammonia_production from USGS dataset)"
+        required_for: "NH3 demand magnitude"
+        availability: "must be built; countries without production are skipped"
+      - input: "data/industry/ammonia_plants.csv"
+        required_for: "ammonia plant locations for distribution keys"
+        availability: "exists by default; region-dependent coverage"
+      - input: "data/demand/unsd/data/*.txt (UNSD energy balances)"
+        required_for: "chemical and petrochemical baseline"
+        availability: "must be built; region-dependent"
+      - input: "technology-data costs csv (Haber-Bosch, Ammonia cracker, NH3 storage, electrolysis rows)"
+        required_for: "endogenous green-ammonia costs"
+        availability: "must be built (enable.retrieve_cost_data)"
+      - input: "data/custom/industry_demand_{demand}_{planning_horizons}.csv"
+        required_for: "exogenous switching of residual chemical fuels"
+        availability: "absent — user-supplied"

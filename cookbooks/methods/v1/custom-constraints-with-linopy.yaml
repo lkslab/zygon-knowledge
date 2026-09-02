@@ -1,0 +1,962 @@
+id: custom-constraints-with-linopy
+title: "Custom constraints via the extra_functionality hook (linopy)"
+summary: >
+  Adding a bespoke linear constraint to an already-built optimisation problem by
+  writing an algebraic expression over the solver variables, rather than by
+  changing any input data.
+question: >
+  My study needs a rule the model does not have — where exactly do I write it, in
+  what API, and what is already in the problem by the time I get there?
+aliases:
+  - "extra_functionality"
+  - "custom_extra_functionality"
+  - "custom constraint"
+  - "additional constraint"
+  - "linopy"
+  - "algebraic modelling language (AML)"
+  - "constraint formulation"
+  - "model extension / modular extension"
+  - "pyomo (the pre-2023 predecessor of the same hook)"
+when_to_use:
+  - "the model has no setting for the rule I need to impose"
+  - "I need each country to cover a share of its own demand"
+  - "hydrogen must be matched to renewables hour by hour"
+  - "cap how much of the total build can sit in any one region"
+  - "force two technologies to be sized in a fixed ratio"
+  - "impose a policy target that is not a cost, a cap or a potential"
+  - "where do I put the equation from this paper"
+  - "how do I add a constraint to PyPSA without forking it"
+  - "the cookbook says this is L5 — what does that actually involve"
+family: tooling-and-reproducibility
+prevalence:
+  papers: 6
+  tier1: 3
+  tier2: 3
+  sweep_hits: 11
+  basis: >
+    Hand-coded pass 1 (2026-07-25) found 6 papers whose METHOD CONTENT is about the
+    constraint-writing layer itself: two tooling papers that define it (Brown 2018 for
+    the Pyomo era, Hofmann 2023 for linopy), one that generalises it into a reusable
+    extension pattern (Welfonder 2024), and three that state they added constraints
+    through it. The regex screen returned 11 — close, because the regex targets the
+    literal words `linopy` / `extra_functionality`, which papers either say or do not.
+    THE COUNT UNDERSTATES THE METHOD BADLY and the interview must not read 6 as "rare":
+    ~a dozen further corpus papers derive a bespoke constraint and land it here without
+    naming the tool, so pass 1 filed them under the SUBSTANTIVE method instead
+    (self-sufficiency in vanGreevenbroek 2023 -> cost-allocation-and-equity-metrics; the
+    K-parameter in Aden 2026 -> the same; RFNBO/24-7 matching in Riepin 2024, Alamia
+    2024, Schumm 2025 -> additionality-and-24-7-matching; PTES boosting in Schauss 2026
+    -> storage-sizing-and-duration). Four of those appear in EVIDENCE.yaml's
+    `unmatched_methods` with an explicit note that this slug is the closest match, which
+    is how `variants` below was built. This card is a SUBSTRATE card: its value is that
+    every L5 rung in the book resolves here, not its own prevalence.
+procedure:
+  - step: >
+      Write the constraint down algebraically first, over the model's decision
+      variables, and check it is linear in them. Non-linearity is the point at which
+      this method stops: a product of two variables (a share times a total, a
+      grid-average emission factor times an import volume) must be linearised, fixed
+      exogenously, or resolved by iterating solves.
+    handle: null
+    provenance: null
+  - step: >
+      Let the workflow build the standard problem. The hook fires AFTER the full model
+      exists: all component variables, all nodal balances, Kirchhoff, storage/store
+      consistency, every global constraint, and the cost objective are already added.
+      You are extending a complete problem, never assembling one.
+    handle: "pypsa.optimization.optimize:create_model"
+    provenance: "pypsa/optimization/optimize.py:create_model"
+  - step: >
+      Locate the variables you need by component and attribute, using the
+      `'<Component>-<attribute>'` naming that pypsa assigns: `Generator-p`,
+      `Generator-p_nom`, `Link-p`, `Link-p_nom`, `Store-e`, `Store-e_nom`,
+      `StorageUnit-p_dispatch`, `StorageUnit-p_store`, `StorageUnit-spill`.
+    handle: "n.model[name] -> n.model.variables[name] (linopy Model.__getitem__)"
+    provenance: "pypsa/optimization/variables.py:define_operational_variables"
+  - step: >
+      Slice to the components the constraint applies to. Selection is by pandas index
+      built from `n.generators` / `n.links` / `n.stores` (`.query`, `.carrier.isin`,
+      `.index.str.contains`), then `.loc[...]` or `.sel(...)` on the linopy variable.
+      Dispatch variables carry a `snapshot` dimension; capacity variables do not.
+    handle: "Variable.loc / Variable.sel"
+    provenance: "pypsa/optimization/variables.py:define_nominal_variables"
+  - step: >
+      Build the left-hand side as a linear expression: multiply variables by pandas
+      Series / xarray DataArrays of coefficients, add and subtract them, and reduce with
+      `.sum(dim)` over snapshots or components. Aggregation over groups (per country,
+      per carrier) is `.groupby(grouper.to_xarray()).sum()`, where the grouper is a
+      Series mapping component name to group.
+    handle: "linopy LinearExpression arithmetic; Variable.groupby(...).sum()"
+    provenance: "pypsa/optimization/variables.py:define_operational_variables"
+  - step: >
+      Register it. `n.model.add_constraints(lhs >= rhs, name=...)`, or the explicit
+      three-argument form `add_constraints(lhs, sense, rhs, name=...)` when the sense is
+      itself a config value. The `name` is the label the constraint appears under in
+      `n.model.constraints` and in the dual output — choose it deliberately.
+    handle: "n.model.add_constraints(...)"
+    provenance: "linopy/model.py:add_constraints"
+  - step: >
+      If the constraint needs its own decision variable (a reserve, a slack, a binary
+      indicator), add it in the same hook with `n.model.add_variables(...)` before
+      referring to it. Variables added here are solved and written back like any other.
+    handle: "n.model.add_variables(...)"
+    provenance: "linopy/model.py:add_variables"
+  - step: >
+      Verify it actually bound. Read it back from `n.model.constraints[name]` (shape,
+      `.rhs`, `.dual` after the solve) and compare the objective against the
+      unconstrained run. A constraint whose index selection matched nothing is silently
+      absent and the run still succeeds — this is the characteristic failure.
+    handle: "n.model.constraints[name]"
+    provenance: "linopy/constraints.py:Constraints"
+  - step: >
+      Diagnose infeasibility when it bites. A too-tight bespoke constraint makes the LP
+      infeasible with no clue which one; both models already call the IIS helpers on
+      failure, so read that output before weakening anything.
+    handle: "n.model.compute_infeasibilities() / n.model.print_infeasibilities()"
+    provenance: "linopy/model.py:compute_infeasibilities"
+variants:
+  - id: sizing-ratio-coupling
+    what: >
+      Couple the nominal capacities of two or more components that physically must be
+      built together: charger == efficiency * discharger, store size == E/P ratio *
+      charger power, retrofitted H2 pipe subtracts from its parent CH4 pipe. Pure
+      capacity-variable arithmetic, no snapshot dimension, no new variables — the
+      cheapest and safest class, and the right first exercise. Both repos ship several.
+    papers:
+      - "2018_Brown_PyPSA-Python-for-Power-System-Analysis_JORS.pdf"
+  - id: operating-envelope
+    what: >
+      Constrain dispatch variables against each other or against capacity within each
+      snapshot: CHP back-pressure and iso-fuel lines, temperature-dependent storage
+      boosting, block-order equality (g_t == g_{t-1}) across a delivery period. Carries
+      the snapshot dimension, so cost and memory scale with the time series, and
+      snapshot-shifted terms need explicit index alignment.
+    papers:
+      - "2021_Glismann_ancillary-services-acquisition-model.pdf"
+      - "2018_Brown_PyPSA-Python-for-Power-System-Analysis_JORS.pdf"
+  - id: temporal-matching
+    what: >
+      Require a demand to be covered by designated supply within a time window —
+      hourly, monthly or annual. The RFNBO / 24-7-CFE family. Implemented by summing
+      weighted generation and weighted consumption, grouping by the window
+      (`groupby("snapshot.month")`), and adding one constraint per window label. The
+      most-copied bespoke constraint in this corpus, and pypsa-earth already ships a
+      working reference implementation.
+    papers:
+      - "2024_Riepin_Spatio-temporal-load-shifting-clean-computing_AdvApplEnergy.pdf"
+  - id: equity-and-share-allocation
+    what: >
+      Bound one group's share of a system-wide total: national self-sufficiency (produce
+      >= f of your consumption), per-node renewable capacity within a factor K of the
+      load-weighted average, per-carrier share of production. Needs a grouper and,
+      critically, a rearrangement into linear form — `capacity_n <= K * omega_n *
+      total` is linear only because the total is itself a sum of variables, so the
+      total must stay on the left-hand side and never become a divisor.
+    papers: []
+  - id: budget-and-slack
+    what: >
+      One scalar constraint over the whole problem: a volume cap, a sequestration
+      budget, a network-length budget, or the near-optimality slack
+      `total_cost <= (1+eps) * c*` that MGA is built on. Structurally the simplest
+      (one row) but the one most likely to be misplaced — it must reference the
+      objective or a full weighted sum, not a per-snapshot quantity.
+    papers: []
+  - id: new-variable-extensions
+    what: >
+      Constraints that introduce their own decision variables: an operational-reserve
+      quantity per generator and snapshot, market bid variables, scenario-coupling
+      (non-anticipativity) variables for stochastic formulations. This is where the
+      method stops being "a constraint" and becomes a model extension; it needs
+      `add_variables` and its own consistency constraints, and results do not flow into
+      `n.*_t` automatically.
+    papers:
+      - "2024_Welfonder_open-source-stochastic-unit-commitment-PyPSA.pdf"
+      - "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+  - id: pre-linopy-pyomo
+    what: >
+      The historical form of the same hook, for reading papers from before ~2023: the
+      identical `extra_functionality` extension point existed over Pyomo, and PyPSA
+      also carried a hand-rolled sparse backend (nomopyomo) in between. Procedure and
+      variant taxonomy transfer; the API does not. Both pinned model versions here are
+      linopy-only, so a pre-2023 paper's constraint must be re-expressed, not copied.
+    papers:
+      - "2018_Brown_PyPSA-Python-for-Power-System-Analysis_JORS.pdf"
+      - "2021_Glismann_ancillary-services-acquisition-model.pdf"
+      - "2023_Hofmann_linopy-linear-optimization_JOSS.pdf"
+literature:
+  - paper: "2023_Hofmann_linopy-linear-optimization_JOSS.pdf"
+    tier: 2
+    role: defines
+    note: >
+      Defines the API every custom constraint in this ecosystem is written in: variables
+      are n-dimensional integer-label arrays, boolean masks select where a variable is
+      defined, coordinates auto-align in linear expressions, and constraints are
+      assembled from high-level algebraic expressions rather than element loops. That
+      array-based data model is exactly why the constraints in both repos read as three
+      lines of pandas/xarray arithmetic and why a mis-named dimension is the dominant
+      bug class. Benchmarked as the most memory-efficient Python AML against JuMP,
+      Pyomo, CVXPY, PuLP and gurobipy on a knapsack problem. Also documents the
+      model-to-NetCDF serialisation that pypsa-eur's `store_model` option exposes.
+  - paper: "2018_Brown_PyPSA-Python-for-Power-System-Analysis_JORS.pdf"
+    tier: 1
+    role: defines
+    note: >
+      Establishes extensibility as a first-class design goal of PyPSA (Sec. I and III)
+      and names the mechanism: "optimisation problems are formulated using the
+      Python-based optimization modeling language Pyomo … which is solver agnostic and
+      intuitive to extend", with CHP back-pressure given as the worked example of an
+      additional constraint. Read it as the charter for the hook, NOT as an API
+      reference: this is PyPSA v0.11.0, the layer is Pyomo, and both models here are
+      linopy-only. The CHP example it names still exists as `add_chp_constraints` in
+      both repos — and in both it is currently dead code, which is a useful lesson about
+      constraint functions outliving the component naming they match on.
+  - paper: "2024_Welfonder_open-source-stochastic-unit-commitment-PyPSA.pdf"
+    tier: 2
+    role: extends
+    note: >
+      The clearest demonstration that the hook scales from "one constraint" to "a
+      library": states plainly that "PyPSA does not have built-in functionality for
+      stochastic optimization, nor for market mechanisms" and adds three independently
+      usable modules (market/bidding mechanisms, stochastic scenario coupling,
+      rolling-horizon multistaging) on top of the network object, released as
+      PyPSA-stochUC. The pattern to copy for anything that needs new variables rather
+      than only new constraints — and the honest counterpoint that at that size you are
+      maintaining an extension, not editing a hook.
+  - paper: "2024_Riepin_Spatio-temporal-load-shifting-clean-computing_AdvApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The reference application of the temporal-matching variant on a PyPSA-Eur-derived
+      system: 24/7 CFE matching plus spatial and temporal load-shift constraints
+      (eqs. 2-7) added through linopy on 37 zones at 8760 hourly steps, with PyPSA and
+      linopy cited separately as the two layers (Sec. 2.1). Its transferable warning is
+      the linearity one: the grid CFE factor makes the constraint non-convex, and the
+      authors resolve it by iterating solves with the factor held fixed rather than by
+      writing a non-linear constraint.
+  - paper: "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Shows the hook used on the OBJECTIVE rather than only the constraints: custom
+      utility-function terms are added via the linopy API (PyPSA 0.27.1, linopy 0.3.8,
+      Gurobi 11.0.2), with a QP formulation for elastic and piecewise-linear demand and
+      a numerical-stabilisation substitution implemented as a constraint/objective
+      modification. The version pins are worth quoting to a user: this is a fast-moving
+      API and a constraint copied from a paper's repo is pinned to that paper's linopy.
+  - paper: "2021_Glismann_ancillary-services-acquisition-model.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Two constraints added to a PyPSA dispatch problem embedded inside an agent-based
+      market model (PyPSA 0.13.1, so the pre-linopy hook): a block-order equality
+      `g_{n,s,t} = g_{n,s,t-1}` holding dispatch constant across a delivery period, and
+      an equilibrium threshold bounding per-ISP net redispatch volume. The clearest
+      corpus example of the operating-envelope variant, and of the snapshot-shifted term
+      that is the one place where index alignment must be done by hand. The paper's own
+      framing is the sales pitch for this whole card: market designs "usually strongly
+      simplified due to complexity" become expressible.
+pitfalls:
+  - pitfall: >
+      A constraint whose component selection matches nothing is added over an empty
+      index and silently does nothing. The solve succeeds, the results look plausible,
+      and the policy you promised the user was never enforced. `add_chp_constraints` is
+      the live proof: it exists in both repos, matches component names that the current
+      builders no longer create, and in pypsa-eur it is not even called.
+    evidence: "2018_Brown_PyPSA-Python-for-Power-System-Analysis_JORS.pdf"
+    note: >
+      Always assert non-emptiness of the selected index and the presence of the named
+      constraint in `n.model.constraints` — that is what the referee's `verifies` block
+      below is for. Never accept "the run finished" as evidence a constraint bound.
+  - pitfall: >
+      Dimension names differ between capacity and dispatch variables and between pypsa
+      versions. At pypsa 0.30.3 `Generator-p_nom` is indexed by `Generator-ext` while
+      `Generator-p` is indexed by `Generator`; combining them without renaming raises,
+      or worse broadcasts into a much larger constraint. At pypsa 1.x both are
+      `Generator`. pypsa-eur carries an explicit `PYPSA_V1` switch and sprinkles
+      `rename({"Generator-ext": "Generator"})` through its constraint functions purely
+      to paper over this.
+    evidence: "2023_Hofmann_linopy-linear-optimization_JOSS.pdf"
+    note: >
+      Copy the version guard from the model you are editing, and treat any constraint
+      code as version-pinned. This is the single biggest obstacle to moving a bundle's
+      code change between pypsa-eur (pins pypsa <1.2) and pypsa-earth (pins <=0.30.3).
+  - pitfall: >
+      The rule you want is often not linear, and the non-linearity hides in an innocuous
+      word. "X% of the grid mix", "the average price", "the emission intensity of
+      imports" all multiply one variable by another. Riepin's grid CFE factor is exactly
+      this case.
+    evidence: "2024_Riepin_Spatio-temporal-load-shifting-clean-computing_AdvApplEnergy.pdf"
+    note: >
+      Three honest escapes, in order of preference: fix the offending factor
+      exogenously; iterate solves updating it between passes (2 iterations sufficed for
+      Riepin); or restate the requirement as a ratio between sums of variables with the
+      denominator moved to the left-hand side. Tell the user which one you took — it
+      changes what the result means.
+  - pitfall: >
+      A bespoke constraint added to a model with load shedding enabled may be satisfied
+      by shedding load rather than by building anything, and the study then reports a
+      policy that "works" at the cost of unserved demand. Conversely, without load
+      shedding the same constraint returns a bare infeasibility and no diagnosis.
+    evidence: "2024_Welfonder_open-source-stochastic-unit-commitment-PyPSA.pdf"
+    note: >
+      Check load-shedding generator dispatch in the result whenever a new constraint
+      binds, and read `n.model.compute_infeasibilities()` before weakening a constraint
+      that fails outright.
+  - pitfall: >
+      Constraint code and its enabling config drift apart. pypsa-eur's `BAU` and `SAFE`
+      constraints read `electricity.BAU_mincapacities` / `electricity.SAFE_reservemargin`
+      which have NO entry in either model's default config — flipping the constraint on
+      raises a KeyError rather than doing nothing. pypsa-earth still documents a
+      `solving.options.formulation: kirchhoff` key that no script reads at all.
+    evidence: "2021_Glismann_ancillary-services-acquisition-model.pdf"
+    note: >
+      Grep the consumer for every key a constraint depends on, not just the switch that
+      turns it on. `cookbooks/<model>/topics/FUNCTIONALITY.yaml` records these as
+      `partial` / `dead-key` for exactly this reason.
+  - pitfall: >
+      An API pinned to a fast-moving library. Constraints published with a paper are
+      written against that paper's linopy (0.3.8 for Brown 2025, versus 0.5.8 in this
+      repo's environment) and against a PyPSA whose variable dimension names have since
+      changed. Pre-2023 papers target Pyomo and do not transfer at all.
+    evidence: "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+    note: >
+      Treat a paper's constraint as a formulation to re-implement, not code to paste,
+      and record the linopy/pypsa versions in the bundle so a later failure is
+      attributable.
+requires_methods: []
+combines_with:
+  - mga-near-optimal-space
+  - additionality-and-24-7-matching
+  - cost-allocation-and-equity-metrics
+  - balancing-and-ancillary-services
+  - unit-commitment-and-ramping
+  - stochastic-and-robust-optimisation
+  - carbon-constraints-and-pricing
+  - operational-dispatch-and-rolling-horizon
+  - shadow-prices-and-marginal-values
+topics:
+  - model-reproducibility
+  - energy-affordability-equity
+  - resource-adequacy
+  - electrolyser-grid-flexibility
+  - solver-speed-scalability
+pypsa_primitive:
+  symbol: "pypsa/optimization/optimize.py:extra_functionality"
+  pypsa_version: "0.30.3"
+  exposed_by: "both — this is the one method in the book where both models call the primitive"
+  reachable_via: >
+    `n.optimize(..., extra_functionality=fn)` calls `fn(n, sns)` with exactly two
+    positional arguments, immediately after `create_model` and immediately before
+    `m.solve`. The same contract is documented for
+    `optimize_transmission_expansion_iteratively` and `optimize_with_rolling_horizon`,
+    which is why pypsa-eur wraps its own hook in `functools.partial` to inject the
+    planning horizon. The constraint API itself is not a pypsa primitive at all: it is
+    linopy 0.5.8's `Model.add_constraints` / `Model.add_variables`, reached through
+    `n.model`, which `create_model` assigns.
+  note: >
+    Unusually for this book the primitive is not a shortcut for missing workflow
+    support — it IS the workflow's mechanism, and everything already in the problem
+    (component variables, nodal balance, Kirchhoff, storage consistency, global
+    constraints, objective) is added by `create_model` before the hook fires. Two
+    consequences: you may reference any standard variable, and you may not assume any
+    of them are absent. Soft anchor — pypsa is a conda pin, not a submodule, so this is
+    pinned to 0.30.3; pypsa-eur's own environment pins `pypsa <1.2` (lock 1.1.2), where
+    the extendable-component dimension names differ.
+models:
+  - model: pypsa-eur
+    version_anchor:
+      ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d"
+      date: "2026-07-25"
+    functionality:
+      - id: custom-constraint-hook
+        role: >
+          the method itself, and the only registry entry in this book that is BOTH
+          `working` and the landing point for other cards' L5 rungs — two entry points:
+          the config-pathed user module and the in-repo dispatcher
+      - id: battery-charger-ratio
+        role: >
+          worked example of sizing-ratio-coupling, five lines and no snapshot dimension —
+          the one to copy first; registry `partial` because its name filter misses the
+          newer storage carriers
+      - id: tes-constraints
+        role: >
+          worked example of sizing-ratio-coupling with a merge across per-unit
+          expressions (`linopy.expressions.merge`) — the pattern for a constraint built
+          element-by-element rather than vectorised
+      - id: pipe-retrofit-constraint
+        role: >
+          worked example of a capacity constraint with a data-derived rhs and a coupling
+          coefficient read from config
+      - id: operational-reserves
+        role: >
+          the only in-repo example that ADDS ITS OWN VARIABLE (`Generator-r`) plus the
+          companion capacity constraint — copy this for new-variable-extensions
+      - id: equity-self-sufficiency
+        role: >
+          worked example of equity-and-share-allocation: grouped weighted sums per
+          country vs a load-derived rhs, including the `scaling` trick for conditioning
+      - id: country-carrier-capacity-limits
+        role: >
+          worked example of a two-level (country x carrier) grouper with an xarray rhs
+          and index intersection — the most reusable aggregation pattern in the file
+      - id: bau-minimum-capacities
+        role: "worked example of a carrier-grouped floor; registry `partial` (config key missing)"
+      - id: safe-reserve-margin
+        role: "worked example of a single scalar sum >= rhs; registry `partial` (config key missing)"
+      - id: import-limit-constraint
+        role: >
+          worked example of budget-and-slack, and the only one using the explicit
+          three-argument `add_constraints(lhs, sense, rhs)` form with the sense read from
+          config
+      - id: lossy-bidirectional-links
+        role: "worked example of pairing mirrored components by name transformation"
+      - id: chp-operation-constraints
+        role: >
+          the cautionary example — registry `dead-key`: written, never called from the
+          dispatcher, and with an undefined rhs on the back-pressure branch
+      - id: co2-budget-pathway
+        role: >
+          worked example of a multi-horizon constraint under perfect foresight; shows how
+          the hook branches on `n._multi_invest`
+      - id: solver-choice
+        role: "the constraint you add is only as solvable as the solver profile allows"
+    available:
+      verdict: turnkey
+      how: >
+        Two sanctioned entry points, both live at this ref. (1) OUT OF REPO:
+        `solving.options.custom_extra_functionality` is a path (relative to `rules/`) to
+        a Python module; the dispatcher imports it, looks up the function whose name
+        equals the module stem, and calls it `(n, snapshots, snakemake)` after every
+        built-in constraint. A no-op stub ships at `data/custom_extra_functionality.py`
+        and the snakemake rules already declare it as an input, so a change to it
+        re-triggers the solve. (2) IN REPO: add an `add_*_constraints(n, ...)` function
+        to `scripts/solve_network.py` and call it from `extra_functionality`, which is
+        what all fourteen built-in constraints do. Route (1) is the correct target for a
+        bundle: it is a config key plus a new file, touching no tracked model code.
+      missing: >
+        Nothing about the mechanism. What is missing is always the constraint itself:
+        procedure steps 1, 5 and 8 (the formulation, the aggregation, the verification)
+        have no handle and never will. `turnkey` here means "the socket is wired and
+        documented", not "the method runs from a config flip" — this is the one verdict
+        in the book where those differ, and the interview must say so out loud.
+      provenance: "scripts/solve_network.py:custom_extra_functionality; scripts/solve_network.py:extra_functionality; rules/common.smk:input_custom_extra_functionality"
+    levers:
+      - key: "solving.options.custom_extra_functionality"
+        effect: >
+          Path to the user module, resolved relative to the `rules/` directory and
+          declared as a rule input so editing it invalidates the solve. Set it to `""`
+          (or false) to disable. The module's entry function MUST be named identically to
+          the file stem — `getattr(module, module_name)` — and takes
+          `(n, snapshots, snakemake)`, so the full snakemake object (params, wildcards,
+          input paths) is available to a custom constraint, which the in-repo dispatcher
+          arguments do not give you.
+        default: "'../data/custom_extra_functionality.py' (a no-op stub is shipped there)"
+        provenance: "config/config.default.yaml:custom_extra_functionality; scripts/solve_network.py:custom_extra_functionality; scripts/lib/validation/config/solving.py:custom_extra_functionality"
+      - key: "solving.constraints.EQ"
+        effect: >
+          Enables the built-in self-sufficiency constraint. Give it a valued token
+          (`EQ0.7c`), never bare `true` — the dispatcher calls `EQ_o.replace("EQ", "")`
+          on the value and a bare `True` crashes there.
+        default: "false"
+        provenance: "config/config.default.yaml:EQ; scripts/solve_network.py:add_EQ_constraints"
+      - key: "solving.constraints.CCL"
+        effect: >
+          Enables the per-country per-carrier capacity min/max constraint, read from
+          `solving.agg_p_nom_limits.file`. The nearest thing to a data-driven custom
+          constraint that needs no code: a CSV, not Python.
+        default: "false"
+        provenance: "config/config.default.yaml:CCL; scripts/solve_network.py:add_CCL_constraints"
+      - key: "solving.agg_p_nom_limits.file"
+        effect: >
+          The CSV of per-country per-carrier min/max capacities (per planning horizon in
+          the column header) that CCL reads. Route a national build target here before
+          writing any Python.
+        default: "'data/agg_p_nom_minmax.csv'"
+        provenance: "config/config.default.yaml:agg_p_nom_limits; scripts/solve_network.py:add_CCL_constraints"
+      - key: "electricity.operational_reserve.activate"
+        effect: >
+          Turns on the one built-in constraint that adds its own variable — worth
+          enabling once purely to see the `add_variables` + companion-constraint pattern
+          in a real solve.
+        default: "false"
+        provenance: "config/config.default.yaml:operational_reserve; scripts/solve_network.py:add_operational_reserve_margin"
+      - key: "solving.options.store_model"
+        effect: >
+          Writes the built linopy model to NetCDF alongside the solved network, so a
+          bespoke constraint can be inspected offline (name, shape, coefficients)
+          without re-solving. The cheapest verification loop available.
+        default: "false"
+        provenance: "config/config.default.yaml:store_model; rules/common.smk:output_model"
+      - key: "solving.options.skip_iterations"
+        effect: >
+          Selects the single-pass solve path, which is the ONLY one that calls
+          `extra_functionality` directly via `create_optimization_model`; the iterative
+          and rolling-horizon paths hand it to pypsa as a `functools.partial` kwarg and
+          therefore re-invoke it once per iteration or per horizon slice. Set it true
+          while developing a constraint so the hook fires exactly once.
+        default: "true"
+        provenance: "config/config.default.yaml:skip_iterations; scripts/solve_network.py:create_optimization_model"
+    assembly:
+      - step: >
+          Write the algebraic form and confirm linearity. No handle; this is the step
+          that decides whether the study is possible at all.
+        uses: []
+        config: null
+        code: null
+        provenance: "scripts/solve_network.py:extra_functionality"
+      - step: >
+          Pick the closest existing `add_*_constraints` function and copy its shape.
+          Ratio coupling -> `add_battery_constraints`. Grouped share per country ->
+          `add_EQ_constraints`. Two-level grouper with a CSV rhs ->
+          `add_CCL_constraints`. Scalar budget with a config sense ->
+          `add_import_limit_constraint`. Needs a new variable ->
+          `add_operational_reserve_margin`. Built per-unit then merged ->
+          `add_TES_energy_to_power_ratio_constraints`.
+        uses: [battery-charger-ratio, equity-self-sufficiency, country-carrier-capacity-limits, import-limit-constraint, operational-reserves, tes-constraints]
+        config: null
+        code: "scripts/solve_network.py (read-only, as the template)"
+        provenance: "scripts/solve_network.py:add_battery_constraints; scripts/solve_network.py:add_EQ_constraints; scripts/solve_network.py:add_operational_reserve_margin"
+      - step: >
+          Write it into a NEW module rather than into `scripts/solve_network.py`, with the
+          function name equal to the file stem, and point
+          `solving.options.custom_extra_functionality` at it. This keeps the diff to one
+          config key plus one added file, which is what the referee can check
+          mechanically.
+        uses: [custom-constraint-hook]
+        config: "solving.options.custom_extra_functionality"
+        code: "a new module under data/ (the shipped stub data/custom_extra_functionality.py is the template)"
+        provenance: "scripts/solve_network.py:custom_extra_functionality; rules/common.smk:input_custom_extra_functionality"
+      - step: >
+          Guard the version-dependent dimension names. Import `PYPSA_V1` from
+          `scripts/_helpers.py` and apply the same
+          `rename({"Generator-ext": "Generator"})` idiom the built-ins use wherever a
+          capacity variable meets a dispatch variable.
+        uses: [workflow-reproducibility]
+        config: null
+        code: "scripts/_helpers.py:PYPSA_V1 (import, do not edit)"
+        provenance: "scripts/_helpers.py:PYPSA_V1; scripts/solve_network.py:PYPSA_V1"
+      - step: >
+          Turn on model storage so the built constraint can be inspected, force the
+          single-pass solve path so the hook fires exactly once, and add
+          `solving.options.assign_all_duals: true` if the constraint's shadow price is
+          part of the answer — that key is read with `cf_solving.get(...)` and has no
+          entry in the default config, so it must be added by hand. Then solve on the
+          smallest fixture containing the components the constraint selects.
+        uses: [custom-constraint-hook, nodal-marginal-prices, solver-choice]
+        config: "solving.options.store_model; solving.options.skip_iterations; solving.options.assign_all_duals (undeclared — add it)"
+        code: null
+        provenance: "config/config.default.yaml:store_model; rules/common.smk:output_model; scripts/solve_network.py:assign_all_duals"
+      - step: >
+          Assert the constraint is present and non-empty (see `verifies`), and compare
+          the objective against the same run with the hook disabled — a bespoke
+          constraint that does not move the objective either does not bind or did not
+          land.
+        uses: [summary-outputs]
+        config: null
+        code: "scripts/make_summary.py (objective comparison across runs)"
+        provenance: "scripts/make_summary.py:calculate_costs"
+    boundary:
+      - variant: sizing-ratio-coupling
+        rung: L1
+        note: >
+          L1, not L5: the hook is a config key, the constraint is ~5 lines of capacity
+          arithmetic in a new module, and four in-repo examples show the exact shape. The
+          only real risk is name-matching the wrong components. This is the rung to quote
+          when a user asks "can you couple these two technologies".
+      - variant: operating-envelope
+        rung: L2
+        note: >
+          Still reachable through the config-pathed module, but the snapshot dimension
+          brings alignment work (shifted terms, per-snapshot coefficient frames) and
+          memory scales with the time series. Bumped to L2 because in practice you also
+          need to touch how the components are built — `add_chp_constraints` is dead
+          precisely because the builder stopped creating the split links it matches.
+      - variant: temporal-matching
+        rung: L2
+        note: >
+          The formulation is well documented in the corpus and pypsa-earth ships a
+          working implementation to port. L2 rather than L1 because it needs weighted
+          sums, window grouping, one constraint per window label, and — if the matching
+          target references the grid mix — the iterative linearisation that makes it a
+          multi-solve harness.
+      - variant: equity-and-share-allocation
+        rung: L1
+        note: >
+          `add_EQ_constraints` and `add_CCL_constraints` already implement two members of
+          this family, so a variant of either is a config flip plus a CSV, or a copy of a
+          known-good grouper. Note eur's EQ is electricity-only by its own docstring —
+          extending it to a sector-coupled definition is L2.
+      - variant: budget-and-slack
+        rung: L1
+        note: >
+          One-row constraints; `add_import_limit_constraint` and
+          `add_co2_sequestration_limit` are the templates, and both read their bound from
+          config. A cost-slack budget referencing the objective needs the objective value
+          from a prior solve, which makes it a two-run harness — see
+          mga-near-optimal-space.
+      - variant: new-variable-extensions
+        rung: L5
+        note: >
+          The genuine L5. New variables mean new consistency constraints, no automatic
+          write-back into `n.*_t`, and post-processing/summary code that does not know
+          the variable exists. `add_operational_reserve_margin` shows the minimum viable
+          version; Welfonder's stochastic UC modules show where it ends up.
+      - variant: pre-linopy-pyomo
+        rung: L5
+        note: >
+          Not implementable as such — pypsa 1.x/0.30.3 have no pyomo path
+          (`pypsa/linopf.py` and `pypsa/opf.py` no longer exist). The rung records that
+          porting a pre-2023 published constraint is a re-derivation, not a code move.
+    where:
+      - change: "a new bespoke constraint, kept out of tracked model code"
+        anchor: "solving.options.custom_extra_functionality -> a new module whose entry function is named after its file stem, called (n, snapshots, snakemake)"
+        provenance: "scripts/solve_network.py:custom_extra_functionality; rules/common.smk:input_custom_extra_functionality"
+      - change: "a constraint that must run for every solve mode, including myopic/perfect/rolling"
+        anchor: "scripts/solve_network.py::extra_functionality (the in-repo dispatcher; wrapped in functools.partial for the rolling and iterative modes)"
+        provenance: "scripts/solve_network.py:extra_functionality; scripts/solve_network.py:create_optimization_model"
+      - change: "version-guarded dimension renaming between capacity and dispatch variables"
+        anchor: "scripts/_helpers.py::PYPSA_V1, used as `rename({'Generator-ext': 'Generator'})`"
+        provenance: "scripts/_helpers.py:PYPSA_V1; scripts/solve_network.py:add_solar_potential_constraints"
+      - change: "expose the constraint's shadow price and the built model for inspection"
+        anchor: "solving.options.store_model -> rule output `model`; plus solving.options.assign_all_duals, which collect_kwargs reads with .get() and which has NO entry in config.default.yaml"
+        provenance: "scripts/solve_network.py:collect_kwargs; scripts/solve_network.py:assign_all_duals; rules/common.smk:output_model"
+      - change: "new decision variables alongside the constraint"
+        anchor: "n.model.add_variables inside the hook; see scripts/solve_network.py::add_operational_reserve_margin"
+        provenance: "scripts/solve_network.py:add_operational_reserve_margin"
+    cost_profile:
+      solves: >
+        1 for any single-shot constraint. 2 if the bound references a quantity from a
+        prior solve (a cost slack, an additionality reference network). 2-N if the
+        constraint contains a variable-times-variable term resolved by iteration
+        (Riepin's grid CFE factor converged in 2 passes).
+      relative: >
+        Negligible for capacity-only constraints (a handful of extra rows). Material for
+        anything carrying the snapshot dimension: a per-snapshot constraint over C
+        components adds |snapshots| rows and |snapshots| x C non-zeros, which on an
+        hourly sector-coupled network is the same order as an existing global constraint
+        and can shift solve time noticeably. New binary variables change the problem
+        class from LP to MILP, which is a different cost conversation entirely.
+      note: >
+        Cheap mitigations first: develop the constraint on the smallest fixture that
+        contains the selected components, coarsen `clustering.temporal.resolution_elec`
+        while iterating on the formulation, and use `solving.options.store_model` to
+        inspect the built constraint without solving at all. Reserve full-resolution
+        solves for after the constraint is verified present and correctly shaped.
+    verifies:
+      - variant: sizing-ratio-coupling
+        check: "'<constraint-name>' in n.model.constraints"
+        over: run
+        note: >
+          The single most valuable check in this card. If the name is absent the function
+          returned early on an empty index — the run succeeded and enforced nothing.
+      - variant: sizing-ratio-coupling
+        check: "n.model.constraints['<constraint-name>'].size > 0"
+        over: run
+        note: >
+          A registered but zero-length constraint is the same silent failure one level
+          deeper: the name is there, no rows are. Check size, not just presence.
+      - variant: budget-and-slack
+        check: "abs(n.objective - baseline_objective) > 1e-6 or not binding_expected"
+        over: ensemble
+        note: >
+          A bespoke constraint that leaves the objective bit-identical to the
+          unconstrained run either did not land or does not bind. Both are findings the
+          user must be told; neither is a reason to report the run as answering the
+          question.
+      - variant: equity-and-share-allocation
+        check: "n.model.constraints['<constraint-name>'].dual.notnull().any()"
+        over: run
+        note: >
+          Requires `assign_all_duals: true`. No dual means the constraint carries no
+          shadow price, so any "cost of the policy" number derived from it is not coming
+          from where the study claims.
+  - model: pypsa-earth
+    version_anchor:
+      ref: "8435f4c8cc05f30088933b37b7db497ff860dc53"
+      date: "2026-07-25"
+    functionality:
+      - id: custom-constraint-hook
+        role: >
+          the method itself — but ONE entry point only: the in-repo
+          `scripts/solve_network.py:extra_functionality`. There is no
+          `custom_extra_functionality` config key anywhere in this repo, which is the
+          single most important eur/earth difference on this card
+      - id: h2-color-accounting
+        role: >
+          worked example of a share-allocation constraint over annual weighted sums
+          (`set_h2_colors`), driven by two config shares
+      - id: h2-pipeline-routing
+        role: >
+          worked example of a length-weighted network budget (`add_h2_network_cap`) —
+          and the one place earth's code reads the `Link-ext` dimension name explicitly,
+          which is the pypsa-0.30-era form
+      - id: equity-self-sufficiency
+        role: >
+          worked example of equity-and-share-allocation; registry `working` here versus
+          `partial` in eur, though it is the same electricity-only formulation
+      - id: country-carrier-capacity-limits
+        role: >
+          worked example of a country x carrier grouper reading a CSV rule input; note
+          the config lives under `electricity.agg_p_nom_limits`, not `solving.` as in eur
+      - id: bau-minimum-capacities
+        role: "worked example of a carrier-grouped floor; registry says `working` — see pitfalls"
+      - id: safe-reserve-margin
+        role: "worked example of a scalar firm-capacity floor; registry says `working` — see pitfalls"
+      - id: operational-reserves
+        role: >
+          the local `add_variables` example, split across
+          `add_operational_reserve_margin_constraint` and `update_capacity_constraint`
+      - id: chp-operation-constraints
+        role: >
+          cautionary example — registry `dead-key`: unlike eur it IS called (gated on
+          `sector.chp`, default true) but matches split CHP links this builder never
+          creates, so it adds nothing
+      - id: monte-carlo-sampling
+        role: >
+          the reusable many-solve harness for any constraint whose bound must be swept or
+          iterated; earth has this and eur does not
+      - id: workflow-reproducibility
+        role: "the pypsa pin (<=0.30.3) that fixes which dimension-name convention applies"
+    available:
+      verdict: turnkey
+      how: >
+        One entry point: `scripts/solve_network.py:extra_functionality(n, snapshots)`,
+        passed to `n.optimize` / `optimize_transmission_expansion_iteratively` as the
+        `extra_functionality` kwarg, with `n.config` and `n.opts` attached to the network
+        just beforehand. Fully linopy at this pin: every constraint in the file uses
+        `n.model[...]` and `n.model.add_constraints`, `pypsa/linopf.py` and
+        `pypsa/opf.py` do not exist in pypsa 0.30.3, and pyomo survives only as a
+        transitive package in `envs/*.lock.yaml` (6.9.3) with no import anywhere in
+        `scripts/`. The routing is opts-token driven (`BAU`, `SAFE`, `CCL`, `RES<f>`,
+        `EQ<f>[c]`) plus config gates, and the file already contains an unusually good
+        temporal-matching implementation.
+      missing: >
+        The out-of-repo route. Adding a constraint here means editing tracked model code,
+        because there is no config-pathed user-module hook: a bundle's change is a diff
+        against `scripts/solve_network.py`, not a config key plus a new file. Also
+        missing: the hook signature is only `(n, snapshots)`, so anything from snakemake
+        is read from module-level globals (`snakemake`, `opts`, `n_ref`) that a
+        constraint function closes over — brittle, and untestable outside a snakemake
+        run. Procedure steps 1, 5 and 8 have no handle here either.
+      provenance: "scripts/solve_network.py:extra_functionality; scripts/solve_network.py:solve_network"
+    levers:
+      - key: "sector.hydrogen.set_color_shares"
+        effect: >
+          Enables `set_h2_colors`, the in-repo share-allocation constraint; the shares
+          themselves are `sector.hydrogen.blue_share` / `pink_share`. The nearest
+          config-only route to "force carrier X to supply Y% of this demand".
+        default: "false"
+        provenance: "config.default.yaml:set_color_shares; scripts/solve_network.py:set_h2_colors"
+      - key: "sector.hydrogen.network_limit"
+        effect: >
+          The length-weighted H2 pipeline budget enforced by `add_h2_network_cap` (in
+          GW-km, multiplied by 1000 in the constraint). A config-only budget constraint.
+        default: "2000"
+        provenance: "config.default.yaml:network_limit; scripts/solve_network.py:add_h2_network_cap"
+      - key: "policy_config.hydrogen.temporal_matching"
+        effect: >
+          `no_temporal_matching` | `hour` | `month` | `year` — selects the grouping window
+          of the built-in RFNBO temporal-matching constraint. This is the single most
+          valuable config key on this card: a working, config-switchable implementation
+          of the corpus's most-copied bespoke constraint, which pypsa-eur has no
+          equivalent of.
+        default: "'no_temporal_matching'"
+        provenance: "config.default.yaml:temporal_matching; scripts/solve_network.py:hydrogen_temporal_constraint"
+      - key: "policy_config.hydrogen.temporal_matching_carriers"
+        effect: >
+          Which generator/storage carriers count as matched supply. Change this list, not
+          the code, to redefine what the matching constraint accepts.
+        default: "['csp', 'solar', 'onwind', 'offwind-ac', 'offwind-dc', 'ror', 'hydro']"
+        provenance: "config.default.yaml:temporal_matching_carriers; scripts/solve_network.py:hydrogen_temporal_constraint"
+      - key: "policy_config.hydrogen.additionality"
+        effect: >
+          Switches the matching constraint to the additionality form, which requires a
+          separately solved REFERENCE network at
+          `policy_config.hydrogen.path_to_ref` (built with `is_reference: true`). A
+          two-solve constraint, and the in-repo proof that a bespoke constraint can
+          reference a prior run's result.
+        default: "false"
+        provenance: "config.default.yaml:additionality; scripts/solve_network.py:hydrogen_temporal_constraint"
+      - key: "policy_config.hydrogen.allowed_excess"
+        effect: >
+          Scales the consumption side of the matching constraint — the slack that decides
+          how strictly hourly matching binds.
+        default: "1.0"
+        provenance: "config.default.yaml:allowed_excess; scripts/solve_network.py:hydrogen_temporal_constraint"
+      - key: "electricity.agg_p_nom_limits.file"
+        effect: >
+          The country x carrier CSV read by `add_CCL_constraints` (with the `CCL` opts
+          token). Note the different config location from eur, where the same key lives
+          under `solving.`.
+        default: "'data/agg_p_nom_minmax.csv'"
+        provenance: "config.default.yaml:agg_p_nom_limits; scripts/solve_network.py:add_CCL_constraints"
+      - key: "electricity.operational_reserve.activate"
+        effect: >
+          Turns on the local `add_variables` example. Note `contingency` defaults to 0
+          here versus 4000 MW in eur, so the constraint is weaker out of the box.
+        default: "false"
+        provenance: "config.default.yaml:operational_reserve; scripts/solve_network.py:add_operational_reserve_margin"
+      - key: "monte_carlo.options.add_to_snakefile"
+        effect: >
+          Wires in the many-solve fan-out. The route for sweeping a bespoke constraint's
+          bound (the K-parameter sweep, the matching-strictness sweep) without a
+          hand-rolled loop.
+        default: "false"
+        provenance: "config.default.yaml:add_to_snakefile; scripts/monte_carlo.py:monte_carlo_sampling"
+    assembly:
+      - step: >
+          Write the algebraic form and confirm linearity. No handle, same as eur.
+        uses: []
+        config: null
+        code: null
+        provenance: "scripts/solve_network.py:extra_functionality"
+      - step: >
+          Check first whether the constraint you want is already here. Temporal matching,
+          H2 colour shares, a length-weighted network budget, an RES share and the
+          BAU/SAFE/CCL/EQ family all exist; earth's `hydrogen_temporal_constraint` in
+          particular is a better starting point for any 24/7-matching study than anything
+          in pypsa-eur.
+        uses: [custom-constraint-hook, h2-color-accounting, h2-pipeline-routing, equity-self-sufficiency]
+        config: "policy_config.hydrogen.temporal_matching; sector.hydrogen.set_color_shares"
+        code: null
+        provenance: "scripts/solve_network.py:hydrogen_temporal_constraint; scripts/solve_network.py:set_h2_colors"
+      - step: >
+          Add an `add_*_constraints(n, ...)` function to `scripts/solve_network.py` and
+          call it from `extra_functionality`, gated on a config key you also add. Prefer a
+          config gate over a new opts token: tokens are parsed by substring
+          (`if "EQ" in o`) and collide easily.
+        uses: [custom-constraint-hook]
+        config: "a new gate under sector. or policy_config."
+        code: "scripts/solve_network.py:extra_functionality"
+        provenance: "scripts/solve_network.py:extra_functionality; scripts/solve_network.py:add_RES_constraints"
+      - step: >
+          Do NOT read `snakemake` from module scope in the new function even though the
+          neighbours do; take what you need as an argument from `extra_functionality`.
+          The existing globals (`snakemake`, `opts`, `n_ref`) are the reason this file
+          cannot be exercised outside a snakemake run.
+        uses: [workflow-reproducibility]
+        config: null
+        code: "scripts/solve_network.py:extra_functionality"
+        provenance: "scripts/solve_network.py:extra_functionality"
+      - step: >
+          Use the pypsa-0.30 dimension convention: `Generator-p_nom` is indexed by
+          `Generator-ext`, and `add_h2_network_cap` is the in-repo example of reading that
+          index name directly. Do not import eur's `PYPSA_V1` idiom; it does not exist
+          here and is not needed at this pin.
+        uses: [workflow-reproducibility]
+        config: null
+        code: "scripts/solve_network.py:add_h2_network_cap"
+        provenance: "scripts/solve_network.py:add_h2_network_cap"
+      - step: >
+          Verify on a tutorial-scale run, then sweep the bound with the monte-carlo
+          harness if the study needs a parameter scan rather than a single value.
+        uses: [monte-carlo-sampling, solve-statistics]
+        config: "monte_carlo.options.add_to_snakefile; monte_carlo.options.samples"
+        code: "scripts/monte_carlo.py"
+        provenance: "scripts/monte_carlo.py:monte_carlo_sampling; scripts/solve_network.py:solve_network"
+    boundary:
+      - variant: sizing-ratio-coupling
+        rung: L2
+        note: >
+          One rung worse than eur for a purely mechanical reason: with no
+          `custom_extra_functionality` key, even five lines of capacity arithmetic is an
+          edit to tracked model code (a `code` change in bundle terms), not a config key
+          plus a new file. `add_battery_constraints` is the template and is identical to
+          eur's.
+      - variant: operating-envelope
+        rung: L2
+        note: >
+          Same as eur in substance. `add_chp_constraints` is the cautionary case here
+          and is WORSE than in eur: it is actually called (gated on `sector.chp`, default
+          true) yet matches nothing, so the log says "setting CHP constraints" while no
+          rows are added.
+      - variant: temporal-matching
+        rung: L1
+        note: >
+          The one variant where earth beats eur outright, and by two rungs.
+          `hydrogen_temporal_constraint` implements hour/month/year matching with an
+          optional additionality reference network, all switched from
+          `policy_config.hydrogen`. For an RFNBO or 24/7 study, model choice should
+          probably start here.
+      - variant: equity-and-share-allocation
+        rung: L1
+        note: >
+          `EQ<f>[c]` and `CCL` opts tokens plus the CSV, same as eur; `set_h2_colors`
+          adds a config-switchable carrier-share constraint eur has no equivalent of.
+          Registry rates EQ `working` here versus `partial` in eur, but it is the same
+          electricity-only formulation — the difference is registry judgement, not code.
+      - variant: budget-and-slack
+        rung: L1
+        note: >
+          `sector.hydrogen.network_limit` and `sector.co2_sequestration_potential` are
+          two config-only budget constraints. A cost-slack budget is still a two-solve
+          harness, but `monte_carlo.py` supplies the fan-out that eur lacks.
+      - variant: new-variable-extensions
+        rung: L5
+        note: >
+          As eur, plus earth-specific friction: the summary and plotting chain is less
+          complete, so a new variable is even less likely to reach the outputs. The
+          module-global `snakemake`/`opts`/`n_ref` pattern makes unit-testing an
+          extension effectively impossible without refactoring the file first.
+      - variant: pre-linopy-pyomo
+        rung: L5
+        note: >
+          Not implementable, same as eur. Worth stating precisely because this repo still
+          LOOKS pyomo-era: `solving.options.formulation: kirchhoff` sits in the default
+          config and in the module docstring's Relevant Settings block, no script reads
+          it, `extra_functionality`'s own docstring still says "passed to
+          `pypsa.linopf.network_lopf`", and pyomo 6.9.3 is still in the env locks. All
+          three are stale text; the code is linopy-only.
+    where:
+      - change: "a new bespoke constraint"
+        anchor: "scripts/solve_network.py::extra_functionality — add an add_*_constraints function and a call to it (no out-of-repo hook exists)"
+        provenance: "scripts/solve_network.py:extra_functionality"
+      - change: "a temporal-matching / RFNBO constraint"
+        anchor: "scripts/solve_network.py::hydrogen_temporal_constraint, switched by policy_config.hydrogen.temporal_matching"
+        provenance: "scripts/solve_network.py:hydrogen_temporal_constraint; config.default.yaml:temporal_matching"
+      - change: "a constraint that must reference a previously solved network"
+        anchor: "the n_ref pattern: policy_config.hydrogen.path_to_ref + is_reference, loaded in __main__ and closed over by extra_functionality"
+        provenance: "scripts/solve_network.py:hydrogen_temporal_constraint; config.default.yaml:path_to_ref"
+      - change: "how config and opts reach the constraint at solve time"
+        anchor: "scripts/solve_network.py::solve_network — attaches n.config and n.opts before optimize; everything else comes from module globals"
+        provenance: "scripts/solve_network.py:solve_network"
+      - change: "sweeping a constraint's bound across many solves"
+        anchor: "scripts/monte_carlo.py + the monte_carlo rule (monte_carlo.options.add_to_snakefile)"
+        provenance: "scripts/monte_carlo.py:monte_carlo_sampling"
+    cost_profile:
+      solves: >
+        1 for a single-shot constraint; 2 for the additionality form of temporal matching
+        (the reference network must be solved first with `is_reference: true`); N for a
+        bound sweep through the monte-carlo harness.
+      relative: >
+        Same structural scaling as eur, but earth's base cases are usually smaller
+        (single region, often electricity-only), so a snapshot-dimension constraint is
+        materially cheaper to iterate on here. Note `hydrogen_temporal_constraint` adds
+        one constraint PER window label — 8760 separate constraints at hourly matching,
+        which is the expensive configuration in this repo.
+      note: >
+        Develop against `config.tutorial.yaml` scale first. `sector.chp` is true by
+        default and its constraint function matches nothing, so do not use "constraints
+        were added" log lines as evidence of anything.
+    verifies:
+      - variant: temporal-matching
+        check: "any(k.startswith('RESconstraints_') for k in n.model.constraints)"
+        over: run
+        note: >
+          The built-in matching constraint names itself per window label. No such
+          constraint means `temporal_matching` was left at `no_temporal_matching`, or the
+          carrier/technology lists selected nothing — the run succeeds either way and
+          reports unmatched hydrogen as matched.
+      - variant: sizing-ratio-coupling
+        check: "'<constraint-name>' in n.model.constraints and n.model.constraints['<constraint-name>'].size > 0"
+        over: run
+        note: >
+          Same silent-failure guard as eur. Especially important here because
+          `add_chp_constraints` is a live example of a called-but-empty constraint in
+          this very file.
+      - variant: budget-and-slack
+        check: "abs(n.objective - baseline_objective) > 1e-6 or not binding_expected"
+        over: ensemble
+        note: >
+          An unchanged objective means the constraint did not land or does not bind;
+          report which, never neither.

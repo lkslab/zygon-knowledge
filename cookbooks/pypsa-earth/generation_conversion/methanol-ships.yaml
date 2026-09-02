@@ -1,0 +1,100 @@
+id: methanol-ships
+title: Methanol-fuelled ships
+summary: >
+  Methanol (incl. green e-methanol) as a maritime fuel — shipping demand served by
+  methanol instead of fuel oil.
+
+when_to_use:
+  - "methanol ships / e-methanol shipping"
+  - "green methanol marine fuel"
+  - "methanol bunkering"
+  - "MeOH-powered vessels"
+  - "alternative marine fuels"
+  - "known in pypsa-eur as: shipping methanol"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        NOT covered — the methanol carrier is absent from the ENTIRE model. A
+        repo-wide search finds no methanol bus, carrier, technology, config key, or
+        script; there is no methanolisation link and no methanol demand anywhere
+        (unlike ammonia, which has a full value chain via add_ammonia but no
+        shipping hookup). Shipping (add_shipping) splits demand only into an H2
+        share (sector.shipping_hydrogen_share) and an oil remainder.
+      mechanism: >
+        Nothing to describe. The nearest structural analogues: the H2-share pattern
+        in add_shipping (exogenous fuel share -> Load at port-weighted nodes), and
+        the CO2 + H2 synthesis pattern of H2_liquid_fossil_conversions
+        (Fischer-Tropsch Link: H2 bus + co2 bus -> oil bus), which is the template a
+        methanolisation Link would follow.
+      not_covered: >
+        Everything: methanol carrier/buses, methanol synthesis (methanolisation),
+        methanol storage, shipping-methanol share, methanol engine assumptions,
+        emissions accounting for methanol combustion.
+      provenance: "scripts/prepare_sector_network.py:add_shipping"
+
+    levers:
+      - key: sector.enable.shipping
+        effect: "Master switch for shipping demand (H2 + oil only today)."
+        default: "true"
+        provenance: "Snakefile:prepare_sector_network"
+      - key: sector.shipping_hydrogen_share
+        effect: "Only existing shipping-fuel lever; the pattern a methanol share would copy."
+        default: "AB_2030: 0.05 (dict per scenario/year)"
+        provenance: "scripts/prepare_sector_network.py:shipping_hydrogen_share"
+      - key: sector.fischer_tropsch
+        effect: "Enables the existing H2+CO2->liquid-fuel synthesis (to the generic oil bus) — the closest thing to e-fuel supply; a crude proxy for e-methanol economics feeding oil-fuelled ships."
+        default: "true"
+        provenance: "scripts/prepare_sector_network.py:H2_liquid_fossil_conversions"
+
+    boundary:
+      - variant: "Crude proxy: e-fuel-supplied conventional shipping"
+        rung: L0
+        note: "sector.fischer_tropsch (default true) lets the optimiser make synthetic liquid fuel on the oil bus that shipping oil loads consume — not methanol-specific, no dedicated tracking."
+      - variant: "Methanol carrier + methanolisation + storage"
+        rung: L5
+        note: >
+          New carrier and component logic from scratch: NH3-style spatial buses, a
+          methanolisation Link (H2 + CO2 -> methanol, pattern
+          H2_liquid_fossil_conversions), stores, and cost rows. This is new
+          component logic, not a parameter edit; pypsa-earth has no scaffold for it.
+      - variant: "Shipping-methanol demand share"
+        rung: L2
+        note: "ONCE the carrier exists: same localised add_shipping edit as ammonia-ships (share key via get() + Load on methanol buses at port nodes)."
+      - variant: "Methanol technology cost data"
+        rung: L3
+        note: "Needs methanolisation/storage/engine rows added to the costs input (retrieve_cost_data output); not referenced anywhere today."
+      - variant: "Wildcard/rule integration for methanol scenarios"
+        rung: L4
+        note: "If methanol supply needs its own resources (CO2 sourcing accounting, dedicated outputs), new rule plumbing on top of the L5 component work."
+
+    where:
+      - change: "Template for the fuel-share + port-load demand side"
+        anchor: "scripts/prepare_sector_network.py function add_shipping"
+        provenance: "scripts/prepare_sector_network.py:add_shipping"
+      - change: "Template for H2+CO2 synthesis Links"
+        anchor: "scripts/prepare_sector_network.py function H2_liquid_fossil_conversions (Fischer-Tropsch)"
+        provenance: "scripts/prepare_sector_network.py:H2_liquid_fossil_conversions"
+      - change: "Template for a new spatial carrier with stores and demand"
+        anchor: "scripts/prepare_sector_network.py function add_ammonia"
+        provenance: "scripts/prepare_sector_network.py:add_ammonia"
+      - change: "Port weighting for bunkering loads"
+        anchor: "rule prepare_ports -> scripts/prepare_ports.py"
+        provenance: "scripts/prepare_ports.py:download_ports"
+
+    data_dependencies:
+      - input: "UNSD navigation energy totals"
+        required_for: "demand a methanol share would be carved from"
+        availability: "must be built (build_base_energy_totals)"
+      - input: "World Port Index ports.csv"
+        required_for: "locating bunkering demand"
+        availability: "must be built (prepare_ports runtime download)"
+      - input: "Methanolisation / methanol storage / methanol engine cost and efficiency data"
+        required_for: "the whole methanol value chain"
+        availability: "absent (no methanol rows referenced in the workflow)"
+      - input: "CO2 source accounting (co2 buses/DAC exist via sector.co2_network and dac options)"
+        required_for: "e-methanol synthesis carbon input"
+        availability: "exists by default (co2 network and DAC are modelled)"

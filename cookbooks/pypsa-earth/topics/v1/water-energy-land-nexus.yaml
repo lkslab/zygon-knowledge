@@ -1,0 +1,49 @@
+id: water-energy-land-nexus
+title: Water-energy-land nexus
+rank: 96
+question: >
+  How do water availability and land competition constrain the energy
+  system — hydro under drought, land limits on VRE, water for cooling and
+  desalination, energy for agriculture? Emerging, specialist, growing in
+  water-stressed regions.
+when_to_use:
+  - "land constraints on renewables buildout"
+  - "hydro under drought / water-year scenarios"
+  - "water use of the power system"
+  - "desalination in the energy system"
+  - "agriculture-energy-water interactions"
+recipes:
+  generation_conversion: [conventional-hydropower, run-of-river-hydro,
+                          utility-scale-solar-pv, onshore-wind,
+                          desalination-flexible-load, biomass-bioenergy]
+  demand: [agriculture-energy-demand]
+functionality:
+  - id: hydro-inflow-normalization
+    role: "water-year scenarios — inflow year and multiplier levers for drought runs"
+  - id: weather-year-selection
+    role: "pick dry/wet cutout years consistently across hydro, VRE, and demand"
+  - id: multi-weather-year
+    role: "no multi-year hydrology in one solve — drought risk only via per-year sweeps"
+  - id: carrier-attribute-scaling
+    role: "tighten VRE potentials (e.g. solar+p0.5) as a land-competition sensitivity"
+  - id: scenario-matrix
+    role: "cross water years with land assumptions in one sweep"
+gap_assessment: >
+  Land is genuinely in the model: VRE potentials come from per-technology
+  exclusion rasters (Copernicus land cover classes, GEBCO bathymetry,
+  protected areas) with configurable eligible land-use types and density —
+  land-availability scenarios are config work, documented in the VRE
+  recipes, with input-data grades in the data_quality book's
+  global-gis-layers card. Water is half-in: hydro inflows are ERA5-runoff
+  time series rescaled to IRENA/EIA statistics, and the normalization
+  year/multiplier plus weather-year choice give clean drought scenarios
+  (one year per solve — inter-annual risk needs sweeps); desalination is
+  representable as a flexible load. Missing entirely is water accounting:
+  no cooling-water demand or temperature-based derating of thermal plants,
+  no basin water balances, no water footprint of any technology, and no
+  irrigation-energy coupling beyond aggregate agriculture demand. Water-side
+  constraints beyond hydro inflows are external analysis.
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

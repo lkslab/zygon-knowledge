@@ -1,0 +1,94 @@
+id: electric-farm-machinery
+title: Electric farm / construction machinery
+summary: >-
+  Electrifying diesel-driven agricultural (and construction) machinery — shifting
+  that fuel demand from oil to electricity.
+when_to_use:
+  - "electrify tractors / farm equipment"
+  - "electric agricultural machinery"
+  - "agriculture diesel to electricity"
+  - "construction machinery electrification"
+  - "off-road vehicle electrification"
+  - "reduce farm fuel use"
+  - "known in pypsa-eur as: agriculture machinery electric"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >-
+        Agriculture final energy as two FIXED loads per node: an
+        "agriculture electricity" Load on the AC buses and an "agriculture oil" Load
+        on the oil buses (machinery diesel sits inside this), plus a static
+        "oil emissions" load on "co2 atmosphere" for the oil combustion. Demand levels
+        come from UNSD energy balances (base year), projected to the planning horizon
+        by per-country CAGR factors for "agriculture electricity" and
+        "agriculture oil" columns in the growth/efficiency CSVs.
+      mechanism: >-
+        build_base_energy_totals.py:calc_sector extracts the agriculture rows from the
+        UNSD balances; prepare_energy_totals.py multiplies base totals by
+        calculate_end_values(growth/efficiency CAGRs) — agriculture columns pass
+        through this generic scaling with NO fuel-share shift (fuel_shares.csv has
+        oil-to-elec shifts for residential/services only);
+        prepare_sector_network.py:add_agriculture then adds the Loads (constant
+        profile, annual total / 8760). Machinery is not separated from other farm
+        energy use. Note: "machinery" in build_industry_demand.py is the MANUFACTURE
+        of machinery (an industry subsector), not its use.
+      not_covered: >-
+        No machinery-electrification share key exists in the config; no
+        elec-vs-oil substitution is optimised (both are fixed exogenous loads); no
+        agriculture heat or biomass load in the network (columns exist in the data but
+        add_agriculture only builds electricity and oil); no construction-machinery
+        demand category at all; agriculture loads are flat (no seasonality).
+      provenance: "scripts/prepare_sector_network.py:add_agriculture"
+    levers:
+      - key: sector.enable.agriculture
+        effect: "Master switch for the agriculture loads (add_agriculture only called when true)."
+        default: "true"
+        provenance: "config.default.yaml:agriculture ; scripts/prepare_sector_network.py:add_agriculture"
+      - key: demand_data.base_year
+        effect: "UNSD energy-balance year the agriculture demand baseline is taken from."
+        default: "2019"
+        provenance: "config.default.yaml:base_year ; scripts/build_base_energy_totals.py:calc_sector"
+    boundary:
+      - variant: "Drop agriculture demand entirely"
+        rung: L0
+        note: "sector.enable.agriculture: false."
+      - variant: "Electrify a share of machinery oil demand exogenously"
+        rung: L3
+        note: >-
+          Data edit: adjust the per-country 'agriculture oil' and
+          'agriculture electricity' CAGR columns in data/demand/growth_factors_cagr.csv /
+          data/demand/efficiency_gains_cagr.csv so the projected totals embody the
+          shift (there is no config share key, unlike land transport).
+      - variant: "Config-style oil->elec share for agriculture"
+        rung: L2
+        note: >-
+          Small localised edit: mirror the residential 'oil to elec share' logic of
+          prepare_energy_totals.py for the agriculture columns (with an efficiency
+          gain factor), or apply the shift directly in add_agriculture before madd.
+      - variant: "Endogenous machinery fuel choice (model decides diesel vs electric)"
+        rung: L5
+        note: "Requires a machinery service bus fed by competing elec/oil Links (pattern: land-transport EV/ICE split in add_land_transport) — bespoke component logic."
+      - variant: "Construction machinery as its own demand"
+        rung: L5
+        note: "No such category exists in the demand data or network; needs new data plus new load logic."
+    where:
+      - change: "Shift agriculture oil to electricity (data route)"
+        anchor: "data/demand/growth_factors_cagr.csv and data/demand/efficiency_gains_cagr.csv, columns 'agriculture oil' / 'agriculture electricity' (consumed by rule prepare_energy_totals)"
+        provenance: "data/demand/efficiency_gains_cagr.csv:agriculture oil"
+      - change: "Add an agriculture fuel-share parameter (code route)"
+        anchor: "scripts/prepare_energy_totals.py (fuel_shares handling; agriculture currently only passes the generic scaling) and scripts/prepare_sector_network.py function add_agriculture"
+        provenance: "scripts/prepare_energy_totals.py:calculate_end_values"
+      - change: "Endogenous machinery fuel choice"
+        anchor: "scripts/prepare_sector_network.py function add_land_transport (EV/ICE share pattern to copy) and function add_agriculture"
+        provenance: "scripts/prepare_sector_network.py:add_land_transport"
+    data_dependencies:
+      - input: "UNSD energy balances (data/demand/unsd/data)"
+        required_for: "Agriculture electricity/oil baseline totals"
+        availability: "must be built (downloaded when demand_data.update_data); region coverage generally good"
+      - input: "data/demand/growth_factors_cagr.csv, data/demand/efficiency_gains_cagr.csv"
+        required_for: "Projecting agriculture demand to the planning horizon (and the L3 electrification edit)"
+        availability: "exists by default (DEFAULT row used where a country is missing)"
+      - input: "Machinery share of farm diesel use for the target country"
+        required_for: "A defensible electrification share (machinery is not separated in the model data)"
+        availability: "absent — must be supplied by the user"

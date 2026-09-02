@@ -1,0 +1,52 @@
+id: power-market-reform-spot-markets
+title: Power market reform / spot markets
+rank: 54
+question: >
+  What would spot prices look like under a reformed market — provincial vs
+  unified markets in China, cost-of-service to market transitions elsewhere —
+  and how do dispatch, congestion, and investment signals change? Market
+  design as such, not just least-cost planning.
+when_to_use:
+  - "introduce a spot market / marginal pricing"
+  - "provincial vs unified market design (China)"
+  - "what prices would a competitive market produce"
+  - "dispatch and price outcomes under market reform"
+  - "bidding, scarcity pricing, market power questions"
+recipes:
+  generation_conversion: [coal-power-plants, gas-power-plants,
+                          grid-scale-batteries]
+  demand: [electricity-load, demand-temporal-profiles]
+functionality:
+  - id: market-design-mechanisms
+    role: "the core ask is absent — no bids, no market clearing, no capacity remuneration, no product design"
+  - id: nodal-marginal-prices
+    role: "the usable proxy: duals of a cost-minimizing solve = competitive-benchmark spot prices"
+  - id: custom-busmap
+    role: "aggregate nodal duals over user-defined zones to compare market geometries (provincial vs unified)"
+  - id: unit-commitment
+    role: "spot-price formation depends on start-up/min-load costs — committable attributes survive clustering but nothing sets them; LP relaxation everywhere"
+  - id: demand-elasticity
+    role: "price-responsive demand, central to reform arguments, is absent — loads are fixed profiles"
+  - id: autarky
+    role: "ATK/ATKc mimics market fragmentation as a hard counterfactual"
+  - id: scenario-matrix
+    role: "sweep fuel costs, CO2 price, VRE shares to span price-outcome ranges"
+gap_assessment: >
+  This is a genuine gap. pypsa-earth is a social-planner cost-minimization
+  model: what it produces is the competitive benchmark — nodal shadow prices,
+  congestion rents, dispatch under perfect competition — which is a
+  legitimate and common reference point for market-reform analysis
+  ("what would an efficient spot market deliver"), and zonal aggregation over
+  a custom busmap supports provincial-vs-unified comparisons. But nothing in
+  the model represents market design itself: no bidding or strategic
+  behavior, no market-clearing sequence (day-ahead/intraday/balancing), no
+  capacity remuneration or contract layer, no price-responsive demand, and no
+  unit-commitment costs shaping price spikes (LP relaxation throughout). Any
+  question whose answer depends on imperfect competition, market power, or
+  design details beyond the efficient benchmark needs a different tool class
+  (agent-based or equilibrium models) or substantial custom code on top of
+  the solved networks.
+coverage: gap
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

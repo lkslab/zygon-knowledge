@@ -1,0 +1,62 @@
+id: climate-finance-eligibility-gco2-kwh
+title: Climate-finance eligibility (gCO2/kWh)
+rank: 38
+question: >
+  Does a plan keep grid carbon intensity under climate-finance thresholds
+  (~100 gCO2/kWh for many MDB/JETP instruments) — and what is the cheapest
+  expansion path that stays eligible? Models here feed directly into
+  loan/grant eligibility for development-bank buyers.
+when_to_use:
+  - "grid carbon intensity trajectory (gCO2/kWh)"
+  - "does the plan clear the 100 gCO2/kWh threshold"
+  - "climate-finance / MDB eligibility screening"
+  - "cheapest expansion path under an intensity cap"
+  - "taxonomy- or JETP-consistent power plan"
+recipes:
+  generation_conversion: [coal-power-plants, gas-power-plants,
+                          utility-scale-solar-pv, onshore-wind,
+                          conventional-hydropower, hvdc-interconnectors]
+  demand: [electricity-load, demand-scenarios-and-growth]
+functionality:
+  - id: carbon-intensity-metrics
+    role: "core, partial — gCO2/kWh is a few lines of post-processing on the summaries (co2_shadow gives marginal intensity), no native column"
+  - id: co2-cap
+    role: "enforce eligibility in the electricity chain: set the Co2L budget to threshold x projected generation"
+  - id: co2-budget-pathway
+    role: "per-horizon budget distribution (cb token) — the pathway version of the cap"
+  - id: emission-pricing
+    role: "static carbon-price sensitivity as the softer policy alternative"
+  - id: dynamic-emission-pricing
+    role: "historical ETS spot prices (Ept) — an eligibility check under real observed carbon-price paths, absent in earth"
+  - id: summary-outputs
+    role: "emissions and generation by carrier — the inputs to the intensity calculation"
+  - id: scenario-matrix
+    role: "intensity trajectory across demand/policy scenarios"
+  - id: myopic-foresight
+    role: "year-by-year intensity path, not just an end-state number"
+  - id: equity-self-sufficiency
+    role: "EQ constraint (valued form only) as a lever when imports from neighbours with different intensities muddy attribution"
+gap_assessment: >
+  Substantively easy, mechanically slightly unfinished — same shape as in
+  pypsa-earth. Everything needed to compute average grid intensity exists
+  (CO2 and generation by carrier in the summary tables; the metrics csv
+  exposes the CO2 shadow price for marginal intensity), but there is no
+  native gCO2/kWh column, so the headline number every financier asks for
+  is a short post-processing step. Enforcing eligibility works by
+  translating the threshold into a Co2L budget or a co2_budget pathway
+  entry (threshold x expected generation) — an approximation, since the cap
+  fixes tonnes while the threshold ratios tonnes to realized generation;
+  iterate once if generation shifts materially. Eur adds useful policy
+  texture earth lacks: dynamic ETS-price runs (Ept), a validated
+  per-horizon carbon-budget grammar (cb token), and a mature myopic chain
+  for the year-by-year intensity trajectory. The remaining gaps are the
+  accounting rulebook, which no cost model supplies: embodied intensity of
+  imported power across interconnectors, generation- vs consumption-basis,
+  and average-vs-marginal choices all change eligibility, and the model
+  gives the raw material, not the rules. Note the bare EQ token crashes at
+  this ref — always use a valued form like EQ0.7c. Close to ready; scored
+  partial for the missing native metric and accounting layer.
+coverage: partial
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

@@ -1,0 +1,179 @@
+id: run-of-river-hydro
+title: Run-of-river hydro
+summary: >
+  Hydropower plants without a reservoir that generate directly from river flow,
+  modelled as generators whose hourly availability follows natural inflow.
+when_to_use:
+  - "add run-of-river hydro"
+  - "model ror plants"
+  - "river hydropower without a dam"
+  - "hydro plants that follow the river flow"
+  - "why is my hydro plant a generator and not a storage unit"
+  - "run-of-river capacity factors / inflow time series"
+  - "rescale hydro inflow to national statistics"
+  - "hydro inflow weather year"
+  - "small hydro on rivers"
+  - "pypsa-eur carrier names: ror, hydro, PHS"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Fully covered on the existing-fleet side, in both workflows. "hydro" is
+        in electricity.renewable_carriers and renewable.hydro.carriers is
+        [ror, PHS, hydro]. The fleet comes from powerplantmatching (rule
+        build_powerplants); in load_and_aggregate_powerplants the carrier of
+        hydro plants is replaced by their Technology, with tech_dict mapping
+        "Run-Of-River" -> "ror" (Reservoir -> hydro, Pumped Storage -> PHS).
+        attach_hydro then adds ror plants as non-extendable Generators with
+        efficiency and capital_cost from the "ror" cost row (efficiency 0.9 in
+        the processed costs) and hourly p_max_pu = inflow/p_nom clipped at 1.0.
+        Inflow is COUNTRY-level, not per plant: rule build_hydro_profile runs
+        atlite cutout.runoff over the country shapes with
+        normalize_using_yearly against EIA annual national hydro generation
+        statistics (get_eia_annual_hydro_generation, unit conversion TWh/a ->
+        MWh/a, former-country splits handled), then attach_hydro distributes
+        each country series across that country's ror+hydro plants
+        proportionally to p_nom (dist_key via normed). Optional EIA
+        refinements: correct generation by the capacity trajectory
+        (eia_correct_by_capacity, skipping a hardcoded to_keep country list),
+        regression-fill missing statistic years from ERA5 country runoff
+        (eia_approximate_missing), or pin all years to one statistics year
+        (eia_norm_year); inflow below clip_min_inflow is zeroed. Sector runs:
+        "ror" is in the pypsa_eur keep-list (Generator), so ror generators
+        survive remove_elec_base_techs and appear unchanged in sector
+        networks; add_existing_baseyear drops Fueltype "Hydro" from its
+        brownfield step (fueltype_to_drop), so there is no double count in
+        myopic runs.
+      mechanism: >
+        rule build_hydro_profile (inputs: country_shapes, EIA generation +
+        capacity CSVs, era5-runoff-per-country.csv, runoff-capable cutout) ->
+        resources/profile_hydro.nc (one inflow series per country); rule
+        add_electricity runs scripts/add_electricity.py::attach_hydro, which
+        splits the ppl fleet by carrier query ('carrier == "ror"'), builds
+        inflow_t per plant by capacity-weighted country disaggregation, and
+        n.add's ror Generators (reservoir "hydro" becomes a StorageUnit with
+        the same inflow source, PHS a StorageUnit without inflow). attach_hydro
+        asserts every modelled country has an inflow series in
+        profile_hydro.nc.
+      not_covered: >
+        No capacity expansion: the ror n.add in attach_hydro does not set
+        p_nom_extendable (defaults False) and there is no config key for it;
+        putting "ror" in electricity.extendable_carriers.Generator is NOT a
+        supported route — ror is not excluded as a renewable carrier there
+        (renewable_carriers contains "hydro", not "ror"), so
+        attach_conventional_generators would add ror generators from the same
+        ppl rows under the same names before attach_hydro adds them again. No
+        greenfield/new-site ror potential assessment. No per-plant catchment
+        hydrology: all ror plants in a country share one scaled national
+        inflow shape (pypsa-eur has no HydroBASINS machinery). Hydro plants
+        whose powerplantmatching Technology is missing get carrier NaN in
+        load_and_aggregate_powerplants (carrier is replaced by Technology for
+        fueltype hydro rows) and silently drop out of the hydro attachment —
+        there is no ror-vs-reservoir classification heuristic. flatten_dispatch
+        applies only to the reservoir "hydro" StorageUnit, not to ror.
+      provenance: "scripts/add_electricity.py:attach_hydro; scripts/add_electricity.py:load_and_aggregate_powerplants; scripts/build_hydro_profile.py:get_eia_annual_hydro_generation; scripts/build_hydro_profile.py:normalize_using_yearly; rules/build_electricity.smk:build_hydro_profile; scripts/add_existing_baseyear.py:fueltype_to_drop"
+    levers:
+      - key: electricity.renewable_carriers
+        effect: "'hydro' must be in this list for the hydro family (ror included) to be built; removing it drops profile_hydro from the workflow."
+        default: "[solar, solar-hsat, onwind, offwind-ac, offwind-dc, offwind-float, hydro]"
+        provenance: "config/config.default.yaml:renewable_carriers; scripts/add_electricity.py:attach_hydro"
+      - key: renewable.hydro.carriers
+        effect: "Which hydro sub-carriers are attached; drop 'ror' to skip run-of-river while keeping PHS/reservoir."
+        default: "[ror, PHS, hydro]"
+        provenance: "config/config.default.yaml:hydro; scripts/add_electricity.py:attach_hydro"
+      - key: renewable.hydro.clip_min_inflow
+        effect: "Country inflow values at or below this level [MW] are set to zero in build_hydro_profile."
+        default: "1.0"
+        provenance: "config/config.default.yaml:clip_min_inflow; scripts/build_hydro_profile.py:clip_min_inflow"
+      - key: renewable.hydro.eia_norm_year
+        effect: "Set to a year to normalise every modelled year's inflow to that single EIA statistics year (removes hydrological inter-year variation); false uses per-year statistics with median fill for missing years."
+        default: "false"
+        provenance: "config/config.default.yaml:eia_norm_year; scripts/build_hydro_profile.py:norm_year"
+      - key: renewable.hydro.eia_correct_by_capacity
+        effect: "true divides the EIA generation statistics by the normalised capacity trajectory before use (corrects for fleet growth; a hardcoded to_keep country list is exempted)."
+        default: "false"
+        provenance: "config/config.default.yaml:eia_correct_by_capacity; scripts/build_hydro_profile.py:correct_eia_stats_by_capacity"
+      - key: renewable.hydro.eia_approximate_missing
+        effect: "true linearly regresses EIA generation on annual country runoff to back-fill statistic years missing from the EIA file (needed for early weather years)."
+        default: "false"
+        provenance: "config/config.default.yaml:eia_approximate_missing; scripts/build_hydro_profile.py:approximate_missing_eia_stats"
+      - key: renewable.hydro.cutout
+        effect: "Which atlite cutout supplies the runoff field ('default' resolves to atlite.default_cutout); the runoff-featured 'europe-1940-2024-era5' cutout config covers 1940-2024 for multi-decade inflow."
+        default: "default"
+        provenance: "config/config.default.yaml:hydro; rules/build_electricity.smk:build_hydro_profile"
+      - key: electricity.powerplants_filter
+        effect: "Pandas query on the fleet (DateIn/DateOut) — retire or exclude ror units by commissioning/retirement year."
+        default: "(DateOut > 2025 or DateOut != DateOut) and (DateIn < 2026 or DateIn != DateIn)"
+        provenance: "config/config.default.yaml:powerplants_filter; scripts/build_powerplants.py:add_custom_powerplants"
+      - key: electricity.custom_powerplants
+        effect: "Pandas query (or true) to inject user rows from data/custom_powerplants.csv — the route for ror plants missing from powerplantmatching (Fueltype Hydro, Technology 'Run-Of-River')."
+        default: "false"
+        provenance: "config/config.default.yaml:custom_powerplants; scripts/build_powerplants.py:add_custom_powerplants"
+      - key: pypsa_eur.Generator
+        effect: "Sector-run keep-list: 'ror' is included by default so run-of-river survives into sector networks; removing it makes remove_elec_base_techs strip ror there."
+        default: "[onwind, offwind-ac, offwind-dc, offwind-float, solar-hsat, solar, ror, nuclear]"
+        provenance: "config/config.default.yaml:pypsa_eur; scripts/prepare_sector_network.py:remove_elec_base_techs"
+    boundary:
+      - variant: "run with the existing ror fleet (electricity or sector workflow)"
+        rung: L0
+        note: "default — 'hydro' in renewable_carriers, 'ror' in renewable.hydro.carriers and in the pypsa_eur keep-list"
+      - variant: "turn run-of-river off (keep other hydro)"
+        rung: L1
+        note: "remove 'ror' from renewable.hydro.carriers (and from pypsa_eur.Generator for sector runs)"
+      - variant: "remove hydrological year-to-year variation / pin to a statistics year"
+        rung: L1
+        note: "renewable.hydro.eia_norm_year: <year>; eia_correct_by_capacity and eia_approximate_missing refine the statistics for long weather-year sets"
+      - variant: "different inflow weather year"
+        rung: L1
+        note: "change snapshots; build_hydro_profile selects matching full years from the cutout — the era5 runoff cutout config spans 1940-2024; statistic years missing from the EIA file need eia_approximate_missing: true or fall back to the median"
+      - variant: "add a specific ror plant absent from powerplantmatching"
+        rung: L3
+        note: "row in data/custom_powerplants.csv (Fueltype Hydro, Technology 'Run-Of-River') + electricity.custom_powerplants: true"
+      - variant: "scale ror availability up/down beyond the EIA normalisation"
+        rung: L2
+        note: "no multiplier key exists; either overwrite the country statistics route (edit eia_stats handling in build_hydro_profile.py main) or scale inflow_t in attach_hydro"
+      - variant: "make ror capacity extendable"
+        rung: L2
+        note: "add p_nom_extendable/p_nom_max to the ror n.add block in attach_hydro — do NOT use extendable_carriers.Generator (name collision with attach_conventional_generators, see not_covered); a potential/p_nom_max policy must be invented since none exists"
+      - variant: "per-plant catchment-based inflow (not capacity-shared national profile)"
+        rung: L5
+        note: "requires basin-level hydrology data and a rewrite of build_hydro_profile + the dist_key disaggregation in attach_hydro; no HydroBASINS machinery exists in pypsa-eur"
+      - variant: "greenfield ror potential map (candidate new sites)"
+        rung: L5
+        note: "no site-potential logic for ror; bespoke resource assessment plus rule plumbing to feed candidate plants and inflows into attach_hydro"
+    where:
+      - change: "ror attachment, capacity-weighted country-inflow disaggregation, p_max_pu construction"
+        anchor: "scripts/add_electricity.py::attach_hydro (rule add_electricity; helpers normed, tech_dict in load_and_aggregate_powerplants)"
+        provenance: "scripts/add_electricity.py:attach_hydro; scripts/add_electricity.py:normed"
+      - change: "country inflow computation, EIA normalisation options, clipping"
+        anchor: "scripts/build_hydro_profile.py (main block; get_eia_annual_hydro_generation / correct_eia_stats_by_capacity / approximate_missing_eia_stats)"
+        provenance: "scripts/build_hydro_profile.py:correct_eia_stats_by_capacity; scripts/build_hydro_profile.py:approximate_missing_eia_stats"
+      - change: "hydro profile rule inputs (EIA statistics, country runoff, cutout)"
+        anchor: "rules/build_electricity.smk rule build_hydro_profile (era5_runoff from COUNTRY_RUNOFF_DATASET, retrieved or rule build_country_runoff)"
+        provenance: "rules/build_electricity.smk:build_hydro_profile; rules/build_electricity.smk:COUNTRY_RUNOFF_DATASET"
+      - change: "fleet construction / Run-Of-River technology mapping / custom plant injection"
+        anchor: "rule build_powerplants; scripts/add_electricity.py::load_and_aggregate_powerplants (tech_dict); scripts/build_powerplants.py::add_custom_powerplants"
+        provenance: "scripts/add_electricity.py:tech_dict; scripts/build_powerplants.py:add_custom_powerplants"
+      - change: "ror survival into sector networks"
+        anchor: "scripts/prepare_sector_network.py::remove_elec_base_techs (pypsa_eur keep-list)"
+        provenance: "scripts/prepare_sector_network.py:remove_elec_base_techs"
+    data_dependencies:
+      - input: "powerplantmatching hydro fleet with Technology labels (Run-Of-River)"
+        required_for: "identifying ror plants — plants with missing Technology silently drop out of the hydro attachment"
+        availability: "retrieved by the workflow (rule build_powerplants input); good European coverage, archive shipped under data/powerplants/"
+      - input: "data/eia_hydro_annual_generation.csv and data/eia_hydro_annual_capacity.csv"
+        required_for: "yearly national normalisation of inflow"
+        availability: "exists by default in data/"
+      - input: "era5-runoff-per-country.csv (country_runoff dataset)"
+        required_for: "eia_approximate_missing regression back-fill"
+        availability: "retrieved from archive by default (or rule build_country_runoff when datasets.country_runoff.source is 'build')"
+      - input: "atlite cutout with runoff feature covering the snapshot years"
+        required_for: "inflow computation in build_hydro_profile"
+        availability: "retrieved by default; the europe-1940-2024-era5 cutout config includes runoff in prepare_kwargs"
+      - input: "cost row 'ror' in the processed technology-data costs file"
+        required_for: "efficiency and capital_cost of ror generators"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "data/custom_powerplants.csv"
+        required_for: "user-added ror plants"
+        availability: "template exists by default; rows user-authored"

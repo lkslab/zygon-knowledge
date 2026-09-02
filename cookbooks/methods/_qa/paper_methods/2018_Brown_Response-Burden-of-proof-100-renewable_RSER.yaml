@@ -1,0 +1,23 @@
+paper: "2018_Brown_Response-Burden-of-proof-100-renewable_RSER.pdf"
+tier: 1
+model_used: >
+  no model (review/critique paper) — the authors run no model themselves; all
+  quantitative results cited are drawn from previously published studies.
+scope: >
+  A rebuttal of Heard et al.'s feasibility criteria for 100% renewable electricity
+  systems, arguing that every raised issue (time resolution, extreme events,
+  transmission, ancillary services) is either technically solved at low cost or
+  conflates feasibility with viability, and that nuclear fails its own more
+  relevant feasibility criteria.
+methods: []
+unmatched_methods:
+  - name: "qualitative feasibility-criteria review"
+    evidence: >
+      The paper is a systematic critique of another paper's scoring rubric for 24
+      studies (Sec. 1–3). The authors propose and evaluate feasibility criteria
+      (demand projections, time resolution, extreme events, grid, ancillary
+      services, fuel longevity, technology maturity) but do not apply any
+      quantitative modelling method themselves. Back-of-envelope cost calculations
+      (e.g. OCGT fleet for Germany at Sec. 3.3, synchronous compensator costs at
+      Sec. 3.5) are arithmetic illustrations, not model runs. No slug in SLUGS.yaml
+      covers a purely discursive feasibility-criteria analysis that runs no model.

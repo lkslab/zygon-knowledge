@@ -1,0 +1,103 @@
+id: uhv-dc
+title: Ultra-high-voltage (UHV) DC
+summary: UHV DC transmission (roughly ±800 kV and above, China-style bulk corridors) — beyond the voltage classes European grids and the model's data carry today.
+when_to_use:
+  - "model an 800 kV / 1100 kV DC corridor"
+  - "UHVDC bulk power transfer"
+  - "long-distance ultra-high-voltage transmission"
+  - "China-style UHV lines"
+  - "add a higher DC voltage class"
+  - "750 kV AC lines"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Not covered as a distinct UHV DC class — but the framing differs from
+        pypsa-earth in two grounded ways. (1) On the AC side, 750 kV IS a
+        first-class citizen: electricity.voltages includes 750.0 by default and
+        lines.types maps it to the pypsa standard type "Al/St 560/50 4-bundle
+        750.0", so 750 kV AC lines present in the base data flow through with a
+        correct type-derived rating (before being collapsed onto the 380 kV
+        layer in simplify_network like everything else). (2) On the DC side
+        there is NO voltage-class typing at all: _load_links_from_raw reads
+        each link's voltage and p_nom directly from the dataset columns, so a
+        hypothetical ±800 kV link would NOT be mis-typed (the earth failure
+        mode) — it would carry whatever p_nom the data supplies. What is
+        missing is everything UHV-specific: European base data contains no
+        >=800 kV DC corridor, costing uses the generic 'HVDC overhead' /
+        'HVDC submarine' / 'HVDC inverter pair' rows regardless of voltage
+        (set_transmission_costs), and there is no UHV cost row in the
+        technology-data file consumed by rule process_cost_data.
+      mechanism: >
+        Same pipeline as ordinary HVDC (see hvdc-interconnectors): rule
+        base_network imports DC assets as Links with data-driven p_nom
+        (_set_electrical_parameters_links_raw sets only carrier/p_max_pu/
+        p_min_pu); costing in set_transmission_costs is per-length with an
+        underwater split, voltage-blind. A UHV corridor added as a
+        transmission project (data/transmission_projects, new_links.csv schema
+        has a p_nom column) enters the same way.
+      not_covered: >
+        Any UHV-specific representation: no UHV voltage class or cost rows, no
+        converter-station modelling (converters are folded away by
+        remove_converters in simplify_network), no discrete bipole sizing
+        (post_discretization's link_unit_size for DC is 2000 MW — a generic
+        rounding unit, not a UHV bipole), no series-compensation or
+        line-commutated vs voltage-source converter distinction.
+      provenance: "config/config.default.yaml:voltages; scripts/base_network.py:_load_links_from_raw; scripts/add_electricity.py:set_transmission_costs; scripts/simplify_network.py:remove_converters"
+    levers:
+      - key: electricity.voltages
+        effect: "AC voltage window; 750.0 is already included — the ceiling only matters for AC buses (_load_buses drops buses above max(voltages)); DC buses are kept independent of voltage."
+        default: "[220., 300., 330., 380., 400., 500., 750.]"
+        provenance: "config/config.default.yaml:voltages; scripts/base_network.py:_load_buses"
+      - key: lines.types
+        effect: "AC type map; the shipped 750 kV entry gives 750 kV AC lines their impedance and thermal rating before the 380 kV collapse."
+        default: "includes 750.0: 'Al/St 560/50 4-bundle 750.0'"
+        provenance: "config/config.default.yaml:types; scripts/base_network.py:_get_linetype_by_voltage"
+      - key: transmission_projects.include.manual
+        effect: "Gate for the manual project folder — the config/data path through which a hypothetical UHV DC corridor (with user-set p_nom) can be injected."
+        default: "true"
+        provenance: "config/config.default.yaml:manual; scripts/build_transmission_projects.py:get_project_files"
+      - key: costs.overwrites
+        effect: "Override the generic HVDC cost rows (e.g. investment for 'HVDC overhead') in prepare_costs — applies to ALL DC links, so it only works as a UHV lever if the whole study is UHV-flavoured."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+    boundary:
+      - variant: "750 kV AC lines in the base grid"
+        rung: L0
+        note: "nothing to do — 750.0 is in electricity.voltages and lines.types by default (collapsed to the 380 kV layer with capacity preserved, like all lines)"
+      - variant: "a UHV DC corridor with a known rating as an existing/candidate asset"
+        rung: L3
+        note: "author a data/transmission_projects/manual/new_links.csv row with the corridor's p_nom and build_year — since DC p_nom is data-driven, no type/class work is needed; capacity is honest, costs are generic HVDC"
+      - variant: "UHV-specific investment costs"
+        rung: L3
+        note: "costs.overwrites or data/custom_costs.csv rows change the generic 'HVDC overhead'/'HVDC submarine'/'HVDC inverter pair' values globally; a voltage-differentiated HVDC cost needs a code edit in set_transmission_costs (L2) plus new rows (L3)"
+      - variant: "keep 750 kV (or a UHV class) as a separate layer instead of the 380 kV collapse"
+        rung: L2
+        note: "simplify_network_to_380 unconditionally maps all buses/lines to 380 kV; preserving voltage layers means editing that function and the downstream clustering assumptions"
+      - variant: "explicit converter stations / LCC-vs-VSC / bipole outage modelling"
+        rung: L5
+        note: "converters are removed in simplify_network (remove_converters) and the LP has no converter technology detail; bespoke components and constraints"
+    where:
+      - change: "DC import with data-driven p_nom (the place a UHV link's rating enters)"
+        anchor: "scripts/base_network.py::_load_links_from_raw (rule base_network)"
+        provenance: "scripts/base_network.py:_load_links_from_raw"
+      - change: "voltage-blind HVDC costing"
+        anchor: "scripts/add_electricity.py::set_transmission_costs"
+        provenance: "scripts/add_electricity.py:set_transmission_costs"
+      - change: "manual UHV project injection"
+        anchor: "data/transmission_projects/manual + rule build_transmission_projects (connect_new_lines snaps endpoints to buses)"
+        provenance: "scripts/build_transmission_projects.py:connect_new_lines"
+      - change: "voltage-layer collapse that erases class distinctions"
+        anchor: "scripts/simplify_network.py::simplify_network_to_380"
+        provenance: "scripts/simplify_network.py:simplify_network_to_380"
+    data_dependencies:
+      - input: "base grid dataset containing the UHV asset with voltage/p_nom columns"
+        required_for: "existing UHV representation"
+        availability: "absent — no >=800 kV DC exists in the European OSM/TYNDP data; user-provided via a manual transmission project"
+      - input: "UHV-specific cost rows"
+        required_for: "differentiated UHV costing"
+        availability: "absent — technology-data ships only generic HVDC rows"
+      - input: "data/transmission_projects/template/new_links.csv (authoring schema)"
+        required_for: "manual UHV corridor injection"
+        availability: "exists by default in the repo"

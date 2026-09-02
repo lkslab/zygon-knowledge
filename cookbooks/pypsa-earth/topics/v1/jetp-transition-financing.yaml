@@ -1,0 +1,52 @@
+id: jetp-transition-financing
+title: JETP transition financing
+rank: 82
+question: >
+  What does a Just Energy Transition Partnership package actually buy — which
+  coal units retire when, what replaces them, what the accelerated pathway
+  costs versus BAU, and whether the grid clears financing thresholds? The
+  Indonesia / Vietnam / South Africa / Senegal deals, and the dev-bank layer
+  behind them.
+when_to_use:
+  - "JETP investment plan / coal retirement schedule"
+  - "cost of accelerated coal phase-out for [country]"
+  - "what does concessional finance change in the least-cost plan"
+  - "carbon-intensity trajectory for climate-finance eligibility"
+  - "replacement mix for retired coal units"
+recipes:
+  generation_conversion: [coal-power-plants, utility-scale-solar-pv,
+                          gas-power-plants, grid-scale-batteries]
+  demand: [electricity-load, demand-scenarios-and-growth]
+functionality:
+  - id: fleet-retirement-filter
+    role: "core — retire coal by DateOut query; the mechanical phase-out lever"
+  - id: country-carrier-capacity-limits
+    role: "CCL caps/floors encode negotiated coal ceilings and RE floors per country"
+  - id: co2-cap
+    role: "emissions trajectory of the deal as a Co2L budget"
+  - id: carbon-intensity-metrics
+    role: "gCO2/kWh vs the ~100 g finance threshold — few lines of post-processing"
+  - id: discount-rate-dimension
+    role: "concessional finance = lower discount rate; one system-wide rate, set by hand"
+  - id: nodal-marginal-prices
+    role: "revenue proxy for what retiring units forgo (stranded-value side)"
+  - id: financial-viability-actors
+    role: "no owner/PPA/balance-sheet layer — compensation costs live outside the model"
+gap_assessment: >
+  The technical half runs: pypsa-earth can retire named coal units on a
+  schedule (powerplantmatching fleet + date-query filter), cap coal and floor
+  renewables per country, and price out the accelerated-vs-BAU system-cost
+  delta with the grid co-optimized — which is the quantitative core of a JETP
+  investment plan, and the carbon-intensity trajectory the financiers screen
+  on is computable from the summaries. The financing half is absent: a single
+  social planner with one discount rate cannot represent PPA buyouts,
+  early-closure compensation, utility balance sheets, or the split between
+  concessional and commercial capital — financial-viability-actors is an
+  acknowledged hole, and discount-rate variation is a blunt system-wide knob,
+  not actor-level WACC. Treat the model as the engine for the system-cost and
+  retirement-schedule numbers inside a JETP analysis, with the deal
+  structuring done in a spreadsheet on top.
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

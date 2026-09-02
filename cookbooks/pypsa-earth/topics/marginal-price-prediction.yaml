@@ -1,0 +1,94 @@
+schema_version: 2
+id: marginal-price-prediction
+title: "Marginal price prediction"
+rank: 101
+question: >
+  What will marginal electricity (or hydrogen, or heat) prices look like in
+  this system — their temporal shape over the day and the year, their spatial
+  distribution across nodes or zones, and their statistics: mean, duration
+  curve, zero-price share, spike frequency, hours at the ceiling? The
+  modelling substrate is ordinary capacity expansion; what changes is that the
+  price series itself is the deliverable, not a by-product.
+when_to_use:
+  - "what will electricity prices be in 2030 / 2040 in this scenario"
+  - "price duration curve for my scenario"
+  - "when and where are prices high, zero or negative"
+  - "capture price / market value my asset would earn"
+  - "how often does the price spike, and to what level"
+  - "hydrogen or heat price in the model"
+recipes:
+  generation_conversion: [gas-power-plants, fossil-fuel-supply,
+                          grid-scale-batteries, hv-transmission-lines,
+                          hvdc-interconnectors]
+  demand: [electricity-load, demand-temporal-profiles,
+           demand-spatial-disaggregation]
+methods:
+  - id: price-formation
+    role: "the core: hourly-rung solve with an explicit VOLL ceiling and all
+           duals written — makes the price series a bounded first-class
+           output instead of a solver artefact"
+  - id: existing-fleet
+    role: "which fleet sets the margin: the merit order IS the ingested
+           fleet; the powerplants filter decides the thermal-priced and
+           zero-price hours"
+  - id: multi-scenario
+    role: "price statistics across futures — repeat the extraction over
+           demand/CO2 variants with harmonised collection"
+  - id: pathway-myopic
+    role: "the trajectory: how the duration curve reshapes horizon by
+           horizon as the system decarbonises"
+  - id: flow-based-market-coupling
+    role: "spatial prices under a zonal market design — zonal clearing
+           prices over a user-authored zone map when the question is the
+           market price, not the nodal shadow price"
+plots:
+  - id: marginal_prices
+    role: "the level: snapshot-weighted mean price per bus carrier vs
+           baseline"
+  - id: price_duration
+    role: "the statistics: duration curve with zero-price share, p95 and
+           ceiling-hours in its headline numbers"
+  - id: price_heatmap
+    role: "the temporal shape: hour-of-day x month chronology the duration
+           curve destroys"
+  - id: region_map
+    role: "the spatial distribution: regional mean price as a choropleth"
+    params: {quantity: price}
+  - id: dispatch_weeks
+    role: "why the price is what it is — the hourly balance behind the
+           priced hours"
+defaults:
+  - aspect: nodal-lmp-duals
+    is: "LMPs and congestion rent fall out of any solved network's duals —
+         bus marginal prices ARE locational prices at whatever resolution
+         the network was clustered to"
+  - aspect: voll-ceiling-shipped-on
+    is: "load shedding ships ENABLED at 100 EUR/kWh — every default earth
+         price series is silently capped at 100000 EUR/MWh, and the cap is
+         soft (finite shedding p_nom per bus)"
+    note: "the price-formation method replaces the silent number with a
+           declared VOLL; never report earth price spikes without naming
+           the cap."
+gap_assessment: >
+  Workable but narrower than eur: the solved power network prices every bus
+  at every snapshot, and the price-formation method makes ceiling,
+  resolution and duals explicit (the gh1 fixture runs the full weather year
+  at native hourly resolution). The gaps: there is no dispatch-only rule —
+  short-term merit-order prices of a fixed fleet mean freezing capacities by
+  hand (extendable off) rather than flipping a config key; treat
+  make_summary's price tables with caution (they do not apply snapshot
+  weightings and there is no market_values output — compute weighted means
+  and capture prices from n.buses_t.marginal_price yourself, the plot cards
+  do); and the sector chain's shipped temporal rungs (144h sopts) destroy
+  the scarcity tail, so carrier prices beyond electricity are
+  coarse-resolution only. Spatial price claims inherit the OSM grid: line
+  topology and capacities are OpenStreetMap-derived, so check the country's
+  data_quality scorecard before trusting nodal price geography, and prefer
+  zonal aggregates over single-node prices. The generic honesty rungs apply
+  unchanged: report VOLL and hours-at-ceiling beside every statistic,
+  expansion duals are a competitive benchmark not a market forecast, and
+  noisy_costs (~1e-2 EUR/MWh) means zero-price tests need a <0.1 tolerance.
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-08-07"}

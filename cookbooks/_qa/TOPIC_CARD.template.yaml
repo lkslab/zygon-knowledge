@@ -1,0 +1,43 @@
+# TEMPLATE for a v2 topic card — copy OVER the existing v1 card when
+# migrating it (same filename, or the new one if the slug changes; the slug
+# and title are pinned in cookbooks/_qa/topic_card_lib.py:TOPICS and must be
+# edited there in the SAME commit). Fill, delete these comments, then:
+#     python3 cookbooks/<model>/topics/_qa/check_topics.py
+#     python3 cookbooks/<model>/topics/_qa/generate_index.py
+# Normative field reference: cookbooks/_qa/TOPIC_CARD.schema.yaml
+schema_version: 2
+id: CHANGE-ME                       # = filename without .yaml
+title: CHANGE ME                    # = TOPICS[rank] title, exactly
+rank: 0                             # = the pinned Appendix A rank
+question: >
+  The planning question in the asker's terms — what a minister, regulator or
+  developer would actually say, not the modelling restatement of it.
+when_to_use:
+  - "phrase a user might say that should land on this card"
+
+recipes:
+  generation_conversion: [CHANGE-ME]
+  demand: [CHANGE-ME]
+
+methods:                            # cheapest-first; v2 specs only
+  - id: CHANGE-ME
+    role: "one line: why this method, for this topic"
+
+defaults:                           # optional; delete if the topic has none
+  - aspect: CHANGE-ME
+    is: "what the shipped config already does on this axis"
+    note: "why there is no spec to cite"
+
+plots:                              # optional; delete unless the figure set
+  - id: CHANGE_ME                   #   IS the deliverable. Must resolve to
+    role: "what this figure answers for this topic"   # plots/<id>.py
+    params: {}                      # optional suggested --params
+
+gap_assessment: >
+  How far the standard workflow gets on this topic TODAY and what would need
+  building. Residual honesty belongs here — the thing that will disappoint
+  the user if they find it out at build time instead of now.
+coverage: ready                     # ready | partial | gap
+models:
+  - model: CHANGE-ME                # pypsa-eur | pypsa-earth (exactly one)
+    version_anchor: {ref: "CHANGE-ME", date: "YYYY-MM-DD"}

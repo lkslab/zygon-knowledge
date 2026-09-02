@@ -1,0 +1,36 @@
+technology,label,group,model_carrier,necp_fuel_code,aliases
+solar,Solar PV,renewable,solar,SOLAR,pv;photovoltaic;solar pv;solar_pv;solar-pv
+wind_onshore,Onshore wind,renewable,onwind,WIND,onshore;onshore wind;wind onshore;onwind
+wind_offshore,Offshore wind,renewable,offwind,WIND,offshore;offshore wind;wind offshore;offwind
+hydro,Hydropower,renewable,hydro,HYDRO,hydropower;hydroelectric;hydro power
+coal,Coal,fossil,coal,COAL,hard coal;lignite;anthracite;hard_coal
+gas,Natural gas,fossil,OCGT,GAS,natural gas;ccgt;ocgt;methane;fossil gas
+nuclear,Nuclear,lowcarbon,nuclear,OTHCLEAN,nuclear power;atomic
+biomass,Biomass,renewable,biomass,BIO,bioenergy;biofuel;biofuels
+hydrogen,Hydrogen,carrier,H2,OTHCLEAN,h2;green hydrogen;electrolysis;electrolyser;electrolyzer
+battery,Battery storage,storage,battery,STORAGE,batteries;bess;li-ion;lithium
+heat_pump,Heat pump,demand,heat pump,HEAT,heatpump;heat pumps;air source;ground source
+wind,Wind (on+offshore),renewable,,WIND,wind power;wind total
+electricity,Electricity (carrier),carrier,AC,ELECTRICITY,electric;power;elec
+heat,Heat (carrier),carrier,,HEAT,thermal;heating
+storage,Storage (all),storage,,STORAGE,energy storage
+fossil,Fossil (all),fossil,,,fossil fuels;thermal fossil
+other_clean,Other clean / low-carbon,lowcarbon,,OTHCLEAN,other low carbon;othclean
+other_fossil,Other fossil (incl. oil),fossil,,OTHFOSS,othfoss;oil;petroleum;oil products
+other_renewable,Other renewable,renewable,,OTHRENEW,othrenew;geothermal;ambient
+other,Other / miscellaneous,aggregate,,OTHMISC,othmisc;misc
+wind_offshore_float,Floating offshore wind,emerging_renewable,offwind-float,WIND,floating offshore;floating wind;offwind-float;floating offshore wind
+geothermal_enhanced,Enhanced/deep geothermal,emerging_renewable,geothermal,OTHRENEW,egs;enhanced geothermal;deep geothermal;closed-loop geothermal
+dac,Direct air capture,co2_management,DAC,,direct air capture;daccs;dac
+ccs,Carbon capture & storage,co2_management,,,carbon capture;ccus;co2 storage;co2 sequestration;blue hydrogen;smr cc
+efuel_ft,Fischer-Tropsch e-fuels,synthetic_fuel,Fischer-Tropsch,,fischer-tropsch;e-kerosene;e-saf;synthetic kerosene;power-to-liquid;ptl;e-diesel
+efuel_methane,Synthetic methane (methanation),synthetic_fuel,Sabatier,,methanation;sabatier;e-methane;synthetic natural gas;sng;power-to-gas;ptg
+ammonia,Green ammonia,synthetic_fuel,Haber-Bosch,,green ammonia;haber-bosch;nh3;renewable ammonia
+methanol,E-methanol,synthetic_fuel,methanolisation,,e-methanol;methanolisation;green methanol;p2x methanol
+allam,Allam-cycle gas (oxy-fuel + CC),emerging_lowcarbon,allam cycle gas,,allam;allam-fetvedt;oxy-fuel;net power cycle
+coal_ccs,Coal with CCS,lowcarbon,coal CC,OTHCLEAN,coal ccs;coal with ccs;coal cc;clean coal;coal carbon capture
+gas_ccs,Gas with CCS,lowcarbon,gas CC,OTHCLEAN,gas ccs;gas with ccs;gas cc;ccgt ccs;natural gas with carbon capture
+clean_cooking,Clean cooking,access,,,clean cooking;improved cookstoves;cookstoves;lpg cooking;clean cooking fuels
+energy_access,Electricity access,access,,,electrification;electricity access;grid access;energy access;rural electrification
+renewables,All renewables,aggregate,,RENEWABLES AND BIOFUELS,renewable;res;renewable energy;renewables and biofuels
+ALL,Economy-wide / all technologies,aggregate,,TOTAL,total;economy-wide;all;whole economy

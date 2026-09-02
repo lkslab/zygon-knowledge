@@ -1,0 +1,179 @@
+id: aquifer-thermal-storage
+title: Aquifer thermal energy storage (ATES)
+summary: Seasonal storage of district heat in underground aquifers via hot/cold well pairs, limited to geologically suitable areas.
+when_to_use:
+  - "aquifer thermal energy storage / ATES"
+  - "underground seasonal heat storage"
+  - "hot and cold wells for district heating"
+  - "geological heat storage in porous aquifers"
+  - "seasonal storage for district heating besides pits"
+  - "pypsa-eur carrier names: urban central aquifer thermal energy storage, aquifer thermal energy storage charger, aquifer thermal energy storage discharger"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Fully wired but OFF by default (sector.district_heating.ates.enable:
+        false). When enabled, rule build_ates_potentials computes a per-region
+        MWh potential: BGR IHME1500 aquifer shapes (rule
+        retrieve_aquifer_data_bgr) are filtered to
+        ates.suitable_aquifer_types (default only "Highly productive porous
+        aquifers"), intersected with onshore regions AND with future district
+        heating areas (rule build_dh_areas, Manz et al. dataset, buffered by
+        sector.district_heating.dh_areas.buffer = 1000 m), and the resulting
+        area is converted via mwh_ates_per_m2 = volumetric heat capacity (2600
+        kJ/m3K) x fraction_of_aquifer_area_available (0.2) x
+        effective_screen_length (20 m) x (mean forward - return temperature)
+        — the temperature spread comes from the per-horizon district-heating
+        temperature profiles, NOT from config temperatures (methodology:
+        Jackson/Regnier/Staffell 2024). In add_heat, every urban central heat
+        node then gets an "urban central aquifer thermal energy storage" Bus,
+        an extendable Store with e_nom_max = the regional potential, NO
+        capital cost on energy capacity, and standing_loss = 1 -
+        recovery_factor**(1/8760) (i.e. ates.recovery_factor = 0.6 is an
+        ANNUAL round-trip recovery — inherently seasonal), plus
+        charger/discharger Links to/from the urban central heat bus at
+        efficiency 1.0, each priced at half of the "central geothermal heat
+        source" capital cost times
+        ates.capex_as_fraction_of_geothermal_heat_source (0.75); the charger
+        carries ates.marginal_cost_charger (0.035). At solve time
+        add_TES_charger_ratio_constraints (gated on sector.tes) ties ATES
+        charger p_nom = discharger p_nom * efficiency; ATES is deliberately
+        NOT in add_TES_energy_to_power_ratio_constraints, so its
+        energy/power ratio stays endogenous (unlike water tanks/pits).
+      mechanism: >
+        rule build_ates_potentials (per clusters AND planning horizon) runs
+        scripts/build_ates_potentials.py: suitable_aquifers ->
+        ates_potential_per_onshore_region -> ates_potentials CSV
+        (ates_potential column). rule prepare_sector_network conditionally
+        takes that CSV as input ates_potentials (only when
+        sector.district_heating.ates.enable) and add_heat's enable_ates branch
+        (HeatSystem.URBAN_CENTRAL only) builds the components. Charging and
+        discharging exchange plain heat with the urban central heat bus —
+        there is no heat-pump/COP coupling in the ATES chain at this ref (no
+        booster machinery like PTES supplemental heating, and "ates" is not a
+        limited_heat_sources entry).
+      not_covered: >
+        Only urban central (district heating) nodes — no building-level ATES,
+        no cooling service (the hot/cold well pair is reduced to a heat
+        store). Regional availability is a hard functional constraint:
+        potential is zero wherever no suitable aquifer intersects a buffered
+        district-heating area, and by default check_aquifer_coverage RAISES if
+        any onshore region lacks aquifer data coverage entirely (set
+        ates.ignore_missing_regions: true to proceed) — the BGR IHME1500 map
+        covers Europe, so non-European or region-clipped runs need
+        ates.enable: false or their own shapes. No well-doublet flow-rate
+        limits beyond the charger-ratio constraint, no depth/temperature
+        suitability screening beyond aquifer type, no interaction with the
+        geothermal heat source other than borrowing its cost row. Quirk: rule
+        build_ates_potentials declares max_top_temperature /
+        min_bottom_temperature params under the ates config path — keys that
+        do not exist (they live under ptes) — and the script never reads
+        them; the actual temperatures are the forward/return profiles.
+      provenance: "scripts/build_ates_potentials.py:mwh_ates_per_m2; scripts/build_ates_potentials.py:ates_potential_per_onshore_region; scripts/build_ates_potentials.py:check_aquifer_coverage; scripts/prepare_sector_network.py:enable_ates; scripts/prepare_sector_network.py:aquifer thermal energy storage charger; scripts/solve_network.py:add_TES_charger_ratio_constraints; rules/build_sector.smk:build_ates_potentials; rules/retrieve.smk:retrieve_aquifer_data_bgr"
+    levers:
+      - key: sector.district_heating.ates.enable
+        effect: "Master switch: builds the potentials and adds the ATES store + charger/discharger at urban central nodes."
+        default: "false"
+        provenance: "config/config.default.yaml:ates; scripts/prepare_sector_network.py:enable_ates"
+      - key: sector.district_heating.ates.suitable_aquifer_types
+        effect: "Which AQUIF_NAME classes of the BGR shapefile count as suitable; values must match the shapefile's AQUIF_NAME strings verbatim."
+        default: "[Highly productive porous aquifers]"
+        provenance: "config/config.default.yaml:suitable_aquifer_types; scripts/build_ates_potentials.py:suitable_aquifers"
+      - key: sector.district_heating.ates.fraction_of_aquifer_area_available
+        effect: "Linear scaling of the potential — share of suitable aquifer area usable for ATES."
+        default: "0.2"
+        provenance: "config/config.default.yaml:fraction_of_aquifer_area_available; scripts/build_ates_potentials.py:mwh_ates_per_m2"
+      - key: sector.district_heating.ates.aquifer_volumetric_heat_capacity
+        effect: "kJ/(m3.K) used in the potential formula."
+        default: "2600"
+        provenance: "config/config.default.yaml:aquifer_volumetric_heat_capacity; scripts/build_ates_potentials.py:mwh_ates_per_m2"
+      - key: sector.district_heating.ates.effective_screen_length
+        effect: "Effective aquifer thickness (m) in the potential formula."
+        default: "20"
+        provenance: "config/config.default.yaml:effective_screen_length; scripts/build_ates_potentials.py:mwh_ates_per_m2"
+      - key: sector.district_heating.ates.recovery_factor
+        effect: "Annual heat recovery of the store, implemented as hourly standing_loss = 1 - recovery_factor**(1/8760)."
+        default: "0.6"
+        provenance: "config/config.default.yaml:recovery_factor; scripts/prepare_sector_network.py:ates_recovery_factor"
+      - key: sector.district_heating.ates.capex_as_fraction_of_geothermal_heat_source
+        effect: "Charger and discharger capital cost as a fraction of the 'central geothermal heat source' row (split half/half between the two links)."
+        default: "0.75"
+        provenance: "config/config.default.yaml:capex_as_fraction_of_geothermal_heat_source; scripts/prepare_sector_network.py:ates_capex_as_fraction_of_geothermal_heat_source"
+      - key: sector.district_heating.ates.marginal_cost_charger
+        effect: "Charging marginal cost (pumping electricity proxy) on the ATES charger link."
+        default: "0.035"
+        provenance: "config/config.default.yaml:marginal_cost_charger; scripts/prepare_sector_network.py:ates_marginal_cost_charger"
+      - key: sector.district_heating.ates.ignore_missing_regions
+        effect: "true downgrades the missing-aquifer-coverage error to a warning (regions without data get zero potential)."
+        default: "false"
+        provenance: "config/config.default.yaml:ignore_missing_regions; scripts/build_ates_potentials.py:check_aquifer_coverage"
+      - key: sector.district_heating.dh_areas.buffer
+        effect: "Buffer (m) around district heating areas when intersecting with aquifers — widens/narrows where ATES potential counts."
+        default: "1000"
+        provenance: "config/config.default.yaml:dh_areas; rules/build_sector.smk:build_ates_potentials"
+      - key: sector.district_heating.dh_areas.handle_missing_countries
+        effect: "How rule build_dh_areas fills countries absent from the Manz et al. district-heating-areas dataset (upstream input to the ATES intersection)."
+        default: "fill"
+        provenance: "config/config.default.yaml:handle_missing_countries; rules/build_sector.smk:build_dh_areas"
+      - key: sector.tes
+        effect: "Gates the solve-time TES constraints — with sector.tes false the ATES charger/discharger sizing is uncoupled."
+        default: "true"
+        provenance: "config/config.default.yaml:tes; scripts/solve_network.py:extra_functionality"
+    boundary:
+      - variant: "enable ATES for district heating"
+        rung: L0
+        note: "sector.district_heating.ates.enable: true (heating workflow must be on; potential lands only where suitable aquifers meet DH areas)"
+      - variant: "more/less optimistic potential"
+        rung: L1
+        note: "scale fraction_of_aquifer_area_available / effective_screen_length / aquifer_volumetric_heat_capacity; add aquifer classes to suitable_aquifer_types (strings must match the BGR AQUIF_NAME values)"
+      - variant: "different cost or loss assumptions"
+        rung: L1
+        note: "capex_as_fraction_of_geothermal_heat_source, marginal_cost_charger, recovery_factor; the underlying 'central geothermal heat source' row can be overridden via costs.overwrites / data/custom_costs.csv"
+      - variant: "run a region without BGR aquifer coverage"
+        rung: L1
+        note: "ates.ignore_missing_regions: true (zero potential there) — or keep ates disabled; for non-European shapes see the L3 variant"
+      - variant: "dedicated ATES cost row instead of the geothermal fraction"
+        rung: L2
+        note: "replace the costs.at['central geothermal heat source', ...] lookups in the enable_ates block of add_heat with an own row (author it in data/custom_costs.csv)"
+      - variant: "heat-pump-coupled ATES discharge (temperature lift, COP)"
+        rung: L2
+        note: "no COP interplay exists for ATES; the PTES booster-heat-pump branch in add_heat (temperature_limited_stores machinery, bus2 = store bus) is the in-repo template to adapt"
+      - variant: "own aquifer geodata (non-European region or finer map)"
+        rung: L3
+        note: "supply a shapefile with an AQUIF_NAME column and point the build_ates_potentials input at it (dataset pin data.aquifer_data; the retrieval unpacks ihme1500_aquif_ec4060_v12_poly)"
+      - variant: "ATES for cooling / low-temperature networks"
+        rung: L5
+        note: "no cold-well or cooling demand representation; bespoke components"
+    where:
+      - change: "potential computation (formula, filtering, coverage checks)"
+        anchor: "scripts/build_ates_potentials.py (rule build_ates_potentials, per clusters + planning horizon)"
+        provenance: "scripts/build_ates_potentials.py:ates_potential_per_onshore_region; rules/build_sector.smk:build_ates_potentials"
+      - change: "component creation (store, charger/discharger, costs, standing loss)"
+        anchor: "scripts/prepare_sector_network.py::add_heat enable_ates block (HeatSystem.URBAN_CENTRAL)"
+        provenance: "scripts/prepare_sector_network.py:enable_ates; scripts/prepare_sector_network.py:aquifer thermal energy storage charger"
+      - change: "charger/discharger coupling at solve time"
+        anchor: "scripts/solve_network.py::add_TES_charger_ratio_constraints (name filter includes 'aquifer thermal energy storage charger')"
+        provenance: "scripts/solve_network.py:add_TES_charger_ratio_constraints"
+      - change: "aquifer geodata retrieval"
+        anchor: "rule retrieve_aquifer_data_bgr (data.aquifer_data; BGR IHME1500 shapefile)"
+        provenance: "rules/retrieve.smk:retrieve_aquifer_data_bgr"
+      - change: "district-heating-areas input"
+        anchor: "rule build_dh_areas (data.dh_areas dataset, sector.district_heating.dh_areas)"
+        provenance: "rules/build_sector.smk:build_dh_areas; rules/retrieve.smk:retrieve_dh_areas"
+    data_dependencies:
+      - input: "BGR IHME1500 aquifer shapefile (ihme1500_aquif_ec4060_v12_poly, AQUIF_NAME classes)"
+        required_for: "all ATES variants"
+        availability: "retrieved by the workflow (rule retrieve_aquifer_data_bgr); coverage is the International Hydrogeological Map of EUROPE — absent elsewhere"
+      - input: "dh_areas.gpkg (Manz et al. future district heating areas) clustered to regions"
+        required_for: "the DH-area intersection of the potential"
+        availability: "retrieved + built (rules retrieve_dh_areas, build_dh_areas); missing countries handled per dh_areas.handle_missing_countries"
+      - input: "central heating forward/return temperature profiles per planning horizon"
+        required_for: "the temperature spread in mwh_ates_per_m2"
+        availability: "must be built (district-heating temperature approximation chain in the sector workflow)"
+      - input: "cost row 'central geothermal heat source'"
+        required_for: "charger/discharger capital cost and lifetime"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "urban central heat buses (nonzero district heating share)"
+        required_for: "placement — ATES only attaches where district heating exists"
+        availability: "must be built (heat workflow; sector.district_heating.potential/progress)"

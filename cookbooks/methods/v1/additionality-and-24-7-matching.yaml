@@ -1,0 +1,1096 @@
+id: additionality-and-24-7-matching
+title: "Additionality and 24/7 temporal matching (RFNBO / carbon-free-energy procurement)"
+summary: >
+  Constrain a designated consumer's procured generation to cover its consumption
+  within a time window — hourly, monthly or annual — and require that generation to be
+  new capacity in a defined place rather than an existing plant anywhere.
+question: >
+  If this electrolyser or datacentre must prove its electricity is additional renewable
+  supply matched hour-by-hour, what does that cost and what does it build?
+aliases:
+  - "24/7 carbon-free energy"
+  - "24/7 CFE"
+  - "CFE score"
+  - "hourly matching"
+  - "monthly matching"
+  - "annual matching"
+  - "temporal correlation"
+  - "geographic correlation"
+  - "additionality"
+  - "RFNBO"
+  - "renewable fuels of non-biological origin"
+  - "Delegated Act on RFNBOs"
+  - "temporal matching constraint"
+  - "green hydrogen certification"
+  - "volumetric matching / annual PPA matching"
+  - "hourly PPA"
+when_to_use:
+  - "does my electrolyser have to run only when the wind is blowing"
+  - "what does hourly matching cost versus annual matching"
+  - "how much more expensive is 24/7 clean power than a 100% renewable PPA"
+  - "what does the EU RFNBO delegated act do to my hydrogen project"
+  - "compare monthly and hourly temporal correlation rules for green hydrogen"
+  - "does additionality actually reduce emissions or just move them"
+  - "my datacentre wants to be carbon-free every hour, not on annual average"
+  - "the offtaker requires the power to come from new plants in the same bidding zone"
+  - "how does hydrogen export regulation affect domestic electricity prices"
+  - "can I buy grid power for my electrolyser when prices are low"
+  - "green hydrogen certification / guarantees of origin in the model"
+family: markets-and-prices
+prevalence:
+  papers: 5
+  tier1: 3
+  tier2: 2
+  sweep_hits: 16
+  basis: >
+    Hand-coded pass 1 over all 100 PDFs (2026-07-25) found 5 papers that actually
+    FORMULATE a matching constraint. The regex screen returned 16 and grossly
+    over-counts: the slug's `sweep_regex` includes bare `additionality` and
+    `\bcfe\b`, which fire on powerplant-MATCHING papers, on grid-topology papers
+    (Xiong 2025/2026) and on any paper whose intro cites the delegated act. Eleven
+    hits are mention-only and are excluded. One borderline call, kept IN: Alamia 2024
+    is flagged in `_qa/EVIDENCE_INDEX.md` as a mention-only suspect because it does
+    NOT model monthly matching, but its own evidence records an implemented constraint
+    (Eq. 6 gates the grid-to-electrolyser link on a spot-price threshold as a proxy
+    for the hourly rule) — that is a formulation choice, not a citation, so it is
+    counted and given its own variant. Three of the five are tier 1, unusually high
+    for this book, because the method's two originating papers (Riepin x2) and its
+    largest application (Schumm) are all in the core group.
+procedure:
+  - step: >
+      Designate the consumer whose consumption must be matched, and designate the
+      supply that may count towards it. Both are SETS of components, not a scalar:
+      the consumer is a load or a conversion link (an electrolyser's electricity
+      draw), and the eligible supply is a carrier list plus, under a strict rule, a
+      siting and a build-year restriction.
+    handle: "policy_config.hydrogen.{matching_technologies,temporal_matching_carriers}"
+    provenance: "config.default.yaml:matching_technologies; scripts/solve_network.py:hydrogen_temporal_constraint"
+  - step: >
+      Build the supply-side expression: weighted dispatch of the eligible generators,
+      plus (if the rule allows storage discharge to count) weighted storage discharge.
+      Snapshot weightings must be applied — at 3-hourly resolution an unweighted sum
+      silently understates energy by the weighting factor.
+    handle: "n.model['Generator-p'] and n.model['StorageUnit-p_dispatch'] times n.snapshot_weightings"
+    provenance: "scripts/solve_network.py:hydrogen_temporal_constraint"
+  - step: >
+      Build the consumption-side expression: weighted consumption of the designated
+      consumer, scaled by the required matching share x. x = 1 is strict matching;
+      the corpus sweeps x from 0.8 to 1.0 as a "CFE score", and pypsa-earth exposes
+      the reciprocal idea as an `allowed_excess` multiplier on the consumption side.
+    handle: "policy_config.hydrogen.allowed_excess"
+    provenance: "config.default.yaml:allowed_excess; scripts/solve_network.py:hydrogen_temporal_constraint"
+  - step: >
+      Group both expressions by the matching WINDOW and add one constraint per window
+      label: `groupby("snapshot")` for hourly (one row per snapshot), and
+      `groupby("snapshot.month")` / `groupby("snapshot.year")` for the transitional
+      regimes. This is the whole mechanism — annual, monthly and hourly matching are
+      the same algebra at three groupings, and the count of constraints goes 1, 12,
+      |snapshots|.
+    handle: "hydrogen_temporal_constraint(n, n_ref, time_period) with time_period in {hour, month, year}"
+    provenance: "scripts/solve_network.py:hydrogen_temporal_constraint"
+  - step: >
+      (strict rules only) Enforce ADDITIONALITY. The published approach is
+      counterfactual: solve a reference network without the new consumer, then require
+      the study run's eligible generation to exceed the reference run's by at least the
+      consumer's demand — so the matched supply is capacity that would not otherwise
+      exist. This makes the method a two-solve harness, and the reference network is an
+      input to the second solve.
+    handle: "policy_config.hydrogen.{additionality,is_reference,remove_h2_load,path_to_ref}"
+    provenance: "config.default.yaml:additionality; scripts/solve_network.py:n_ref_path"
+  - step: >
+      (strict rules only) Enforce GEOGRAPHIC correlation: restrict the eligible supply
+      to the consumer's own bidding zone / bus region, by grouping the constraint per
+      region instead of system-wide. Neither model does this — the one implementation
+      in either repo sums over ALL eligible components with no spatial grouper, so it
+      is a system-wide rule wearing a bidding-zone name.
+    handle: null
+    provenance: null
+  - step: >
+      (24/7 CFE only) If the matching target credits grid imports at the grid's hourly
+      carbon-free share, that share is itself a function of the decision variables, so
+      the constraint is bilinear. The corpus resolves it by fixed-point iteration:
+      start from a zero grid CFE factor, solve, recompute the factor from the solution,
+      re-solve. Riepin reports convergence in 2 passes.
+    handle: null
+    provenance: null
+  - step: >
+      Sweep the strictness rather than asserting one rule: no rule / annual / monthly /
+      hourly, and x across its range. The result of interest is the DELTA between
+      regimes (cost of hydrogen, procured capacity mix, price duration curve, welfare
+      split), not the level under any single one.
+    handle: "scenario matrix expansion over the config-selected matching window"
+    provenance: "Snakefile:scenario; config.default.yaml:temporal_matching"
+variants:
+  - id: annual-matching
+    what: >
+      One constraint over the whole horizon: total eligible generation >= total
+      consumption. The 100%-renewable-PPA / volumetric-matching baseline, and the
+      cheapest possible rule — it permits full seasonal and diurnal displacement, so
+      the consumer can run flat on grid power and settle up with summer solar.
+      One extra constraint row; solve cost is negligible.
+    papers:
+      - "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+      - "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+      - "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+  - id: monthly-matching
+    what: >
+      Twelve constraints, one per calendar month. The EU RFNBO transitional regime
+      until 31.12.2029. Materially cheaper than hourly because it still permits
+      within-month arbitrage, which is where most of the flexibility value sits, and
+      it is the regime a project financed before 2030 is actually held to.
+    papers:
+      - "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+  - id: hourly-matching
+    what: >
+      One constraint per snapshot — ~8760 rows at hourly resolution, 2920 at 3-hourly.
+      The RFNBO regime from 1.1.2030 and the definition of a 24/7 CFE score of 1.
+      Forces the consumer to buy storage, to oversize renewables, or to flex its own
+      load; it is the variant that changes the answer, and the variant that costs
+      solve time. Coarsening the snapshots is not a neutral simplification here:
+      the resolution IS the strictness.
+    papers:
+      - "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+      - "2024_Riepin_Spatio-temporal-load-shifting-clean-computing_AdvApplEnergy.pdf"
+      - "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+      - "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+  - id: additionality-vs-reference-network
+    what: >
+      Matching against a counterfactual rather than against zero: the eligible
+      generation must EXCEED what a reference run without the new consumer built.
+      Turns a single solve into an ordered pair of solves and makes the reference
+      network a first-class input. Schumm's proxy for the same idea is a build-year
+      filter (RE commissioned within 3 years before the electrolyser).
+    papers:
+      - "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+      - "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+  - id: geographic-correlation
+    what: >
+      Same-bidding-zone sourcing: the eligible supply set is restricted to the
+      consumer's own zone, so the constraint is grouped per region as well as per
+      window. Both Riepin papers require contracted generators to sit in the local
+      bidding zone, and the load-shifting paper turns that into the whole point —
+      moving the LOAD between zones because the supply cannot move.
+    papers:
+      - "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+      - "2024_Riepin_Spatio-temporal-load-shifting-clean-computing_AdvApplEnergy.pdf"
+  - id: excess-sales-and-price-threshold
+    what: >
+      The two ways a matched consumer interacts with the grid. (a) Excess: generation
+      above the matched requirement may be curtailed or SOLD, capped as a share of
+      annual demand — the cap is a real lever because uncapped sales turn the
+      consumer into a merchant generator. (b) Price threshold: rather than model the
+      matching rule, gate grid draw on the spot price being below a threshold, using
+      cheap hours as a proxy for renewable-surplus hours. Cheap to implement, and
+      exogenous — it needs a price series the model may not produce.
+    papers:
+      - "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+      - "2024_Alamia_hydrogen-emethanol-power-to-x-biogas.pdf"
+  - id: spatio-temporal-load-shifting
+    what: >
+      Extend the per-consumer matching constraint to a FLEET of consumers with
+      shiftable load, so matching is met by moving demand in space and time instead of
+      only by procuring supply. The matching constraint gains spatial and temporal
+      shift variables and is written per node. Riepin identifies the three signals
+      shifting exploits: resource-quality differences between zones, wind-correlation
+      falloff with distance, and solar time-lag across longitudes.
+    papers:
+      - "2024_Riepin_Spatio-temporal-load-shifting-clean-computing_AdvApplEnergy.pdf"
+literature:
+  - paper: "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+    tier: 1
+    role: defines
+    note: >
+      The defining paper for this method in the PyPSA family, and the one to quote on
+      the ANNUAL-vs-HOURLY contrast because it models both in the same framework:
+      Eq. 1 is 100% annual volumetric matching (contracted RES dispatch summed over
+      the year equals annual demand), Eq. 2 is hourly 24/7 matching (per-hour
+      contracted generation + storage discharge + grid imports x grid CFE factor -
+      excess >= CFE score x times load). PyPSA-Eur, 37 bidding zones, 3-hourly (2920
+      snapshots), 2025 and 2030, four regions (IE/DK/DE/PL). Contributes the four
+      design choices every later paper reuses or breaks: contracted generators must be
+      additional and in the LOCAL bidding zone; excess CFE may be curtailed or sold
+      but is capped at 20% of annual demand; the grid CFE factor is bilinear and is
+      handled by fixed-point iteration from CFE_t = 0, converging in 2 passes; and
+      only 10% of C&I demand participates, so system-level conclusions are about a
+      minority of load. x swept 80%-100%. States plainly that it INTRODUCES new
+      components into PyPSA-Eur — i.e. this was a fork, and it is not merged.
+  - paper: "2024_Riepin_Spatio-temporal-load-shifting-clean-computing_AdvApplEnergy.pdf"
+    tier: 1
+    role: extends
+    note: >
+      Extends the same constraint (Eq. 2 -> Eq. 7) from one consumer to a fleet of
+      geographically distributed datacentres with spatio-temporal load flexibility,
+      written per node over the shift variables, at x = 1 and hourly (8760 steps) on a
+      PyPSA-Eur-derived 37-zone background. The contribution to relay is that under
+      strict matching the cheapest compliance route may be moving the LOAD rather than
+      buying supply, and that this works because of three separable signals (resource
+      quality, wind decorrelation with distance, solar time-lag). Flexibility swept
+      0-40% of load; cost reduction reported per percentage point of flexible load
+      across 56 location pairs. Reuses the grid-CFE-factor linearisation from the
+      defining paper by reference, so the two papers share one implementation lineage.
+  - paper: "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The canonical application of the FULL regulatory ladder, and the paper that
+      matches pypsa-earth's implementation: PyPSA-Earth sector-coupled (PyPSA-Earth-Sec),
+      Morocco, 14 nodes, 3-hourly, sweeping four regimes — no rule / annual / monthly /
+      hourly — over 264 runs crossed with export volume (1-120 TWh/a) and mitigation
+      level (0-100%). States both RFNBO criteria explicitly: additionality (electrolyser
+      demand from ADDITIONAL RE) and temporal correlation (hourly from 1.1.2030, monthly
+      until 31.12.2029), and implements additionality as a build-year filter (RE
+      installed within 3 years before the electrolyser) rather than as a counterfactual
+      network. The result to quote when a user asks who pays for strictness: matching
+      strictness redistributes welfare between the hydrogen exporter and the DOMESTIC
+      electricity consumer, visible in the price duration curve — the regime is not a
+      cost line on the project, it is a cost allocation across the system.
+  - paper: "2024_Alamia_hydrogen-emethanol-power-to-x-biogas.pdf"
+    tier: 2
+    role: canonical-use
+    note: >
+      The cheap-proxy encoding, and the reason `excess-sales-and-price-threshold` is a
+      variant rather than a footnote. A bespoke single-node PyPSA PtX hub (GreenLab
+      Skive, DK, 8760 hours, electricity + heat + H2 + CO2) does NOT write a matching
+      constraint; instead Eq. 6 permits grid electricity into hydrogen production only
+      in hours whose spot price is <= 20 EUR/MWh, using cheap hours as a proxy for
+      renewable-surplus hours and thus for the post-2030 hourly rule. Also sweeps the
+      permitted ratio of RE sold to the grid versus RE used for PtX (maxRE, 0.1-1.0) —
+      the excess-sales lever, treated as a first-class sensitivity. Flagged as a
+      mention-only suspect in `_qa/EVIDENCE_INDEX.md` because monthly matching is
+      discussed and not modelled; kept because the price gate IS an implemented
+      encoding of the rule. Its limitation is the one to state to a user: it needs an
+      exogenous price series and it is only as good as the price-surplus correlation.
+  - paper: "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+    tier: 2
+    role: extends
+    note: >
+      Independent PyPSA-Earth implementation of the same pair of constraints on
+      Morocco (14 GADM-L1 nodes, hourly, 2035 greenfield, electricity + H2 + ammonia +
+      methanol + green steel), and the source of two implementation details worth
+      copying. Eq. 1 (hourly): renewable generation + hydro dispatch + battery
+      discharge x efficiency >= electrolysis load at every timestep. Eq. 2 (annual):
+      the same WITHOUT batteries, deliberately, to stop the annual rule from being
+      satisfied by a battery charged on fossil power — a failure mode the hourly form
+      does not have. Adds a separate green-hydrogen ALLOCATION constraint so that
+      hydrogen sent to export or to downstream derivatives is the certified-green
+      hydrogen, not fungible hydrogen from the same bus. Combines the matching sweep
+      with interannual weather variability and WACC/CO2 sensitivities.
+pitfalls:
+  - pitfall: >
+      Annual matching that credits storage discharge is satisfiable by charging a
+      battery on fossil power and discharging it into the electrolyser. The rule
+      certifies the paperwork, not the electrons, and the model will happily find this.
+    evidence: "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+    note: >
+      Exclude storage from the eligible-supply set in the annual and monthly forms
+      (Duque-Perez does exactly this, and says why), or keep storage eligible only
+      where the window is short enough that a fossil charge cannot hide inside it.
+      In pypsa-earth this is `policy_config.hydrogen.temporal_matching_carriers`:
+      the default list contains `hydro` and `ror`, which are matched against
+      n.storage_units as well as n.generators.
+  - pitfall: >
+      The matching constraint says nothing about WHERE the eligible supply is unless
+      you group it spatially. A system-wide sum lets a consumer in one zone be matched
+      by generation on the other side of a congested border, which is the exact
+      arbitrage the geographic-correlation criterion exists to close.
+    evidence: "2024_Riepin_Spatio-temporal-load-shifting-clean-computing_AdvApplEnergy.pdf"
+    note: >
+      Check the grouper before believing a "bidding zone" claim. pypsa-earth's
+      `hydrogen_temporal_constraint` has NO spatial grouper — it sums over every
+      eligible component in the network — and the `policy_config.hydrogen.spatial_matching`
+      key that names the feature has no consumer anywhere in the repo. If geography
+      matters to the user's question, that grouping is code you write.
+  - pitfall: >
+      Coarsening snapshots weakens the rule while appearing to be a resolution choice.
+      Hourly matching evaluated on 3-hourly averages is 3-hourly matching: the
+      within-window mismatch that the rule exists to price has been averaged away
+      before the constraint sees it. The corpus's own studies run at 3-hourly, so
+      published hourly-matching costs are lower bounds.
+    evidence: "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+    note: >
+      Never present a matching-strictness comparison without stating the temporal
+      resolution alongside it, and never let a tractability decision (nH, TSAM
+      segmentation) be made downstream of this constraint without re-stating what rule
+      is actually being enforced. Segmentation is worse than averaging here, because
+      variable-length segments make the window boundaries themselves data-dependent.
+  - pitfall: >
+      Crediting grid imports at the grid's carbon-free share makes the constraint
+      bilinear (a decision variable times a share that depends on decision variables).
+      Solving it once with a fixed assumed share is not the same problem, and a
+      converged-looking answer after one pass is an assumption, not a solution.
+    evidence: "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+    note: >
+      Either drop grid crediting entirely (then the constraint is linear and one
+      solve — which is what both pypsa-earth implementations do), or run the
+      fixed-point iteration and report the number of passes and the residual change in
+      the factor. Two passes sufficed in the defining paper; that is a reported
+      result for one system, not a general guarantee.
+  - pitfall: >
+      Strictness redistributes cost as much as it adds cost. Reporting only the
+      levelised cost of the matched product hides the effect on everyone else's
+      electricity price, which in the largest study in this corpus is the headline.
+    evidence: "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+    note: >
+      Extract the price duration curve and a domestic-consumer cost aggregate
+      alongside the product cost, for every regime in the sweep. A user asking "what
+      does hourly matching cost me" is usually also the person the answer is about.
+  - pitfall: >
+      A price-threshold proxy is not the rule. It is only as good as the correlation
+      between low prices and renewable surplus, it requires an exogenous price series
+      the model may not itself produce, and the threshold value is doing all the work
+      while looking like a data input.
+    evidence: "2024_Alamia_hydrogen-emethanol-power-to-x-biogas.pdf"
+    note: >
+      Acceptable for a single-node hub study where the price is exogenous anyway.
+      Report the threshold as a swept parameter, not a constant, and do not describe
+      the result as RFNBO-compliant without saying it is a proxy.
+requires_methods:
+  - custom-constraints-with-linopy
+combines_with:
+  - carrier-network-routing-h2-co2
+  - sector-coupled-network-assembly
+  - demand-side-flexibility-representation
+  - price-formation-and-scarcity-rents
+  - shadow-prices-and-marginal-values
+  - sensitivity-and-uncertainty-sweeps
+  - temporal-aggregation-and-segmentation
+  - weather-year-ensembles
+  - zonal-nodal-and-redispatch
+topics:
+  - green-hydrogen-siting
+  - electrolyser-grid-flexibility
+  - green-h2-export-cost-benchmarking
+  - green-ammonia-exports
+  - data-center-load-growth
+  - climate-finance-eligibility-gco2-kwh
+pypsa_primitive:
+  symbol: "pypsa/optimization/global_constraints.py:define_operational_limit"
+  pypsa_version: "0.30.3"
+  exposed_by: "neither, for this purpose — both models write the matching constraint by hand"
+  reachable_via: >
+    Adding a GlobalConstraint row with type `operational_limit`, which the library then
+    turns into one constraint over weighted dispatch of ONE carrier across the whole
+    snapshot set, against a CONSTANT rhs. That is the nearest primitive and it is not
+    sufficient: it is single-carrier, whole-horizon, and its rhs cannot contain decision
+    variables, so it cannot express `generation >= x * consumption` and cannot be
+    grouped by window. Annual matching against a fixed demand forecast is the one
+    variant it can approximate, by pre-computing the demand as the constant.
+  note: >
+    Treat this method as having NO usable library primitive. There is no windowed
+    matching constraint in pypsa 0.30.3, which is why the useful handle lives one layer
+    UP rather than down: pypsa-earth's `hydrogen_temporal_constraint` is the reference
+    implementation in this ecosystem, and porting it is a better plan than building on
+    `define_operational_limit`. Soft anchor: pypsa is a conda dependency, not a
+    submodule, so the claim is pinned to a version string rather than a SHA.
+models:
+  - model: pypsa-eur
+    version_anchor:
+      ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d"
+      date: "2026-07-25"
+    functionality:
+      - id: custom-constraint-hook
+        role: >
+          the only landing point for the method here — `custom_extra_functionality`
+          imports a user module and calls it with (n, snapshots, snakemake) after the
+          built-in constraints, so the whole constraint is written in a file outside
+          tracked model code. Registry `working`, and the key IS in config.default.yaml.
+      - id: equity-self-sufficiency
+        role: >
+          the closest thing eur already has to a matching constraint, and the template
+          to copy: `add_EQ_constraints` is an ANNUAL volumetric "produce >= f of your
+          consumption" per country or per node, with the load-side/generation-side
+          groupers already written. Registry `partial` (electricity-only, and a bare
+          `EQ` token crashes). Annual + geographic, missing the windowing.
+      - id: import-limit-constraint
+        role: >
+          the one-row budget template — `add_import_limit_constraint` reads a bound from
+          config and applies it to weighted flows, which is the shape of the
+          excess-sales cap and of annual matching.
+      - id: green-energy-imports
+        role: >
+          eur's import chain: priced import routes per carrier. The place a
+          certified-green-import question lands, and the mirror of earth's h2export
+          chain that eur lacks.
+      - id: scenario-matrix
+        role: >
+          the regime sweep (no rule / annual / monthly / hourly x matching share) as
+          managed parallel runs rather than a hand-rolled loop
+      - id: temporal-resolution-nh
+        role: >
+          the affordability lever AND a correctness hazard: for hourly matching the
+          resolution is the strictness, so coarsening is not neutral (see pitfalls)
+      - id: time-segmentation-tsam
+        role: >
+          the other affordability lever, and the worse one here — variable-length
+          segments make the matching window boundaries data-dependent
+      - id: carbon-intensity-metrics
+        role: >
+          needed for a CFE-score claim: registry `partial`, there is no gCO2/kWh column,
+          so the grid carbon-free share must be computed from the energy balance
+    available:
+      verdict: assemble
+      how: >
+        The METHOD is absent — nothing in pypsa-eur implements temporal matching,
+        additionality or geographic correlation. Greps for `temporal_matching`,
+        `additionality`, `RFNBO`, `CFE` and `24/7` across scripts/, rules/ and
+        config/config.default.yaml return NOTHING at this ref: not a partial, not a dead
+        key, the feature does not exist. The literature's defining paper is a PyPSA-Eur
+        study whose own text says it INTRODUCED new components into the model; that fork
+        was never merged. The verdict is `assemble` rather than `absent` because every
+        SURFACE the method needs does exist and the wiring is documented in `assembly`:
+        `custom_extra_functionality` is a config-pathed hook that imports a user module
+        and calls it after the built-in constraints, so the constraint lands outside
+        tracked model code; `add_EQ_constraints` is a working annual volumetric
+        "produce >= f of your consumption" per country or per node, i.e. the groupers
+        (the awkward part) already written for the annual + geographic case;
+        `add_import_limit_constraint` is the one-row config-bounded template; and the
+        scenario machinery fans the regime sweep out. What you add is the window
+        grouping — which is the smaller half.
+      missing: >
+        Procedure steps 1-7 in their entirety, i.e. the whole method. Concretely:
+        component designation, the weighted supply and consumption expressions, the
+        window grouping and per-label constraints, the additionality reference-network
+        harness, the spatial grouper, and the bilinear grid-CFE iteration. The regime
+        sweep (step 8) is the only step with a handle.
+      provenance: "scripts/solve_network.py:custom_extra_functionality; scripts/solve_network.py:add_EQ_constraints"
+    levers:
+      - key: "solving.options.custom_extra_functionality"
+        effect: >
+          Path to a user module imported and called after the built-in constraints —
+          where the entire matching constraint lands. Because it is a config-pathed
+          external file, writing the constraint here is a `code` change in bundle terms
+          but NOT an edit to tracked model code, which is why eur's rung for this method
+          is better than the total absence of the feature would suggest.
+        default: "'../data/custom_extra_functionality.py' (present but a no-op stub)"
+        provenance: "config/config.default.yaml:custom_extra_functionality; scripts/solve_network.py:custom_extra_functionality"
+      - key: "solving.constraints.EQ"
+        effect: >
+          Turns on the existing annual self-sufficiency constraint (`EQ0.7c` = each
+          country produces >= 70% of its consumption). Not the method — no window, no
+          designated consumer, electricity-only — but the nearest config-only
+          approximation and the code you copy. Give it a value; a bare token crashes.
+        default: "false"
+        provenance: "config/config.default.yaml:EQ; scripts/solve_network.py:add_EQ_constraints"
+      - key: "clustering.temporal.resolution_sector"
+        effect: >
+          Snapshot resolution for the sector chain, where the electrolyser lives. Sets
+          both the solve cost of hourly matching (one constraint per snapshot) and, as a
+          side effect nobody intends, the actual strictness of the rule being enforced.
+        default: "false (hourly)"
+        provenance: "config/config.default.yaml:resolution_sector; scripts/prepare_network.py:average_every_nhours"
+      - key: "sector.imports.enable"
+        effect: >
+          Turns on priced import routes for H2/NH3/methanol/gas/oil. Relevant when the
+          question is whether to make certified-green product domestically under a
+          matching rule or to import it; the imports themselves carry no matching rule.
+        default: "false"
+        provenance: "config/config.default.yaml:imports; scripts/prepare_sector_network.py:add_import_options"
+      - key: "sector.imports.limit"
+        effect: >
+          A system-wide volume cap on those imports, in MWh_fuel — the working template
+          for a one-row excess-sales cap, read from config and applied to weighted flows.
+        default: "inf"
+        provenance: "config/config.default.yaml:limit; scripts/solve_network.py:add_import_limit_constraint"
+      - key: "run.scenarios.enable"
+        effect: >
+          Expands the regime sweep (no rule / annual / monthly / hourly x matching
+          share) into managed parallel runs. The sweep is the deliverable for this
+          method, so this is a lever, not plumbing.
+        default: "false"
+        provenance: "config/config.default.yaml:scenarios; scripts/_helpers.py:get_scenarios"
+    assembly:
+      - step: >
+          PORT, do not invent. pypsa-earth's `hydrogen_temporal_constraint` is a working
+          hour/month/year matching constraint in the same linopy idiom, and it is the
+          cheapest honest starting point for an eur study. Read it first and keep its
+          structure: eligible-carrier lists from config, weighted `Generator-p` plus
+          `StorageUnit-p_dispatch` on the supply side, weighted `Link-p` on the
+          consumption side, then one `add_constraints` per window label.
+        uses: [custom-constraint-hook]
+        config: "solving.options.custom_extra_functionality"
+        code: "the module named by custom_extra_functionality (default ../data/custom_extra_functionality.py)"
+        provenance: "scripts/solve_network.py:custom_extra_functionality"
+      - step: >
+          Designate the consumer and the eligible supply as explicit component index
+          sets, driven from your own config block rather than from name substrings. In
+          eur the electrolyser is a Link with carrier `H2 Electrolysis`; a datacentre
+          consumer is a Load you add. Do NOT filter by `index.str.contains`, which is
+          how earth's dead `add_chp_constraints` and its `set_h2_colors` both select
+          components and is the standing source of silently-empty constraints.
+        uses: [custom-constraint-hook]
+        config: "your own key under solving.constraints, read via snakemake in the hook"
+        code: "the custom_extra_functionality module"
+        provenance: "scripts/solve_network.py:custom_extra_functionality"
+      - step: >
+          Copy the GROUPERS from `add_EQ_constraints` rather than writing them: it
+          already maps generators, loads and storage units to bus or country and forms
+          weighted annual sums per group. That is annual matching plus geographic
+          correlation, which is two of the three pieces; what you add is the window
+          grouping. Note its own docstring says electricity-only, so extending it to a
+          sector-coupled consumer means re-deriving the load side.
+        uses: [equity-self-sufficiency]
+        config: "solving.constraints.EQ (as the reference implementation, not as the constraint)"
+        code: "scripts/solve_network.py:add_EQ_constraints"
+        provenance: "scripts/solve_network.py:add_EQ_constraints"
+      - step: >
+          Group by window and add one constraint per label. Annual = one row, monthly =
+          12, hourly = |snapshots|. Apply `n.snapshot_weightings` on BOTH sides — at
+          3-hourly resolution an unweighted sum understates energy by 3x, and the
+          constraint still solves. eur's own in-repo precedent for a weighted
+          per-snapshot constraint written through the hook idiom is
+          `add_operational_reserve_margin`; the window-grouped version to port is
+          pypsa-earth's `hydrogen_temporal_constraint`.
+        uses: [custom-constraint-hook]
+        config: null
+        code: "the custom_extra_functionality module"
+        provenance: "scripts/solve_network.py:add_operational_reserve_margin"
+      - step: >
+          For additionality, run the reference case FIRST as its own scenario (the
+          consumer's demand removed), then pass its path into the study run's hook and
+          require the eligible generation to exceed the reference's by the consumer's
+          demand. This is a two-solve ordered harness, not a constraint — snakemake will
+          not order it for you unless the reference network is an explicit input.
+        uses: [scenario-matrix, custom-constraint-hook]
+        config: "run.scenarios.enable; run.scenarios.file"
+        code: "config/scenarios.yaml plus a path key read in the hook"
+        provenance: "scripts/_helpers.py:get_scenarios; rules/common.smk:scenario_config"
+      - step: >
+          If the CFE score credits grid imports, wrap the solve in a fixed-point loop
+          (solve, recompute the hourly carbon-free share from the solution, re-solve).
+          There is no such loop in eur — no monte-carlo-style many-solve harness exists
+          here, unlike earth — so this is a driver script around the workflow.
+        uses: [carbon-intensity-metrics]
+        config: null
+        code: "a new driver; no existing rule owns a re-solve loop"
+        provenance: "scripts/make_summary.py:co2_shadow"
+      - step: >
+          Sweep the regimes and extract the DELTAS: product cost, procured capacity mix,
+          and the price duration curve for non-participating consumers. make_summary
+          already aggregates costs, capacities and prices across runs.
+        uses: [scenario-matrix, summary-outputs]
+        config: "run.scenarios.enable"
+        code: "scripts/make_summary.py"
+        provenance: "scripts/make_summary.py:calculate_costs"
+    boundary:
+      - variant: annual-matching
+        rung: L2
+        note: >
+          The cheapest variant, and the only one within reach of existing code: a
+          one-row weighted-sum constraint in the config-pathed hook, with
+          `add_EQ_constraints` and `add_import_limit_constraint` as two working
+          templates for exactly that shape. L2 rather than L1 because no key switches
+          it on — `solving.constraints.EQ` gives you self-sufficiency, not matching of a
+          designated consumer.
+      - variant: monthly-matching
+        rung: L2
+        note: >
+          Annual plus `groupby("snapshot.month")` and a loop over 12 labels. Same rung;
+          the additional work is a grouper, not a formulation. Note eur has no month
+          coordinate convention of its own — use the pandas snapshot index directly.
+      - variant: hourly-matching
+        rung: L2
+        note: >
+          Still L2 by mechanism — the same hook, the same expressions, `groupby` on
+          snapshot — but this is where the SOLVE cost lands (~8760 constraint rows, one
+          per snapshot) and where the resolution/strictness trap bites. Two rungs worse
+          than pypsa-earth, which does this from a config key. If the study is
+          fundamentally about hourly matching, that asymmetry should decide model choice.
+      - variant: additionality-vs-reference-network
+        rung: L5
+        note: >
+          The genuine L5 on this card. Not a constraint but an ordered two-solve harness
+          whose second solve takes the first's network as an input: a new scenario
+          definition, a path plumbed into the hook, and a rule dependency so snakemake
+          orders the pair. Nothing in eur does anything of this shape (the closest
+          analogue in the whole ecosystem is earth's `path_to_ref`, which is itself
+          broken — see the earth section). Schumm's build-year filter is the cheaper
+          substitute and is L1-L2 via the existing fleet-retirement filter.
+      - variant: geographic-correlation
+        rung: L2
+        note: >
+          Unusually, eur's best variant relative to earth: `add_EQ_constraints` already
+          groups generators, loads and storage units by bus or by country, so
+          same-zone sourcing is a grouper you copy rather than write. Combine it with
+          the window grouping and you have a per-zone-per-window matching constraint,
+          which neither model ships.
+      - variant: excess-sales-and-price-threshold
+        rung: L2
+        note: >
+          Excess cap: a one-row bound on the consumer's eligible generation sold to the
+          grid, with `add_import_limit_constraint` as the template. Price threshold:
+          requires a price series; endogenous prices are duals and are not available
+          before the solve, so in eur this is either exogenous data (L3) or a two-pass
+          harness. Do not promise the price-gate encoding on an endogenous-price model.
+      - variant: spatio-temporal-load-shifting
+        rung: L5
+        note: >
+          Matching plus a flexible multi-consumer fleet: new shift variables between
+          nodes and between snapshots, their own conservation constraints, and the
+          matching constraint rewritten per node over them. New decision variables in
+          the hook are the recognised L5 case (see custom-constraints-with-linopy), and
+          the published implementation is a bespoke model, not a PyPSA-Eur config.
+    where:
+      - change: "the entire matching constraint (all windows, all variants)"
+        anchor: "solving.options.custom_extra_functionality -> the user module's entry function, called with (n, snapshots, snakemake)"
+        provenance: "scripts/solve_network.py:custom_extra_functionality; rules/common.smk:input_custom_extra_functionality"
+      - change: "the groupers to copy for geographic correlation and for weighted annual sums"
+        anchor: "scripts/solve_network.py::add_EQ_constraints"
+        provenance: "scripts/solve_network.py:add_EQ_constraints"
+      - change: "the one-row config-bounded template for annual matching and the excess-sales cap"
+        anchor: "scripts/solve_network.py::add_import_limit_constraint"
+        provenance: "scripts/solve_network.py:add_import_limit_constraint"
+      - change: "new decision variables for load shifting"
+        anchor: "n.model.add_variables inside the hook; scripts/solve_network.py::add_operational_reserve_margin is the in-repo example of a hook-style constraint over extra terms"
+        provenance: "scripts/solve_network.py:add_operational_reserve_margin"
+      - change: "the regime sweep as managed parallel runs, and the reference run for additionality"
+        anchor: "run.scenarios + the {run} wildcard; config/scenarios.yaml"
+        provenance: "scripts/_helpers.py:get_scenarios; rules/common.smk:scenario_config"
+      - change: "extraction of the deltas between regimes"
+        anchor: "scripts/make_summary.py (rule make_summary)"
+        provenance: "scripts/make_summary.py:calculate_costs"
+    data_dependencies:
+      - input: "an exogenous hourly electricity price series for the price-threshold encoding"
+        required_for: excess-sales-and-price-threshold
+        availability: >
+          absent — eur produces prices as duals of its own solve, so a price gate is
+          either external data you supply or a second pass over a solved network. Alamia
+          got away with it because the hub model takes the spot price exogenously.
+      - input: "hourly grid carbon-free share per bidding zone, for a CFE-score target that credits imports"
+        required_for: hourly-matching
+        availability: >
+          must be computed — registry rates carbon-intensity-metrics `partial` and there
+          is no gCO2/kWh column; derive it from the energy balance, or drop grid
+          crediting and keep the constraint linear
+    cost_profile:
+      solves: >
+        1 for annual, monthly and hourly matching (the constraint count changes, the
+        solve count does not). 2 for additionality (reference then study). 2-N for a
+        grid-crediting CFE score resolved by fixed-point iteration — 2 passes in the
+        defining paper. Multiply by the regime sweep: the corpus's own designs run 4
+        regimes x a strictness sweep, and Schumm's full design is 264 runs.
+      relative: >
+        Annual/monthly: negligible, a handful of extra rows. Hourly: one constraint row
+        per snapshot plus a dense row of non-zeros over every eligible component — on a
+        sector-coupled hourly eur network this is the same order as an existing global
+        constraint and shifts solve time noticeably rather than catastrophically.
+        Additionality doubles it. A full 4-regime sweep with additionality is ~8x a
+        single solve before any other sweep dimension.
+      note: >
+        The tempting mitigation is the dangerous one: coarsening `resolution_sector`
+        cuts hourly matching's constraint count proportionally AND weakens the rule
+        being enforced (pitfalls). Prefer to keep the resolution and cut spatial
+        clusters or scope the network to the consumer's region. If you must coarsen,
+        state the resolution in the result and treat the reported cost of strictness as
+        a lower bound.
+    verifies:
+      - variant: hourly-matching
+        check: "len([c for c in n.model.constraints if 'RESconstraint' in c or 'matching' in c]) == len(n.snapshots)"
+        over: run
+        note: >
+          The characteristic silent failure: the constraint was added for a subset of
+          window labels (or for none, because the component filter matched nothing), the
+          run succeeds, and the answer is the unconstrained one. Count the rows against
+          the window count before believing any matching result.
+      - variant: annual-matching
+        check: "(n.snapshot_weightings.generators @ n.generators_t.p[eligible_gens].sum(axis=1)) >= 0.999 * (n.snapshot_weightings.generators @ (-n.links_t.p0[matched_links]).sum(axis=1))"
+        over: run
+        note: >
+          A postcondition on the SOLUTION rather than the model: if eligible generation
+          does not actually cover matched consumption, the constraint was built on the
+          wrong sign, the wrong component set, or without snapshot weightings. All three
+          produce a feasible, plausible, wrong answer.
+      - variant: additionality-vs-reference-network
+        check: "eligible_generation(study) - eligible_generation(reference) >= 0.999 * matched_consumption(study)"
+        over: ensemble
+        note: >
+          The check that would have caught pypsa-earth's dead `n_ref` parameter. If it
+          passes with the reference network REMOVED from the inputs, additionality is not
+          being enforced and the flag is cosmetic.
+  - model: pypsa-earth
+    version_anchor:
+      ref: "8435f4c8cc05f30088933b37b7db497ff860dc53"
+      date: "2026-07-25"
+    functionality:
+      - id: custom-constraint-hook
+        role: >
+          where the built-in matching constraint is called from —
+          `extra_functionality` dispatches on `policy_config.hydrogen.temporal_matching`
+          and calls `hydrogen_temporal_constraint`. Also the landing point for the
+          spatial grouper you must add.
+      - id: h2-export-chain
+        role: >
+          the demand this method usually constrains: exogenous TWh/yr export at chosen
+          ports (or endogenous against a price), driven by the `h2export` scenario
+          dimension. This is the pairing — export chain plus matching regime — that both
+          Morocco papers in the literature run, and eur has no equivalent of it.
+      - id: h2-color-accounting
+        role: >
+          the adjacent config-switchable certification constraint: `set_h2_colors`
+          bounds annual blue/pink production shares against annual H2 load. Annual and
+          system-wide, so it is a certification proxy, not temporal matching — but it is
+          a second worked example of the same algebra in the same file.
+      - id: sector-coupled-workflow
+        role: >
+          the chain that creates the electrolyser Links the constraint matches on. Note
+          `hydrogen_temporal_constraint` is reachable from the electricity-only solve
+          rule too, where those Links do not exist — see pitfalls.
+      - id: scenario-matrix
+        role: >
+          the regime sweep. `scenario.{opts,sopts,demand,planning_horizons}` and
+          `export.h2export` expand combinatorially, which is how Schumm's 264-run design
+          is built; the matching regime itself is NOT a scenario dimension, so it is
+          swept by config override per run.
+      - id: monte-carlo-sampling
+        role: >
+          earth's many-solve harness (registry `partial`, off by default): the nearest
+          existing machinery for the additionality two-solve pair and for a fixed-point
+          CFE iteration. It samples parameters, not networks, so the ordering is what is
+          missing.
+      - id: temporal-resolution-nh
+        role: >
+          sets both the solve cost of hourly matching and, unintentionally, the
+          strictness of the rule. Both Morocco papers run 3-hourly or hourly.
+      - id: carbon-intensity-metrics
+        role: >
+          registry `partial`; needed only if the matching target credits grid imports at
+          the grid's carbon-free share, which this implementation does not do
+    available:
+      verdict: turnkey
+      how: >
+        pypsa-earth SHIPS this method. `policy_config.hydrogen.temporal_matching` takes
+        `no_temporal_matching | hour | month | year`, and `extra_functionality` calls
+        `hydrogen_temporal_constraint(n, n_ref, time_period)`, which builds weighted
+        `Generator-p` plus `StorageUnit-p_dispatch` over the carriers in
+        `temporal_matching_carriers`, weighted `Link-p` over the technologies in
+        `matching_technologies` scaled by `allowed_excess`, groups both by the window
+        (`groupby("snapshot")`, `groupby("snapshot.month")`, `groupby("snapshot.year")`)
+        and adds one constraint `RESconstraints_{label}` per window label. Annual,
+        monthly and hourly matching are therefore a single config value each — a config
+        flip runs the method, which is `turnkey` by the letter of the legend. It also
+        drives the two Morocco studies in this card's literature, so the implementation
+        is exercised, not aspirational. This is one of the few places in the whole
+        methods book where earth beats eur outright, and it does so by two rungs.
+      missing: >
+        Three of the seven procedure steps, and the two that regulators care about most.
+        (1) GEOGRAPHIC correlation, step 6: there is no spatial grouper — the constraint
+        sums over every eligible component in the network, so it is a system-wide rule,
+        and the `policy_config.hydrogen.spatial_matching` key that names the feature has
+        NO consumer anywhere in the repo (dead key). (2) ADDITIONALITY, step 5, is
+        HALF-implemented and the wrong half: `n_ref` is loaded from `path_to_ref` in
+        `main` and passed into `hydrogen_temporal_constraint`, but the function body
+        never reads it — the parameter appears only in the signature and the docstring.
+        So `additionality: true` and `additionality: false` add the SAME constraint; the
+        only real effect of the flag is that a run with `is_reference: true` and
+        `remove_h2_load: true` omits the H2 loads when building the network. (3) The
+        bilinear grid-CFE credit, step 7, is absent — which is arguably correct, since
+        this implementation does not credit grid imports at all, but it means the
+        24/7-CFE-score form of the method is not what this constraint expresses.
+        `policy_config.hydrogen.re_country_load`, which would extend the matched
+        consumption to include the country's electricity load, is also a dead key.
+      provenance: "scripts/solve_network.py:hydrogen_temporal_constraint; scripts/solve_network.py:extra_functionality; config.default.yaml:temporal_matching"
+    levers:
+      - key: "policy_config.hydrogen.temporal_matching"
+        effect: >
+          `no_temporal_matching | hour | month | year` — selects the grouping window and
+          therefore the whole regulatory regime. The single most valuable config key on
+          this card, and the reason model choice for an RFNBO study should start with
+          earth. Sweeping it across all four values reproduces Schumm's regime ladder.
+        default: "'no_temporal_matching'"
+        provenance: "config.default.yaml:temporal_matching; scripts/solve_network.py:hydrogen_temporal_constraint"
+      - key: "policy_config.hydrogen.temporal_matching_carriers"
+        effect: >
+          The eligible SUPPLY set, by carrier. Matched against both `n.generators` and
+          `n.storage_units`, so leaving `hydro`/`ror` in the default list credits
+          reservoir hydro discharge towards matching. Editing this list is how you
+          implement Duque-Perez's "annual matching without batteries" without touching
+          code.
+        default: "[csp, solar, onwind, offwind-ac, offwind-dc, ror, hydro]"
+        provenance: "config.default.yaml:temporal_matching_carriers; scripts/solve_network.py:hydrogen_temporal_constraint"
+      - key: "policy_config.hydrogen.matching_technologies"
+        effect: >
+          The designated CONSUMER set, by Link carrier — the electrolyser technologies
+          whose electricity draw must be matched. Defaults to six electrolyser variants;
+          extend it to bring another consumer (a datacentre load modelled as a Link)
+          under the rule without code.
+        default: "['H2 Electrolysis', 'Alkaline electrolyzer large', 'Alkaline electrolyzer medium', 'Alkaline electrolyzer small', 'PEM electrolyzer', 'SOEC']"
+        provenance: "config.default.yaml:matching_technologies; scripts/solve_network.py:hydrogen_temporal_constraint"
+      - key: "policy_config.hydrogen.allowed_excess"
+        effect: >
+          Multiplier on the consumption side of the constraint, i.e. the inverse of the
+          matching share x. 1.0 is strict matching; values above 1.0 relax it. This is
+          the lever for a CFE-score sweep, at 1/x.
+        default: "1.0"
+        provenance: "config.default.yaml:allowed_excess; scripts/solve_network.py:hydrogen_temporal_constraint"
+      - key: "policy_config.hydrogen.additionality"
+        effect: >
+          Nominally switches the constraint to its additionality form against a
+          reference network. At this ref it does NOT change the constraint — the
+          reference network is loaded and discarded (see available.missing). Its only
+          live effect is to gate the reference-network load, so treat it as a
+          not-yet-wired flag rather than a lever.
+        default: "false"
+        provenance: "config.default.yaml:additionality; scripts/solve_network.py:hydrogen_temporal_constraint"
+      - key: "policy_config.hydrogen.is_reference"
+        effect: >
+          Marks THIS run as the counterfactual. Combined with `remove_h2_load: true` it
+          suppresses the H2 loads for shipping, industry and land transport when the
+          sector network is built, giving you the no-hydrogen reference case. This half
+          of the additionality machinery does work.
+        default: "false"
+        provenance: "config.default.yaml:is_reference; scripts/prepare_sector_network.py:is_reference"
+      - key: "policy_config.hydrogen.remove_h2_load"
+        effect: >
+          Drops `H2 for shipping`, `H2 for industry` and `land transport fuel cell` loads
+          when building the reference network. Only read together with `is_reference`.
+        default: "false"
+        provenance: "config.default.yaml:remove_h2_load; scripts/prepare_sector_network.py:remove_h2_load"
+      - key: "policy_config.hydrogen.path_to_ref"
+        effect: >
+          Path to the solved reference network for the additionality constraint. Read
+          and loaded in the solve script's main, then passed into a function that never
+          uses it. Set it for forward compatibility; do not rely on it at this ref.
+        default: "''"
+        provenance: "config.default.yaml:path_to_ref; scripts/solve_network.py:n_ref_path"
+      - key: "export.h2export"
+        effect: >
+          Export demand in TWh/yr, and a scenario dimension. This is the demand the
+          matching regime constrains in both Morocco studies; crossing it with
+          `temporal_matching` is the study design Schumm runs 264 times.
+        default: "[10]"
+        provenance: "config.default.yaml:h2export; scripts/add_export.py:add_export"
+      - key: "sector.hydrogen.set_color_shares"
+        effect: >
+          Turns on the annual blue/pink production-share constraint — the adjacent
+          certification lever, useful when the question is about hydrogen colour
+          accounting rather than temporal matching. eur has no equivalent.
+        default: "false"
+        provenance: "config.default.yaml:set_color_shares; scripts/solve_network.py:set_h2_colors"
+    assembly:
+      - step: >
+          Set `policy_config.hydrogen.temporal_matching` to `year`, `month` or `hour`
+          and run. This is the whole method for the three window variants — no code. Run
+          the sector-coupled chain: the constraint is reachable from the electricity-only
+          solve rule as well, where no electrolyser Links exist, and there it adds
+          vacuous rows rather than failing.
+        uses: [custom-constraint-hook, sector-coupled-workflow]
+        config: "policy_config.hydrogen.temporal_matching"
+        code: null
+        provenance: "scripts/solve_network.py:hydrogen_temporal_constraint; scripts/solve_network.py:extra_functionality"
+      - step: >
+          Fix the eligible sets before believing the result. Confirm your electrolyser's
+          Link carrier is in `matching_technologies` and that
+          `temporal_matching_carriers` contains only what the rule you are modelling
+          actually credits — the default list credits reservoir hydro and run-of-river
+          discharge, which most matching rules do not.
+        uses: [custom-constraint-hook]
+        config: "policy_config.hydrogen.{matching_technologies,temporal_matching_carriers}"
+        code: null
+        provenance: "scripts/solve_network.py:hydrogen_temporal_constraint"
+      - step: >
+          Sweep the regime. `temporal_matching` is not a scenario wildcard, so the sweep
+          is one config override per run — either via the scenario/run machinery or by
+          crossing it with `export.h2export`, which IS a scenario dimension. Schumm's
+          design is this cross product plus a mitigation level.
+        uses: [scenario-matrix, h2-export-chain]
+        config: "export.h2export; scenario.sopts"
+        code: null
+        provenance: "Snakefile:scenario; scripts/add_export.py:add_export"
+      - step: >
+          (geographic correlation — code) Add a spatial grouper. The existing function
+          reduces over `dim="Generator"` and `dim="Link"` with no bus dimension; to get
+          same-zone sourcing you map each component to `n.buses.country` (or to the bus
+          region) and add one constraint per (zone, window) pair. `add_EQ_constraints`
+          in this same file already builds exactly those groupers for the annual case
+          and is the code to copy.
+        uses: [custom-constraint-hook]
+        config: "policy_config.hydrogen.spatial_matching is a DEAD key — do not gate on it without wiring it"
+        code: "scripts/solve_network.py:hydrogen_temporal_constraint"
+        provenance: "scripts/solve_network.py:hydrogen_temporal_constraint; scripts/solve_network.py:add_EQ_constraints"
+      - step: >
+          (additionality — code plus harness) Finish the feature. Build the reference
+          network with `is_reference: true` and `remove_h2_load: true`, solve it, then in
+          the study run actually READ `n_ref` inside `hydrogen_temporal_constraint` and
+          subtract the reference's eligible generation from the supply side. The
+          plumbing exists up to the function boundary; the constraint change and the
+          rule ordering do not.
+        uses: [custom-constraint-hook, monte-carlo-sampling]
+        config: "policy_config.hydrogen.{additionality,is_reference,remove_h2_load,path_to_ref}"
+        code: "scripts/solve_network.py:hydrogen_temporal_constraint"
+        provenance: "scripts/solve_network.py:n_ref_path; scripts/prepare_sector_network.py:remove_h2_load"
+      - step: >
+          Do not read `snakemake` from module scope in anything you add here, even
+          though `hydrogen_temporal_constraint` does exactly that for all four of its
+          config values. That pattern is why this file cannot be exercised outside a
+          snakemake run, and it is what makes the constraint untestable on a fixture.
+        uses: [workflow-reproducibility]
+        config: null
+        code: "scripts/solve_network.py:extra_functionality"
+        provenance: "scripts/solve_network.py:extra_functionality"
+      - step: >
+          Extract the deltas across regimes: product cost, procured capacity, and the
+          domestic price duration curve. Earth's summary chain is thinner than eur's, so
+          expect to post-process the netCDFs directly for the price curve.
+        uses: [summary-outputs, solve-statistics]
+        config: null
+        code: "scripts/make_summary.py"
+        provenance: "scripts/make_summary.py:make_summary"
+    boundary:
+      - variant: annual-matching
+        rung: L0
+        note: >
+          `policy_config.hydrogen.temporal_matching: year`. One config value, one
+          constraint row. Caveat to state: storage discharge counts, so this is the
+          form Duque-Perez deliberately avoids — drop `hydro`/`ror` from
+          `temporal_matching_carriers` (still L0, a different config value) if a fossil
+          charge could hide inside the year.
+      - variant: monthly-matching
+        rung: L0
+        note: >
+          `temporal_matching: month`. Twelve constraint rows. This is the EU
+          transitional regime to 31.12.2029, available as a config flip — which is
+          exactly the question a project financed today asks, and eur cannot answer it
+          without writing code.
+      - variant: hourly-matching
+        rung: L0
+        note: >
+          `temporal_matching: hour`. The headline asymmetry of this card: eur needs a
+          bespoke constraint (L2) for what earth does with one config value. Cost, not
+          rung, is the constraint here — one row per snapshot, ~8760 at hourly and 2920
+          at 3-hourly, plus a dense row over every eligible component. Both published
+          applications ran 3-hourly or hourly on 14 nodes.
+      - variant: additionality-vs-reference-network
+        rung: L5
+        note: >
+          Do NOT read `additionality: true` as L0. The config keys, the
+          reference-network build (`is_reference` + `remove_h2_load`) and the
+          `path_to_ref` load all exist, but `n_ref` is never read inside
+          `hydrogen_temporal_constraint` — it appears in the signature and the docstring
+          and nowhere else — so the flag adds the same constraint as `false`. Finishing
+          it is a constraint change plus an ordered two-solve dependency, and the
+          half-wired state makes it WORSE than eur's honest absence, because a run with
+          `additionality: true` succeeds and logs "setting h2 export to hourly matching
+          constraint with additionality". Schumm's build-year filter is the cheap
+          substitute, L1-L2 via `fleet-retirement-filter`.
+      - variant: geographic-correlation
+        rung: L5
+        note: >
+          The other place the feature's name outruns its code.
+          `policy_config.hydrogen.spatial_matching: false` exists in
+          config.default.yaml (and in the docs snippet, and in the GH scenario config)
+          and has NO consumer anywhere in the repo — a dead key. The constraint has no
+          bus or country dimension at all, so adding zonal grouping means restructuring
+          the expression from a system-wide reduction into a per-(zone, window) family.
+          `add_EQ_constraints` supplies the groupers, which is why this is a day's work
+          rather than a month's, but it is bespoke Python either way.
+      - variant: excess-sales-and-price-threshold
+        rung: L1
+        note: >
+          `allowed_excess` is the built-in slack on the consumption side, so the CFE-score
+          / excess-tolerance sweep is a config value — L1 because the default 1.0 is the
+          strict case and the interesting values are non-default. A price-threshold gate
+          on grid draw is a different matter: it needs an exogenous price series (earth
+          has no spot-price input) or a two-pass harness, so treat Alamia's encoding as
+          L3-L5 here and prefer `allowed_excess` for the same question.
+      - variant: spatio-temporal-load-shifting
+        rung: L5
+        note: >
+          New shift variables between nodes and snapshots, their conservation
+          constraints, and the matching constraint rewritten per node over them. Same
+          rung as eur, with one earth-specific aggravation: the module-global
+          `snakemake`/`opts`/`n_ref` pattern in this file makes the extension effectively
+          untestable outside a full snakemake run. Riepin's implementation is a bespoke
+          model on a PyPSA-Eur-derived background, not an earth config.
+    where:
+      - change: "the matching constraint itself — window grouping, eligible sets, weightings"
+        anchor: "scripts/solve_network.py::hydrogen_temporal_constraint"
+        provenance: "scripts/solve_network.py:hydrogen_temporal_constraint"
+      - change: "the dispatch that decides which regime is applied"
+        anchor: "scripts/solve_network.py::extra_functionality, branching on policy_config.hydrogen.temporal_matching"
+        provenance: "scripts/solve_network.py:extra_functionality; scripts/solve_network.py:temportal_matching_period"
+      - change: "add a spatial grouper for geographic correlation"
+        anchor: "scripts/solve_network.py::hydrogen_temporal_constraint (the .sum(dim=...) reductions); copy the groupers from scripts/solve_network.py::add_EQ_constraints"
+        provenance: "scripts/solve_network.py:add_EQ_constraints"
+      - change: "make additionality real — read n_ref in the constraint body"
+        anchor: "scripts/solve_network.py::hydrogen_temporal_constraint signature (n, n_ref, time_period); n_ref is loaded in main from policy_config.hydrogen.path_to_ref"
+        provenance: "scripts/solve_network.py:n_ref_path; scripts/solve_network.py:hydrogen_temporal_constraint"
+      - change: "build the counterfactual network for the reference run"
+        anchor: "scripts/prepare_sector_network.py — the three `is_reference and remove_h2_load` guards around the H2 shipping/industry/land-transport loads"
+        provenance: "scripts/prepare_sector_network.py:remove_h2_load; scripts/prepare_sector_network.py:is_reference"
+      - change: "the demand the regime constrains"
+        anchor: "scripts/add_export.py::add_export, driven by export.h2export"
+        provenance: "scripts/add_export.py:add_export; config.default.yaml:h2export"
+      - change: "many-solve fan-out for the regime sweep or a fixed-point iteration"
+        anchor: "scripts/monte_carlo.py + the monte_carlo rule (monte_carlo.options.add_to_snakefile)"
+        provenance: "scripts/monte_carlo.py:monte_carlo_sampling_chaospy; scripts/monte_carlo.py:validate_parameters"
+    data_dependencies:
+      - input: "a solved reference (no-hydrogen-load) network at path_to_ref"
+        required_for: additionality-vs-reference-network
+        availability: >
+          must be built — it is a normal run with `is_reference: true` and
+          `remove_h2_load: true`, but nothing in the DAG orders it before the study run,
+          so the path is a manual hand-off. And at this ref the study run loads it and
+          ignores it.
+      - input: "an exogenous hourly spot-price series for a price-threshold gate"
+        required_for: excess-sales-and-price-threshold
+        availability: >
+          absent — earth has no spot-price input channel; prices are duals of its own
+          solve. Use `allowed_excess` instead, or supply the series through
+          `custom-data-overrides` and gate the link in a new constraint.
+      - input: "regional renewable cutouts and land-eligibility at the resolution the matching window implies"
+        required_for: hourly-matching
+        availability: >
+          region-dependent — hourly matching is only as meaningful as the hourly
+          renewable profiles behind it, and earth's cutouts are built per region.
+          Check cookbooks/pypsa-earth/data_quality for the country grade before
+          promising an hourly-matching result.
+    cost_profile:
+      solves: >
+        1 for annual, monthly or hourly (window choice changes the row count, not the
+        solve count). 2 for a real additionality pair, once it is wired. Multiply by the
+        regime sweep — the reference design in the literature is 4 regimes x export
+        volume x mitigation level = 264 runs (Schumm), which is the honest budget for
+        "compare the matching rules" on a 14-node 3-hourly sector-coupled model.
+      relative: >
+        Annual/monthly: free. Hourly: |snapshots| extra constraint rows, each dense over
+        every component in `temporal_matching_carriers` and `matching_technologies` —
+        material but not prohibitive at earth's typical 10-20 nodes, which is precisely
+        why the two published applications are earth studies rather than eur studies.
+      note: >
+        Earth's base cases are small enough that hourly matching is affordable at full
+        temporal resolution, which matters because coarsening is not a neutral
+        mitigation here (pitfalls). Prefer cutting nodes over cutting snapshots. If the
+        sweep is the expensive part, `monte_carlo.options.add_to_snakefile` supplies the
+        many-solve fan-out eur lacks.
+    verifies:
+      - variant: hourly-matching
+        check: "len([c for c in n.model.constraints if c.startswith('RESconstraints_')]) == len(n.snapshots)"
+        over: run
+        note: >
+          The constraint names are `RESconstraints_{label}`, one per window label, so the
+          row count is directly checkable: |snapshots| for `hour`, 12 for `month`, 1 per
+          calendar year for `year`. Zero rows means the eligible sets matched nothing —
+          the likely cause is running the electricity-only solve rule, where no
+          electrolyser Links exist, and the run succeeds silently.
+      - variant: annual-matching
+        check: "len([c for c in n.model.constraints if c.startswith('RESconstraints_')]) == n.snapshots.year.nunique()"
+        over: run
+        note: >
+          Same check at the annual grouping. A mismatch here usually means
+          `temporal_matching` was left at `no_temporal_matching` in the run that was
+          actually executed, which produces a perfectly plausible unconstrained answer.
+      - variant: additionality-vs-reference-network
+        check: "len([c for c in n.model.constraints if c.startswith('RESconstraints_')]) == len([c for c in n_ref_run.model.constraints if c.startswith('RESconstraints_')])"
+        over: ensemble
+        note: >
+          Deliberately a NEGATIVE check for the current state: at this ref the study run
+          and a run with `additionality: false` produce identical constraint sets,
+          because `n_ref` is never read. If this check passes it confirms the flag is
+          cosmetic; when someone finishes the feature it should start failing.
+      - variant: geographic-correlation
+        check: "all('RESconstraints_' + z in n.model.constraints for z in n.buses.country.unique())"
+        over: run
+        note: >
+          Asserts a per-zone constraint family exists. It will fail at this ref, by
+          design: the built-in constraint has no spatial dimension, so a study that
+          claims same-bidding-zone sourcing on stock pypsa-earth is claiming something
+          the model did not enforce.

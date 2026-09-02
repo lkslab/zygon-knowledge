@@ -1,0 +1,154 @@
+paper: "2025_Che_space-based-solar-power-european-decarbonization.pdf"
+tier: 2
+model_used: >
+  PyPSA-Eur, 37 nodes (33 countries, 4 split into 2 nodes each), electricity-only,
+  3-hour resolution, 2020 and 2050 target years, overnight greenfield for 2050.
+scope: >
+  Integrates two NASA representative space-based solar power (SBSP) designs into
+  PyPSA-Eur to quantify cost thresholds, storage displacement, and system interaction
+  under European net-zero constraints for 2050.
+methods:
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "we run the PyPSA-Eur model to optimize power generation scenarios for 2020 and
+      2050, performing time-step optimizations in 3-hour intervals" (Sec. 5 Methods).
+      The 2050 run is an overnight capacity-expansion optimisation; generator capacities
+      are "set as extendable, allowing generation to be governed by cost-efficiency"
+      (Sec. 5 Methods).
+    procedure_notes: >
+      Two independent target years (2020 as reference/validation, 2050 as the
+      decarbonization scenario). No multi-period pathway — each year solved once,
+      independently. 2050 network structure is identical to 2020 but with updated cost
+      assumptions and zero CO2 cap.
+    variant: overnight
+    parameters: {target_years: "2020, 2050", time_resolution: "3h"}
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      "The PyPSA-Eur model incorporates 37 nodes representing a simplified version of
+      the grid for our study region. To manage the computational complexity of running
+      multiple scenarios, we employ k-means [58] clustering to simplify the grid layout"
+      (Sec. 5 Methods).
+    procedure_notes: >
+      37 nodes spanning 33 countries; 4 countries (GB, ES, IT, DK) have 2 nodes each;
+      all others are single-node. K-means clustering applied to reduce grid. The paper
+      follows the standard PyPSA-Eur network-reduction approach validated in prior
+      studies (citing Hoersch et al. 2018).
+    variant: null
+    parameters: {nodes: 37, countries: 33}
+
+  - slug: linearised-optimal-power-flow
+    role: routine-use
+    evidence: >
+      "the model validation is performed by comparing the installed generation capacities
+      and the outputs from a Linear Optimal Power Flow (LOPF) simulation against
+      historical data" (Sec. 5 Methods, Validation). The primary objective is to
+      "minimize the total annualized system costs for each scenario" using PyPSA-Eur's
+      standard LOPF (Sec. 5 Methods).
+    procedure_notes: >
+      Standard PyPSA-Eur LOPF. DC power flow used for dispatch and capacity expansion
+      co-optimisation. Network includes HVAC and HVDC lines. Validation in Sec. 5
+      shows the 2020 LOPF output compared to ENTSO-E historical data (Table 3).
+    variant: null
+    parameters: {}
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: canonical-use
+    evidence: >
+      "we next conduct a sensitivity analysis to reflect the uncertainty of these estimates
+      and to identify plausible cost thresholds for SBSP compared to terrestrial renewables.
+      Specifically, we adjust SBSP capital costs by up to ±65% of heliostat design's
+      baseline values—100–450 EUR/kW·year" (Sec. 'Cost thresholds for SBSP in the
+      future'). Three market opportunity scenarios (low/medium/high) vary terrestrial
+      renewable costs (Table 2).
+    procedure_notes: >
+      Two-dimensional sensitivity: (1) three capital cost scenario classes for terrestrial
+      renewables (low/medium/high, Table 2); (2) parametric sweep of SBSP capital cost
+      from 100 to 450 EUR/kW·year (±65% around baseline) at fixed 2050 "Medium"
+      terrestrial costs. Each point is a separate full optimisation run. Outputs tracked:
+      installed capacity, storage capacity, annual electricity supply, total system cost
+      (Figs. 5–7).
+    variant: one-at-a-time
+    parameters: {sbsp_capex_range: "100-450 EUR/kW·year", terrestrial_cost_scenarios: 3}
+
+  - slug: discounting-and-cost-of-capital
+    role: routine-use
+    evidence: >
+      "We convert the CapEx (investment cost) values for SBSP into annualized capital
+      costs (including fixed O&M) using the annuitization approaches and exchange rates
+      in [46]" (Sec. 2.2). The annualisation formula is given as Eq. 1: a = (1-(1+r)^-n)/r,
+      using discount rate r = 3% and lifetime n = 30 years for SBSP (Table 1, Sec. 5).
+    procedure_notes: >
+      Single uniform discount rate of 3% applied to SBSP. Terrestrial technology costs
+      taken from DEA, LAZARD, and IEA GEC databases at their 2050 projected values
+      (Sec. 5). Technology-data version 0.9.2 used (ref [64]).
+    variant: null
+    parameters: {discount_rate: "3%", sbsp_lifetime: "30 years"}
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "Land eligibility restrictions, such as suitable land classifications and buffer zones
+      around populated or protected regions, are applied to wind and solar power to
+      determine feasible capacity" (Sec. 5 Methods, Electricity Supply and Storage).
+      "generation time series and potential are calculated based on 2020 ERA5 weather
+      data" (Sec. 5 Methods).
+    procedure_notes: >
+      Standard PyPSA-Eur atlite-based pipeline: ERA5 weather data for 2020, land
+      eligibility filters applied to wind and solar. Run-of-river and reservoir hydro
+      capped at current installed capacity (p_nom_max = p_nom) reflecting limited
+      expansion potential.
+    variant: null
+    parameters: {weather_year: 2020, data_source: "ERA5"}
+
+  - slug: storage-sizing-and-duration
+    role: routine-use
+    evidence: >
+      "the storage module includes batteries, existing pumped-hydro storage (PHS),
+      hydroelectric dams, hydrogen storage, and synthetic energy carriers such as
+      methane" (Sec. 5 Methods). Storage capacity is co-optimised with generation in the
+      LP; results track how SBSP displaces battery use "by over 70%" while hydrogen
+      storage expands seasonally (Abstract, Sec. Results).
+    procedure_notes: >
+      All storage technology capacities (battery, PHS, hydrogen) are endogenously sized
+      within the LOPF. Hydrogen modelled solely for electricity balancing (not
+      sector-coupled). Energy-to-power ratio not separately discussed; standard PyPSA
+      max_hours parameterisation implied. Key result: battery usage cut 78% with RD1,
+      hydrogen expands in winter.
+    variant: null
+    parameters: {}
+
+  - slug: powerplant-matching-and-fleet-assembly
+    role: routine-use
+    evidence: >
+      "data for power plants is sourced using the open-access powerplantmatching tool
+      [60], which compiles datasets from multiple sources. The tool provides detailed
+      information on plant location, technology type, fuel source, age, and capacity"
+      (Sec. 5 Methods, Electricity Supply and Storage). For 2050, "we remove power
+      plants with a DateOut extending beyond 2050 to ensure data consistency."
+    procedure_notes: >
+      Standard PyPSA-Eur use of powerplantmatching. Includes coal, lignite, oil, OCGT,
+      CCGT, nuclear, geothermal, bioenergy, hydro. 2050 fleet pruned by retirement year.
+      Biomass and nuclear given p_nom_min = current p_nom; coal/oil/gas set to p_nom = 0
+      for 2050 (phased out).
+    variant: null
+    parameters: {}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "we incorporated a GlobalConstraint into our 2020 model, setting co2 emissions at
+      roughly 70% of 1990 levels. Additionally, in accordance with the European Climate
+      Law [66], which mandates achieving net-zero greenhouse gas emissions across the EU
+      by 2050, we set the 2050 co2 emissions to zero in our model" (Sec. 5 Methods,
+      Carbon dioxide emissions).
+    procedure_notes: >
+      Two CO2 caps: 2020 at ~70% of 1990 levels (GlobalConstraint); 2050 at net-zero
+      (zero emissions). CO2 intensities from technology-data v0.9.2: oil 0.2571, coal
+      0.3361, lignite 0.4069, gas 0.1980, geothermal 0.1200 tCO2/MWh_th (Sec. 5).
+    variant: cap
+    parameters: {co2_2020: "~70% of 1990 levels", co2_2050: 0}
+
+unmatched_methods: []

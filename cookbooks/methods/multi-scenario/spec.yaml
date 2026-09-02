@@ -1,0 +1,266 @@
+schema_version: 2
+id: multi-scenario
+title: multi-scenario — variant fan-out with harmonised collection
+family: uncertainty-and-robustness
+what: 'Optimise N variants of one system that differ by declared parameters, then
+  HARMONISE: one collection rule applies agent-chosen extraction functions (a hooks
+  module, one function per quantity) to every listed network and concatenates them
+  into shared long-format CSVs (results/zygon_collect/<quantity>.csv: a `network`
+  label column, the hook''s index columns, `value`). Collection input is an explicit
+  path list, so it composes with networks other methods produce (e.g. myopic horizons).
+  Eur variants ride the native run.scenarios mechanism; earth ships a declarative
+  prepared-network modifier.
+
+  '
+when_to_use:
+- compare scenario variants of one system in a single run
+- multi-scenario study with shared summary tables
+- what-if comparison across parameter settings
+- pull the same quantities from several solved networks
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
+    date: '2026-08-02'
+  status: verified
+  baseline: config.de.yaml
+  execution:
+  - kind: config
+    key: run.scenarios.enable
+    value: true
+    note: 'flips RDIR to {run}/ and activates per-run config overrides (scripts/_helpers.py:get_scenarios,
+      rules/common.smk:config_provider).
+
+      '
+  - kind: config
+    key: run.name
+    value:
+    - co2-tight
+    - co2-ref
+    - co2-loose
+    note: 'the literal scenario-name list — one results/<name>/ tree per variant;
+      never "all" (target rendering fans out over THIS list).
+
+      '
+  - kind: config
+    key: run.shared_resources
+    value:
+      policy: base
+      exclude:
+      - costs_
+    note: 'share the pre-add_electricity chain ONCE across runs. costs_ must be excluded:
+      producer is run-scoped but consumers resolve the horizon before the sharing
+      decision (asymmetry verified 2026-08-02).
+
+      '
+  - kind: data
+    target: config/scenarios.yaml
+    do: 'author one top-level key per run.name entry carrying that variant''s config
+      overrides (test: co2_budget.2050 = 0.0 / 0.05 / 0.2). Overrides must hit keys
+      consumed at add_electricity or LATER — upstream keys live in the shared chain
+      and would be silently dead.
+
+      '
+  - kind: config
+    key: zygon_collect
+    value:
+      networks:
+      - results/co2-tight/networks/base_s_5__168H_2050.nc
+      - results/co2-ref/networks/base_s_5__168H_2050.nc
+      - results/co2-loose/networks/base_s_5__168H_2050.nc
+      labels:
+      - co2-tight
+      - co2-ref
+      - co2-loose
+      quantities:
+      - system_cost
+      - capacity_by_carrier
+      hooks: zygon_hooks.py
+    note: 'explicit solved-network paths (must equal rule-producible paths — a wrong
+      path is a loud MissingInputException at the post-apply dry-run).
+
+      '
+  - kind: data
+    target: zygon_hooks.py
+    do: 'define one pure function per quantities entry, `def <q>(n)` returning a pandas
+      Series (any index), a tidy DataFrame with a `value` column, or a number. Test:
+      system_cost = n.objective; capacity_by_carrier = n.generators.groupby("carrier").p_nom_opt.sum().
+
+      '
+  - kind: payload
+    note: 'rules/zygon_collect.smk + scripts/zygon_collect.py; patches the Snakefile
+      include list and appends the zygon_collect: config section.
+
+      '
+  - kind: invocation
+    note: 'extra_targets + verify_networks (stage: collected) for results/zygon_collect/{zygon_collect.quantities}.csv.
+      Variant networks need no entries — the profile''s {run.name} templates fan out
+      natively.
+
+      '
+  invalidates:
+  - prepare_sector_network
+  - solve_sector_network
+  - zygon_collect
+  budget:
+    jobs: 130
+    class: hours
+  success_metric:
+  - name: three-variants
+    needs: solved
+    check: len({v for df in collected.values() for v in df['network']}) == 3
+    expect: the collection harmonised exactly three variant networks (labels read
+      from the run's own output, not assumed)
+  - name: variant-parameter-landed
+    needs: solved
+    check: len({round(float(nv[k].global_constraints.constant['CO2Limit'])) for k
+      in set(collected['system_cost']['network'])}) == 3
+    expect: the per-scenario co2_budget override reached each solve — three distinct
+      CO2Limit constants
+  - name: cost-ordering
+    needs: solved
+    check: nv['co2-tight'].objective > nv['co2-ref'].objective >= nv['co2-loose'].objective
+      and nv['co2-tight'].objective > nv['co2-loose'].objective
+    expect: tighter carbon budget costs more — monotone objectives across the variant
+      set
+  - name: collect-complete
+    needs: solved
+    check: set(collected) == {'system_cost', 'capacity_by_carrier'} and all({'network',
+      'value'} <= set(df.columns) for df in collected.values())
+    expect: one long-format CSV per declared quantity, each carrying network + value
+      columns
+  - name: collect-coverage
+    needs: solved
+    check: len({frozenset(df['network']) for df in collected.values()}) == 1 and {v
+      for df in collected.values() for v in df['network']} <= set(nv)
+    expect: every quantity covers the SAME variant set, and each collected label resolves
+      to a solved variant artifact
+  - name: collect-consistency
+    needs: solved
+    check: all(abs(float(collected['system_cost'].set_index('network') ['value'][k])
+      - float(nv[k].objective)) <= 1e-6 * abs(float(nv[k].objective)) for k in set(collected['system_cost']['network']))
+    expect: collected system_cost equals each variant network's objective — the CSVs
+      are the networks' numbers
+- model: pypsa-earth
+  version_anchor:
+    ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
+    date: '2026-08-02'
+  status: verified
+  baseline: null
+  execution:
+  - kind: config
+    key: zygon_scenarios
+    value:
+      variants:
+        co2-tight:
+        - component: global_constraints
+          where:
+            index: CO2Limit
+          attr: constant
+          op: scale
+          value: 0.25
+        co2-ref: []
+        co2-loose:
+        - component: global_constraints
+          where:
+            index: CO2Limit
+          attr: constant
+          op: scale
+          value: 4.0
+    note: 'declarative ops on the prepared elec network (empty list = ref copy; empty
+      selection = hard error). Prepared-net parameters only. No networks/ intermediates
+      in the template: elec chain rebuilds once.
+
+      '
+  - kind: config
+    key: zygon_collect
+    value:
+      networks:
+      - results/mexico-power/scenarios/co2-tight/elec_s_4_ec_lcopt_Co2L.nc
+      - results/mexico-power/scenarios/co2-ref/elec_s_4_ec_lcopt_Co2L.nc
+      - results/mexico-power/scenarios/co2-loose/elec_s_4_ec_lcopt_Co2L.nc
+      labels:
+      - co2-tight
+      - co2-ref
+      - co2-loose
+      quantities:
+      - system_cost
+      - capacity_by_carrier
+      hooks: zygon_hooks.py
+    note: 'paths under results/<run.name>/scenarios/<variant>/ — the solve_scenario_network
+      outputs.
+
+      '
+  - kind: data
+    target: zygon_hooks.py
+    do: 'define one pure function per quantities entry, `def <q>(n)` returning a pandas
+      Series (any index), a tidy DataFrame with a `value` column, or a number. Test:
+      system_cost = n.objective; capacity_by_carrier = n.generators.groupby("carrier").p_nom_opt.sum().
+
+      '
+  - kind: payload
+    note: 'ships the zygon_scenarios + zygon_collect rules and scripts; solve_scenario_network
+      reuses the model''s OWN solve_network.py. Patches Snakefile includes + config
+      sections.
+
+      '
+  - kind: invocation
+    note: 'extra_targets results/zygon_collect/{zygon_collect.quantities}.csv; verify_networks:
+      solved = {zygon_collect.networks} (fans out one per variant) + collected = the
+      collect CSVs.
+
+      '
+  invalidates:
+  - build_scenario_network
+  - solve_scenario_network
+  - zygon_collect
+  budget:
+    jobs: 36
+    class: hour
+  success_metric:
+  - name: three-variants
+    needs: solved
+    check: len({v for df in collected.values() for v in df['network']}) == 3
+    expect: the collection harmonised exactly three variant networks (labels read
+      from the run's own output, not assumed)
+  - name: variant-parameter-landed
+    needs: solved
+    check: len({round(float(nv[k].global_constraints.constant['CO2Limit'])) for k
+      in set(collected['system_cost']['network'])}) == 3
+    expect: the declarative CO2Limit scaling reached each solve — three distinct constants
+  - name: cost-ordering
+    needs: solved
+    check: nv['co2-tight'].objective >= nv['co2-ref'].objective >= nv['co2-loose'].objective
+      and nv['co2-tight'].objective > nv['co2-loose'].objective
+    expect: tighter cap never cheaper, and strictly costlier end to end — the caps
+      bind
+  - name: collect-complete
+    needs: solved
+    check: set(collected) == {'system_cost', 'capacity_by_carrier'} and all({'network',
+      'value'} <= set(df.columns) for df in collected.values())
+    expect: one long-format CSV per declared quantity, each carrying network + value
+      columns
+  - name: collect-coverage
+    needs: solved
+    check: len({frozenset(df['network']) for df in collected.values()}) == 1 and {v
+      for df in collected.values() for v in df['network']} <= set(nv)
+    expect: every quantity covers the SAME variant set, and each collected label resolves
+      to a solved variant artifact
+  - name: collect-consistency
+    needs: solved
+    check: all(abs(float(collected['system_cost'].set_index('network') ['value'][k])
+      - float(nv[k].objective)) <= 1e-6 * abs(float(nv[k].objective)) for k in set(collected['system_cost']['network']))
+    expect: collected system_cost equals each variant network's objective — the CSVs
+      are the networks' numbers
+notes: 'NOTHING here is fixed to carbon budgets: the co2-tight/ref/loose labels, the
+  varied parameter and the two quantities are the VERIFICATION INSTANTIATION (as line_scaling
+  is for [[redispatch]]) — a real problem picks its own. The mechanism metrics read
+  labels back out of the run''s own collection. Metrics get `nv` ({variant -> Network},
+  from stage-<variant>-- artifact naming; `--` is RESERVED) and `collected` ({quantity
+  -> DataFrame}). The hooks module is the agent''s one code surface; the collect rule
+  hard-errors on a missing function, bad shape, or columns differing across networks.
+  Eur: overrides upstream of add_electricity are silently dead under shared policy
+  "base". Earth: variants must be expressible as prepared-network edits. Figures:
+  compare_scenarios.
+
+  '

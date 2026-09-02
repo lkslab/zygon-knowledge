@@ -1,0 +1,1464 @@
+id: price-formation-and-scarcity-rents
+title: "Price formation and scarcity rents in zero-marginal-cost systems"
+summary: >
+  Interpret the model's energy price as the outcome of scarcity rather than fuel cost —
+  set by storage arbitrage, binding capacity limits and willingness to pay — and check
+  it against the long-term-equilibrium identity that each technology's market value
+  equals its annualised cost.
+question: >
+  If wind and solar cost nothing to run, what sets the price, and does every asset in
+  this system earn back what it cost to build?
+aliases:
+  - "price formation"
+  - "scarcity rent"
+  - "scarcity pricing"
+  - "inframarginal rent"
+  - "price duration curve"
+  - "zero marginal cost"
+  - "zero-price hours"
+  - "negative prices"
+  - "price spikes"
+  - "cost recovery"
+  - "revenue sufficiency"
+  - "missing money"
+  - "zero-profit condition"
+  - "long-term equilibrium"
+  - "market value"
+  - "capture price"
+  - "value factor"
+  - "merit order effect"
+  - "price-setting technology"
+  - "bidding curve"
+  - "supply and demand curve reconstruction"
+  - "marginal storage value"
+  - "energy-only market"
+  - "value of lost load"
+  - "VOLL"
+when_to_use:
+  - "if renewables have zero marginal cost, what sets the electricity price"
+  - "will this battery / hydrogen plant / gas peaker recover its costs"
+  - "does an energy-only market still work in a fully renewable system"
+  - "why are prices zero so often in this scenario"
+  - "why does the model show prices of tens of thousands of euros"
+  - "which technology is setting the price in each hour"
+  - "how much of the year is priced by storage rather than by generation"
+  - "show me the price duration curve and explain its shape"
+  - "do we need a capacity market in this scenario"
+  - "what happens to wind revenues as more wind is built"
+  - "is the missing-money problem real in this model"
+  - "how much revenue comes from a handful of scarcity hours"
+  - "why is the average price lower than the LCOE"
+  - "what price cap is my model implicitly assuming"
+family: markets-and-prices
+prevalence:
+  papers: 10
+  tier1: 5
+  tier2: 5
+  sweep_hits: 19
+  basis: >
+    Hand-coded pass 1 over all 100 PDFs (2026-07-25) found 10 papers that actually
+    reason about WHERE the price comes from or whether assets recover their capital, as
+    opposed to merely reporting a dual (that is the 45-paper
+    `shadow-prices-and-marginal-values` slice). The regex screen returned 19 and
+    OVER-counts by 9: the pattern includes "zero marginal cost" and "price duration",
+    which any paper plotting a sorted price series matches without asking what sets the
+    price. EVIDENCE_INDEX.md flags no mention-only suspects in this slice, so all 10
+    stand. The role split is the unusual part and is the reason this card exists as a
+    card: 3 `defines` and 5 `canonical-use` against only 1 `routine-use` — nobody does
+    price-formation analysis by accident, which is the opposite of the dual-extraction
+    method it sits on top of.
+procedure:
+  - step: >
+      Decide FIRST whether the run is a long-term (LT) co-optimised investment model or
+      a short-term (ST) dispatch-only model at fixed capacities. The two produce
+      different prices from the same network, and the whole interpretation below forks
+      here: LT prices carry investment pressure and satisfy the zero-profit identity by
+      construction, ST prices are the merit-order price of an existing fleet and are the
+      ones comparable to observed market data.
+    handle: "rule solve_operations_network (ST) vs rule solve_sector_network (LT)"
+    provenance: "scripts/solve_operations_network.py:fix_optimal_capacities; scripts/solve_network.py:solve_network"
+  - step: >
+      Set the price CEILING deliberately before solving. Without load shedding an
+      inadequate system is infeasible rather than expensive, and with it every scarcity
+      hour prices at exactly the value of lost load. There is no third option, and the
+      choice sets the entire upper tail of the price distribution — which is where the
+      cost recovery of peaking and long-duration assets lives.
+    handle: "solving.options.load_shedding.{enable,default_cost}"
+    provenance: "config/config.default.yaml:load_shedding; scripts/solve_network.py:add_load_balance_components"
+  - step: >
+      Solve and read the energy price as the nodal balance dual lambda_{n,t}, and the
+      marginal storage value as the storage energy-balance dual lambda^s_t. The MSV is
+      the key object of this method: divided by the discharge efficiency it acts exactly
+      like a fuel cost, which is how a zero-marginal-cost system regains a merit order.
+    handle: "n.buses_t.marginal_price; n.storage_units_t.mu_energy_balance (needs all duals)"
+    provenance: "pypsa/optimization/optimize.py:assign_all_duals; pypsa/component_attrs/storage_units.csv:mu_energy_balance"
+  - step: >
+      Decompose the price series by WHAT IS SETTING IT. The corpus's categories are:
+      zero/near-zero hours (VRE at the margin, supply exceeds inelastic demand), storage
+      hours (charging or discharging bid at the MSV), thermal hours (fuel plus CO2 cost),
+      and scarcity hours (a capacity constraint binds, or demand's willingness to pay
+      clears the market). Report the SHARE of each, not just the mean.
+    handle: null
+    provenance: null
+  - step: >
+      Reconstruct the bid/ask of each technology ex post from the KKT stationarity
+      condition of the Lagrangian at each timestep, assemble them into full hourly
+      supply and demand curves, and identify the price setter as the candidate whose bid
+      lies within a tolerance of the clearing price while being partly loaded. The
+      corpus's algorithm: bid within 0.01 EUR/MWh, capacity utilisation 1-99%, minimum
+      dispatch 10 MWh, supply preferred over demand, least-variance bidder among ties.
+    handle: null
+    provenance: null
+  - step: >
+      Compute per-technology REVENUE (dispatch times price, both snapshot-weighted) and
+      compare it to annualised capital plus fixed cost. In a cost-optimal LP with free
+      entry this comparison is not a test of the world but a test of your extraction:
+      the KKT conditions guarantee that every endogenously sized technology recovers
+      exactly its annualised cost, so a gap means the weighting, the price cap or the
+      cost annuity is wrong somewhere.
+    handle: "n.statistics.market_value(bus_carrier='AC'); n.statistics.capex; n.statistics.revenue"
+    provenance: "pypsa/statistics.py:market_value; pypsa/statistics.py:revenue"
+  - step: >
+      Attribute the revenue over TIME. The corpus's finding is that a small number of
+      hours carries a large share of it — ~35% of annual electricity cost accrues in
+      ~1% of hours during system-defining events — so report the revenue concentration
+      (share from the top N hours) alongside the total, because that concentration is
+      the investor's risk exposure.
+    handle: null
+    provenance: null
+  - step: >
+      (extension) Repeat over an ensemble of weather years with capacities held fixed at
+      one year's optimum. Cost recovery holds by construction only for the year the
+      capacities were optimised for; the spread across years IS the financial-risk
+      result, and for exogenously fixed capacity it can be a shortfall in every year.
+    handle: null
+    provenance: null
+  - step: >
+      (extension) Make demand price-elastic. With a downward-sloping inverse demand
+      curve the price is set by willingness to pay whenever supply is unconstrained,
+      which collapses the zero-price share and restores cost recovery without a capacity
+      mechanism. Neither workflow has elastic demand; the corpus's implementations
+      replace the fixed load with a step, linear or piecewise-linear bid curve.
+    handle: null
+    provenance: null
+variants:
+  - id: price-duration-and-composition
+    what: >
+      Sort the price series and report its shape plus the share of hours in each price
+      regime — near-zero, moderate, spike — and how that composition shifts with
+      decarbonisation level, penetration or policy. The entry point and the most
+      commonly published form; needs an hourly run, because segmentation destroys
+      exactly the tail the curve is about.
+    papers:
+      - "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+      - "2021_Brown_Market-value-variable-renewables_EnergyEcon.pdf"
+      - "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+      - "2026_Aden_spatial-equity-decentralization-decarbonization.pdf"
+      - "2025_Rahdan_high-impact-consumers-behavioural-flexibility.pdf"
+  - id: kkt-price-setter-identification
+    what: >
+      Map the duals back to per-technology bids via the KKT stationarity conditions,
+      build the full hourly supply and demand curve, and label the price-setting
+      technology in every timestep. The most informative variant and the only one that
+      answers "why THIS price" rather than "what price"; extended to multi-carrier
+      systems via the conversion incidence matrix, so a converter's bid is an
+      opportunity cost across carriers.
+    papers:
+      - "2026_Geis_Price-Formation-Sector-Coupled_EnergyEcon.pdf"
+      - "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+  - id: storage-arbitrage-as-fuel-cost
+    what: >
+      Treat the marginal storage value (the storage energy-balance dual) as the storage
+      unit's effective fuel cost — divided by the discharge efficiency for asks,
+      multiplied for bids — and show that storage bidding is what reintroduces a merit
+      order into a system with no fuel. Also the variant that shows myopic storage
+      dispatch is adequate once the MSV is priced, which matters because it means the
+      market does not need perfect foresight to work.
+    papers:
+      - "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+      - "2026_Geis_Price-Formation-Sector-Coupled_EnergyEcon.pdf"
+  - id: zero-profit-cost-recovery-check
+    what: >
+      Compare each technology's market value against its annualised cost and confirm the
+      long-term-equilibrium identity. Under a VRE support policy MV = LCOE - mu_support
+      and under a CO2 policy MV = LCOE + e * mu_CO2, so the gap between capture price
+      and LCOE is exactly the policy constraint's dual — which is why the observed
+      decline of VRE market value with penetration is an artefact of the assumed policy
+      instrument, not of variability.
+    papers:
+      - "2021_Brown_Market-value-variable-renewables_EnergyEcon.pdf"
+      - "2025_Thomassen_JRC_Locational-Price-Signals-Europe_nodal-zonal-national.pdf"
+  - id: scarcity-rent-and-revenue-risk
+    what: >
+      Isolate the scarcity component of revenue: the rent that accrues when a capacity
+      constraint binds rather than when a fuel cost is at the margin. Measured either as
+      the divergence between system LCOE and the demand-weighted mean price, or as the
+      share of annual revenue earned in the few hours of a system-defining event. The
+      variant that answers "is this asset bankable".
+    papers:
+      - "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+      - "2026_Aden_spatial-equity-decentralization-decarbonization.pdf"
+  - id: elastic-demand-price-formation
+    what: >
+      Replace the fixed load with a demand bid curve (VOLL step, linear, or
+      piecewise-linear log-log) so that willingness to pay sets the price when supply is
+      unconstrained. Collapses the zero-price share dramatically — the corpus reports
+      ~89% to ~31% of hours at a -5% elasticity — and is the mechanism by which an
+      energy-only market recovers costs without a capacity payment.
+    papers:
+      - "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+  - id: calibrated-bid-price-formation
+    what: >
+      Do not derive marginal costs from technology data at all: estimate them from
+      observed dispatch-versus-price behaviour, and encode the support instrument each
+      unit actually holds (CfD units bid zero, RO units bid negative their certificate
+      value), plus an exogenous balancing markup. The variant for a question about a
+      real market rather than about a cost-optimal one, and the only route to prices
+      that reproduce a historical period.
+    papers:
+      - "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+      - "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+literature:
+  - paper: "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+    tier: 1
+    role: defines
+    note: >
+      The card's anchor. Derives price formation in a zero-fuel-cost system from the KKT
+      stationarity conditions and answers the field's standing objection — that an
+      energy-only market breaks down without fuel costs — in the negative. Three results
+      to relay verbatim. (1) The price is set by one of three things in every hour:
+      demand's willingness to pay, a storage unit's charge/discharge bid at its marginal
+      storage value, or VRE at zero cost. (2) The MSV is the storage balance dual
+      lambda^s_t and enters the bid divided by the discharge efficiency, so it behaves
+      exactly like a fuel cost — that is the mechanism that gives a fuel-free system a
+      merit order. (3) Demand elasticity, not fuel cost, is what stabilises prices: a -5%
+      elasticity at a 100 EUR/MWh average cuts the zero-price share from ~89% to ~31%,
+      and it also makes MYOPIC storage dispatch adequate, so no perfect-foresight
+      operator is needed. Compares LT (co-optimised) with ST (fixed-capacity) models and
+      proves the prices coincide iff the inverse demand curve is a unique strictly
+      decreasing map. Custom PyPSA build (v0.27.1, single node, DE/ES/UK, 70 weather
+      years 1951-2020, wind/solar/battery/H2 LDES), not PyPSA-Eur.
+  - paper: "2026_Geis_Price-Formation-Sector-Coupled_EnergyEcon.pdf"
+    tier: 1
+    role: defines
+    note: >
+      Extends price formation to a sector-coupled system and contributes the method that
+      makes model prices legible: an ex-post mapping from the dual variables to the bids
+      and asks of every supplier and consumer, from which the FULL hourly supply and
+      demand curve is reconstructed. Stationarity conditions are derived separately for
+      generators, converters and storage-as-converter, generalised to multiple carriers
+      through a conversion incidence matrix M_ikt — so a converter's bid on the
+      electricity bus is an opportunity cost expressed in another carrier's price. The
+      price-setter algorithm is the reusable part and is worth copying exactly: a
+      candidate must bid within 0.01 EUR/MWh of the clearing price, run at 1-99% of
+      capacity and dispatch at least 10 MWh; among candidates supply is preferred to
+      demand and the least-variance bidder wins. Also the reference for the LT/ST
+      comparison in a sector-coupled setting. PyPSA-DE, single-node Germany, 3-hourly,
+      myopic 2020-2045.
+  - paper: "2021_Brown_Market-value-variable-renewables_EnergyEcon.pdf"
+    tier: 1
+    role: defines
+    note: >
+      The theory that makes every price in this book interpretable, and the paper to cite
+      whenever a user assumes VRE cannibalise their own value. Proves the
+      long-term-equilibrium zero-profit identity from the KKT conditions: with free
+      entry, each technology's market value equals its annualised cost, and the gap
+      between capture price and LCOE is exactly the dual of the policy constraint —
+      MV = LCOE - mu_support under a VRE quota or feed-in premium, MV = LCOE + e*mu_CO2
+      under a CO2 policy. The substantive consequence contradicts the standard
+      intuition: the declining market value of wind and solar with penetration is caused
+      by the implicit support-policy assumption, not by variability; under a rising CO2
+      cap or tax market values stay at cost recovery above 80% penetration. Also explains
+      negative prices mechanically (supported VRE bid marginal cost minus the premium,
+      which can go below zero) and shows via price duration curves that as CO2 intensity
+      falls from 1.2 to 0.0 t/MWh, storage and transmission arbitrage replace singular
+      price behaviour. Proofs cover storage, multi-node networks, limited potentials and
+      non-linear costs. Bespoke five-node PyPSA reimplementation of EMMA, not PyPSA-Eur.
+  - paper: "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+    tier: 2
+    role: canonical-use
+    note: >
+      The reference application for the revenue-risk half of this card, and the sharpest
+      demonstration of why cost recovery is a distributional statement and not a single
+      number. Classifies weather-driven system-defining events from the shadow-price
+      field, then computes the fraction of annualised capital cost each back-up
+      technology recovers during those events versus over the full year, across 80
+      weather years (1941-2021, PyPSA-Eur 0.13.0, 90 nodes, hourly). Two numbers to
+      quote: ~35% of annual electricity cost accrues in the ~1% of hours that are SDEs,
+      and fuel cells run at ~4% annual capacity factor. The asymmetry is the finding —
+      ENDOGENOUSLY sized fuel cells recover their cost by optimality (that is the
+      zero-profit identity in action), while EXOGENOUSLY fixed gas plants recover cost in
+      none of the 80 years. Reliance on short-lived price spikes plus low utilisation is
+      named as the financial-risk mechanism.
+  - paper: "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The calibrated-bid route, and the corpus's most complete answer to "what actually
+      sets the price in a real market". Thermal SRMCs are not taken from technology data
+      but estimated from a 30-day rolling correlation of dispatch behaviour against
+      observed day-ahead prices, then corrected per settlement period to match the
+      realised price; CfD units bid GBP 0/MWh and RO units bid negative their ROC value,
+      so the support instrument each unit holds is explicit in its bid. A GBP 30/MWh
+      balancing markup is assumed and the gap to the observed GBP 55/MWh premium is
+      interpreted as strategic bidding rent. The price-formation result is the reason to
+      read it: in 69% of hours wind is low enough that one gas-set price clears all of
+      GB, while in high-wind hours northern zones are priced by zero-marginal-cost CfD
+      units and southern zones by gas — i.e. the price regime, not just the price level,
+      is what the market design changes. Bespoke ~300-bus GB PyPSA model, operations
+      only, 30-minute, 2022-2024 solved day by day.
+  - paper: "2025_Thomassen_JRC_Locational-Price-Signals-Europe_nodal-zonal-national.pdf"
+    tier: 2
+    role: canonical-use
+    note: >
+      The counter-example on scarcity pricing, and the reason to ask a user whether they
+      want scarcity in the model at all: this study deliberately excludes it. Adequate
+      capacity is procured exogenously so the market always clears, the revenue gap for
+      dispatchable assets is assumed to be covered outside the energy market by capacity
+      mechanisms, and production is remunerated only while the price is positive
+      (negative-price hours pay CfD holders nothing). What it contributes instead is the
+      price-signal-quality result: zonal clearing gives systematically wrong flexibility
+      signals, with storage charging while the system needed it to discharge — a failure
+      of price FORMATION rather than of price level. Congestion rent is returned to
+      consumers via lower grid charges. 1024 k-means buses from the PyPSA-Eur workflow,
+      hourly, 2030 and 2040.
+  - paper: "2026_Aden_spatial-equity-decentralization-decarbonization.pdf"
+    tier: 2
+    role: canonical-use
+    note: >
+      Contributes the cheapest usable definition of a scarcity rent in a
+      capacity-expansion model: the divergence between system LCOE (total system cost per
+      unit generated) and the demand-weighted mean marginal price. Two things make it
+      worth citing. First the mechanism — scarcity rent appears where "the optimizer
+      ideally would increase capacity to meet demand, but is constrained by a binding
+      capacity constraint", which is the operational definition this card uses. Second
+      the non-monotonicity: the mean marginal price FALLS during early decarbonisation
+      via the merit-order effect and then rises steeply at high decarbonisation as
+      storage, transmission and VRE overcapacity become the balancing mechanisms, with
+      the dominant rent contributor switching from fossil capacity limits to
+      renewable/storage limits at the 80-90% transition. PyPSA-Eur, 37 nodes, hourly,
+      2013, 105 scenarios.
+  - paper: "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The price duration curve used as the analytical instrument rather than as a plot,
+      and the only PyPSA-Earth entry in this slice. Stricter hourly hydrogen matching
+      shifts the whole domestic price duration curve leftward because the additional
+      renewable capacity displaces higher-marginal-cost fossil generation, and the paper
+      separates two distinct transmission channels — a PRICE spillover (renewables crowd
+      out high-MC fossil) and an ENERGY spillover (excess capacity built for the
+      export/matching rule supplies the domestic grid). Domestic electricity cost falls
+      up to 31% under hourly matching. Evidence that the method is exercised on earth in
+      practice: PyPSA-Earth-Sec, bespoke Morocco model, 14 nodes, 3-hourly, 264 runs.
+  - paper: "2025_Rahdan_high-impact-consumers-behavioural-flexibility.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      A useful negative result on what changes a price and what does not, across four
+      stylised demand-side mechanisms in a net-zero sector-coupled run. A constant 5%
+      demand reduction has negligible effect on price level or variability, because
+      "although lower capacities are installed, the difficulty of meeting demand, which
+      sets the price, remains unchanged" — the cleanest one-sentence statement of the
+      scarcity mechanism in the corpus. Peak shaving and demand curtailment, by contrast,
+      remove rarely-used back-up capacity (gas turbines, resistive heaters) and produce
+      the largest price and volatility reductions. Its curtailment mechanism is a
+      one-step willingness-to-pay threshold analysed over 100-400 EUR/MWh, i.e. a crude
+      elastic-demand step function inside PyPSA-Eur. PyPSA-Eur 0.11.0, 37 nodes,
+      2-hourly, full year with no temporal aggregation.
+  - paper: "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+    tier: 2
+    role: critiques
+    note: >
+      The critique that bounds this card's claims: an optimal-dispatch model's price
+      formation is structurally too simple to reproduce a real price series. Hindcasts
+      2020-2024 including the 2022 crisis on PyPSA-Eur v2025.07.0 (39 nodes, 35
+      countries, hourly, fixed capacities) and names the causes of the residual gap
+      explicitly — marginal-cost pricing assumes uniformity across similar plants,
+      whereas unit-specific ramping constraints, efficiency spread, long-term fuel
+      contracts, start-up costs and outages all drive real price variability. Two
+      specific failures to relay: the model cannot reproduce intra-day price spikes, and
+      it cannot reproduce an administrative intervention (the Iberian Exception price
+      cap) at all. Also shows fuel-price time-series resolution (static versus dynamic)
+      propagating straight into the price series, and gas/coal substitution as a
+      persistent discrepancy between optimal and historical dispatch.
+pitfalls:
+  - pitfall: >
+      Without a price ceiling the scarcity price is set by whatever bound the solver
+      happens to hit, and cost recovery computed against it is meaningless. With one, the
+      entire upper tail of the price distribution is a config number. There is no neutral
+      setting: load shedding off means an inadequate system is INFEASIBLE rather than
+      expensive, and load shedding on means every scarcity hour prices at exactly the
+      VOLL.
+    evidence: "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+    note: >
+      Choose the VOLL explicitly, report it beside every price statistic, and report how
+      many hours hit it and what share of each technology's revenue came from them. The
+      corpus's own choice is a 2000 EUR/MWh VOLL step as one of four demand-curve shapes,
+      which is 50x lower than pypsa-eur's 100000 default and 50x lower than pypsa-earth's
+      shipped 100 EUR/kWh. The two models are NOT symmetric here: eur ships shedding off,
+      earth ships it on, so an earth price series is capped by default and the user will
+      not have been told.
+  - pitfall: >
+      Cost recovery in a cost-optimal LP with free entry is a THEOREM, not a finding.
+      Every endogenously sized technology recovers exactly its annualised cost by the KKT
+      conditions, so "the model says the battery breaks even" is information about your
+      extraction pipeline and not about the world. The informative cases are the ones
+      where the identity does NOT hold: exogenously fixed capacity, a binding potential,
+      a non-zero slack on a policy constraint, or a different weather year than the one
+      the capacities were optimised for.
+    evidence: "2021_Brown_Market-value-variable-renewables_EnergyEcon.pdf"
+    note: >
+      Use the identity as a CHECK on the extraction (revenue should match annuity to
+      within rounding for extendable assets) and answer the user's actual bankability
+      question with a variant that breaks the identity on purpose: fix capacities and
+      re-solve over a weather-year ensemble, which is what the corpus's resilience study
+      does and what produced its negative result for exogenous gas plants.
+  - pitfall: >
+      A declining market value for wind and solar with rising penetration is usually read
+      as self-cannibalisation. It is largely an artefact of the assumed policy
+      instrument: under a VRE quota or feed-in premium MV = LCOE - mu_support, so the
+      support dual mechanically depresses the capture price, whereas under a CO2 cap or
+      tax MV = LCOE + e*mu_CO2 and market values stay at cost recovery above 80%
+      penetration.
+    evidence: "2021_Brown_Market-value-variable-renewables_EnergyEcon.pdf"
+    note: >
+      Before presenting any value-factor trend, state which policy instrument the run
+      encodes — in pypsa-eur that is `electricity.co2limit_enable` / a Co2L token / the
+      sector `co2_budget` for a cap, `costs.emission_prices` for a tax, and a
+      hand-written constraint for a quota. A quota-driven cannibalisation curve and a
+      cap-driven one point in opposite directions from the same network.
+  - pitfall: >
+      Segmentation and coarse nH resolution destroy exactly the object of this method.
+      Price formation lives in the composition of the price distribution — the zero-price
+      share, the spike frequency, the few hours carrying a third of annual revenue — and
+      averaging or merging similar hours flattens all of it while leaving the mean
+      plausible. A 144h sector run has 61 snapshots a year and cannot express a scarcity
+      hour at all.
+    evidence: "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+    note: >
+      Run hourly for anything in this card, and refuse percentiles, zero-hour shares and
+      revenue-concentration metrics from a segmented run. The corpus's price-formation
+      papers are hourly (or 30-minute) without exception; the 3-hourly ones report only
+      levels and shifts of a duration curve, never its tail.
+  - pitfall: >
+      A zero price is never exactly zero, and a "price-setting technology" identified by
+      exact equality will find nothing. Both workflows add ~1e-2 EUR/MWh of random noise
+      to every marginal cost by default to break degeneracy, and pypsa-earth additionally
+      ships small non-zero marginal costs for VRE in its cost config (solar 0.01, onwind
+      and offwind 0.015 EUR/MWh).
+    evidence: "2026_Geis_Price-Formation-Sector-Coupled_EnergyEcon.pdf"
+    note: >
+      Use a tolerance everywhere: the corpus's price-setter algorithm matches bids within
+      0.01 EUR/MWh, and pypsa-eur's own summary counts "zero hours" as price < 0.1. Note
+      the tension — noisy_costs makes duals reproducible and slightly WRONG, so a
+      bid-curve reconstruction is comparing against perturbed costs unless you switch it
+      off and accept degenerate duals instead.
+  - pitfall: >
+      A price from a capacity-expansion model is not a market price, so a model that
+      matches theory can still fail to match reality. Marginal-cost pricing assumes
+      uniformity across similar plants and cannot reproduce intra-day spikes,
+      unit-specific ramping and start-up effects, long-term fuel contracts, or
+      administrative interventions such as a price cap.
+    evidence: "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+    note: >
+      If the deliverable is a comparison to observed prices, run dispatch-only at fixed
+      capacities with dynamic fuel prices — and even then present the residual as
+      structural rather than as calibration error. If it is a scenario price, present it
+      as a competitive-benchmark shadow price and say so; the registry rates
+      market-design-mechanisms `absent` on both models, so there are no bids and no
+      capacity payments anywhere in either workflow.
+  - pitfall: >
+      Scarcity pricing can be silently absent by construction rather than by result. A
+      study that procures adequate capacity exogenously, or that assumes a capacity
+      market covers the revenue gap, will show a well-behaved price series with no
+      scarcity component — and that is an assumption, not a finding about the market
+      design being tested.
+    evidence: "2025_Thomassen_JRC_Locational-Price-Signals-Europe_nodal-zonal-national.pdf"
+    note: >
+      Make the adequacy assumption explicit in the bundle: whether capacity is
+      endogenous, whether load shedding is on, and whether revenue sufficiency is
+      asserted or computed. Also decide the remuneration convention, because it changes
+      the answer: the corpus's zonal study remunerates production only while the price is
+      positive, so negative-price hours contribute zero rather than negative revenue.
+  - pitfall: >
+      Zero marginal cost is a modelling default, not a physical fact, and it is where a
+      price-formation study is most sensitive to a data choice nobody documents. Whether
+      VRE bid exactly zero, a small positive VOM, or negative (a supported unit bidding
+      marginal cost minus its premium) determines the zero-price share, the negative-price
+      share and which technology is at the margin in a large fraction of hours.
+    evidence: "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+    note: >
+      State the bid of every zero-fuel-cost carrier as an explicit assumption. pypsa-eur
+      derives marginal_cost as VOM + fuel/efficiency with fill_values VOM = 0 and
+      fuel = 0, so VRE are exactly zero before noise; pypsa-earth's config ships small
+      positive values instead. For a real-market question, encode the support instrument
+      per unit as the corpus does (CfD at zero, certificate holders negative) rather than
+      relying on the technology-data default.
+requires_methods:
+  - shadow-prices-and-marginal-values
+combines_with:
+  - storage-sizing-and-duration
+  - zonal-nodal-and-redispatch
+  - weather-year-ensembles
+  - extreme-event-and-dunkelflaute-analysis
+  - operational-dispatch-and-rolling-horizon
+  - model-validation-and-backtesting
+  - carbon-constraints-and-pricing
+  - demand-side-flexibility-representation
+  - temporal-aggregation-and-segmentation
+  - cost-allocation-and-equity-metrics
+topics:
+  - power-market-reform-spot-markets
+  - capacity-market-design
+  - storage-revenue-stacking
+  - stranded-asset-risk
+  - locational-electricity-markets
+  - resource-adequacy
+  - balancing-market-valuation
+  - firm-low-carbon-capacity
+  - curtailment-minimization
+pypsa_primitive:
+  symbol: "pypsa/statistics.py:market_value; pypsa/statistics.py:revenue; pypsa/optimization/optimize.py:assign_duals"
+  pypsa_version: "0.30.3"
+  exposed_by: "partly — pypsa-eur calls market_value in make_summary; pypsa-earth calls neither"
+  reachable_via: >
+    The INPUTS to this method are library-side and free: assign_duals writes
+    n.buses_t.marginal_price on every solve, statistics.revenue and
+    statistics.market_value give the correctly snapshot-weighted numerator and
+    denominator of a capture price, and statistics.capex gives the annuity to compare it
+    against. What has no primitive is everything this card is actually about: there is no
+    price-regime decomposition, no bid-curve reconstruction from the duals, no
+    price-setter identification, no scarcity-rent decomposition, no elastic demand and no
+    revenue-concentration metric anywhere in pypsa 0.30.3. The marginal storage value is
+    the one input that needs a flag rather than nothing: the storage energy-balance dual
+    is only written when the solve is asked for all duals.
+  note: >
+    The primitive layer gives you the price and the revenue; it gives you nothing that
+    explains either. That is the honest shape of this card — the extraction is L0/L1 on
+    top of shadow-prices-and-marginal-values, and every interpretive step is L5. Soft
+    anchor: pypsa is a conda/pip pin rather than a submodule, so this is a version claim,
+    not a SHA claim.
+models:
+  - model: pypsa-eur
+    version_anchor:
+      ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d"
+      date: "2026-07-25"
+    functionality:
+      - id: nodal-marginal-prices
+        role: >
+          the raw material — registry `working`; every solved network carries
+          n.buses_t.marginal_price, and the whole method is interpretation on top of it
+      - id: load-shedding-voll
+        role: >
+          the single most consequential lever on this card. OFF by default here, so an
+          inadequate system is infeasible and scarcity prices are unbounded. When enabled
+          it is a per-carrier mapping with p_nom=np.inf, so the ceiling is exact and
+          absolute — no price can ever exceed default_cost
+      - id: load-sinks
+        role: >
+          the FLOOR, and a capability earth has no entry for at all: the same
+          add_load_balance_components with sign=-1, so negative prices are bounded at
+          -default_cost. Determines the negative-price tail, which is where supported-VRE
+          bidding shows up
+      - id: curtailment-mode
+        role: >
+          the diagnostic that separates "price is zero because VRE are at the margin"
+          from "price is zero because supply is being spilled" — it pins VRE to their
+          profile and makes curtailment a dispatched carrier with marginal_cost -0.1.
+          Another entry earth lacks entirely
+      - id: numeric-stability-options
+        role: >
+          `noisy_costs: true` adds ~1e-2 EUR/MWh to every marginal cost, so a
+          zero-marginal-cost carrier never bids exactly zero. Makes duals reproducible
+          and slightly wrong — the reason every test on this card needs a tolerance
+      - id: summary-outputs
+        role: >
+          the extraction layer that is already right: market_values delegates to
+          n.statistics.market_value, and metrics carries electricity_price_mean/std plus
+          the near-zero-hour share at a 0.1 threshold
+      - id: emission-pricing
+        role: >
+          the policy instrument that determines whether the market-value trend is a
+          cannibalisation curve or a cost-recovery curve. `costs.emission_prices` is a
+          tax (raises fossil marginal cost, so prices rise when fossil is at the margin)
+      - id: co2-cap
+        role: >
+          the other instrument — a cap rather than a tax, whose dual enters the
+          zero-profit identity as MV = LCOE + e*mu_CO2. `co2limit_enable` is false by
+          default, so the identity's policy term is absent from a default run
+      - id: dynamic-emission-pricing
+        role: >
+          the hindcast lever: a time-varying CO2 price from ETS spot data, which the
+          critique paper shows propagates straight into the price series
+      - id: operations-only-solve
+        role: >
+          the ST half of the LT/ST fork, and a dedicated rule earth does not have — fixes
+          capacities from a prior expansion run, which is the configuration whose prices
+          are comparable to observed market data
+      - id: operational-reserves
+        role: >
+          the nearest thing to a second market product: an hourly reserve requirement
+          co-optimised with dispatch. Its own dual is a reserve price, which is as close
+          as either model gets to an ancillary market
+      - id: demand-elasticity
+        role: >
+          registry `absent` — loads are fixed profiles. This is the gap that matters most
+          on this card, because elastic demand is the corpus's answer to whether an
+          energy-only market recovers costs
+      - id: market-design-mechanisms
+        role: >
+          registry `absent` — no bids, no capacity remuneration, no product
+          co-optimisation. Every price here is a competitive-benchmark shadow price, so a
+          "do we need a capacity market" question cannot be answered by simulating one
+      - id: probabilistic-adequacy
+        role: >
+          registry `absent` — no forced-outage draws or LOLE, so the scarcity-hour set is
+          driven by weather and demand only, never by unit unavailability
+      - id: temporal-resolution-nh
+        role: >
+          the affordability lever that this method cannot use: coarsening destroys the
+          price composition the method reports
+      - id: time-segmentation-tsam
+        role: "worse than nH here — merging similar hours removes the scarcity tail entirely"
+      - id: perfect-foresight
+        role: >
+          `working` here and absent in earth, but the price extraction on that path is
+          the weakest in the repo: make_summary_perfect's market values carry no snapshot
+          weighting
+    available:
+      verdict: assemble
+      how: >
+        Every INPUT exists and most are already tabulated. A solved network carries
+        n.buses_t.marginal_price; `rule make_summary` emits market_values (delegated to
+        n.statistics.market_value, i.e. correctly snapshot-weighted revenue/supply),
+        weighted_prices (demand-weighted and correctly `weights @` aggregated) and metrics
+        carrying electricity_price_mean, electricity_price_std and
+        electricity_price_zero_hours — the last computed as the share of prices below 0.1,
+        which is already the noise-tolerant zero test this card recommends. The price
+        ceiling and floor are both first-class config (load_shedding / load_sinks, each
+        with per-carrier costs), the zero-marginal-cost premise is explicit
+        (process_cost_data derives marginal_cost as VOM + fuel/efficiency with both
+        fill_values zero, so VRE are exactly zero before noise), and the LT/ST fork is a
+        real rule rather than a manual capacity freeze (solve_operations_network calls
+        n.optimize.fix_optimal_capacities). Curtailment mode and load sinks are two
+        diagnostics for reading a zero or negative price that pypsa-earth has no
+        equivalent of at all. So the verdict is `assemble`, not `turnkey`: nothing has to
+        be invented, but nothing in the repo composes these into a price-formation answer.
+      missing: >
+        Procedure steps 4, 5, 7, 8 and 9 have no handle. Concretely: (1) no price-regime
+        decomposition — nothing anywhere attributes an hour's price to VRE, storage,
+        thermal or scarcity; (2) no bid-curve reconstruction and no price-setter
+        identification, which is the card's most valuable variant and is pure new code
+        against the duals; (3) no revenue-concentration or scarcity-rent metric — metrics
+        gives mean, std and zero-hour share and stops, so the "35% of cost in 1% of hours"
+        result has no in-repo handle; (4) no cost-recovery comparison at all: market_values
+        and capex are both computed, in the same script, and never divided by each other,
+        so the zero-profit check that would validate the whole extraction is three lines
+        that nobody wrote; (5) elastic demand is absent (registry `demand-elasticity`),
+        so the corpus's central mechanism cannot be run — the nearest in-repo substitutes
+        are a load-shedding step at a low default_cost (a one-step VOLL bid curve) and
+        `sector.marginal_cost_heat_vent`, neither of which is a demand curve; (6) the
+        marginal storage value needs `solving.options.assign_all_duals`, which
+        solve_network reads via a bare .get() and which is NOT in config.default.yaml —
+        so the storage-arbitrage variant is gated behind a key that must be added by hand
+        and cannot be recovered after the solve.
+      provenance: "scripts/make_summary.py:calculate_metrics; scripts/make_summary.py:calculate_market_values; scripts/solve_network.py:assign_all_duals; scripts/process_cost_data.py:prepare_costs"
+    levers:
+      - key: "solving.options.load_shedding.enable"
+        effect: >
+          Adds a slack generator with p_nom=np.inf at every bus, which puts an exact and
+          absolute CEILING on every price in the run. Off by default, so a default eur run
+          has unbounded scarcity prices and becomes INFEASIBLE rather than expensive when
+          the system is inadequate. This is the first decision of any price-formation
+          study and there is no neutral setting.
+        default: "false"
+        provenance: "config/config.default.yaml:load_shedding; scripts/solve_network.py:add_load_balance_components"
+      - key: "solving.options.load_shedding.default_cost"
+        effect: >
+          The VOLL in EUR/MWh, i.e. the numeric price cap. The shipped 100000 is ~50x the
+          2000 EUR/MWh VOLL the corpus's price-formation study uses as its step demand
+          curve, so leaving it at the default makes the scarcity tail two orders of
+          magnitude larger than the literature's benchmark.
+        default: "100000"
+        provenance: "config/config.default.yaml:default_cost; scripts/solve_network.py:add_load_balance_components"
+      - key: "solving.options.load_shedding.carriers"
+        effect: >
+          Per-bus-carrier shedding costs, so heat, H2 and electricity can carry different
+          VOLLs. The route to a carrier-specific willingness-to-pay ceiling in a
+          sector-coupled run, and the closest the config gets to a demand bid.
+        default: "{} (empty; all_carriers: true then applies default_cost everywhere)"
+        provenance: "config/config.default.yaml:carriers; scripts/solve_network.py:add_load_balance_components"
+      - key: "solving.options.load_sinks.enable"
+        effect: >
+          The mirror image (add_load_balance_components with sign=-1): paid absorption of
+          surplus, which puts a FLOOR on negative prices at -default_cost. Off by default,
+          so the negative-price tail is whatever KVL and must-run structure produce. A
+          capability with no pypsa-earth counterpart.
+        default: "false"
+        provenance: "config/config.default.yaml:load_sinks; scripts/solve_network.py:add_load_balance_components"
+      - key: "solving.options.curtailment_mode"
+        effect: >
+          Pins VRE to their profile (p_min_pu = p_max_pu) and adds negative-dispatch
+          `curtailment` generators at marginal_cost -0.1 on every AC bus, so spilled
+          energy becomes a dispatched carrier. The diagnostic that distinguishes a zero
+          price with VRE at the margin from a zero price with energy being spilled — but
+          note it also plants a -0.1 EUR/MWh bid, so it perturbs the very price it is
+          being used to explain.
+        default: "false"
+        provenance: "config/config.default.yaml:curtailment_mode; scripts/solve_network.py:curtailment_mode"
+      - key: "solving.options.noisy_costs"
+        effect: >
+          Adds 1e-2 + 2e-3*U(-0.5,0.5) EUR/MWh to every component's marginal_cost (and a
+          length-scaled perturbation to line capital costs) to break degeneracy. Makes the
+          dual vector reproducible and every bid slightly wrong: a zero-cost carrier bids
+          ~0.01, which is why the summary's zero-hour test uses 0.1 and why a bid-curve
+          reconstruction must either tolerate the noise or switch it off and accept
+          non-unique duals instead.
+        default: "true"
+        provenance: "config/config.default.yaml:noisy_costs; scripts/solve_network.py:noisy_costs"
+      - key: "costs.marginal_cost"
+        effect: >
+          Per-technology marginal-cost overrides — the direct way to set what a
+          zero-fuel-cost carrier actually bids. DEPRECATED but live: process_cost_data
+          copies config['marginal_cost'] into config['overwrites']['marginal_cost'] "for
+          backward compatibility" and then emits a DeprecationWarning when applying it, so
+          it works and the sanctioned surface is costs.overwrites.marginal_cost. Empty by
+          default, so VRE bids come from VOM + fuel/efficiency = 0.
+        default: "{}"
+        provenance: "config/config.default.yaml:marginal_cost; scripts/process_cost_data.py:overwrite_costs"
+      - key: "costs.emission_prices.enable"
+        effect: >
+          Switches from a cap to a CO2 TAX, added onto every fossil generator's
+          marginal_cost. Which instrument is active decides whether the market-value trend
+          is the corpus's cannibalisation curve or its cost-recovery curve, so this key
+          and electricity.co2limit_enable are the two settings a value-factor result must
+          be reported alongside.
+        default: "false"
+        provenance: "config/config.default.yaml:emission_prices; scripts/prepare_network.py:add_emission_prices"
+      - key: "costs.emission_prices.dynamic"
+        effect: >
+          Uses an ETS CO2 price time series instead of a scalar, so fossil marginal costs
+          — and therefore the price series — vary hour to hour. The lever the hindcast
+          critique shows propagating directly into price accuracy.
+        default: "false"
+        provenance: "config/config.default.yaml:dynamic; scripts/prepare_network.py:add_dynamic_emission_prices"
+      - key: "solving.options.rolling_horizon"
+        effect: >
+          Solves dispatch in myopic windows. The corpus's finding is that once storage is
+          priced at its MSV, myopic dispatch is adequate — so this is the lever that tests
+          that claim rather than a mere tractability trick, and it is the right price for a
+          market question and the wrong one for a long-run storage-value question.
+        default: "false"
+        provenance: "config/config.default.yaml:rolling_horizon; scripts/solve_network.py:solve_network"
+      - key: "clustering.temporal.resolution_elec"
+        effect: >
+          Sets the snapshot weightings. Hourly (false) is effectively mandatory for this
+          card: an nH value averages away spikes and an nSEG value merges the similar
+          hours the price composition is made of. Coarsen only if the deliverable is a mean.
+        default: "false (hourly, all weights 1)"
+        provenance: "config/config.default.yaml:resolution_elec; scripts/prepare_network.py:average_every_nhours"
+    assembly:
+      - step: >
+          Decide LT or ST first, because it changes which rule runs and what the price
+          means. LT is the ordinary expansion solve and its prices satisfy the zero-profit
+          identity by construction; ST is rule solve_operations_network, which fixes
+          capacities from a prior expansion run via n.optimize.fix_optimal_capacities and
+          gives the merit-order price of that fleet. Any comparison to observed prices
+          must be ST.
+        uses: [operations-only-solve, perfect-foresight]
+        config: "foresight; the solve_operations_network target"
+        code: null
+        provenance: "scripts/solve_operations_network.py:fix_optimal_capacities; scripts/solve_network.py:solve_network"
+      - step: >
+          Set the ceiling and the floor EXPLICITLY, and write both numbers into the answer.
+          Enable load_shedding with a defensible default_cost (the corpus's benchmark is
+          2000 EUR/MWh, not the shipped 100000) if you want scarcity hours to price
+          finitely; enable load_sinks if the negative-price tail is part of the question.
+          Neither can be changed after the solve.
+        uses: [load-shedding-voll, load-sinks]
+        config: "solving.options.load_shedding.{enable,default_cost,carriers}; solving.options.load_sinks.enable"
+        code: null
+        provenance: "scripts/solve_network.py:add_load_balance_components"
+      - step: >
+          Add `assign_all_duals: true` under solving.options BY HAND — it is read via a
+          bare .get() in solve_network and is absent from config.default.yaml. Without it
+          the storage energy-balance dual is not written and the marginal storage value,
+          which is the whole storage-arbitrage variant, is unrecoverable without re-solving.
+        uses: [nodal-marginal-prices]
+        config: "solving.options.assign_all_duals (absent from config.default.yaml — add it)"
+        code: null
+        provenance: "scripts/solve_network.py:assign_all_duals"
+      - step: >
+          Pin the policy instrument, because it is a term in the zero-profit identity. A
+          cap (electricity.co2limit_enable, a Co2L token, or the sector co2_budget) gives
+          MV = LCOE + e*mu_CO2; a tax (costs.emission_prices.enable) raises fossil bids
+          directly. Record which one the run used next to any market-value or value-factor
+          number.
+        uses: [co2-cap, emission-pricing, dynamic-emission-pricing]
+        config: "electricity.co2limit_enable; costs.emission_prices.{enable,co2,dynamic}"
+        code: null
+        provenance: "scripts/prepare_network.py:add_co2limit; scripts/prepare_network.py:add_emission_prices"
+      - step: >
+          Fix the bids of the zero-fuel-cost carriers rather than inheriting them. The
+          default is exactly zero (VOM and fuel both fill to 0, so marginal_cost = 0)
+          plus ~0.01 of noise; costs.overwrites.marginal_cost sets them explicitly, and
+          noisy_costs: false removes the perturbation at the cost of degenerate duals.
+        uses: [numeric-stability-options]
+        config: "costs.overwrites.marginal_cost (or the deprecated costs.marginal_cost); solving.options.noisy_costs"
+        code: null
+        provenance: "scripts/process_cost_data.py:overwrite_costs; scripts/solve_network.py:noisy_costs"
+      - step: >
+          Run hourly. This is the one method in the book where the standard tractability
+          levers are disqualifying rather than merely lossy: resolution_elec must stay
+          false, and TSAM segmentation must not be used, because the deliverable is the
+          composition of the price distribution.
+        uses: [temporal-resolution-nh, time-segmentation-tsam]
+        config: "clustering.temporal.resolution_elec: false"
+        code: null
+        provenance: "scripts/prepare_network.py:average_every_nhours"
+      - step: >
+          Take the already-correct aggregates from make_summary rather than recomputing:
+          market_values for the capture price (n.statistics.market_value, snapshot-weighted
+          revenue/supply), weighted_prices for the demand-weighted price, and metrics for
+          electricity_price_mean / _std / _zero_hours. The value factor is the ratio of the
+          first two and is not emitted anywhere.
+        uses: [summary-outputs]
+        config: null
+        code: "scripts/make_summary.py"
+        provenance: "scripts/make_summary.py:calculate_market_values; scripts/make_summary.py:calculate_metrics"
+      - step: >
+          Write the cost-recovery check, which is the cheapest high-value addition here:
+          make_summary already computes n.statistics.capex() and n.statistics.opex() inside
+          calculate_metrics and market_value inside calculate_market_values, and never
+          compares them. Revenue over annualised cost per carrier is a few lines in the
+          same script and validates the entire extraction against the zero-profit identity.
+        uses: [summary-outputs]
+        config: null
+        code: "scripts/make_summary.py::calculate_metrics (add a recovery ratio per carrier)"
+        provenance: "scripts/make_summary.py:calculate_metrics"
+      - step: >
+          Write the interpretive layer: price-regime shares, the duration curve, revenue
+          concentration in the top N hours, the scarcity rent as LCOE minus the
+          demand-weighted price, and — the expensive one — the bid-curve reconstruction and
+          price-setter labelling from the duals. All of this is new code against a solved
+          network; none of it has a handle at any layer.
+        uses: [nodal-marginal-prices, summary-outputs, curtailment-mode]
+        config: "solving.options.curtailment_mode (to separate spilled-energy zeros from marginal-VRE zeros)"
+        code: "a new extraction script beside scripts/make_summary.py"
+        provenance: "scripts/solve_network.py:curtailment_mode; scripts/make_summary.py:calculate_metrics"
+      - step: >
+          If demand elasticity is in scope, it is a code addition: loads are fixed p_set
+          profiles and the registry rates demand-elasticity `absent`. The cheapest
+          approximation inside the existing surface is a load-shedding step at the
+          willingness-to-pay level (a one-step VOLL bid curve, which is what the corpus's
+          demand-curtailment study analyses over 100-400 EUR/MWh); a real linear or
+          piecewise-linear bid curve means adding generators-as-demand-segments or a
+          quadratic welfare objective.
+        uses: [demand-elasticity, load-shedding-voll]
+        config: "solving.options.load_shedding.{enable,default_cost} as the crude one-step substitute"
+        code: "scripts/prepare_sector_network.py (add demand segments) or the custom_extra_functionality hook"
+        provenance: "scripts/solve_network.py:add_load_balance_components; scripts/solve_network.py:custom_extra_functionality"
+    boundary:
+      - variant: price-duration-and-composition
+        rung: L2
+        note: >
+          The price series is free (L0) and metrics already gives mean, std and the
+          near-zero-hour share at a 0.1 threshold. Sorting into a duration curve and
+          binning into regime shares is a small localised post-processing addition — L2 —
+          with the real constraint being L1 upstream: resolution_elec must be hourly, or
+          the curve's tail is an artefact.
+      - variant: kkt-price-setter-identification
+        rung: L5
+        note: >
+          The hardest variant and the card's centre of gravity. Needs per-technology bid
+          reconstruction from the stationarity conditions (generators, converters,
+          storage), assembly into hourly supply/demand curves, and a candidate-selection
+          algorithm. No handle at any layer, in either model or in pypsa. The duals are
+          free; everything that makes them legible is new code. Budget it as the published
+          method's own contribution, because that is what it was.
+      - variant: storage-arbitrage-as-fuel-cost
+        rung: L2
+        note: >
+          L2 and gated: `solving.options.assign_all_duals` is consumed by solve_network but
+          absent from config.default.yaml, so it must be added by hand BEFORE the solve.
+          Once set, mu_energy_balance is on the storage components and dividing it by the
+          discharge efficiency to get the effective bid is a short script — but nothing in
+          the repo reads mu_energy_balance, and a missed flag means re-solving.
+      - variant: zero-profit-cost-recovery-check
+        rung: L2
+        note: >
+          The cheapest variant to add and the most useful. market_values (correctly
+          snapshot-weighted) and capex/opex are both already computed in make_summary and
+          never compared; a per-carrier revenue-over-annuity ratio is a localised edit to
+          calculate_metrics. L2, not L0, only because nobody wrote the division.
+      - variant: scarcity-rent-and-revenue-risk
+        rung: L2
+        note: >
+          The LCOE-minus-weighted-price form is L2 — both terms exist in make_summary
+          (total costs in metrics, weighted_prices per carrier) and need differencing. The
+          revenue-concentration form (share of revenue from the top N hours) is also L2 as
+          post-processing, but the ensemble version that makes it a RISK statement is a
+          weather-year fan-out, which is L1 here (the default cutout spans 1940-2024, so
+          moving the snapshots window is config) plus a run harness.
+      - variant: elastic-demand-price-formation
+        rung: L5
+        note: >
+          The registry rates demand-elasticity `absent`: loads are fixed p_set profiles
+          with endogenous flexibility only via BEV DSM/V2G, residential heat DSM and an
+          industry must_run slack. A VOLL step function is approximable at L1 with
+          load_shedding at a low default_cost, but a linear or piecewise-linear bid curve
+          means new components or a quadratic objective — and the corpus's central result
+          (zero-price share falling from ~89% to ~31%) depends on the curve SHAPE, so the
+          step approximation does not substitute for it.
+      - variant: calibrated-bid-price-formation
+        rung: L5
+        note: >
+          Nothing in the workflow estimates marginal costs from observed behaviour or
+          encodes a per-unit support instrument. The ST scaffolding is real and helps
+          (rule solve_operations_network, dynamic emission prices, powerplant matching for
+          the unit list), but the SRMC estimation, the per-unit CfD/certificate bid and the
+          balancing markup are all bespoke. L5 with good scaffolding rather than L5 from
+          scratch.
+    where:
+      - change: "price regime decomposition, duration curve, revenue concentration, scarcity rent"
+        anchor: "a new script beside scripts/make_summary.py; register it in rules/postprocess.smk::rule make_summary"
+        provenance: "scripts/make_summary.py:calculate_metrics; rules/postprocess.smk:rule make_summary"
+      - change: "cost-recovery / zero-profit ratio per carrier"
+        anchor: "scripts/make_summary.py::calculate_metrics (capex/opex and market_value are already there)"
+        provenance: "scripts/make_summary.py:calculate_metrics; scripts/make_summary.py:calculate_market_values"
+      - change: "make the marginal storage value available at all"
+        anchor: "solving.options.assign_all_duals -> scripts/solve_network.py::solve_network solve_kwargs"
+        provenance: "scripts/solve_network.py:assign_all_duals"
+      - change: "bid-curve reconstruction and price-setter labelling"
+        anchor: "a new script consuming the solved network + assign_all_duals output; no existing rule owns this"
+        provenance: "scripts/solve_network.py:assign_all_duals"
+      - change: "elastic demand / willingness-to-pay bid curve"
+        anchor: "scripts/prepare_sector_network.py (demand segments) or solving.options.custom_extra_functionality"
+        provenance: "scripts/prepare_sector_network.py:add_electricity_grid_connection; scripts/solve_network.py:custom_extra_functionality"
+      - change: "set the price ceiling / floor before solving"
+        anchor: "solving.options.load_shedding | load_sinks -> scripts/solve_network.py::add_load_balance_components"
+        provenance: "scripts/solve_network.py:add_load_balance_components"
+    cost_profile:
+      solves: >
+        1 for a single-scenario price-formation answer — the duals come with the solve. The
+        cost-recovery-as-risk question is one solve per weather year (the corpus uses 70-80)
+        with capacities fixed after the first. A penetration or decarbonisation sweep of the
+        market-value trend is one solve per level (the corpus uses 14 levels x 8
+        decentralisation settings = 105 runs).
+      relative: >
+        ~3x a default study, before any ensemble: the binding cost is that hourly
+        resolution is mandatory where a default sector run would be 3-hourly. An 80-year
+        ensemble at fixed capacities is ~80x a dispatch solve, which is far cheaper than
+        80x an expansion solve — fixing capacities first is the standard mitigation.
+      note: >
+        The usual savings are unavailable: segmentation and coarse nH destroy the price
+        composition, and aggressive clustering destroys the locational spread that a
+        market-design question is about. What IS affordable: electricity-only rather than
+        sector-coupled for a pure price question, and ST dispatch at fixed capacities for
+        every ensemble member after the first LT solve. assign_all_duals costs memory and
+        file size, not solve time.
+    verifies:
+      - variant: zero-profit-cost-recovery-check
+        check: "abs(revenue_by_carrier / annuity_by_carrier - 1).max() < 0.05"
+        over: run
+        note: >
+          For extendable, unconstrained technologies this must hold by the KKT conditions,
+          so a failure is a bug in the extraction — usually a missing snapshot weighting,
+          a price cap that bound, or capex read at the wrong annuity — not an economic
+          finding. Restrict the test to carriers with p_nom_extendable and no binding
+          potential; a technology at its potential limit earns a rent and is SUPPOSED to
+          exceed 1.
+      - variant: price-duration-and-composition
+        check: "not n.generators.query(\"carrier == 'load'\").empty or n.buses_t.marginal_price.max().max() < 1e5"
+        over: run
+        note: >
+          Detects the unbounded-scarcity case: no load-shedding generators AND prices in
+          the hundreds of thousands means the upper tail is a solver bound, not a system
+          property, and every cost-recovery number derived from it is meaningless. The
+          converse — shedding present and prices sitting exactly at default_cost — means
+          the tail is a config number and must be reported as such.
+      - variant: price-duration-and-composition
+        check: "(n.snapshot_weightings.generators == 1).all()"
+        over: run
+        note: >
+          Fails on any nH or nSEG run. A price composition (zero-hour share, spike
+          frequency, percentiles) from unequally weighted snapshots is not a price
+          composition — the metric silently becomes a statement about segments. Levels and
+          weighted means survive coarsening; nothing else on this card does.
+      - variant: storage-arbitrage-as-fuel-cost
+        check: "n.storage_units.empty or (n.storage_units_t.mu_energy_balance.abs().to_numpy().max() > 0)"
+        over: run
+        note: >
+          An all-zero mu_energy_balance frame means assign_all_duals was never set, so the
+          marginal storage value is an uninitialised frame of zeros that looks exactly like
+          'storage never has an opportunity cost'. Cannot be fixed after the solve.
+      - variant: scarcity-rent-and-revenue-risk
+        check: "revenue_share_top_1pct_hours < 0.99"
+        over: run
+        note: >
+          A degenerate value near 1 means essentially all revenue arrives in a handful of
+          hours, which in practice means the price cap or an infeasibility-adjacent
+          scarcity event is carrying the whole result. Report the concentration explicitly
+          rather than only the total, because the concentration is the investor's exposure.
+  - model: pypsa-earth
+    version_anchor:
+      ref: "8435f4c8cc05f30088933b37b7db497ff860dc53"
+      date: "2026-07-25"
+    functionality:
+      - id: nodal-marginal-prices
+        role: >
+          the raw material — registry `working`, identical to eur because the duals are
+          library-side. Everything that differs between the models on this card is in the
+          layers above the dual
+      - id: load-shedding-voll
+        role: >
+          the price ceiling, ON BY DEFAULT here at 100 EUR/kWh, so every default earth
+          price series is capped at 100000 EUR/MWh without the user being told. Unlike
+          eur the slack generator's p_nom is FINITE (max bus load x 1.2), so the cap is
+          soft: if shedding capacity itself binds, the price goes above the nominal VOLL
+      - id: summary-outputs
+        role: >
+          where the two models diverge hardest. earth's make_summary emits prices and
+          weighted_prices and NEITHER applies snapshot weightings; there is no
+          market_values implementation at all, so the capture price — the denominator of
+          every cost-recovery statement on this card — cannot be produced
+      - id: numeric-stability-options
+        role: >
+          `noisy_costs: true` with a fixed np.random.seed(174), so the perturbation is at
+          least reproducible across runs. Same ~1e-2 EUR/MWh tie-breaking noise as eur
+      - id: emission-pricing
+        role: >
+          the tax instrument (`costs.emission_prices`, added via the Ep opts token), which
+          is the policy term in the zero-profit identity
+      - id: co2-cap
+        role: >
+          the cap instrument, and unlike eur it is ON in the shipped default
+          (`scenario.opts: ['Co2L-3h']`), so co2_shadow is populated out of the box and
+          MV = LCOE + e*mu_CO2 is the live identity on a default earth run
+      - id: sector-coupled-workflow
+        role: >
+          where multi-carrier price formation happens, and the path the corpus's earth
+          study exercises. It is also the path whose summary rule is broken (see below)
+      - id: gadm-admin-clustering
+        role: >
+          the route to prices on policy-meaningful regions rather than k-means clusters —
+          necessary before a locational price-formation claim means anything
+      - id: monte-carlo-sampling
+        role: >
+          registry `partial`, and earth's one structural advantage for this card: a real
+          many-solve harness (LHS over network quantities, one solve per sample) that eur
+          has no equivalent of. The natural fan-out for the weather-year cost-recovery
+          ensemble
+      - id: operations-only-solve
+        role: >
+          registry `absent` here where eur has a dedicated rule — so the LT/ST fork, which
+          is procedure step 1 and the precondition for any comparison to observed prices,
+          must be assembled by setting extendable=false and re-solving
+      - id: operational-reserves
+        role: "the nearest second product, same as eur: an hourly reserve requirement with its own dual"
+      - id: demand-elasticity
+        role: >
+          registry `absent` — loads are fixed profiles, with only BEV DSM shifting
+          endogenously. Same gap as eur and with less scaffolding around it
+      - id: market-design-mechanisms
+        role: >
+          registry `absent` — no bids, no capacity remuneration. Every price is a
+          competitive-benchmark shadow price
+      - id: probabilistic-adequacy
+        role: "registry `absent` — no outage draws or LOLE, so scarcity hours are weather-driven only"
+      - id: safe-reserve-margin
+        role: >
+          registry `working` here (eur rates it `partial`): a planning reserve margin,
+          which suppresses scarcity by fiat — it procures adequacy as a constraint instead
+          of letting the price reveal it, so it must be off if scarcity pricing is the
+          question
+      - id: temporal-resolution-nh
+        role: >
+          the weighting trap live in the shipped default: `opts: ['Co2L-3h']` and
+          `sopts: ['144h']`. 144h is 61 snapshots a year and cannot express a scarcity
+          hour at all
+      - id: time-segmentation-tsam
+        role: "same hazard as eur, on top of already-coarse defaults"
+    available:
+      verdict: assemble
+      how: >
+        The duals are identical to eur — same library, same assign_duals, same per-MWh
+        rescaling — so n.buses_t.marginal_price and n.global_constraints.mu are populated
+        with no config change, and metrics carries co2_shadow and line_volume_shadow. Two
+        things are genuinely better positioned here than in eur: the CO2 cap is on by
+        default (`scenario.opts: ['Co2L-3h']`), so the policy dual that appears in the
+        zero-profit identity exists out of the box; and scripts/monte_carlo.py is a real
+        many-solve harness that already enumerates samples, rewrites the network per sample
+        and collects results — the fan-out the cost-recovery-as-risk variant needs and
+        that eur lacks entirely. Everything else about this card is weaker here.
+      missing: >
+        The same five interpretive steps as eur (4, 5, 7, 8, 9), plus four earth-specific
+        blockers that come first. (1) NO market value anywhere: `calculate_market_values`
+        does not exist in scripts/make_summary.py, the module-level `outputs` list has no
+        market_values entry, and n.statistics.market_value is never called in the repo —
+        yet the Snakefile's `rule make_sector_summary` declares BOTH market_values.csv and
+        price_statistics.csv as outputs, so the sector summary cannot complete and the
+        capture price has no implementation at all. Every cost-recovery statement on this
+        card is therefore blocked on writing that function first. (2) NO snapshot weighting
+        in the price code: calculate_prices is a plain `.mean()` and says so in a
+        logger.warning ("Prices are time-averaged, not load-weighted"), while
+        calculate_weighted_prices carries its own warning about excluding storage units as
+        loads — and the shipped defaults are 3h and 144h. (3) NO `assign_all_duals`
+        anywhere in earth's solve_network, so the storage energy-balance dual — the
+        marginal storage value, the object the storage-arbitrage variant is about — is not
+        reachable by config at all; it needs a code change, where eur needs a config
+        addition. (4) NO load_sinks and NO curtailment_mode: neither key exists in earth's
+        config nor in its solve_network, so the negative-price floor and the
+        spilled-versus-marginal zero-price diagnostic, both of which eur ships, are absent.
+      provenance: "scripts/make_summary.py:calculate_weighted_prices; scripts/make_summary.py:Prices are time-averaged; scripts/solve_network.py:get_load_shedding_capacity; Snakefile:market_values"
+    levers:
+      - key: "solving.options.load_shedding"
+        effect: >
+          A NUMBER in EUR/kWh (not a mapping as in eur), multiplied by 1000 into the slack
+          generator's marginal_cost — the source comment says so verbatim ("convert to
+          Eur/MWh"). The shipped 100 therefore caps every price in a default run at 100000
+          EUR/MWh, silently. Two further asymmetries: the ceiling applies to all buses
+          uniformly with no per-carrier override, and p_nom is finite (max bus load x 1.2,
+          fallback 0.5e6 MW), so if shedding capacity binds the price exceeds the nominal
+          VOLL and the cap is not the hard bound eur's np.inf makes it.
+        default: "100 (i.e. ON, capping prices at 100000 EUR/MWh)"
+        provenance: "config.default.yaml:load_shedding; scripts/solve_network.py:get_load_shedding_capacity"
+      - key: "solving.options.noisy_costs"
+        effect: >
+          Adds 1e-2 + 2e-3*U(-0.5,0.5) EUR/MWh to every marginal cost, under a fixed
+          np.random.seed(174) — so unlike eur the perturbation is reproducible run to run.
+          A zero-cost carrier still never bids exactly zero, so every price-setter and
+          zero-hour test needs a tolerance.
+        default: "true"
+        provenance: "config.default.yaml:noisy_costs; scripts/solve_network.py:noisy_costs"
+      - key: "costs.marginal_cost"
+        effect: >
+          Per-technology marginal-cost overrides, and unlike eur's empty dict this ships
+          POPULATED with non-zero VRE bids: solar 0.01, onwind 0.015, offwind 0.015
+          EUR/MWh, with hydro / H2 / electrolysis / fuel cell / battery / battery inverter
+          at 0.0. So earth's "zero marginal cost" premise is not literally zero out of the
+          box — the values are the same order as the noisy_costs perturbation, which means
+          on a default earth run the VRE merit order among themselves is set by this dict
+          plus noise rather than by anything physical. State it as an assumption.
+        default: "{'solar': 0.01, 'onwind': 0.015, 'offwind': 0.015, 'hydro': 0.0, 'H2': 0.0, 'electrolysis': 0.0, 'fuel cell': 0.0, 'battery': 0.0, 'battery inverter': 0.0}"
+        provenance: "config.default.yaml:marginal_cost; scripts/process_cost_data.py:load_costs"
+      - key: "costs.emission_prices"
+        effect: >
+          The CO2 tax added onto fossil generators' marginal cost (applied via the Ep opts
+          token). Which of this and the Co2L cap is active determines whether a
+          market-value trend reads as cannibalisation or as cost recovery.
+        default: "{'co2': 0.0}"
+        provenance: "config.default.yaml:emission_prices; scripts/prepare_network.py:add_emission_prices"
+      - key: "scenario.opts"
+        effect: >
+          Carries both the CO2 cap token and the power-chain resolution token. The default
+          `Co2L-3h` is a mixed blessing for this card: Co2L means the policy dual in the
+          zero-profit identity exists out of the box (better than eur), while `3h` means
+          every snapshot has weight 3 and the price composition is already compromised on
+          the very first default run.
+        default: "['Co2L-3h']"
+        provenance: "config.default.yaml:opts; scripts/prepare_network.py:add_co2limit"
+      - key: "scenario.sopts"
+        effect: >
+          The sector chain's resolution token. The shipped `144h` gives 61 snapshots a
+          year, which cannot represent a scarcity hour, a price spike or a storage
+          arbitrage cycle. Must be hourly for anything on this card.
+        default: "['144h']"
+        provenance: "config.default.yaml:sopts; scripts/prepare_sector_network.py:average_every_nhours"
+      - key: "scenario.clusters"
+        effect: >
+          The number of buses, hence whether a locational price-formation claim is about
+          anything. The default 10 is a very coarse regional average with almost no
+          resolvable spread.
+        default: "[10]"
+        provenance: "config.default.yaml:clusters; scripts/cluster_network.py:busmap_for_n_clusters"
+      - key: "electricity.co2limit"
+        effect: >
+          The cap level in tCO2/a, and therefore the point on the abatement curve at which
+          the policy dual in the zero-profit identity is read. Combined with
+          electricity.automatic_emission for the baseline.
+        default: "77500000.0"
+        provenance: "config.default.yaml:co2limit; scripts/prepare_network.py:add_co2limit"
+      - key: "monte_carlo.options.add_to_snakefile"
+        effect: >
+          Wires the many-solve fan-out into the DAG. The existing harness for the
+          cost-recovery-as-risk variant (one solve per weather year or cost draw, results
+          collected), and the one place earth is structurally ahead of eur on this card.
+        default: "false"
+        provenance: "config.default.yaml:add_to_snakefile; scripts/monte_carlo.py:monte_carlo_sampling"
+      - key: "monte_carlo.options.samples"
+        effect: "Number of solves in the fan-out — becomes the ensemble size for the revenue-spread result."
+        default: "9"
+        provenance: "config.default.yaml:samples; scripts/monte_carlo.py:validate_parameters"
+      - key: "solving.solver.options"
+        effect: >
+          Selects the tuning profile, which decides whether the duals are unique at all.
+          `gurobi-default` is barrier with crossover off; the highs profile ships
+          run_crossover on, so an open-source earth run is the configuration most exposed
+          to degenerate non-unique duals — fatal for a bid-curve reconstruction, which
+          reads every dual as a bid.
+        default: "'gurobi-default'"
+        provenance: "config.default.yaml:gurobi-default; scripts/solve_network.py:solver_options"
+    assembly:
+      - step: >
+          FIRST, write calculate_market_values. Nothing on this card that involves cost
+          recovery, capture prices or value factors can be done on earth until it exists:
+          n.statistics.market_value(bus_carrier=...) is available in the pinned pypsa and
+          already snapshot-weights both revenue and supply, so the function is short — but
+          it must also be added to the module-level `outputs` list, because
+          rule make_sector_summary already declares market_values.csv and
+          price_statistics.csv as outputs that the script never writes.
+        uses: [summary-outputs, sector-coupled-workflow]
+        config: null
+        code: "scripts/make_summary.py (add calculate_market_values + register in `outputs`)"
+        provenance: "scripts/make_summary.py:make_summaries; Snakefile:market_values"
+      - step: >
+          SECOND, fix the price aggregation. Neither calculate_prices nor
+          calculate_weighted_prices applies n.snapshot_weightings, while the shipped
+          defaults are 3h and 144h — port eur's version of the same function, which
+          computes `weights @ (load * price).sum(axis=1) / (weights @ load.sum(axis=1))`.
+          Both functions carry their own logger.warning admitting the limitation, so this
+          is a known gap rather than a hidden one.
+        uses: [summary-outputs]
+        config: null
+        code: "scripts/make_summary.py::calculate_weighted_prices"
+        provenance: "scripts/make_summary.py:calculate_weighted_prices; scripts/make_summary.py:Prices are time-averaged"
+      - step: >
+          Decide the price ceiling explicitly — this step is mandatory on earth and merely
+          advisable on eur. Leaving solving.options.load_shedding at its default 100
+          (EUR/kWh, multiplied by 1000 in solve_network) caps every price at 100000
+          EUR/MWh; set it to a defensible regional VOLL, or to false and accept
+          infeasibility as the failure mode. Also record that the cap is SOFT: p_nom is
+          max bus load x 1.2, so prices can exceed it if shedding capacity binds.
+        uses: [load-shedding-voll]
+        config: "solving.options.load_shedding"
+        code: null
+        provenance: "scripts/solve_network.py:get_load_shedding_capacity"
+      - step: >
+          Turn off the adequacy-by-fiat levers if scarcity pricing is the question. The
+          registry rates safe-reserve-margin `working` here, and a planning reserve margin
+          procures adequacy as a constraint — which suppresses exactly the scarcity hours
+          whose prices the study is about.
+        uses: [safe-reserve-margin, operational-reserves]
+        config: "electricity.SAFE_reservemargin; electricity.operational_reserve.activate"
+        code: null
+        provenance: "scripts/prepare_network.py:add_co2limit; scripts/solve_network.py:add_operational_reserve_margin"
+      - step: >
+          Fix the resolution and the zoning before solving: `opts` for the power chain,
+          `sopts` for the sector chain, scenario.clusters and GADM zoning for space. The
+          shipped 3h / 144h / 10-cluster defaults are all disqualifying for this card, and
+          none can be changed after the solve.
+        uses: [temporal-resolution-nh, time-segmentation-tsam, gadm-admin-clustering]
+        config: "scenario.opts; scenario.sopts; scenario.clusters"
+        code: null
+        provenance: "scripts/prepare_network.py:average_every_nhours; scripts/cluster_network.py:busmap_for_n_clusters"
+      - step: >
+          State the zero-marginal-cost premise explicitly, because earth's default is not
+          zero: costs.marginal_cost ships solar at 0.01 and on/offwind at 0.015 EUR/MWh,
+          the same order as the noisy_costs perturbation. Either set them to 0.0 and let
+          noise break the ties, or keep them and report that the VRE merit order is a
+          config artefact.
+        uses: [numeric-stability-options]
+        config: "costs.marginal_cost; solving.options.noisy_costs"
+        code: null
+        provenance: "config.default.yaml:marginal_cost; scripts/solve_network.py:noisy_costs"
+      - step: >
+          Build the LT/ST fork by hand — the registry rates operations-only-solve `absent`
+          here, so there is no solve_operations_network rule to call. Set every
+          `p_nom_extendable` false from the prior solve's optimal capacities and re-solve.
+          This is the precondition for any comparison to observed prices, and it is a code
+          step on earth where it is a rule on eur.
+        uses: [operations-only-solve]
+        config: "electricity.extendable_carriers (emptied) as the crude route"
+        code: "a new dispatch-only driver, or a rule modelled on eur's solve_operations_network"
+        provenance: "scripts/solve_network.py:solve_network"
+      - step: >
+          If the marginal storage value is in scope, add the all-duals request to the solve
+          call. earth's solve_network has no `assign_all_duals` option at all, so unlike eur
+          this is a code change rather than a config addition — the extra_functionality hook
+          is the sanctioned place for anything else that must be added at solve time.
+        uses: [nodal-marginal-prices]
+        config: null
+        code: "scripts/solve_network.py::solve_network (pass assign_all_duals to n.optimize)"
+        provenance: "scripts/solve_network.py:extra_functionality"
+      - step: >
+          For the cost-recovery-as-risk ensemble, reuse the monte-carlo fan-out rather than
+          writing a loop: it already enumerates samples, rewrites the network per sample and
+          collects results. This is the one step that is cheaper on earth than on eur.
+        uses: [monte-carlo-sampling]
+        config: "monte_carlo.options.add_to_snakefile; monte_carlo.options.samples"
+        code: "scripts/monte_carlo.py"
+        provenance: "scripts/monte_carlo.py:monte_carlo_sampling"
+      - step: >
+          Write the interpretive layer — regime shares, duration curve, revenue
+          concentration, scarcity rent, bid curves — against the solved network, exactly as
+          on eur but starting from a weaker base because the market values and the weighted
+          aggregation must be built first.
+        uses: [nodal-marginal-prices, summary-outputs]
+        config: null
+        code: "a new extraction script; port pypsa-eur's make_summary price functions as the base"
+        provenance: "scripts/make_summary.py:calculate_metrics"
+    boundary:
+      - variant: price-duration-and-composition
+        rung: L2
+        note: >
+          The dual is L0 as in eur, but the aggregation layer is not: prices are a plain
+          `.mean()` with a logger.warning, and there is no zero-hour-share or price-std
+          metric of any kind (earth's calculate_metrics carries only line volumes and
+          co2_shadow). So the composition metrics are a localised script — L2 — plus L1
+          upstream to force hourly opts/sopts away from the shipped 3h/144h.
+      - variant: kkt-price-setter-identification
+        rung: L5
+        note: >
+          Same L5 as eur and slightly worse: the bid reconstruction is new code either way,
+          but it consumes duals that earth's solver default may not make unique (the highs
+          profile ships run_crossover on) and it needs the storage duals that earth cannot
+          request by config. Reconstructing bids from non-unique duals produces a
+          plausible, irreproducible bid curve.
+      - variant: storage-arbitrage-as-fuel-cost
+        rung: L5
+        note: >
+          L5 here where eur is L2, and this is the sharpest rung asymmetry on the card:
+          there is no `assign_all_duals` option in earth's solve_network at all, so the
+          storage energy-balance dual is unreachable without editing the solve call. eur
+          needs a config key added; earth needs code.
+      - variant: zero-profit-cost-recovery-check
+        rung: L2
+        note: >
+          L2 and blocked on a prerequisite rather than hard: `calculate_market_values` does
+          not exist and n.statistics.market_value is never called in the repo, so the
+          capture price must be written before the ratio can be formed. Small — the library
+          does the weighting — but the sector summary rule is currently declaring an output
+          the script cannot produce, so this fix is load-bearing beyond this card.
+      - variant: scarcity-rent-and-revenue-risk
+        rung: L3
+        note: >
+          The metrics are L2 post-processing, but the RISK statement needs a weather-year
+          ensemble and on earth the binding constraint is DATA, not code: cutouts are built
+          per region, so a multi-year ensemble means building one per year, and the load
+          profile the rent is weighted by is often synthetic. The harness itself is the one
+          piece that is cheaper here (monte_carlo.py). Check the region's grade in
+          cookbooks/pypsa-earth/data_quality before promising a revenue spread.
+      - variant: elastic-demand-price-formation
+        rung: L5
+        note: >
+          registry `demand-elasticity` is `absent` with even less scaffolding than eur —
+          only BEV DSM shifts endogenously, and there is no per-carrier load-shedding
+          mapping to approximate a stepped bid curve with (earth's load_shedding is a single
+          scalar applied to all buses). New components or a new objective term.
+      - variant: calibrated-bid-price-formation
+        rung: L5
+        note: >
+          The least tractable variant on earth, and mostly for data reasons: calibrating
+          SRMCs against observed prices needs an observed day-ahead price series and a
+          unit-level fleet with known support instruments, neither of which exists for most
+          earth regions. There is also no operations-only rule to hang the dispatch run on.
+          Treat as out of scope unless the region has a liquid published market.
+    where:
+      - change: "add the missing market-value / capture-price table (prerequisite for cost recovery)"
+        anchor: "scripts/make_summary.py::outputs list + a new calculate_market_values; Snakefile rule make_sector_summary"
+        provenance: "scripts/make_summary.py:make_summaries; Snakefile:market_values"
+      - change: "apply snapshot weightings to the price aggregation"
+        anchor: "scripts/make_summary.py::calculate_weighted_prices (rule make_summary)"
+        provenance: "scripts/make_summary.py:calculate_weighted_prices"
+      - change: "make the marginal storage value reachable at all"
+        anchor: "scripts/solve_network.py::solve_network — pass assign_all_duals into n.optimize"
+        provenance: "scripts/solve_network.py:solve_network"
+      - change: "set or remove the default price ceiling"
+        anchor: "solving.options.load_shedding -> scripts/solve_network.py::get_load_shedding_capacity"
+        provenance: "scripts/solve_network.py:get_load_shedding_capacity"
+      - change: "anything added at solve time (extra constraints to price, reserve products)"
+        anchor: "scripts/solve_network.py::extra_functionality"
+        provenance: "scripts/solve_network.py:extra_functionality"
+      - change: "many-solve fan-out for the revenue-spread ensemble"
+        anchor: "scripts/monte_carlo.py + the monte_carlo rule"
+        provenance: "scripts/monte_carlo.py:monte_carlo_sampling"
+      - change: "price regime / duration / concentration metrics"
+        anchor: "a new script beside scripts/make_summary.py; port eur's calculate_metrics as the base"
+        provenance: "scripts/make_summary.py:calculate_metrics"
+    data_dependencies:
+      - input: "multi-year ERA5 cutout covering the study region"
+        required_for: scarcity-rent-and-revenue-risk
+        availability: >
+          region-dependent — cutouts are built per region in earth (enable.build_cutout), so
+          the weather-year ensemble that turns cost recovery into a risk statement means
+          building one cutout per year before any price exists
+      - input: "regional demand time series of adequate quality"
+        required_for: scarcity-rent-and-revenue-risk
+        availability: >
+          region-dependent — scarcity hours are defined by the load peak relative to
+          available supply, so a synthetic or scaled load profile makes the entire
+          scarcity-hour set an artefact of the load model. Check the country's demand grade
+          in cookbooks/pypsa-earth/data_quality first; this is the assumption most likely to
+          invalidate a cost-recovery result
+      - input: "region-appropriate value of lost load"
+        required_for: price-duration-and-composition
+        availability: >
+          absent — the shipped 100 EUR/kWh is a European placeholder and there is no
+          regional VOLL registry in either model. It sets the whole upper price tail, so
+          treat it as an assumption to sign off with the user, never as data
+      - input: "observed day-ahead price series and unit-level support instruments"
+        required_for: calibrated-bid-price-formation
+        availability: >
+          absent for most earth regions — the calibration needs a liquid published market
+          and per-unit CfD/certificate information. Without it this variant is not
+          approximable, only omitted
+    cost_profile:
+      solves: >
+        1 for a single-scenario price answer. The revenue-spread ensemble is one solve per
+        weather year, for which monte_carlo.options.samples is the existing fan-out; the
+        corpus's earth study ran 264 scenario combinations at 3-hourly, which is the
+        realistic upper end for a sector-coupled earth price study.
+      relative: >
+        A larger relative step up than on eur, because earth's defaults are far coarser: the
+        move from 3h/144h/10-clusters to hourly at a usable cluster count is ~10x the
+        default LP before any ensemble.
+      note: >
+        The compensating advantage is real: earth base cases are usually smaller (one region,
+        fewer carriers), so hourly resolution is often affordable where the equivalent eur
+        sector-coupled run is not — and monte_carlo.py supplies the many-solve harness eur
+        lacks. The model-choice tradeoff runs in earth's favour for the COMPUTE and against
+        it for the CODE, since the market-value function and the weighted aggregation must
+        be written before any number is trustworthy.
+    verifies:
+      - variant: zero-profit-cost-recovery-check
+        check: "'market_values' in outputs"
+        over: run
+        note: >
+          Fails at this ref. The script's module-level `outputs` list has no market_values
+          entry and calculate_market_values does not exist, while rule make_sector_summary
+          declares market_values.csv as an output — so a sector summary run cannot produce a
+          capture price, and every cost-recovery claim on earth is blocked until this passes.
+      - variant: price-duration-and-composition
+        check: "(n.snapshot_weightings.generators == 1).all()"
+        over: run
+        note: >
+          Fails on every default earth run: opts `Co2L-3h` gives weight 3 and sopts `144h`
+          gives weight 144. A price composition from 61 annual snapshots is not a price
+          composition, and nothing in the workflow warns beyond a logger line about
+          time-averaging.
+      - variant: price-duration-and-composition
+        check: "n.generators.query(\"carrier == 'load shedding'\").empty or (n.buses_t.marginal_price.to_numpy().max() < 1e5 - 1e-6)"
+        over: run
+        note: >
+          Detects the silent default ceiling. Load shedding ships enabled at 100 EUR/kWh, so
+          this fires by default whenever a scarcity hour occurs and the reported maximum is
+          a config number. Note it can also be EXCEEDED rather than pinned: earth's shedding
+          p_nom is finite (max bus load x 1.2), so if shedding capacity binds the price goes
+          above 100000 — check both directions before interpreting the tail.
+      - variant: storage-arbitrage-as-fuel-cost
+        check: "n.storage_units.empty or (n.storage_units_t.mu_energy_balance.abs().to_numpy().max() > 0)"
+        over: run
+        note: >
+          Fails unconditionally at this ref, because earth's solve_network never requests
+          all duals — there is no config key for it. An all-zero frame reads as 'storage has
+          no opportunity cost', which is the exact wrong conclusion for this card.
+      - variant: scarcity-rent-and-revenue-risk
+        check: "len(ns) == n_weather_years and all(not m.buses_t.marginal_price.empty for m in ns)"
+        over: ensemble
+        note: >
+          A short ensemble means samples were dropped by the monte-carlo fan-out rather than
+          solved, which narrows the reported revenue spread and makes the asset look safer
+          than the model says it is. An empty price frame in any member means that solve
+          failed and was written anyway.

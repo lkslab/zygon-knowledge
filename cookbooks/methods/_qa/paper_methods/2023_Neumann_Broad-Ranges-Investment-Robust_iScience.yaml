@@ -1,0 +1,215 @@
+paper: "2023_Neumann_Broad-Ranges-Investment-Robust_iScience.pdf"
+tier: 1
+model_used: >
+  PyPSA-Eur, electricity-only, greenfield, two fidelity levels: low-fidelity 37
+  nodes 4-hourly (transport model, no KVL), high-fidelity 128 nodes 2-hourly
+  (linearised load flow). Single weather year 2013.
+scope: >
+  Explores the near-optimal feasible space of a fully renewable European
+  electricity system under technology cost uncertainty for five technologies
+  (onshore wind, offshore wind, solar, battery, hydrogen storage), using
+  polynomial-chaos-expansion surrogate models and global sensitivity analysis to
+  derive robust investment ranges and boundary conditions.
+methods:
+  - slug: mga-near-optimal-space
+    role: extends
+    evidence: >
+      "Using the least-cost solution as an anchor, we use the ε-constraint method
+      from multi-objective optimisation to find near-optimal feasible solutions"
+      (Sec. 2.2). The paper extends standard MGA by combining it with cost-
+      uncertainty sampling: for each of 500 low-fidelity and 15 high-fidelity cost
+      parameter draws, 101 optimisation problems are solved (minimise/maximise
+      each of 7 technology groups at ε ∈ {1%,2%,4%,6%,8%}) and surrogate models
+      aggregate results into probabilistic near-optimal corridors (Sec. 2.2, 3.3,
+      3.4).
+    procedure_notes: >
+      Seven technology groups (solar, onshore wind, offshore wind, any wind,
+      hydrogen, battery, transmission volume) are each minimised and maximised.
+      ε swept over {1%,2%,4%,6%,8%}. For 2-D trade-off analysis (Sec. 3.4) a
+      second technology is fixed at positions α ∈ {0%,25%,50%,75%,100%} within
+      its near-optimal range at ε = 6%, giving three pairs: (wind, solar),
+      (offshore, onshore wind), (hydrogen, battery). Implemented in PyPSA and
+      solved with Gurobi. Total 50,500 low-fidelity + 1,515 high-fidelity runs.
+    variant: probabilistic-broad-ranges
+    parameters:
+      epsilon: "1%, 2%, 4%, 6%, 8%"
+      technology_directions: 14
+      cost_samples_lf: 500
+      cost_samples_hf: 15
+      runs_per_sample: 101
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: extends
+    evidence: >
+      "we apply variance-based global sensitivity analysis techniques" using Sobol
+      indices derived analytically from the polynomial chaos expansion (Sec. 3.2,
+      Fig. 5). Both first-order and total Sobol indices are computed for eight
+      output variables across five cost inputs.
+    procedure_notes: >
+      Sobol indices computed analytically from the PCE coefficients (not by
+      additional Monte Carlo runs) using the chaospy toolbox. Inputs: annuities
+      of onshore wind, offshore wind, solar PV, battery, hydrogen storage, each
+      uniformly distributed over Danish Energy Agency 2050 optimistic/pessimistic
+      ranges (Table 1). Outputs: total system cost plus six technology capacities.
+      Parameter sweeps (1-D self-sensitivities) also shown in Fig. 4.
+    variant: sobol-via-pce
+    parameters:
+      n_inputs: 5
+      n_outputs: 8
+      distribution: "independent uniform over DEA 2050 ranges"
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "it assumes perfect foresight for a single reference year based on which
+      capacities are optimised. It does not include pathway optimisation" (Sec.
+      2.1). The model is an overnight greenfield optimisation targeting a fully
+      renewable system (Sec. 2.3, Scenario paragraph).
+    procedure_notes: >
+      Single target year, greenfield except existing hydro (not extendable) and
+      existing transmission (can be reinforced but not removed). No multi-period
+      pathway optimisation. Costs expressed as annuities.
+    variant: overnight-greenfield
+    parameters: {}
+
+  - slug: temporal-aggregation-and-segmentation
+    role: routine-use
+    evidence: >
+      "a low-fidelity model with 37 nodes at a 4-hourly resolution for a full
+      year" and "a high-fidelity model with 128 nodes at a 2-hourly resolution"
+      (Sec. 2.3, Spatial and Temporal Resolution paragraph). Snapshot weights
+      wt used in objective (Eq. 1) so total duration adds up to one year.
+    procedure_notes: >
+      Two resolutions used: 4-hourly 8760/4 = 2190 snapshots for low-fidelity
+      (transport model, no KVL), 2-hourly 4380 snapshots for high-fidelity
+      (linearised load flow). No typical-period clustering — uniform n-hourly
+      averaging over a full calendar year 2013.
+    variant: n-hourly-full-year
+    parameters:
+      lf_resolution_h: 4
+      hf_resolution_h: 2
+      weather_year: 2013
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      Two levels of spatial aggregation: 37 nodes for the low-fidelity model and
+      128 nodes for the high-fidelity model (Sec. 2.3, Fig. 1). Both are
+      clustered from the full PyPSA-Eur network.
+    procedure_notes: >
+      Node counts are the direct modelling choice; the paper states the trade-off
+      between computational burden and accuracy of transmission bottlenecks and
+      resource distribution. Low-fidelity uses a transport model (no KVL); high-
+      fidelity uses cycle-basis linearised load flow (Eq. 12).
+    variant: two-fidelity-spatial
+    parameters:
+      lf_nodes: 37
+      hf_nodes: 128
+
+  - slug: linearised-optimal-power-flow
+    role: routine-use
+    evidence: >
+      High-fidelity model applies "linearised multi-period optimal power flow
+      (LOPF) constraints" including cycle-basis KVL (Eq. 12, Sec. 2.1). Low-
+      fidelity model uses a transport model "excluding KVL of Equation (12)"
+      (Sec. 2.3).
+    procedure_notes: >
+      KVL implemented as cycle-flow formulation: sum of C_{lc} * x_l * f_{l,t} =
+      0 for each independent cycle c (Eq. 12), following Hörsch et al. 2018.
+      HVDC links exempt from KVL. N-1 security approximated by 70% line loading
+      limit (f_l buffer factor, Eq. 13). High-fidelity only; low-fidelity drops
+      KVL entirely.
+    variant: cycle-flow
+    parameters:
+      n1_line_loading_limit: "70%"
+
+  - slug: transmission-expansion-cooptimisation
+    role: routine-use
+    evidence: >
+      Transmission line capacities F_l are co-optimised alongside generation and
+      storage (Eq. 1, Eq. 4). Existing transmission can be reinforced but not
+      removed (Sec. 2.3). Transmission volume is one of the MGA search directions.
+    procedure_notes: >
+      Continuous expansion of existing AC and HVDC infrastructure. Topology from
+      ENTSO-E transparency map, lines ≥220 kV. Impedance update for expanded
+      lines not performed ("Changes of line expansion to line impedance are
+      ignored", Sec. 2.1). Volume (TWkm) reported as output metric.
+    variant: continuous-volume
+    parameters: {}
+
+  - slug: storage-sizing-and-duration
+    role: routine-use
+    evidence: >
+      "energy capacity to power ratings with a technology-specific parameter T_s
+      that describes the maximum duration a storage unit can discharge at full
+      power rating" (Sec. 2.1, Eq. 10). Two extendable storage technologies:
+      battery (short-term) and hydrogen (long-term/seasonal) (Sec. 2.3).
+    procedure_notes: >
+      Fixed energy-to-power ratio via max_hours parameter T_s per technology.
+      Battery annuity range 30–125 EUR/kW/a (power); hydrogen 111–259 EUR/kW/a
+      (includes electrolysis, cavern storage, fuel cells; Table 1). Cyclic SOC
+      constraint (Eq. 9). Existing pumped-hydro included at fixed capacity.
+    variant: fixed-ratio
+    parameters:
+      battery_annuity_range: "30-125 EUR/kW/a"
+      hydrogen_annuity_range: "111-259 EUR/kW/a"
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "Eligible areas for developing renewable infrastructure are calculated per
+      technology and the grid nodes' Voronoi cells … constrained by eligible codes
+      of the CORINE land use database … further restricted by distance criteria,
+      allowed deployment density, and the natural protection areas specified in the
+      NATURA 2000 dataset" (Sec. 2.3, Renewable Energy Potentials paragraph).
+    procedure_notes: >
+      Wind/solar connect to closest substation. Offshore wind excluded beyond 50m
+      depth (GEBCO). ERA5 wind + SARAH-2 solar irradiance → capacity factor time
+      series for 2013. Used to set upper bounds G_bar_{i,r} (Eq. 2).
+    variant: corine-natura2000
+    parameters:
+      offshore_depth_limit_m: 50
+      weather_reanalysis: "ERA5 + SARAH-2"
+
+  - slug: discounting-and-cost-of-capital
+    role: routine-use
+    evidence: >
+      Cost uncertainty is defined over technology annuities (EUR/kW/a) from the
+      Danish Energy Agency (Table 1, Sec. 2.4). "Evaluating uncertainties based
+      on annuities has a distinct advantage. They can be seen to simultaneously
+      incorporate uncertainties about the overnight investments, fixed operation
+      and maintenance costs, their lifetime, and the discount rate" (Sec. 2.4).
+    procedure_notes: >
+      Annuities used directly as the uncertain cost parameters; no explicit
+      separate discount rate is stated. DEA 2050 optimistic/pessimistic ranges
+      treated as 90% confidence intervals. Uniform distribution assumed following
+      maximum entropy argument.
+    variant: annuity-as-uncertain-input
+    parameters:
+      source: "Danish Energy Agency Technology Data 2020, year 2050"
+
+  - slug: powerplant-matching-and-fleet-assembly
+    role: routine-use
+    evidence: >
+      "Existing run-of-river, hydro-electric dams, pumped-hydro storage plants
+      are retrieved from powerplantmatching, a merged dataset of conventional
+      power plants" (Sec. 2.3, Transmission Grid and Hydro-Electricity paragraph).
+    procedure_notes: >
+      Used only for existing hydro fleet (fixed capacity, not extendable). Not
+      used for thermal or wind/solar fleet (greenfield for those). Provides lower
+      bounds G_underline_{i,r} for hydro generators.
+    variant: hydro-only
+    parameters: {}
+
+unmatched_methods:
+  - name: "multi-fidelity surrogate modelling with polynomial chaos expansion"
+    evidence: >
+      Sec. 2.5–2.7 (Eqs. 17–29) define and apply sparse PCE surrogate models
+      (implemented via chaospy) fitted by LASSO regression on low-discrepancy
+      Halton samples, combined in a multi-fidelity correction scheme (low-fidelity
+      PCE + high-fidelity corrective PCE). This is the computational engine that
+      makes sweeping 50,000+ runs tractable. No existing slug covers surrogate
+      modelling / emulation methodology; it is distinct from sensitivity-and-
+      uncertainty-sweeps (which describes what is being swept) and from MGA
+      (which describes the search directions). A future slug like
+      `surrogate-and-emulation` would fit.

@@ -1,0 +1,183 @@
+paper: "2024_Alamia_hydrogen-emethanol-power-to-x-biogas.pdf"
+tier: 2
+model_used: >
+  A bespoke PyPSA model (GLS PtX hub model), single-node, 1-hour resolution,
+  full year (8760 hours), electricity + heat + H2 + CO2 multi-carrier.
+scope: >
+  Techno-economic co-optimisation of capacity and operation of a Power-to-X hub
+  (alkaline electrolysis, e-methanol synthesis, renewables, storages, heat
+  network) integrated with a biogas/biomethane plant at GreenLab Skive (Denmark),
+  estimating levelised cost of H2 and e-methanol under RFNBO legislation for
+  2030 investment.
+methods:
+  - slug: sector-coupled-network-assembly
+    role: canonical-use
+    evidence: >
+      "PyPSA was deployed to identify the combination of generation, conversion,
+      and storage technologies that minimises the total system cost while ensuring
+      a consistent supply of energy and materials flows to meet demands." (Sec. 3
+      Methodology). The model uses multiple carrier buses (electricity at two
+      voltage levels, MT/DH/LT heat, H2, CO2, biomethane, biochar) connected by
+      multilink components with explicit efficiencies (Sec. 3.1, Appendix A Eq. a2,
+      Fig. 3 and Fig. E1).
+    procedure_notes: >
+      Only generator, load, bus, store and link components are used; storage unit
+      components are replaced by store + link pairs. Multilink components model
+      energy conversion (electrolysis, methanol synthesis, heat pumps, boilers)
+      with multiple input/output buses and efficiency coefficients alpha_n,l,t.
+      Two electricity buses (El3 for RFNBOs-eligible RE; El2 for other loads) are
+      connected by a link, each independently interfaced with the external grid.
+      Three heat networks (MT 150-180 °C, DH 90-150 °C, LT 50-90 °C) are
+      interconnected.
+    variant: behind-the-meter-ptx-hub
+    parameters: {carriers: "electricity, H2, CO2, heat-MT, heat-DH, heat-LT, biomethane, biochar",
+                  time_resolution: "1h", horizon: "full year 8760h"}
+
+  - slug: shadow-prices-and-marginal-values
+    role: canonical-use
+    evidence: >
+      "At each time step a shadow price, also referred to as the Karush-Kuhn-Tucker
+      (KKT) multiplier, associated with the demand constraint, indicates the marginal
+      price of the energy carriers within the system. In this context, the KKT
+      multipliers for the demand constraints of hydrogen and methanol were interpreted
+      as levelized cost for production of these carriers. Meanwhile, shadow prices for
+      internal buses indicate the equilibrium prices for behind-the-meter trading at
+      the PtX hub." (Sec. 3 Methodology, and formalised in Appendix A Eq. a2 where
+      lambda_n,t is the KKT multiplier for the energy balance constraint at each bus.)
+    procedure_notes: >
+      Shadow prices at demand buses for H2 and MeOH are read as LCOH/LCOMeOH.
+      Shadow prices at El2, El3 and CO2 buses give internal market prices. Annual
+      distributions of internal shadow prices are compared to external spot prices
+      to quantify the shielding effect of the behind-the-meter market (Fig. 5).
+      The biomethane shadow price represents the cost difference versus reference
+      operation. Figures 7 and 8 report year-average shadow prices correlated with
+      optimal capacities.
+    variant: kkt-as-internal-market-price
+    parameters: {}
+
+  - slug: additionality-and-24-7-matching
+    role: canonical-use
+    evidence: >
+      "Two constraints are imposed at the interface: one restricts the use of grid
+      electricity for hydrogen and e-methanol production in accordance with RFNBO
+      legislation for investments beginning in 2030." (Sec. 3). Implemented as
+      constraint Eq. 6: grid electricity for H2 production is permitted only in
+      hours where spot price <= 20 €/MWh, which is the RED delegated act proxy
+      for hours of renewable surplus. The additionality and temporal correlation
+      principles of the RED/RFNBOs directive are described and modelled in Sec. 2.3
+      and Appendix F.
+    procedure_notes: >
+      RFNBO constraint encoded on the DK1→El3 link: f_gridtoH2,t = 1 only when
+      el_price,t <= 20 €/MWh (Eq. 6). Monthly temporal matching (pre-2030
+      transitional regime) is discussed but not modelled; post-2030 hourly matching
+      is enforced via the price proxy. The ratio of maximum RE sales to the grid
+      versus PtX electricity (maxRE parameter) is swept from 0.1 to 1.0 as a
+      sensitivity parameter (Sec. 3.2, Table 8).
+    variant: price-proxy-rfnbo-hourly
+    parameters: {grid_price_threshold: "20 €/MWh", maxRE_range: "0.1-1.0"}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "We set an overall CO2 tax for fossil emission and carbon capture credits at
+      150 (€/tCO2) in the base case and 250 (€/tCO2) for sensitivity analysis,
+      in addition to a case without CO2 tax." (Sec. 2.3). The CO2 tax enters
+      electricity and natural gas purchase prices via Eqs. 1 and 3 in Table 7,
+      and biochar credits are rewarded at the CO2 tax value (Eq. 5, Table 7).
+    procedure_notes: >
+      CO2 tax is not a cap but an explicit price applied to fossil emissions embodied
+      in purchased electricity (via emission intensity time series em_t) and natural
+      gas (em_NG). Three tax levels swept: 0, 150, 250 €/tCO2 (Table 8). Biochar
+      negative-emission credits are credited at the same CO2 tax value, capping
+      revenue by heat demand of the pyrolysis plant.
+    variant: explicit-co2-price
+    parameters: {co2_price_base: "150 €/tCO2", co2_price_sensitivity: "0, 150, 250 €/tCO2"}
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: routine-use
+    evidence: >
+      "The sensitivity analysis covered several aspects of PtX hub, which are
+      summarized in Table 8. It was carried by optimizing the PyPSA network for
+      all the combinations of the six sensitivity parameters and for each of the
+      two scenarios H2 to Grid and MeOH standalone." (Sec. 3.2).
+    procedure_notes: >
+      Full factorial grid over 6 binary/integer parameters: energy price year
+      (2019/2022), maxRE (0.1/0.5/1.0), CO2 recovery to MeOH (0.8/0.85/0.90/
+      0.95/0.99), CO2 tax (0/150/250 €/t), DH enabled (T/F), biochar credits
+      enabled (T/F). Each combination produces one LP solve; results shown as
+      pairwise scatter plots and uncertainty bands in Figs 4, 7-10, D1-D4.
+    variant: full-factorial-grid
+    parameters: {n_parameters: 6, scenarios: 2}
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "The model assumes a level of foresight capable of accurately anticipating
+      energy supply and demand throughout the year, incorporating year-ahead
+      weather forecasts, energy prices, and emission intensities of external energy
+      systems. Consequently, any form of storage intended as a safeguard against
+      unforeseen energy shortages is not considered into this model." (Sec. 3).
+    procedure_notes: >
+      Single target year (2030 investment costs), overnight greenfield for all PtX
+      components except the fixed biomethane plant (which is treated as a sunk cost).
+      Perfect foresight over the full 8760-hour horizon. No multi-period pathway;
+      two energy price years (2019, 2022) are run as independent scenarios, not
+      as a pathway.
+    variant: overnight-perfect-foresight
+    parameters: {investment_year: 2030, horizon: "8760h", weather_years: "2019, 2022"}
+
+  - slug: discounting-and-cost-of-capital
+    role: routine-use
+    evidence: >
+      "Investment expenses are amortized over the reported lifespan of each asset,
+      considering a discount rate of 7%." (Sec. 3 Methodology, Table 4 lists
+      lifetimes per technology).
+    procedure_notes: >
+      Single discount rate of 7% applied uniformly to all technologies. Capital
+      recovery factor computed per technology from its lifetime (Table 4: 20-50 years
+      depending on component). No technology- or country-specific WACC.
+    variant: uniform-discount-rate
+    parameters: {discount_rate: "7%"}
+
+  - slug: storage-sizing-and-duration
+    role: routine-use
+    evidence: >
+      Capacity and operation of H2 storage (tank at 60-70 bar), CO2 storage
+      (high-pressure cylinders at 60 bar and liquefied tank at 16 bar), Li-ion
+      batteries and thermal energy storage are all optimised simultaneously with
+      generation and conversion capacity. "Capacity and operation of hydrogen and
+      CO2 compressors and storages are optimized separately from the MeOH synthesis
+      process." (Sec. 2.5 E-methanol synthesis, Tables 4, 6, Appendix B).
+    procedure_notes: >
+      Three storage media modelled: H2 tank (energy capacity optimised, not power-
+      limited), CO2 cylinders (1-15 tCO2/h charge/discharge rate, capacity
+      unconstrained), liquefied CO2 tank (1-4 t/h liquefaction, capacity
+      unconstrained). Li-ion battery C-rate capped at 1 h^-1 due to time
+      resolution (Appendix B, Table B.7). Results show CO2 storage of 200-350 t
+      and H2 of 70-110 MWh required for standalone MeOH; none needed for H2-to-
+      Grid case.
+    variant: independent-energy-power-sizing
+    parameters: {H2_storage_pressure: "60-70 bar", CO2_storage_options: "cylinders 60 bar or liquid 16 bar",
+                  battery_max_c_rate: "1 h^-1"}
+
+  - slug: import-and-trade-representation
+    role: routine-use
+    evidence: >
+      "The interaction between the PtX hub and the external energy systems is
+      modelled through an interface, facilitating the trade of energy commodities
+      at exogenously determined prices. Historical prices from 2019 and 2022 were
+      utilized for electricity and natural gas." (Sec. 3). Imports of grid
+      electricity and natural gas, and exports of RE electricity, district heating
+      and biochar credits are all represented.
+    procedure_notes: >
+      Exogenous spot prices for DK1 electricity (with tariffs and CO2 tax adder,
+      Eq. 1) and natural gas (with CO2 tax, Eq. 3) define the import costs. RE
+      export revenue uses spot price minus tariffs (Eq. 2). A demand-profile-
+      following external electricity demand with a zero-cost generator ensures
+      RE sales are constrained to the maxRE ratio without distorting the objective
+      function (Eq. 7, Sec. 3.1).
+    variant: price-taker-with-volume-cap
+    parameters: {energy_price_years: "2019, 2022", dh_price: "54 €/MWh",
+                  electricity_import_cap: "conditional on RFNBO price threshold"}
+
+unmatched_methods: []

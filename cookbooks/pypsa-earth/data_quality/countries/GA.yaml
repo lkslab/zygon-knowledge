@@ -1,0 +1,134 @@
+country: GA
+name: gabon
+continent: Africa
+build_evidence:
+  region: Africa
+  base_buses: 20
+  base_lines: 13
+  ac_islands_touching: 3
+  largest_component_share: 0.45
+fleet_evidence:
+  plants: 10
+  capacity_mw: 843.5
+  fueltypes:
+  - CCGT
+  - Hydro
+  - Oil
+  - Solar
+  source_run: Africa
+families:
+  shapes:
+    grade: B
+    detail:
+      gadm-boundaries: A
+      worldpop-population: A
+      gdp-raster: B
+  grid:
+    grade: A
+    detail:
+      osm-grid: A
+    fragmentation: 3 AC islands touch GA; largest in-country component holds 45% of
+      its 20 buses [region Africa]
+  climate:
+    grade: B
+    detail:
+      era5-cutout: A
+      global-gis-layers: B
+  power-fleet:
+    grade: A
+    detail:
+      powerplant-fleet: A
+      hydro-capacities: A
+      eia-hydro-generation: A
+  electricity-demand:
+    grade: B
+    detail:
+      electricity-demand-forecast: B
+  sector-demand:
+    grade: C
+    detail:
+      unsd-energy-balances: B
+      demand-growth-cagr: C
+      demand-efficiency-cagr: C
+      fuel-shares: C
+      district-heating-share: C
+      german-traffic-proxy: C
+      bdew-heat-proxy: C
+  industry:
+    grade: D
+    detail:
+      industry-growth-cagr: C
+      industrial-plant-database: A
+      ammonia-plants: D
+      al-production: D
+  hydrogen:
+    grade: D
+    detail:
+      salt-cavern-potentials: D
+datasets:
+  demand-growth-cagr:
+    grade: C
+    detail: DEFAULT row fallback
+  demand-efficiency-cagr:
+    grade: C
+    detail: DEFAULT row fallback
+  industry-growth-cagr:
+    grade: C
+    detail: DEFAULT row fallback
+  fuel-shares:
+    grade: C
+    detail: DEFAULT row fallback
+  district-heating-share:
+    grade: C
+    detail: DEFAULT row fallback
+  salt-cavern-potentials:
+    grade: D
+    detail: "no row \u2014 feature silently absent/zero"
+  al-production:
+    grade: D
+    detail: "no row \u2014 feature silently absent/zero"
+  unsd-energy-balances:
+    grade: B
+    detail: in cached UNSD extract
+  electricity-demand-forecast:
+    grade: B
+    detail: GEGIS ssp2 continent file
+  gadm-boundaries:
+    grade: A
+    detail: sliced gadm41_GAB
+  osm-grid:
+    grade: A
+    detail: cached gabon-latest.osm.pbf
+  worldpop-population:
+    grade: A
+    detail: cached tif
+  gdp-raster:
+    grade: B
+    detail: global raster
+  era5-cutout:
+    grade: A
+    detail: cutout-2013-era5-africa.nc on disk
+  powerplant-fleet:
+    grade: A
+    detail: 10 plants, 843.5 MW (CCGT, Hydro, Oil, Solar) [run Africa]
+  hydro-capacities:
+    grade: A
+    detail: country row
+  eia-hydro-generation:
+    grade: A
+    detail: country row
+  industrial-plant-database:
+    grade: A
+    detail: country row(s)
+  ammonia-plants:
+    grade: D
+    detail: "no row \u2014 feature silently absent/zero"
+  german-traffic-proxy:
+    grade: C
+    detail: German weekly traffic counts applied globally
+  bdew-heat-proxy:
+    grade: C
+    detail: German BDEW heat profile applied globally
+  global-gis-layers:
+    grade: B
+    detail: global layers on disk

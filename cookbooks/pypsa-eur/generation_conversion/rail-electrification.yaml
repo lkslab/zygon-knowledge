@@ -1,0 +1,113 @@
+id: rail-electrification
+title: Rail electrification
+summary: >
+  Converting diesel rail (passenger and freight trains) to electric traction —
+  rail demand as an electricity load and the pathway from oil-fired to
+  electrified railways.
+when_to_use:
+  - "electrify railways / rail electrification"
+  - "train electricity demand"
+  - "diesel trains to electric"
+  - "rail freight decarbonisation"
+  - "rail energy in the model"
+  - "pypsa-eur handles: 'total rail' / 'electricity rail' energy totals, 'rail non-elec' emissions (no rail carrier exists)"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Rail is present only as demand accounting, split by TODAY's
+        electrification level — there is no rail carrier, component or
+        electrification lever. Two paths: (1) ALREADY-ELECTRIC rail is
+        implicit in the measured national electricity load time series that
+        the sector network inherits from the electricity workflow (rule
+        build_electricity_demand from OPSD/ENTSO-E data); correspondingly
+        build_transport_demand SUBTRACTS "electricity rail" from the transport
+        energy totals to avoid double counting. (2) NON-ELECTRIC (diesel) rail
+        is folded INTO the land transport aggregate: the km demand is built
+        from total road + total rail - electricity rail, so diesel-rail energy
+        rides through the passenger-car machinery and follows the
+        land_transport_electric/fuel_cell/ice shares — under the default 2050
+        shares (100% EV), diesel trains are implicitly "electrified" as
+        battery-electric car-equivalents, charging through BEV chargers. The
+        electric/diesel split is frozen at the energy.energy_totals_year
+        (2023) statistics from JRC-IDEES (TrRail_ene sheet: "total rail",
+        "electricity rail", with unused passenger/freight sub-columns).
+        Emissions of diesel rail are counted in the CO2 budget baseline as
+        sector "rail non-elec" (determine_emission_sectors, gated by
+        sector.transport).
+      mechanism: >
+        rule build_energy_totals parses TrRail_ene into energy_totals.csv
+        ("total rail", "electricity rail", "total rail passenger",
+        "electricity rail freight"); rule build_transport_demand computes
+        energy_totals_transport = total road + total rail - electricity rail;
+        rule prepare_sector_network -> add_land_transport applies the engine
+        shares to that aggregate. The base electricity Loads (containing
+        actual rail traction) are built by rule build_electricity_demand and
+        carried into the sector network.
+      not_covered: >
+        No rail electrification share or pace key; no explicit electric-rail
+        load (it is indistinguishable inside the measured national load); no
+        catenary infrastructure, no rail-specific temporal profile (diesel
+        rail inherits the road traffic weekly shape and car temperature
+        correction); no hydrogen or battery train options; no
+        passenger/freight rail distinction in the model despite the split
+        existing in energy_totals.csv. Increasing FUTURE electric-rail demand
+        (modal shift or newly electrified lines) has no hook — the base
+        electric load is historical.
+      provenance: "scripts/build_transport_demand.py:build_transport_demand; scripts/build_transport_demand.py:electricity rail; scripts/build_energy_totals.py:total rail passenger; scripts/prepare_sector_network.py:determine_emission_sectors; scripts/build_electricity_demand.py:load_timeseries"
+    levers:
+      - key: sector.transport
+        effect: "false removes the land transport aggregate (incl. the folded diesel-rail energy) and drops 'rail non-elec' from emission accounting; the measured electric load (incl. electric rail) stays."
+        default: "true"
+        provenance: "config/config.default.yaml:transport; scripts/prepare_sector_network.py:determine_emission_sectors"
+      - key: sector.land_transport_electric_share
+        effect: "The only knob that shifts folded diesel-rail energy to electricity — via car-like EV components, not rail physics."
+        default: "{2020: 0, 2025: 0.05, 2030: 0.2, 2035: 0.45, 2040: 0.7, 2045: 0.85, 2050: 1}"
+        provenance: "config/config.default.yaml:land_transport_electric_share; scripts/prepare_sector_network.py:add_land_transport"
+      - key: energy.energy_totals_year
+        effect: "Statistical year fixing the electric/diesel rail split (and all energy totals)."
+        default: "2023"
+        provenance: "config/config.default.yaml:energy_totals_year; rules/build_sector.smk:energy_totals_year"
+    boundary:
+      - variant: "status-quo rail electrification level"
+        rung: L0
+        note: "automatic — the 2023 statistical split flows through energy totals and the measured load"
+      - variant: "decarbonise remaining diesel rail along with road transport"
+        rung: L1
+        note: "already happens via land_transport_electric_share (or fuel_cell share for H2) since diesel rail is inside the aggregate — crude but energy-consistent"
+      - variant: "explicit electric-rail load with a target electrification share"
+        rung: L2
+        note: "no key exists; smallest edit is in build_transport_demand — carve 'total rail' - 'electricity rail' out of the aggregate and emit a separate flat/profiled series, then add a plain AC Load in add_land_transport with a share parameter (new config key threaded through options)"
+      - variant: "rail-specific demand profile (timetable shape instead of road traffic shape)"
+        rung: L3
+        note: "the folded rail energy inherits the BASt road weekly profile; a rail profile needs external timetable/traction data feeding the L2 split"
+      - variant: "passenger vs freight rail with separate electrification pace"
+        rung: L3
+        note: "energy_totals.csv already carries 'total rail passenger'/'total rail freight' and their electricity counterparts (unused) — the split data exists, the demand plumbing does not"
+      - variant: "hydrogen or battery trains, catenary investment on specific lines"
+        rung: L5
+        note: "no rail infrastructure representation at all; bespoke components and network data"
+    where:
+      - change: "the rail folding/subtraction in the transport aggregate"
+        anchor: "scripts/build_transport_demand.py::build_transport_demand (energy_totals_transport expression)"
+        provenance: "scripts/build_transport_demand.py:build_transport_demand"
+      - change: "rail columns in the energy totals"
+        anchor: "scripts/build_energy_totals.py TrRail_ene parsing (rule build_energy_totals)"
+        provenance: "scripts/build_energy_totals.py:electricity rail; rules/build_sector.smk:build_energy_totals"
+      - change: "where an explicit rail load would be added"
+        anchor: "scripts/prepare_sector_network.py::add_land_transport"
+        provenance: "scripts/prepare_sector_network.py:add_land_transport"
+      - change: "diesel-rail emissions in the CO2 baseline"
+        anchor: "scripts/prepare_sector_network.py::determine_emission_sectors ('rail non-elec')"
+        provenance: "scripts/prepare_sector_network.py:rail non-elec"
+    data_dependencies:
+      - input: "JRC-IDEES TrRail_ene sheet (total/electricity rail, passenger/freight sub-rows) + Swiss energy balances"
+        required_for: "the electric/diesel rail split"
+        availability: "retrieved by the workflow (rules retrieve_jrc_idees / build_energy_totals); non-IDEES countries filled by rail-fraction split"
+      - input: "measured national electricity load (OPSD/ENTSO-E, rule build_electricity_demand)"
+        required_for: "today's electric rail traction (implicit)"
+        availability: "retrieved by the workflow; historical only"
+      - input: "rail timetable/traction profiles"
+        required_for: "an explicit rail demand shape"
+        availability: "absent from the repo"

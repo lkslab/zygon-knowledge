@@ -1,0 +1,742 @@
+# Functionality registry for the topics cookbook (pypsa-eur).
+# Model CAPABILITIES (analysis machinery, not technologies/demands/data) that
+# topic cards reference by id. Consumer symbols are grep-verified against the
+# repo at version anchor 849c8858 (2026-07-22).
+# status: working   — wired and exercised by the standard workflow
+#         partial   — exists but limited/off-by-default/needs assembly
+#         dead-key  — config surface exists but no code consumes it (or wiring is broken)
+#         absent    — not in the model at all (note names the nearest workaround)
+
+# ---------- temporal machinery ----------
+- id: temporal-resolution-nh
+  title: "Temporal averaging (nH resolution)"
+  status: working
+  surface: "clustering.temporal.resolution_elec/_sector; opts token like 3h/24h; sector also nsn (every n-th snapshot)"
+  consumer: "scripts/prepare_network.py:average_every_nhours; scripts/prepare_sector_network.py:set_temporal_aggregation"
+  note: "resamples all time series to n-hour means; sector chain additionally supports representative-snapshot thinning via the 'sn' suffix"
+
+- id: time-segmentation-tsam
+  title: "Time-series segmentation (nSEG, TSAM)"
+  status: working
+  surface: "opts token like 4380seg -> clustering.temporal.resolution_elec"
+  consumer: "scripts/prepare_network.py:apply_time_segmentation"
+  note: "adaptive segments preserve extremes better than uniform averaging; needs tsam package; sector chain re-applies elec snapshot weightings"
+
+- id: weather-year-selection
+  title: "Weather year / snapshot window selection"
+  status: working
+  surface: "snapshots.start/end; atlite.default_cutout; atlite.cutouts (europe-1940-2024-era5 spans 85 years)"
+  consumer: "rules/common.smk:input_cutout; scripts/_helpers.py:get_snapshots"
+  note: "any ERA5 weather year 1940-2024 selectable by moving the snapshot window; SARAH-based solar only for cutout years that include influx"
+
+- id: multi-weather-year
+  title: "Multi-year weather in ONE optimization"
+  status: partial
+  surface: "snapshots spanning >1 year; list of cutouts concatenated along time"
+  consumer: "scripts/_helpers.py:load_cutout"
+  note: "load_cutout concatenates multiple cutout files on the time axis and Nyears scaling exists in prepare_network, but the standard workflow runs one year; no probabilistic multi-year adequacy metrics"
+
+- id: sub-hourly-resolution
+  title: "Sub-hourly temporal resolution"
+  status: absent
+  surface: "—"
+  note: "hourly floor from ERA5/demand profiles (get_snapshots freq='h'); temporal-resolution-nh only coarsens — nearest: post-hoc balancing proxies via operational-reserves"
+
+- id: rolling-horizon-dispatch
+  title: "Rolling-horizon optimization"
+  status: working
+  surface: "solving.options.rolling_horizon (default false); solving.options.horizon/overlap"
+  consumer: "scripts/solve_network.py:optimize_with_rolling_horizon"
+  note: "splits the solve into sequential windows (cyclic storage disabled); pairs with operations-only-solve for production-cost-style runs"
+
+# ---------- foresight & pathways ----------
+- id: overnight-foresight
+  title: "Overnight (greenfield) capacity expansion"
+  status: working
+  surface: "foresight: overnight (default); scenario.planning_horizons single year"
+  consumer: "rules/solve_overnight.smk:solve_sector_network"
+  note: "the default mode: one investment year, no vintaging"
+
+- id: myopic-foresight
+  title: "Myopic multi-horizon investment pathway"
+  status: working
+  surface: "foresight: myopic; scenario.planning_horizons list; existing_capacities.*"
+  consumer: "rules/solve_myopic.smk:add_brownfield; scripts/add_brownfield.py:add_brownfield"
+  note: "sequential horizons with capacity carry-forward, ageing and per-horizon land-use accounting; battle-tested in eur (unlike earth)"
+
+- id: perfect-foresight
+  title: "Perfect foresight (multi-investment-period) pathway"
+  status: working
+  surface: "foresight: perfect; costs.social_discountrate; rules/solve_perfect.smk"
+  consumer: "scripts/prepare_perfect_foresight.py:concat_networks; scripts/solve_network.py:add_carbon_budget_constraint"
+  note: "all horizons co-optimized in one model with investment-period weightings and inter-period carbon budget/atmosphere constraints; a capability pypsa-earth lacks; summarised by make_summary_perfect"
+
+- id: existing-baseyear-brownfield
+  title: "Existing capacities in the base year"
+  status: working
+  surface: "existing_capacities.{grouping_years_power,grouping_years_heat,threshold_capacity,conventional_carriers,...}"
+  consumer: "scripts/add_existing_baseyear.py:add_build_year_to_new_assets"
+  note: "seeds build years for power AND heating fleets (incl. existing_heating_distribution) — feeds both myopic and perfect chains"
+
+- id: land-use-constraint
+  title: "Land-use constraints across horizons"
+  status: working
+  surface: "automatic in myopic/perfect solves"
+  consumer: "scripts/solve_network.py:add_land_use_constraint; scripts/solve_network.py:add_land_use_constraint_perfect"
+  note: "caps VRE p_nom_max by what earlier vintages already occupy; separate implementation per foresight mode"
+
+- id: max-growth-limits
+  title: "Technology deployment growth limits"
+  status: partial
+  surface: "sector.limit_max_growth.{enable,factor,max_growth,max_relative_growth}"
+  consumer: "scripts/solve_network.py:add_max_growth"
+  note: "per-carrier absolute and relative growth caps between investment periods — wired ONLY for foresight: perfect at this ref (not myopic); enable defaults false"
+
+- id: fleet-retirement-filter
+  title: "Fleet retirement / commissioning windows"
+  status: working
+  surface: "electricity.powerplants_filter (pandas query on DateIn/DateOut); electricity.custom_powerplants"
+  consumer: "scripts/build_powerplants.py:powerplants_filter; scripts/build_powerplants.py:add_custom_powerplants"
+  note: "retire plants by date query and inject known projects via custom_powerplants.csv — the mechanical lever for early-retirement scenarios"
+
+- id: discount-rate-dimension
+  title: "Discount rate as a scenario dimension"
+  status: partial
+  surface: "costs.social_discountrate; costs.fill_values 'discount rate'; sector_opts sdr<f> token"
+  consumer: "scripts/prepare_perfect_foresight.py:social_discountrate; scripts/_helpers.py:social_discountrate"
+  note: "technology WACC comes from the costs table ('discount rate' column, fill 0.07); social_discountrate/sdr only affects inter-period weighting in perfect foresight — no single-run WACC sweep token"
+
+# ---------- wildcard & scenario grammar ----------
+- id: wildcard-opts-grammar
+  title: "opts / sector_opts token grammar"
+  status: working
+  surface: "opts: nH/nseg, Co2L, CH4L, Ep/Ept, ATK[c], carrier+p/e/c/m, lv/lc; sector_opts: T/H/B/I/A, CCL, EQ, BAU, SAFE, nH/nsn/nseg, decentral, noH2network, nowasteheat, nodistrict, dist, biomasstransport, linemaxext, Co2L, cb (carbon budget), sdr, seq, carrier+attr, CF+"
+  consumer: "scripts/_helpers.py:update_config_from_wildcards"
+  note: "every token is sugar that rewrites config keys before rules read them; the simpl and ll wildcards of older releases are GONE (scenario has only clusters/opts/sector_opts/planning_horizons)"
+
+- id: cf-config-injection
+  title: "Arbitrary config override from wildcard (CF+)"
+  status: working
+  surface: "sector_opts token CF+<section>+<key>+<value>"
+  consumer: "scripts/_helpers.py:update_config"
+  note: "'any config option can be represented in wildcard' — the escape hatch when no dedicated token exists"
+
+- id: scenario-matrix
+  title: "Scenario management & cartesian run matrix"
+  status: working
+  surface: "run.{prefix,name}; run.scenarios.{enable,file}; config/create_scenarios.py; scenario.{clusters,opts,sector_opts,planning_horizons}"
+  consumer: "Snakefile:get_scenarios; rules/common.smk:scenario_config"
+  note: "scenario yaml files are per-run config overrides expanded via the run wildcard; scenario lists expand combinatorially — the workhorse for sweeps"
+
+- id: shared-resources-caching
+  title: "Shared-resources caching across runs"
+  status: working
+  surface: "run.shared_resources.{policy: false|true|base|<dirname>, exclude}"
+  consumer: "scripts/_helpers.py:get_run_path"
+  note: "wildcard-independent inputs (shapes, cutout-derived data) can be shared between scenario runs to avoid recomputation"
+
+- id: config-schema-validation
+  title: "Config schema validation (pydantic)"
+  status: working
+  surface: "config/schema.default.json; scripts/lib/validation"
+  consumer: "Snakefile:validate_config"
+  note: "the full config (and every scenario override) is validated against a typed schema at workflow start — typos fail fast; a capability pypsa-earth lacks"
+
+# ---------- emissions & policy ----------
+- id: co2-cap
+  title: "CO2 emission cap, electricity chain (Co2L)"
+  status: working
+  surface: "opts Co2L<f>; electricity.{co2limit_enable,co2limit,co2base}"
+  consumer: "scripts/prepare_network.py:add_co2limit"
+  note: "annual budget as global constraint; factor scales co2base (1990 baseline)"
+
+- id: co2-budget-pathway
+  title: "Carbon budget pathway (co2_budget / cb token)"
+  status: working
+  surface: "co2_budget dict per horizon (default 2020:0.72 .. 2050:0.0); sector_opts cb<f>ex/be for exponential/beta budget distribution"
+  consumer: "scripts/prepare_sector_network.py:build_carbon_budget"
+  note: "per-horizon emission shares of the base year, or a total GtCO2 budget distributed over horizons; feeds sector-chain co2 limits"
+
+- id: emission-pricing
+  title: "Static CO2 price (Ep)"
+  status: working
+  surface: "opts Ep<f>; costs.emission_prices.{enable,co2}"
+  consumer: "scripts/prepare_network.py:add_emission_prices"
+  note: "adds price to marginal costs by carrier emission factor — carbon-price sensitivity is one token"
+
+- id: dynamic-emission-pricing
+  title: "Time-varying CO2 price from ETS spot data (Ept)"
+  status: working
+  surface: "opts Ept; costs.emission_prices.{dynamic,rolling_window}"
+  consumer: "scripts/prepare_network.py:add_dynamic_emission_prices"
+  note: "historical EEX/ETS daily prices smoothed by rolling window enter generator marginal costs — a capability pypsa-earth lacks"
+
+- id: gas-usage-limit
+  title: "Gas consumption budget (CH4L)"
+  status: working
+  surface: "opts CH4L<f>; electricity.{gaslimit_enable,gaslimit}"
+  consumer: "scripts/prepare_network.py:add_gaslimit"
+  note: "caps OCGT/CCGT gas usage via a gas_usage global constraint; the carrier set includes a dead 'CHP' entry that never exists in the electricity chain"
+
+- id: co2-atmosphere-constraint
+  title: "Non-cyclic co2 atmosphere store constraint"
+  status: working
+  surface: "automatic in single-period sector solves"
+  consumer: "scripts/solve_network.py:add_co2_atmosphere_constraint"
+  note: "bounds the final state of non-cyclic co2 stores by the global-constraint budget; the perfect-foresight twin is add_carbon_constraint/add_carbon_budget_constraint"
+
+- id: co2-sequestration-limit
+  title: "CO2 sequestration budget"
+  status: working
+  surface: "sector.co2_sequestration_potential (MtCO2/a per horizon); sector_opts seq<f> token"
+  consumer: "scripts/solve_network.py:add_co2_sequestration_limit"
+  note: "called from prepare_network in solve_network (not extra_functionality) whenever 'co2 sequestered' stores exist"
+
+# ---------- solve-time constraints ----------
+- id: country-carrier-capacity-limits
+  title: "Per-country per-carrier capacity min/max (CCL)"
+  status: working
+  surface: "sector_opts CCL -> solving.constraints.CCL; solving.agg_p_nom_limits.{file,agg_offwind,agg_solar,include_existing}; data/agg_p_nom_minmax.csv"
+  consumer: "scripts/solve_network.py:add_CCL_constraints"
+  note: "per-planning-horizon columns in the csv; can aggregate offwind/solar subtypes and count existing capacity; asserts against perfect foresight"
+
+- id: equity-self-sufficiency
+  title: "National/nodal self-sufficiency share (EQ)"
+  status: partial
+  surface: "sector_opts EQ<f>[c] -> solving.constraints.EQ"
+  consumer: "scripts/solve_network.py:add_EQ_constraints"
+  note: "each country (c) or node must produce >= f of its consumption; electricity-only per its own docstring; a bare EQ token stores True and crashes on EQ_o.replace — always give a value like EQ0.7c"
+
+- id: bau-minimum-capacities
+  title: "System-wide minimum carrier capacities (BAU)"
+  status: partial
+  surface: "sector_opts BAU -> solving.constraints.BAU; electricity.BAU_mincapacities"
+  consumer: "scripts/solve_network.py:add_BAU_constraints"
+  note: "per-carrier capacity floors; electricity.BAU_mincapacities has NO entry in config.default.yaml — users must add it or the constraint KeyErrors"
+
+- id: safe-reserve-margin
+  title: "Planning reserve margin (SAFE)"
+  status: partial
+  surface: "sector_opts SAFE -> solving.constraints.SAFE; electricity.SAFE_reservemargin"
+  consumer: "scripts/solve_network.py:add_SAFE_constraints"
+  note: "conventional firm capacity >= (1+margin) x peak load; electricity.SAFE_reservemargin has NO entry in config.default.yaml — add it yourself; deterministic adequacy, not probabilistic LOLE"
+
+- id: operational-reserves
+  title: "Operational reserve requirement (GenX-style)"
+  status: working
+  surface: "electricity.operational_reserve.{activate,epsilon_load,epsilon_vres,contingency}"
+  consumer: "scripts/solve_network.py:add_operational_reserve_margin"
+  note: "hourly reserve = %load + %VRE + fixed MW, co-optimized with dispatch; off by default; a proxy for balancing needs, not market products"
+
+- id: battery-charger-ratio
+  title: "Battery charger/discharger sizing coupling"
+  status: partial
+  surface: "automatic for extendable links named '* battery charger/discharger'"
+  consumer: "scripts/solve_network.py:add_battery_constraints"
+  note: "the index filter matches only names containing 'battery charger/discharger' — the newer storage suite (lfp, vanadium, lair, pair, iron-air) creates '<carrier> charger/discharger' links that are NOT coupled, and bicharger techs carry zero discharger cost, so their discharger sizing is unconstrained"
+
+- id: chp-operation-constraints
+  title: "CHP back-pressure / iso-fuel operating envelope"
+  status: dead-key
+  surface: "add_chp_constraints exists for pypsa-eur-style split CHP links"
+  consumer: "scripts/solve_network.py:add_chp_constraints"
+  note: "DEFINED BUT NEVER CALLED at this ref — not in extra_functionality; CHPs run only on their fixed link efficiencies (and the function has a latent bug: back-pressure rhs is undefined unless fixed CHPs exist)"
+
+- id: pipe-retrofit-constraint
+  title: "Gas-pipeline to H2 retrofit capacity coupling"
+  status: working
+  surface: "sector.{H2_retrofit,H2_retrofit_capacity_per_CH4} (H2_retrofit default false)"
+  consumer: "scripts/solve_network.py:add_pipe_retrofit_constraint"
+  note: "retrofitted H2 capacity subtracts from the parent gas pipe — genuinely wired whenever retrofit links exist"
+
+- id: tes-constraints
+  title: "Thermal storage energy-to-power & charger-ratio constraints"
+  status: working
+  surface: "sector.tes (default true); heat buses present"
+  consumer: "scripts/solve_network.py:add_TES_energy_to_power_ratio_constraints; scripts/solve_network.py:add_TES_charger_ratio_constraints"
+  note: "couples water-tank/pit store size to (dis)charger power via max_hours; active in every heating run"
+
+- id: lossy-bidirectional-links
+  title: "Lossy bidirectional transmission links"
+  status: working
+  surface: "sector.transmission_efficiency.{enable,DC,H2 pipeline,gas pipeline,electricity distribution grid}"
+  consumer: "scripts/prepare_sector_network.py:lossy_bidirectional_links; scripts/solve_network.py:add_lossy_bidirectional_link_constraints"
+  note: "length-dependent losses/compression on DC and pipeline carriers via mirrored '-reversed' links whose capacities are synced at solve time"
+
+- id: solar-potential-constraint
+  title: "Shared land budget for solar + solar-hsat"
+  status: working
+  surface: "automatic when both solar and solar-hsat are in renewable_carriers AND extendable_carriers (default true)"
+  consumer: "scripts/solve_network.py:add_solar_potential_constraints"
+  note: "fixed and tracking PV compete for the same p_nom_max land area (hsat weighted by its larger footprint)"
+
+- id: retrofit-gas-boiler-constraint
+  title: "Gas boiler retrofit-to-resistive constraint (perfect only)"
+  status: working
+  surface: "automatic under foresight: perfect"
+  consumer: "scripts/solve_network.py:add_retrofit_gas_boiler_constraint"
+  note: "forces decommissioned existing gas boilers to run at profile in multi-invest models; only in the n._multi_invest branch"
+
+- id: import-limit-constraint
+  title: "Green import volume limit"
+  status: working
+  surface: "sector.imports.{limit,limit_sense} (default .inf)"
+  consumer: "scripts/solve_network.py:add_import_limit_constraint"
+  note: "caps total synthetic/biomass fuel imports in MWh_fuel; only active when sector.imports.enable"
+
+- id: load-shedding-voll
+  title: "Load shedding at value of lost load"
+  status: working
+  surface: "solving.options.load_shedding.{enable,default_cost,all_carriers,carriers} (EUR/MWh; default off)"
+  consumer: "scripts/solve_network.py:add_load_balance_components"
+  note: "slack generators per bus with PER-CARRIER shedding costs across all bus carriers (heat, H2, ...) — unserved-energy cost and infeasibility diagnosis"
+
+- id: load-sinks
+  title: "Load sinks (surplus absorption slack)"
+  status: working
+  surface: "solving.options.load_sinks.{enable,default_cost,all_carriers,carriers}"
+  consumer: "scripts/solve_network.py:add_load_balance_components"
+  note: "the mirror of load shedding (sign=-1): paid dumping of surplus energy per carrier — a balance-infeasibility diagnostic"
+
+- id: curtailment-mode
+  title: "Explicit curtailment accounting mode"
+  status: working
+  surface: "solving.options.curtailment_mode (default false)"
+  consumer: "scripts/solve_network.py:curtailment_mode"
+  note: "fixes VRE to their profile (p_min_pu=p_max_pu) and adds negative 'curtailment' generators so curtailed energy appears as a dispatched carrier"
+
+- id: autarky
+  title: "Autarky enforcement"
+  status: partial
+  surface: "electricity.autarky.{enable,by_country}; opts ATK/ATKc token"
+  consumer: "scripts/prepare_network.py:enforce_autarky"
+  note: "config path works (removes cross-border or all lines/DC links); the ATK/ATKc wildcard token is BROKEN at this ref — update_config_from_wildcards writes top-level config['autarky'] which does not exist (KeyError); set electricity.autarky in config instead"
+
+- id: carrier-attribute-scaling
+  title: "Per-carrier cost/potential scaling (adjustments)"
+  status: working
+  surface: "opts/sector_opts like solar+c0.5, onwind+p2; adjustments.{electricity,sector}.{factor,absolute}"
+  consumer: "scripts/prepare_network.py:maybe_adjust_costs_and_potentials"
+  note: "factor or absolute overrides on p_nom_max/e_nom_max/capital_cost/marginal_cost per component+carrier, per investment year in the sector chain — wildcard-level sensitivity sweeps"
+
+- id: custom-constraint-hook
+  title: "Custom extra_functionality hook at solve time"
+  status: working
+  surface: "solving.options.custom_extra_functionality: ../data/custom_extra_functionality.py (default set)"
+  consumer: "scripts/solve_network.py:custom_extra_functionality; rules/common.smk:input_custom_extra_functionality"
+  note: "user module imported and called with (n, snapshots, snakemake) after built-in constraints — the sanctioned landing point for bespoke linear constraints; key IS present in config.default.yaml at this ref"
+
+# ---------- spatial machinery ----------
+- id: network-simplification
+  title: "Network simplification to 380 kV"
+  status: working
+  surface: "clustering.simplify_network.{to_substations,remove_stubs,remove_stubs_across_borders}"
+  consumer: "scripts/simplify_network.py:simplify_network_to_380"
+  note: "voltage mapping, converter removal, stub trimming; the simpl wildcard of older releases is gone — outputs are named base_s unconditionally"
+
+- id: spatial-clustering
+  title: "Spatial resolution (clusters wildcard, kmeans/hac)"
+  status: working
+  surface: "scenario.clusters; clustering.cluster_network.{algorithm: kmeans|hac,hac_features}; clustering.mode: busmap"
+  consumer: "scripts/cluster_network.py:busmap_for_n_clusters; scripts/cluster_network.py:distribute_n_clusters_to_countries"
+  note: "cluster counts distributed across countries by load/mean-profile feature; hac uses wind/solar resource features from build_hac_features"
+
+- id: administrative-clustering
+  title: "Administrative (NUTS/bidding-zone) clustering"
+  status: working
+  surface: "clustering.mode: administrative; clustering.administrative.{level: 1|2|3|bz,countries}; scenario.clusters: adm"
+  consumer: "scripts/cluster_network.py:busmap_for_admin_regions"
+  note: "clusters to NUTS1/2/3 or bidding zones (per-country level overrides) — the lever for policy-aligned zones; earth's GADM equivalent"
+
+- id: bidding-zone-shapes
+  title: "Bidding-zone shape construction"
+  status: working
+  surface: "clustering.build_bidding_zones.{remove_islands,aggregate_to_tyndp}"
+  consumer: "rules/build_electricity.smk:build_bidding_zones"
+  note: "builds electricity bidding-zone geometries (DK1/DK2, NO/SE zones, IT zones...) used by administrative clustering at level 'bz' — the mechanical basis for zonal-pricing studies"
+
+- id: custom-busmap
+  title: "User-defined zonal map / bus shapes"
+  status: working
+  surface: "clustering.mode: custom_busmap or custom_busshapes; data/busmaps/*.csv, data/busshapes/*.geojson"
+  consumer: "scripts/cluster_network.py:custom_busmap; scripts/cluster_network.py:busmap_from_shapes"
+  note: "arbitrary bus->zone assignment by csv or polygon file — bidding-zone experiments without touching code"
+
+- id: focus-weights
+  title: "Per-country cluster budget (focus_weights)"
+  status: working
+  surface: "clustering.focus_weights: {DE: 0.6, ...} (default false)"
+  consumer: "scripts/cluster_network.py:focus_weights"
+  note: "reserves a share of total clusters for named countries — high resolution where the question lives, coarse elsewhere"
+
+- id: copperplate-regions
+  title: "Copperplating selected regions"
+  status: working
+  surface: "clustering.copperplate_regions: [[list of country/zone groups]]"
+  consumer: "scripts/cluster_network.py:copperplate_buses"
+  note: "merges all buses of listed regions into one unconstrained node before clustering — cheap interconnection counterfactuals"
+
+- id: base-network-source
+  title: "Base grid topology source choice"
+  status: working
+  surface: "electricity.base_network: osm (default) | tyndp | entsoegridkit (deprecated)"
+  consumer: "scripts/base_network.py:entsoegridkit; rules/build_electricity.smk:build_tyndp_network"
+  note: "OSM-derived grid is default; TYNDP reference grid buildable; gridkit path emits a deprecation warning"
+
+- id: transmission-projects
+  title: "Planned transmission project pipeline (TYNDP/NEP)"
+  status: working
+  surface: "transmission_projects.{enable,include:{tyndp2020,nep,manual},status,new_link_capacity}"
+  consumer: "scripts/add_transmission_projects_and_dlr.py:attach_transmission_projects"
+  note: "candidate lines/links from TYNDP2020 and German NEP filtered by permitting status — the nearest thing to interconnection-queue modelling, transmission side only"
+
+- id: dynamic-line-rating
+  title: "Dynamic line rating from weather"
+  status: partial
+  surface: "lines.dynamic_line_rating.{activate,cutout,correction_factor,max_voltage_difference,max_line_rating} (default off)"
+  consumer: "scripts/add_transmission_projects_and_dlr.py:attach_line_rating; scripts/build_line_rating.py:calculate_line_rating"
+  note: "weather-dependent s_max_pu per line from the cutout — a capability pypsa-earth lacks; off by default"
+
+- id: transmission-expansion-limits
+  title: "Transmission expansion bounds (volume/cost limit)"
+  status: working
+  surface: "electricity.transmission_limit: vopt (default) | v1.25 | c1.25 | v1.0 (fixed); opts token lv<f>/lc<f>; lines/links.max_extension"
+  consumer: "scripts/prepare_network.py:set_transmission_limit; scripts/prepare_network.py:set_line_nom_max"
+  note: "the ll wildcard is GONE — the limit is a config key (or lv/lc opts token); line+link expansion co-optimized under a global volume ('v') or cost ('c') constraint; NOTE set_transmission_limit re-calls set_transmission_costs with DEFAULT length factors, silently overwriting length_factor-scaled line capex from add_electricity"
+
+- id: line-security-margin
+  title: "Static N-1 proxy margin on lines"
+  status: working
+  surface: "lines.s_max_pu (default 0.7)"
+  consumer: "scripts/prepare_network.py:set_line_s_max_pu"
+  note: "uniform derating stands in for contingency analysis; no true N-1/SCOPF"
+
+- id: contingency-scopf
+  title: "True N-1 contingency / security-constrained OPF"
+  status: absent
+  surface: "—"
+  note: "PyPSA's security-constrained LOPF is not wired into the workflow; nearest: line-security-margin plus dynamic-line-rating"
+
+- id: distribution-grid-lv
+  title: "Stylized distribution grid (LV bus per node)"
+  status: working
+  surface: "sector.{electricity_distribution_grid: true (default), electricity_grid_connection}; sector_opts dist token; solar rooftop potentials"
+  consumer: "scripts/prepare_sector_network.py:insert_electricity_distribution_grid"
+  note: "LV buses/links with reinforcement cost hosting rooftop PV, home batteries, EVs, heat pumps; NO power flow — cost proxy only"
+
+- id: distribution-grid-cost-factor
+  title: "Distribution grid cost factor knob"
+  status: dead-key
+  surface: "sector.electricity_distribution_grid_cost_factor (config + dist<f> token both set it)"
+  consumer: "scripts/_helpers.py:electricity_distribution_grid_cost_factor"
+  note: "set by config and by the dist wildcard but read by NO script — use adjustments.sector factor on 'electricity distribution grid' capital_cost instead (that IS wired, and is the config default example)"
+
+- id: distribution-power-flow
+  title: "Distribution power flow / hosting-capacity analysis"
+  status: absent
+  surface: "—"
+  note: "no feeder-level network model; nearest: distribution-grid-lv linear cost proxy"
+
+# ---------- solving & performance ----------
+- id: solver-choice
+  title: "Solver selection & tuning profiles"
+  status: working
+  surface: "solving.solver.{name,options}; solving.solver_options presets for gurobi (default/numeric-focus/fallback), highs (ipm/simplex), cplex, copt (incl. copt-gpu PDLP), xpress"
+  consumer: "scripts/solve_network.py:solver_options"
+  note: "gurobi-default is the shipped default; highs profiles make it open-source runnable; a GPU first-order profile exists (copt-gpu)"
+
+- id: iterative-impedance-expansion
+  title: "Iterative transmission expansion (impedance update)"
+  status: working
+  surface: "solving.options.{skip_iterations: true (default),min_iterations,max_iterations,track_iterations}"
+  consumer: "scripts/solve_network.py:optimize_transmission_expansion_iteratively"
+  note: "sequential LP updating line reactance with capacity; skipped by default and auto-skipped when no lines are extendable"
+
+- id: transmission-losses
+  title: "Piecewise-linear transmission losses"
+  status: working
+  surface: "solving.options.transmission_losses: 2 (default; number of tangents, false to disable)"
+  consumer: "scripts/solve_network.py:transmission_losses"
+  note: "quadratic line losses linearized with n tangents inside the LOPF — on by default, a capability pypsa-earth lacks"
+
+- id: linearized-unit-commitment
+  title: "(Linearized) unit commitment & ramping"
+  status: partial
+  surface: "conventional.unit_commitment (default false) + data/unit_commitment.csv; solving.options.linearized_unit_commitment: true; clustering.aggregation_strategies preserves committable/ramp limits"
+  consumer: "scripts/add_electricity.py:unit_commitment; scripts/solve_network.py:linearized_unit_commitment"
+  note: "start-up/min-load/min-up-down data per conventional carrier, solved as LP relaxation; off by default; the csv has no 'oil' column so oil plants get no UC data"
+
+- id: post-discretization
+  title: "Post-discretization of line/link expansion"
+  status: partial
+  surface: "solving.options.post_discretization.{enable,line_unit_size,link_unit_size,thresholds} (default off)"
+  consumer: "scripts/solve_network.py:post_discretization"
+  note: "rounds continuous expansion to unit sizes between iterations — only applied in the ITERATIVE mode, so skip_iterations must be false for it to bite"
+
+- id: numeric-stability-options
+  title: "Numerical hygiene (noisy costs, clipping, seeds)"
+  status: working
+  surface: "solving.options.{noisy_costs: true,clip_p_max_pu,seed}; solving.check_objective"
+  consumer: "scripts/solve_network.py:noisy_costs; scripts/solve_network.py:check_objective_value"
+  note: "degeneracy-breaking noise, tiny-value clipping, seeded RNG, and an optional objective-value regression check for reproducibility"
+
+- id: operations-only-solve
+  title: "Dispatch-only run with fixed capacities"
+  status: working
+  surface: "rule solve_operations_network (electricity chain)"
+  consumer: "scripts/solve_operations_network.py:fix_optimal_capacities"
+  note: "re-solves hourly dispatch with capacities fixed from a prior expansion run — production-cost-model style; a dedicated rule earth lacks; sector chain would need the same pattern manually"
+
+- id: remote-solving-oetc
+  title: "Remote cloud solving (OETC)"
+  status: partial
+  surface: "solving.oetc (config key present, unset by default; OETC_EMAIL/OETC_PASSWORD env)"
+  consumer: "scripts/solve_network.py:OetcHandler"
+  note: "hands the linopy model to the Open Energy Transition Compute cloud — needs credentials and oetc settings"
+
+# ---------- cost machinery ----------
+- id: cost-data-pipeline
+  title: "Cost preparation & custom cost overrides"
+  status: working
+  surface: "costs.{year: 2050,fill_values,custom_cost_fn: data/custom_costs.csv,overwrites (deprecated),capital_cost,marginal_cost}"
+  consumer: "scripts/process_cost_data.py:prepare_costs; scripts/process_cost_data.py:overwrite_costs"
+  note: "custom_costs.csv can overwrite parameters per planning_horizon AND add entirely new technology rows; config-based costs.overwrites still works but logs a deprecation warning"
+
+- id: technology-cost-year
+  title: "Technology cost vintage selection"
+  status: working
+  surface: "costs.year; data.costs source/version (versions.csv pinned technology-data release)"
+  consumer: "rules/retrieve.smk:retrieve_cost_data"
+  note: "cost-decline trajectories enter via the chosen costs_<year> table; myopic/perfect chains pull one table per planning horizon"
+
+# ---------- sector-coupling machinery ----------
+- id: sector-master-switches
+  title: "Sector on/off master switches"
+  status: working
+  surface: "sector.{transport,heating,biomass,industry,shipping,aviation,agriculture,fossil_fuels} (all default true); sector_opts tokens T/H/B/I/A"
+  consumer: "scripts/prepare_sector_network.py:add_land_transport; scripts/prepare_sector_network.py:add_heat; scripts/prepare_sector_network.py:add_industry"
+  note: "electricity + heat + transport + industry + shipping/aviation + agriculture as one network; waste-heat coupling switchable via nowasteheat token / use_*_waste_heat shares"
+
+- id: exogenous-transport-shares
+  title: "Exogenous land-transport fuel share pathways"
+  status: working
+  surface: "sector.land_transport_{electric,fuel_cell,ice}_share per horizon (interpolated between listed years)"
+  consumer: "scripts/prepare_sector_network.py:add_land_transport"
+  note: "EV/FCEV/ICE split is imposed per planning horizon, adoption is not endogenous; the central electrification-pathway lever"
+
+- id: bev-dsm-v2g
+  title: "EV battery demand-shifting and V2G"
+  status: working
+  surface: "sector.{bev_dsm,v2g,bev_dsm_availability,bev_energy,bev_charge_rate,bev_avail_max/mean,bev_dsm_restriction_*}"
+  consumer: "scripts/prepare_sector_network.py:V2G"
+  note: "EV batteries shift charging and can discharge to grid subject to availability profiles from mobility data"
+
+- id: residential-heat-dsm
+  title: "Residential heating demand-side management"
+  status: working
+  surface: "sector.residential_heat.dsm.{enable (default false),direction: overheat/undercool,restriction_value per horizon,restriction_time}"
+  consumer: "scripts/prepare_sector_network.py:residential_heat"
+  note: "building thermal inertia as shiftable heat demand within comfort bands at set hours — a capability pypsa-earth lacks"
+
+- id: industry-t-endogenous
+  title: "Endogenous industrial process-heat technology choice"
+  status: working
+  surface: "sector.industry_t.{endogen (default false),must_run,endogenise_sectors,heat100-200/heat200-500/heat>500 tech menus}"
+  consumer: "scripts/prepare_sector_network.py:industry_t"
+  note: "per-subsector industrial heat bands choose between biomass/methane/H2/heat pumps/electric boilers endogenously; brand-new machinery, off by default"
+
+- id: h2-network-retrofit
+  title: "H2 pipeline network & gas-pipe retrofitting"
+  status: working
+  surface: "sector.{H2_network: true,H2_retrofit: false,H2_retrofit_capacity_per_CH4,hydrogen_underground_storage}; sector_opts noH2network"
+  consumer: "scripts/prepare_sector_network.py:add_h2_gas_infrastructure"
+  note: "greenfield H2 pipelines along the clustered topology plus optional retrofit of existing gas pipes (coupled by pipe-retrofit-constraint); salt-cavern storage potentials included"
+
+- id: gas-network-links
+  title: "Methane transmission network with real pipelines"
+  status: working
+  surface: "sector.gas_network: true (default); gas input locations (LNG/pipeline/production)"
+  consumer: "scripts/cluster_gas_network.py:build_clustered_gas_network; scripts/prepare_sector_network.py:add_h2_gas_infrastructure"
+  note: "SciGRID_gas-derived pipelines clustered and ADDED as capacitated links with entry points — unlike pypsa-earth, where the equivalent key is dead and gas is nodal-unlimited"
+
+- id: co2-network-sequestration
+  title: "CO2 transport, spatial sequestration & DAC"
+  status: working
+  surface: "sector.{co2_network: true,co2_spatial,regional_co2_sequestration_potential,co2_sequestration_cost,dac}"
+  consumer: "scripts/prepare_sector_network.py:add_co2_network; scripts/build_co2_sequestration_potentials.py:create_capacity_map_storage"
+  note: "captured-carbon buses, CO2 pipeline network, CO2Stop-derived regional storage potentials with cost curve, DAC"
+
+- id: ammonia-value-chain
+  title: "Ammonia production/consumption chain"
+  status: working
+  surface: "sector.ammonia: true (default; Haber-Bosch, cracker, NH3 store)"
+  consumer: "scripts/prepare_sector_network.py:add_ammonia"
+  note: "NH3 as first-class carrier; NH3 also available as an import vector via green-energy-imports"
+
+- id: methanol-suite
+  title: "Methanol economy suite"
+  status: working
+  surface: "sector.methanol.{biomass_to_methanol,methanol_to_power (ocgt default on),methanol_reforming,methanol_to_kerosene,regional_methanol_demand}"
+  consumer: "scripts/prepare_sector_network.py:add_methanol"
+  note: "methanolisation, methanol-to-power/kerosene/reforming paths individually switchable; shipping methanol share is exogenous"
+
+- id: green-energy-imports
+  title: "Green fuel/energy import supply routes"
+  status: working
+  surface: "sector.imports.{enable (default false),limit,limit_sense,price per carrier: H2/NH3/methanol/gas/oil}"
+  consumer: "scripts/prepare_sector_network.py:add_import_options"
+  note: "priced import options at gas entry points plus a system-wide volume limit — the mirror of pypsa-earth's h2export chain (which eur lacks)"
+
+- id: district-heating-suite
+  title: "District heating machinery (areas, temperatures, PTES/ATES)"
+  status: working
+  surface: "sector.district_heating.{potential,progress per horizon,dh_areas,supply_temperature_approximation,ptes,heat_pump_cop_approximation,limited_heat_sources,direct_utilisation_heat_sources}"
+  consumer: "rules/build_sector.smk:build_dh_areas; scripts/prepare_sector_network.py:add_heat"
+  note: "GIS-derived DH areas, dynamic forward/return temperatures, temperature-limited pit storage with optional supplemental heating, heat-source utilisation profiles — far beyond earth's static shares"
+
+- id: ates-potentials
+  title: "Aquifer thermal energy storage (ATES)"
+  status: dead-key
+  surface: "sector.district_heating.ates.{enable (default false),suitable_aquifer_types,recovery_factor,...}"
+  consumer: "rules/build_sector.smk:build_ates_potentials"
+  note: "the rule's params read sector.district_heating.ates.max_top_temperature and .min_bottom_temperature which DO NOT EXIST in config.default.yaml (they live under ptes) — config_provider returns None and the build crashes when enabled; add the two keys under ates to use it"
+
+- id: enhanced-geothermal
+  title: "Enhanced geothermal systems (EGS)"
+  status: dead-key
+  surface: "sector.enhanced_geothermal.{enable (default false),flexible,var_cf: true,max_hours,max_boost}"
+  consumer: "scripts/prepare_sector_network.py:add_enhanced_geothermal"
+  note: "the call site passes the hardcoded placeholder 'path/to/capacity_factors.csv' while var_cf defaults true, so enabling EGS with defaults crashes on file read; set var_cf false (or patch the call to use the built egs_capacity_factors resource) to use it; the flexible-reservoir solve constraint (add_flexible_egs_constraint) is wired"
+
+- id: building-retrofit-endogenous
+  title: "Endogenous building retrofitting"
+  status: partial
+  surface: "sector.retrofitting.{retro_endogen (default false),cost_factor,interest_rate,...}; sector.reduce_space_heat_exogenously(_factor) as the default exogenous path"
+  consumer: "scripts/build_retro_cost.py:prepare_cost_retro"
+  note: "EU building-stock retrofit cost curves compete against heat supply when enabled; default is exogenous space-heat reduction factors per horizon; a capability pypsa-earth lacks"
+
+- id: heat-systems-param
+  title: "sector.heat_systems parameter"
+  status: dead-key
+  surface: "passed as a param to prepare_sector_network"
+  consumer: "rules/build_sector.smk:heat_systems"
+  note: "config key exists nowhere in config.default.yaml and the script never reads the param — heat system classes (urban central/decentral, rural) are hardcoded via heat_pump_sources instead"
+
+- id: hydro-inflow-normalization
+  title: "Hydro inflow calibration to reported statistics"
+  status: working
+  surface: "renewable.hydro.{eia_norm_year,eia_correct_by_capacity,hydro_max_hours: energy_capacity_totals_by_country,flatten_dispatch}"
+  consumer: "scripts/build_hydro_profile.py:eia_norm_year"
+  note: "ERA5-runoff inflow rescaled to EIA annual generation (optionally capacity-corrected); hydro-year scenarios via norm year"
+
+- id: renewable-potentials-land-eligibility
+  title: "Renewable potentials & land-eligibility chain"
+  status: working
+  surface: "renewable.<tech>.{capacity_per_sqkm,corine/luisa,natura,max_depth,min_shore_distance,resource_classes,...}"
+  consumer: "scripts/determine_availability_matrix.py:ExclusionContainer; scripts/build_renewable_profiles.py:profile"
+  note: "atlite profile generation with raster exclusions (CORINE/LUISA landcover, Natura, bathymetry, ship density) and per-node resource CLASSES (binned site quality) — the siting/land side of every VRE question"
+
+# ---------- outputs & metrics ----------
+- id: summary-outputs
+  title: "Per-run summary tables (costs, capacities, prices, metrics)"
+  status: working
+  surface: "rule make_summary -> results/.../csvs/individual/* (14 tables incl. metrics, market_values, weighted_prices, nodal_energy_balance)"
+  consumer: "scripts/make_summary.py:calculate_metrics; scripts/make_summary.py:calculate_market_values"
+  note: "system cost/capacity/energy-balance breakdowns plus curtailment, line volume, and the CO2 shadow price (metrics 'co2_shadow')"
+
+- id: global-summary
+  title: "Cross-scenario collected summaries & cumulative costs"
+  status: working
+  surface: "rules make_global_summary, make_cumulative_costs (myopic)"
+  consumer: "rules/postprocess.smk:make_global_summary; rules/postprocess.smk:make_cumulative_costs"
+  note: "concatenates per-run csvs across the whole scenario matrix; cumulative discounted system costs for pathways"
+
+- id: nodal-marginal-prices
+  title: "Nodal shadow prices (LMPs) from duals"
+  status: working
+  surface: "n.buses_t.marginal_price on any solved network; solving.options.assign_all_duals"
+  consumer: "scripts/make_summary.py:marginal_price"
+  note: "prices/weighted_prices/market_values tables aggregate nodal duals per carrier; zonal prices = demand-weighted aggregation over a busmap"
+
+- id: carbon-intensity-metrics
+  title: "Grid carbon intensity (gCO2/kWh) reporting"
+  status: partial
+  surface: "metrics csv exposes co2_shadow; emissions per carrier derivable from energy_balance"
+  consumer: "scripts/make_summary.py:co2_shadow"
+  note: "no direct gCO2/kWh column — compute total CO2 / total generation from summaries, or use the CO2 constraint dual for marginal intensity"
+
+- id: plotting-suite
+  title: "Maps & summary plotting (static + interactive)"
+  status: working
+  surface: "rules plot_power_network, plot_balance_map(_interactive), plot_hydrogen_network, plot_gas_network, plot_balance_timeseries, plot_heatmap_timeseries, plot_summary"
+  consumer: "scripts/plot_hydrogen_network.py:plot_h2_map; scripts/plot_balance_map.py:get_total_abs"
+  note: "energy-balance maps per carrier, H2/gas network maps, interactive HTML bus balances — richer than earth's plotting set"
+
+- id: workflow-reproducibility
+  title: "Pinned, config-driven, re-runnable workflow with provenance"
+  status: working
+  surface: "pixi.lock; data/versions.csv dataset pinning; config validated against schema; solved network stores full config in n.meta plus a sidecar yaml"
+  consumer: "scripts/solve_network.py:n.meta; rules/common.smk:dataset_version"
+  note: "same config + lockfile + pinned dataset versions reproduces the run; run.prefix/name isolate result trees; optional objective-value check hard-fails on drift"
+
+- id: data-retrieval-versioning
+  title: "Automated versioned data retrieval"
+  status: working
+  surface: "data.<dataset>.{source: primary|archive|build,version}; data/versions.csv; rules/retrieve.smk"
+  consumer: "rules/common.smk:dataset_version; rules/common.smk:load_data_versions"
+  note: "every external dataset resolves through a versions registry with primary/archive/build sources — swap or pin dataset versions per run"
+
+# ---------- absent analysis machinery ----------
+- id: mga-near-optimal
+  title: "Modelling-to-generate-alternatives / near-optimal spaces"
+  status: absent
+  surface: "—"
+  note: "no MGA or cost-slack exploration wired in (PyPSA/linopy can express it; separate pypsa-eur-mga projects exist); nearest: scenario-matrix sweeps + carrier-attribute-scaling"
+
+- id: monte-carlo-sampling
+  title: "Monte-Carlo uncertainty fan-out"
+  status: absent
+  surface: "—"
+  note: "NO monte-carlo module in pypsa-eur — pypsa-earth HAS one (monte_carlo.py with LHS over network quantities); nearest here: scenario-matrix + config/create_scenarios.py to enumerate parameter draws"
+
+- id: probabilistic-adequacy
+  title: "Probabilistic resource adequacy (LOLE/EUE, outage draws)"
+  status: absent
+  surface: "—"
+  note: "no forced-outage sampling or LOLE metrics; nearest: SAFE margin + operational reserves + load-shedding VOLL runs across weather-year sweeps"
+
+- id: market-design-mechanisms
+  title: "Explicit market mechanisms (capacity markets, bidding, ancillary products)"
+  status: absent
+  surface: "—"
+  note: "cost-minimization only — no bids, no capacity remuneration, no product co-optimization; nearest: operational-reserves constraint + nodal-marginal-prices as competitive-benchmark prices"
+
+- id: demand-elasticity
+  title: "Price-elastic / tariff-responsive demand"
+  status: absent
+  surface: "—"
+  note: "loads are fixed profiles; endogenous flexibility only via BEV DSM/V2G, residential heat DSM and industry_t must_run slack; elastic demand = code addition"
+
+- id: inertia-stability
+  title: "System inertia / dynamic stability"
+  status: absent
+  surface: "—"
+  note: "no frequency dynamics, inertia constraints, or short-circuit analysis; nearest proxy: operational-reserves contingency MW + CCL capacity floors via custom-constraint-hook"
+
+- id: interconnection-queues
+  title: "Generator interconnection queue / project pipeline modelling"
+  status: absent
+  surface: "—"
+  note: "no generator-project queue machinery; the transmission side IS covered by transmission-projects (TYNDP/NEP status filters); generators: custom_powerplants csv for known projects"
+
+- id: geospatial-access-electrification
+  title: "Per-settlement electrification (grid vs mini-grid vs SHS)"
+  status: absent
+  surface: "—"
+  note: "a European model — no OnSSET-style access tiers; pypsa-earth's GADM+WorldPop machinery is the sibling starting point for such questions"
+
+- id: h2-export-chain
+  title: "Hydrogen/fuel export demand chain"
+  status: absent
+  surface: "—"
+  note: "no export wildcard or endogenous export pricing (pypsa-earth HAS h2export + export config); eur models the importing side via green-energy-imports; exports = custom loads via custom-constraint-hook or config injection"

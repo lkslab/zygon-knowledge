@@ -1,0 +1,1341 @@
+id: weather-year-ensembles
+title: "Weather-year ensembles / inter-annual variability sampling"
+summary: >
+  Run the same system over many historical weather years — either as one solve per
+  year or as a single solve over all of them — to separate genuine design robustness
+  from the luck of one year.
+question: >
+  Is this answer a property of the system, or of the weather year I happened to model,
+  and how much does the design move if the weather is different?
+aliases:
+  - "weather year"
+  - "multiple weather years"
+  - "inter-annual variability"
+  - "interannual variability"
+  - "design year"
+  - "climate year"
+  - "year-to-year variability"
+  - "weather-year ensemble"
+  - "multi-year optimisation"
+  - "ERA5 reanalysis years"
+  - "climate reanalysis"
+  - "climate projection years"
+  - "representative weather year"
+when_to_use:
+  - "is this result robust to the weather year"
+  - "you used 2013 — what happens in a bad wind year"
+  - "how much do capacities change from year to year"
+  - "which weather year should I design for"
+  - "run it over 30 years of weather instead of one"
+  - "how much storage do I need to survive the worst year on record"
+  - "does climate change alter the cost-optimal system"
+  - "give me error bars on the capacity numbers"
+  - "is one year enough for a capacity expansion study"
+  - "test the design against a year it was not designed for"
+family: temporal-resolution
+prevalence:
+  papers: 18
+  tier1: 10
+  tier2: 8
+  sweep_hits: 62
+  basis: >
+    Hand-coded pass 1 over all 100 PDFs (2026-07-25) attributed 18 papers to this
+    method. The regex screen returned 62 — by far the largest over-count in the book,
+    and for a mechanical reason: the pattern includes '\bera5\b', and essentially every
+    PyPSA paper mentions ERA5 because that is where atlite's capacity factors come
+    from. Naming your reanalysis is not running an ensemble. The 18 retained are papers
+    that either run multiple weather years, or make and defend an explicit single-year
+    choice (role `routine-use`) — the latter matter to this card because "we used the
+    PyPSA-Eur default 2013" is the baseline the method is arguing against, and 9 of the
+    18 are exactly that. Only 8 papers run a genuine multi-year ensemble; the corpus's
+    ensemble sizes are 3, 4, 38, 40, 41, 70 and 80 years.
+procedure:
+  - step: >
+      Decide what the ensemble is FOR, because it fixes everything downstream. Three
+      distinct purposes appear in the corpus and they are not interchangeable: (a) put
+      error bars on a design (re-solve per year, report the spread), (b) produce ONE
+      design robust to all sampled years (co-optimise across years, or intersect
+      per-year results), (c) test a design built in one year against the others
+      (dispatch-only, capacities fixed).
+    handle: null
+    provenance: null
+  - step: >
+      Choose the years. The corpus does this three ways: the full available record
+      (38, 40, 41, 70, 80 years), a deliberately hard/easy bracket (1987 hard, 2020
+      easy; or 1985/1987/2010 as "difficult" years), or a shuffled subsequence of
+      growing length (1, 4, 16, 32, 48, 70) to show at what N the answer stops moving.
+      Note the last one is the only construction that actually ANSWERS "is one year
+      enough".
+    handle: null
+    provenance: null
+  - step: >
+      Obtain weather data for those years. This is the step that decides the boundary
+      rung, and it is a DATA question, not a config question: a reanalysis cutout must
+      exist covering each year and each region at the model's spatial extent.
+    handle: "atlite.cutouts / atlite.default_cutout, and the cutout retrieve-or-build switch"
+    provenance: "config/config.default.yaml:default_cutout; rules/common.smk:input_cutout"
+  - step: >
+      Move the snapshot window onto each year — and move the DEMAND year with it.
+      Capacity factors follow the cutout; electricity demand comes from a separate
+      observed series with its own, much shorter, coverage. Getting this wrong pairs
+      2013 load with 1985 weather and destroys the temperature/demand correlation that
+      is precisely what a cold-still-winter ensemble is trying to capture. Papers that
+      go pre-2010 regress load on heating/cooling degree days instead.
+    handle: "snapshots.{start,end,inclusive}; load.fixed_year"
+    provenance: "scripts/_helpers.py:get_snapshots; scripts/build_electricity_demand.py:fixed_year"
+  - step: >
+      Re-derive every weather-dependent resource per year: VRE availability profiles,
+      hydro inflow, temperature-driven heat demand, and (if modelled) hydro
+      normalisation. A weather-year ensemble is not a solve-time sweep — it invalidates
+      most of the resource-building half of the DAG, which is where its real cost sits.
+    handle: "the profile-building rules, keyed on the cutout"
+    provenance: "rules/build_electricity.smk:build_renewable_profiles; scripts/build_hydro_profile.py:eia_norm_year"
+  - step: >
+      Then EITHER (sequential) solve one independent capacity-expansion problem per
+      year and collect N designs, OR (joint) concatenate the years into one snapshot
+      set and solve once for a single design that must serve all of them. These are
+      different problems: the sequential route gives a DISTRIBUTION of designs and
+      scales linearly; the joint route gives ONE design and scales super-linearly in
+      memory. Grochowicz reports 3.5-4 GB and ~23 min for one year against ~134 GB and
+      1-2 days for the joint 41-year problem on the same network.
+    handle: "the standard solve, once per year; or a multi-range snapshots spec plus cutout concatenation"
+    provenance: "scripts/solve_network.py:solve_network; scripts/_helpers.py:load_cutout"
+  - step: >
+      Scale annualised quantities to the number of years actually in the snapshot set.
+      Capital costs, CO2 caps and transmission volume limits are all per-year
+      constants; a joint multi-year solve that leaves them unscaled is silently solving
+      a different problem.
+    handle: "Nyears = snapshot_weightings.objective.sum() / 8760"
+    provenance: "scripts/prepare_network.py:Nyears"
+  - step: >
+      Aggregate across the ensemble: mean and spread (or error bars) per capacity,
+      cost and curtailment quantity. Nothing in either workflow computes a
+      cross-year distribution; per-run summary tables are the input to a script you
+      write.
+    handle: null
+    provenance: null
+  - step: >
+      (validation, the step most studies skip) Cross-test: fix the capacities from the
+      design built in year i and re-solve DISPATCH ONLY under year j, for all pairs.
+      Grochowicz runs the full 40x40 matrix. This is what converts "the designs differ"
+      into "designing for the wrong year costs you X", and it is the only step that
+      detects a design that is infeasible out of sample.
+    handle: "rule solve_operations_network, with capacities fixed from the expansion run"
+    provenance: "scripts/solve_operations_network.py:fix_optimal_capacities"
+variants:
+  - id: single-design-year
+    what: >
+      One weather year, chosen and defended. The default and the corpus majority (9 of
+      18 papers), usually 2013 because it is the PyPSA-Eur default, sometimes a
+      deliberately low-wind year as a one-shot stress case. Buys nothing about
+      robustness; the honest version STATES the choice as an assumption rather than
+      leaving it implicit, and that is exactly what these papers do.
+    papers:
+      - "2022_Frysztacki_clustering-methods-spatial-reduction_EnergyInformatics.pdf"
+      - "2024_Glaum_Offshore-power-hydrogen-North-Sea_ApplEnergy.pdf"
+      - "2025_Franken_Power-system-benefits-transport-heating-flexibility-GB_ApplEnergy.pdf"
+      - "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+      - "2022_Parzen_PyPSA-Earth-global-open-energy-model-Africa_ApplEnergy.pdf"
+  - id: multi-year-sequential-ensemble
+    what: >
+      One independent solve per year, N designs collected and compared. Cost scales
+      LINEARLY in N and every solve is embarrassingly parallel, which is why this is
+      how every large ensemble in the corpus was actually run (38, 40, 41, 70, 80
+      years). Gives a distribution of designs and therefore error bars — but note that
+      no single one of those designs is robust to the others.
+    papers:
+      - "2019_Liu_Hydro-power-storage-transmission-China_ApplEnergy.pdf"
+      - "2022_Grochowicz_intersecting-near-optimal-spaces-weather.pdf"
+      - "2023_Grochowicz_weather-induced-extreme-events-renewable.pdf"
+      - "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+      - "2018_Schlachtberger_Cost-optimal-scenarios-weather_Energy.pdf"
+      - "2026_Geis_Managing-the-Mismatch-Flexibility_AdvApplEnergy.pdf"
+      - "2023_vanGreevenbroek_regional-overall-energy-system-flexibility.pdf"
+      - "2024_vanGreevenbroek_robust-european-green-hydrogen-strategy.pdf"
+      - "2021_Zeyen_Mitigating-heat-demand-peaks_Energy.pdf"
+  - id: multi-year-in-one-optimisation
+    what: >
+      All years concatenated into ONE snapshot set and solved once, giving a single
+      design that must serve every sampled year. This is the only construction that
+      directly answers "one design robust to all of these" without post-processing.
+      A different and much larger problem: memory grows with the total snapshot count,
+      and the corpus's 41-year joint solve needed ~134 GB and 1-2 days against 4 GB and
+      23 min per single year. Universally paired with coarsening (3-hourly or
+      segmentation) and country-level spatial resolution.
+    papers:
+      - "2018_Schlachtberger_Cost-optimal-scenarios-weather_Energy.pdf"
+      - "2022_Grochowicz_intersecting-near-optimal-spaces-weather.pdf"
+      - "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+  - id: growing-subsequence-convergence
+    what: >
+      Solve over 1, then 4, then 16, 32, 48, 70 years of a shuffled year sequence and
+      watch when the reported quantity stops moving. The only construction in the
+      corpus that answers "how many years do I need" rather than assuming an answer,
+      and it is cheap to add to a joint or sequential study you are already running.
+      Brown finds the distinction is regime-dependent: with inelastic demand the price
+      duration curve never settles, with elastic demand it settles quickly.
+    papers:
+      - "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+      - "2018_Schlachtberger_Cost-optimal-scenarios-weather_Energy.pdf"
+  - id: difficult-year-bracket
+    what: >
+      Two or three years chosen for DIFFICULTY rather than sampled — a hard year and
+      an easy year, identified from a prior full ensemble. Buys most of the robustness
+      signal for 2-3x a single solve instead of 40x, and is the pragmatic default when
+      the base case is expensive (sector-coupled, multi-horizon). Its validity is
+      entirely inherited from whichever full ensemble picked the years, which must be
+      cited.
+    papers:
+      - "2023_vanGreevenbroek_regional-overall-energy-system-flexibility.pdf"
+      - "2024_vanGreevenbroek_robust-european-green-hydrogen-strategy.pdf"
+      - "2026_Geis_Managing-the-Mismatch-Flexibility_AdvApplEnergy.pdf"
+      - "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+  - id: cross-year-design-validation
+    what: >
+      Fix capacities from the year-i design and re-solve dispatch only under year j,
+      over all pairs. Converts a spread of designs into a cost of being wrong, and is
+      the only construction that finds out-of-sample infeasibility. Cheap relative to
+      expansion (dispatch LPs), but N^2 of them.
+    papers:
+      - "2023_Grochowicz_weather-induced-extreme-events-renewable.pdf"
+      - "2022_Grochowicz_intersecting-near-optimal-spaces-weather.pdf"
+      - "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+  - id: climate-projection-years
+    what: >
+      Weather years drawn from downscaled CLIMATE MODEL output (EURO-CORDEX under
+      RCP 8.5) rather than reanalysis, so the ensemble spans future decades and
+      multiple GCMs instead of the historical record. A genuinely different data path:
+      the fields are a climate model's, not an observation-constrained reanalysis's,
+      and no PyPSA workflow has a retrieval route for them. Answers "does the
+      cost-optimal system change under climate change", which reanalysis cannot.
+    papers:
+      - "2018_Schlott_Climate-Change-Renewable-Network_ApplEnergy.pdf"
+      - "2020_Schyska_sensitivity-power-system-expansion-models.pdf"
+  - id: reanalysis-climatology-only
+    what: >
+      Use the multi-decade reanalysis record as a meteorological sample WITHOUT running
+      the optimisation — count events, classify weather regimes, characterise
+      inter-annual spread in capacity factors. Vastly cheaper (no LP at all) and often
+      the right first step: it tells you whether the years you are about to spend
+      compute on are actually different from each other.
+    papers:
+      - "2023_Mockert_Dunkelflauten-Germany_MetApps.pdf"
+literature:
+  - paper: "2023_Grochowicz_weather-induced-extreme-events-renewable.pdf"
+    tier: 2
+    role: defines
+    note: >
+      Sets the modern pattern this card describes: 40 independent annual capacity
+      expansions on PyPSA-Eur (July-June windows, deliberately, to keep winters
+      intact), each year giving its own optimal design, and the SHADOW PRICES rather
+      than the capacities as the primary analysis object. Also introduces the cross-year
+      validation matrix — 1600 dispatch simulations over all 40x40 design-year x
+      weather-year pairs. States the tradeoff explicitly: single-year solves buy
+      spatial/temporal resolution that a joint multi-year solve cannot afford. The
+      July-June window is a concrete detail to relay; a calendar-year ensemble splits
+      every winter across two members.
+  - paper: "2022_Grochowicz_intersecting-near-optimal-spaces-weather.pdf"
+    tier: 2
+    role: extends
+    note: >
+      The composition with MGA, and the source of the compute numbers this card quotes
+      for the sequential-vs-joint distinction: 41 years (1980-2020) at 3-hourly, one
+      node per country, each single-year solve 3.5-4 GB / ~23 min with Gurobi on 2
+      threads, against ~134 GB and 1-2 days for the equivalent JOINT 41-year
+      optimisation on the same network. Also demonstrates the load-side fix for
+      pre-2010 years: load regressed on HDD/CDD and weekly profiles from ENTSO-E
+      2010-2014 rather than taken from observation. Robust design becomes the Chebyshev
+      centre of the intersected per-year near-optimal spaces.
+  - paper: "2018_Schlachtberger_Cost-optimal-scenarios-weather_Energy.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The reference for the sequential-versus-joint comparison done deliberately: four
+      single-year runs (2011-2014) AND joint optimisations over 1, 2, 3 and 4
+      consecutive years, asking directly whether one weather year suffices for capacity
+      design. Limited to four years by data availability — specifically the need for
+      CONSISTENT load and hydro inflow alongside the weather, which is the same
+      constraint pypsa-eur still has. The clearest early statement that the ensemble's
+      binding limit is the demand and inflow series, not the reanalysis.
+  - paper: "2018_Schlott_Climate-Change-Renewable-Network_ApplEnergy.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The climate-projection variant: three EURO-CORDEX ensemble members (CNRM-CM5,
+      EC-EARTH, MPI-ESM-LR downscaled with RCA-4) under RCP 8.5 at 0.11 deg / 3-hourly,
+      split into four periods (HIS 1970-2005, BOC 2006-2037, MOC 2038-2069, EOC
+      2070-2100) and further into non-overlapping 6-8-year sub-intervals, each
+      independently optimised. Ensemble mean AND spread of system cost reported. The
+      structural point for this book: the weather input is a climate model's output, so
+      neither model's cutout retrieval path applies and the data must be brought in
+      from outside.
+  - paper: "2019_Liu_Hydro-power-storage-transmission-China_ApplEnergy.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The largest single-source ensemble outside Europe: 38 CFSR reanalysis years
+      (1979-2016) over a 31-province Chinese model, each solved separately, with mean
+      and standard deviation across years as error bars on capacities, curtailment and
+      transmission cost. Notably the dataset is one CONSISTENT 38-year series covering
+      wind, solar, hydro inflow AND temperature-driven cooling demand together — the
+      thing pypsa-eur's default data stack does not supply, and the reason a non-European
+      ensemble is often a data-assembly project rather than a config change.
+  - paper: "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+    tier: 2
+    role: canonical-use
+    note: >
+      The largest ensemble in the corpus and the best-documented cost: 80 independent
+      hourly 90-node PyPSA-Eur v0.13 capacity expansions, one per ERA5 year 1941-2021,
+      each ~60 GB RAM and ~3 h on an HPC cluster. Keeps the July-June window and
+      explicitly disregards leap years. Demand is adjusted for temperature-dependent
+      heating/cooling per weather year — i.e. the demand series is regenerated with the
+      weather, not held fixed. Quote the 80 x 60 GB x 3 h figure to any user who asks
+      for "the full record at hourly resolution".
+  - paper: "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      70 weather years (1951-2020, Bloomfield et al. 2022 ESSD, ERA-based) on a
+      single-node model, and the source of the growing-subsequence construction: solve
+      over 1, 4, 16, 32, 48 and 70 years of a Fischer-Yates-shuffled sequence (seed
+      123) and watch convergence. The finding is a warning about the whole method:
+      whether the ensemble converges is REGIME-dependent, not a property of the
+      weather — inelastic demand gives price variance that keeps growing with years
+      added (high prices clustering in the wind-scarce 1960s), elastic demand settles.
+      Also splits 35 years for long-term design and 35 held out for out-of-sample
+      dispatch, the cleanest train/test discipline in the corpus.
+  - paper: "2020_Schyska_sensitivity-power-system-expansion-models.pdf"
+    tier: 2
+    role: canonical-use
+    note: >
+      Provides the metric for comparing designs ACROSS years rather than eyeballing the
+      spread: a pseudometric that re-solves each period's LP with the other period's
+      optimal capacities imposed as a lower bound and sums the additional cost. On
+      PyPSA-Eur at 45-128 nodes with CNRM/EURO-CORDEX climate data, four 6-7-year
+      slices (1970-1976, 2000-2006, 2038-2044, 2094-2101), all six pairwise
+      combinations: worst pair 5.1 EUR/MWh, best 3.5 EUR/MWh, and the conclusion that
+      2000-2006 is UNREPRESENTATIVE. Directly relevant to users who assume a recent
+      decade is a safe default.
+  - paper: "2023_vanGreevenbroek_regional-overall-energy-system-flexibility.pdf"
+    tier: 2
+    role: canonical-use
+    note: >
+      The difficult-year-bracket variant done properly: three years (1985, 1987, 2010)
+      selected as "difficult" following Grochowicz, crossed with four cost/land-use
+      variants into a 12-scenario set on sector-coupled PyPSA-Eur-Sec at 1500 time
+      segments. Shows the pragmatic pattern for expensive base cases — weather year as
+      one dimension of a scenario matrix rather than a standalone ensemble — and that
+      the year selection's validity is borrowed from a prior full-ensemble study.
+  - paper: "2026_Geis_Managing-the-Mismatch-Flexibility_AdvApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      A three-year sensitivity (2013, 2020, 2023) on a sector-coupled German model,
+      main results from a single year. Useful because it QUANTIFIES what the small
+      bracket bought: daily flexibility needs vary by at most 15%, weekly 18%, annual
+      20% — an order-of-magnitude answer to "how much does the weather year matter"
+      for a flexibility question, contextualised against IEA's 30% figure for annual
+      flexibility.
+  - paper: "2024_vanGreevenbroek_robust-european-green-hydrogen-strategy.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Two-year bracket (1987 difficult, 2020 easy, both identified from Grochowicz's
+      full ensemble) as one of six scenario dimensions across 216 scenarios, so 432
+      full multi-horizon pathway optimisations. The example to cite when a user wants a
+      weather ensemble on top of a myopic pathway: the year count collapses to two
+      because the base case is already 6 horizons x 216 scenarios. States plainly that
+      no extreme-event stress test beyond the 1987 choice was performed.
+  - paper: "2021_Zeyen_Mitigating-heat-demand-peaks_Energy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Multiple historical ERA5 weather years as an SI robustness check on a
+      sector-coupled 48-node heat study. Relevant specifically because heat demand is
+      the most weather-sensitive load in the model — an ensemble is more load-driven
+      than VRE-driven here, which changes which data must move with the year. The
+      number of years is not stated in the main text.
+  - paper: "2022_Frysztacki_clustering-methods-spatial-reduction_EnergyInformatics.pdf"
+    tier: 1
+    role: critiques
+    note: >
+      The explicit statement of the tradeoff, from the other side: a spatial-resolution
+      sweep from 37 to 1250 nodes could only be afforded by fixing a single weather
+      year (2013), and the authors name single-year use as a limitation of the work
+      rather than a choice. The card's critique payload — resolution in one dimension is
+      bought by collapsing another, and a weather ensemble competes directly with
+      spatial detail for the same compute budget.
+  - paper: "2023_Mockert_Dunkelflauten-Germany_MetApps.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The no-optimisation variant: 40 years of ERA5 (1979-2018) run through atlite for
+      capacity factors only, with weather-regime classification and demand anomalies,
+      no network model at all. Establishes the inter-annual spread that matters — 0 to
+      10 Dunkelflaute events per extended winter — which is the argument for why one
+      year cannot be representative, obtained for the cost of a data pass.
+  - paper: "2024_Glaum_Offshore-power-hydrogen-North-Sea_ApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Cited for the baseline this method argues against, stated at its cleanest: "we
+      take the weather year of 2013 which is the default year in PyPSA-Eur", on a
+      130-node sector-coupled offshore study with ERA5 + SARAH-2. No sensitivity to the
+      choice. The default is doing unexamined work in a large fraction of the
+      literature, including papers whose conclusions are about VRE siting.
+  - paper: "2025_Franken_Power-system-benefits-transport-heating-flexibility-GB_ApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Single ERA5 year (2019) applied uniformly to VRE capacity factors and the ESPENI
+      demand profile on a GB fork. The instructive detail is the CONSISTENCY: weather
+      and demand come from the same year, which is what pypsa-eur's default
+      configuration gives you and what a careless weather-year change breaks.
+  - paper: "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      The pypsa-earth data point, and the only weather-year sensitivity on earth in the
+      corpus: one low-wind ERA5 year (2016) selected on nominal wind full-load hours,
+      on a 14-node sector-coupled Morocco model. Result worth relaying because it is a
+      negative one: weather variability moved system cost by +0.84% on average, which
+      the authors attribute to spatial diversification of renewables. A one-year
+      sensitivity, not an ensemble — consistent with earth's registry status.
+  - paper: "2022_Parzen_PyPSA-Earth-global-open-energy-model-Africa_ApplEnergy.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Establishes what weather years pypsa-earth actually ships: demand predictions for
+      2030/2040/2050/2100 each paired with ERA5 weather years 2011, 2013 and 2018, with
+      ERA5 nominally spanning 1959-2021. The demonstration runs use one year. The gap
+      between "ERA5 covers 1959-2021" and "three years are provided" is the earth
+      ladder in one sentence.
+pitfalls:
+  - pitfall: >
+      The demand series does not move with the weather. Observed load data covers only
+      roughly the last fifteen years, while the reanalysis covers decades — so a
+      pre-2010 weather year either has no load at all or gets a fixed recent year's
+      load pasted on, which decorrelates temperature from demand. That correlation is
+      the entire mechanism behind cold-still-winter stress, so the ensemble
+      systematically UNDERSTATES the hard years it was built to find.
+    evidence: "2018_Schlachtberger_Cost-optimal-scenarios-weather_Energy.pdf"
+    note: >
+      Schlachtberger capped the ensemble at four years for exactly this reason
+      (consistent load and hydro inflow). Either stay inside the observed-load window,
+      or replace the load series with a temperature regression as Grochowicz does
+      (HDD/CDD plus weekly profiles fitted on ENTSO-E) — and say which you did. Never
+      combine a distant weather year with load.fixed_year and call it an ensemble.
+  - pitfall: >
+      Solving per year and solving across years answer different questions, and users
+      routinely ask for one while meaning the other. N separate solves give a
+      DISTRIBUTION of N designs, none of which is robust to the other years; one joint
+      solve gives ONE design robust to all sampled years. Reporting the mean of the N
+      per-year designs is not the joint solution and can be infeasible under any
+      individual year.
+    evidence: "2022_Grochowicz_intersecting-near-optimal-spaces-weather.pdf"
+    note: >
+      Fix the purpose before the ensemble (procedure step 1). If the user needs one
+      robust design and the joint solve is unaffordable — 134 GB versus 4 GB in
+      Grochowicz — the defensible substitutes are intersecting per-year near-optimal
+      spaces (see mga-near-optimal-space) or validating a candidate design across all
+      years with cross-year-design-validation. Averaging is not one of them.
+  - pitfall: >
+      A recent decade is not a safe default. Schyska's cross-constraining metric finds
+      the 2000-2006 period UNREPRESENTATIVE relative to other slices, at a misallocation
+      cost of up to 5.1 EUR/MWh between period pairs — and 2013, the pypsa-eur default,
+      sits in that neighbourhood.
+    evidence: "2020_Schyska_sensitivity-power-system-expansion-models.pdf"
+    note: >
+      Do not defend a single year by its recency. Either justify it against a published
+      ensemble (a named difficult/easy year), or run the difficult-year-bracket variant
+      — two or three years is enough to expose whether the default was lucky.
+  - pitfall: >
+      Whether the ensemble converges is a property of the model's regime, not of the
+      weather. Brown shows the price duration curve never settles as years are added
+      under perfectly inelastic demand (scarcity events cluster in a wind-poor decade),
+      while it settles quickly with elastic demand. So "we used 30 years, that is
+      enough" is not a statement about the number 30.
+    evidence: "2025_Brown_Price-formation-without-fuel-costs_EnergyEcon.pdf"
+    note: >
+      Test convergence rather than assuming it (growing-subsequence-convergence: 1, 4,
+      16, 32, 48 years of a shuffled sequence). Be especially wary for quantities
+      dominated by tails — prices, scarcity rents, peaking and long-duration storage
+      capacity — as opposed to annual energy, which settles fast.
+  - pitfall: >
+      A weather ensemble competes with spatial and temporal resolution for the same
+      compute budget, and the trade is usually made silently. Frysztacki's 37-to-1250-node
+      sweep had to fix one weather year to be affordable and names it as a limitation;
+      the ensemble studies in the corpus run at country resolution and 3-hourly for the
+      mirror-image reason.
+    evidence: "2022_Frysztacki_clustering-methods-spatial-reduction_EnergyInformatics.pdf"
+    note: >
+      Decide which dimension the question actually needs before promising both. Cost the
+      ensemble against cost_profile below, and coarsen deliberately (segmentation
+      preserves extremes better than nH averaging, which matters more here than
+      elsewhere because the extremes ARE the signal).
+  - pitfall: >
+      Calendar-year windows split every winter across two ensemble members, so the
+      single most system-defining event type — the multi-day December-January
+      cold-and-still spell — is systematically cut in half.
+    evidence: "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+    note: >
+      Use July-June windows, as both Grochowicz studies do, and handle leap days
+      explicitly (they drop them). This is one line of snapshot config and it changes
+      which events the ensemble can see.
+requires_methods: []
+combines_with:
+  - extreme-event-and-dunkelflaute-analysis
+  - mga-near-optimal-space
+  - sensitivity-and-uncertainty-sweeps
+  - temporal-aggregation-and-segmentation
+  - spatial-clustering-and-resolution
+  - stochastic-and-robust-optimisation
+  - operational-dispatch-and-rolling-horizon
+  - foresight-and-planning-horizons
+  - model-validation-and-backtesting
+topics:
+  - multi-year-weather-variability
+  - resource-adequacy
+  - extreme-weather-resilience
+  - robust-decision-making
+  - hydropower-drought-risk
+  - renewable-integration
+pypsa_primitive:
+  symbol: "pypsa/components.py:set_snapshots"
+  pypsa_version: "0.30.3"
+  exposed_by: "both — every workflow sets snapshots from config; neither exposes an ensemble"
+  reachable_via: >
+    n.set_snapshots() accepts an arbitrary DatetimeIndex and n.snapshot_weightings
+    carries the per-snapshot objective/generator/store weights, so a multi-year snapshot
+    set is representable in the data model with no extension: concatenate years and set
+    weightings so annualised costs scale correctly. What does NOT exist as a primitive
+    is the ensemble itself — no library function loops a network over weather years,
+    collects designs, or computes a cross-year distribution. Contrast
+    optimize_with_rolling_horizon in pypsa/optimization/abstract.py, which IS a
+    many-solve loop primitive but partitions ONE snapshot set sequentially rather than
+    solving alternative worlds.
+  note: >
+    This is why the method is `assemble` rather than `primitive-only` on eur: the hard
+    part was never the optimisation formulation, which is just "more snapshots". It is
+    (a) the DATA — a cutout per year plus a matching demand series — and (b) the run
+    harness and cross-year aggregation. Both live above the library, which is why the
+    primitive being trivially available does not make the method cheap. Soft anchor:
+    pypsa is a conda dependency, not a submodule, so this is pinned to a version string
+    rather than a SHA.
+models:
+  - model: pypsa-eur
+    version_anchor:
+      ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d"
+      date: "2026-07-25"
+    functionality:
+      - id: weather-year-selection
+        role: >
+          the entry surface — registry status `working`: snapshots.start/end plus
+          atlite.default_cutout, with get_snapshots and input_cutout as the consumers
+      - id: multi-weather-year
+        role: >
+          the joint variant — registry status `partial`, and the note is exact:
+          load_cutout concatenates cutout files on the time axis and Nyears scaling
+          exists in prepare_network, but the standard workflow runs one year and there
+          are no probabilistic multi-year adequacy metrics
+      - id: data-retrieval-versioning
+        role: >
+          the actual gate, and the reason this method's rung is data-determined:
+          data.cutout.source resolves through data/versions.csv to archive (download
+          the published cutout) or build (construct it yourself from atlite.cutouts).
+          Whether the year you want is on the published side decides L1 versus L3
+      - id: scenario-matrix
+        role: >
+          the run harness for the sequential ensemble: one managed run per year via the
+          scenario file, so the fan-out is snakemake's problem
+      - id: shared-resources-caching
+        role: >
+          the sharpest FOOTGUN here — run.shared_resources.policy shares
+          wildcard-independent resources across runs, and weather profiles carry no
+          year wildcard, so sharing silently reuses one year's profiles for every member
+      - id: operations-only-solve
+        role: >
+          rule solve_operations_network — the handle for cross-year-design-validation,
+          which earth lacks entirely. This is eur's clearest advantage for this method
+      - id: hydro-inflow-normalization
+        role: >
+          registry `working`: renewable.hydro.eia_norm_year, which must move with the
+          weather year or inflow is rescaled to the wrong year's reported generation
+      - id: probabilistic-adequacy
+        role: >
+          registry `absent` — states the ceiling. An ensemble gives a spread of
+          deterministic designs, never LOLE/EUE, and the registry names the nearest
+          substitute (SAFE margin + reserves + VOLL runs across weather-year sweeps)
+      - id: temporal-resolution-nh
+        role: "affordability lever — the joint variant is unaffordable hourly"
+      - id: time-segmentation-tsam
+        role: >
+          the better affordability lever for this method specifically: extremes ARE the
+          signal, and averaging destroys them where segmentation preserves them
+      - id: global-summary
+        role: >
+          make_global_summary already concatenates per-run csvs across the whole
+          scenario matrix — the cheapest place to hang cross-year aggregation
+    available:
+      verdict: assemble
+      how: >
+        Every surface exists and none of it is wired into an ensemble. Selecting a
+        weather year is genuinely a config change: snapshots.start/end feed
+        get_snapshots (which accepts LISTS of start/end, i.e. multiple disjoint time
+        ranges) and atlite.default_cutout feeds input_cutout (which accepts a LIST of
+        cutout names, resolved by load_cutout into one cutout concatenated along the
+        time axis). Nyears is derived from snapshot_weightings in prepare_network so
+        annualised caps and costs scale to a multi-year set. run.scenarios fans one
+        config into N managed runs, and make_global_summary concatenates their outputs.
+        What you assemble is: the year list, the demand-side consistency, and the
+        cross-year aggregation.
+      missing: >
+        Procedure steps 1, 2, 8 have no handle: nothing chooses years, nothing computes
+        a cross-year distribution. And the real blocker is step 3, which is a DATA
+        question, not a config one — see `boundary` and `data_dependencies`. Concretely:
+        atlite.default_cutout defaults to `europe-2013-sarah3-era5`, which is NOT a key
+        under atlite.cutouts; the only buildable definition is `europe-1940-2024-era5`,
+        which is module: era5 with prepare_kwargs.sarah_dir: null and time:
+        ['2013','2013']. So the default cutout can only be DOWNLOADED, and building any
+        other year means editing atlite.cutouts and losing SARAH-3 solar influx.
+      provenance: "scripts/_helpers.py:get_snapshots; rules/common.smk:input_cutout; scripts/_helpers.py:load_cutout"
+    levers:
+      - key: "snapshots.start"
+        effect: >
+          Start of the snapshot window. Accepts a STRING or a LIST of strings —
+          get_snapshots zips start against end and concatenates the resulting ranges,
+          which is how a multi-year or multi-slice snapshot set is expressed without
+          code. Default is a single 2013 calendar year; use July-June windows to keep
+          winters intact.
+        default: "'2013-01-01'"
+        provenance: "config/config.default.yaml:snapshots; scripts/_helpers.py:get_snapshots"
+      - key: "snapshots.end"
+        effect: >
+          End of the window; must be a list of the same length as start if start is a
+          list (get_snapshots asserts this).
+        default: "'2014-01-01'"
+        provenance: "config/config.default.yaml:snapshots; scripts/_helpers.py:get_snapshots"
+      - key: "snapshots.inclusive"
+        effect: >
+          Passed to pd.date_range; 'left' is what makes a start/end pair of consecutive
+          Jan-1sts exactly one year rather than one year plus an hour. Getting this
+          wrong on a concatenated multi-year set duplicates a snapshot per boundary.
+        default: "'left'"
+        provenance: "config/config.default.yaml:inclusive; scripts/_helpers.py:get_snapshots"
+      - key: "atlite.default_cutout"
+        effect: >
+          Names the cutout(s) every weather-dependent rule reads, via input_cutout.
+          Accepts a string or a LIST (schema: anyOf string/array) — a list is the
+          multi-year concatenation surface, resolved by load_cutout. This is the key you
+          change per ensemble member, and the one whose value must actually exist as a
+          file.
+        default: "'europe-2013-sarah3-era5'"
+        provenance: "config/config.default.yaml:default_cutout; rules/common.smk:input_cutout"
+      - key: "atlite.cutouts"
+        effect: >
+          Per-cutout build specification (module, dx, dy, x, y, time, prepare_kwargs).
+          Only consulted when data.cutout.source is 'build' — build_cutout.py indexes
+          this dict by the cutout wildcard, so a name absent from it cannot be built.
+          Contains exactly one entry, europe-1940-2024-era5, whose time is
+          ['2013','2013'] despite the name.
+        default: "{europe-1940-2024-era5: {module: era5, dx: 0.3, dy: 0.3, time: ['2013','2013'], ...}}"
+        provenance: "config/config.default.yaml:cutouts; scripts/build_cutout.py:cutout_params"
+      - key: "data.cutout.source"
+        effect: >
+          THE key that decides whether a weather-year change is L1 or L3. Enum
+          archive|primary|build. 'archive' activates rule retrieve_cutout, which fetches
+          {cutout}.nc from data.pypsa.org — so you get whatever years are published,
+          including the SARAH-3 default. 'build' activates rule build_cutout, which
+          requires the name to be a key in atlite.cutouts and a CDS API key.
+        default: "'archive'"
+        provenance: "config/config.default.yaml:cutout; rules/retrieve.smk:retrieve_cutout; rules/build_electricity.smk:build_cutout"
+      - key: "load.fixed_year"
+        effect: >
+          Pins the electricity demand series to one calendar year and reindexes it onto
+          the snapshot year. Set false (the default) so demand moves WITH the weather —
+          it is the lever that creates the weather/demand mismatch pitfall when set, and
+          the only in-config escape when the weather year predates the observed load
+          series.
+        default: "false"
+        provenance: "config/config.default.yaml:fixed_year; scripts/build_electricity_demand.py:fixed_year"
+      - key: "load.scaling_factor"
+        effect: >
+          Multiplies the whole demand series. Relevant to an ensemble as the crude way
+          to hold total annual demand constant across years so capacity differences are
+          attributable to weather rather than to load growth between the years.
+        default: "1.0"
+        provenance: "config/config.default.yaml:scaling_factor; scripts/add_electricity.py:attach_load"
+      - key: "enable.drop_leap_day"
+        effect: >
+          Removes Feb 29 so every ensemble member has 8760 snapshots. Load-bearing for
+          an ensemble: without it, leap years have 8784 snapshots and per-year results
+          are not directly comparable (and Nyears drifts). Both Grochowicz studies drop
+          them.
+        default: "true"
+        provenance: "config/config.default.yaml:drop_leap_day; scripts/_helpers.py:get_snapshots"
+      - key: "renewable.hydro.eia_norm_year"
+        effect: >
+          Year of reported EIA hydro generation the ERA5-runoff inflow is rescaled to.
+          Must track the weather year or a dry weather year is normalised to a wet
+          reporting year, cancelling the inflow variability the ensemble is sampling.
+        default: "false"
+        provenance: "config/config.default.yaml:eia_norm_year; scripts/build_hydro_profile.py:eia_norm_year"
+      - key: "run.scenarios.enable"
+        effect: >
+          Turns on scenario-file expansion so each weather year becomes its own managed
+          run with its own resources directory, rather than a hand-rolled loop over
+          config edits.
+        default: "false"
+        provenance: "config/config.default.yaml:scenarios; scripts/_helpers.py:get_scenarios"
+      - key: "run.shared_resources.policy"
+        effect: >
+          false|true|base|<dirname>. MUST stay false (or exclude the weather-derived
+          resources) for an ensemble: 'base' shares every resource whose filename has no
+          relevant wildcard, and renewable profiles have no {year} wildcard, so members
+          would silently share one year's profiles.
+        default: "false"
+        provenance: "config/config.default.yaml:shared_resources; scripts/_helpers.py:get_run_path"
+      - key: "clustering.temporal.resolution_elec"
+        effect: >
+          nH averaging or nSEG segmentation. The affordability lever for the joint
+          variant; prefer segmentation over averaging here because the ensemble's signal
+          lives in the extremes.
+        default: "false (hourly)"
+        provenance: "config/config.default.yaml:resolution_elec; scripts/prepare_network.py:average_every_nhours; scripts/prepare_network.py:apply_time_segmentation"
+    assembly:
+      - step: >
+          Establish which cutouts you can actually get. With data.cutout.source:
+          archive the answer is "whatever data.pypsa.org publishes"; with 'build' it is
+          "whatever you add to atlite.cutouts, ERA5-only, one CDS request per year".
+          Do this FIRST — it decides whether the study is L1 or L3, and it is the step
+          users assume away.
+        uses: [data-retrieval-versioning, weather-year-selection]
+        config: "data.cutout.source; atlite.cutouts"
+        code: null
+        provenance: "rules/common.smk:dataset_version; rules/retrieve.smk:retrieve_cutout; rules/build_electricity.smk:build_cutout"
+      - step: >
+          Write the year list as a scenario file: one entry per year setting
+          snapshots.start/end (July-June windows) and atlite.default_cutout to that
+          year's cutout, plus renewable.hydro.eia_norm_year if hydro matters. Enable
+          run.scenarios and leave run.shared_resources.policy false so each member
+          rebuilds its own profiles.
+        uses: [scenario-matrix, shared-resources-caching, weather-year-selection]
+        config: "run.scenarios.enable; run.scenarios.file; snapshots.start; snapshots.end; atlite.default_cutout; run.shared_resources.policy"
+        code: "config/create_scenarios.py — generate the per-year entries rather than hand-writing 40"
+        provenance: "scripts/_helpers.py:get_scenarios; rules/common.smk:scenario_config; scripts/_helpers.py:get_run_path"
+      - step: >
+          Make the demand side consistent. Inside the observed-load window, leave
+          load.fixed_year false and demand follows the snapshots. Outside it, this is
+          the L3/L5 step: build_electricity_demand reads OPSD/ENTSO-E/NESO series that
+          do not reach back to the reanalysis start, and its manual-adjustment block
+          already patches years by copying templates. A pre-2010 ensemble needs a
+          temperature-regressed load series instead.
+        uses: [weather-year-selection]
+        config: "load.fixed_year; load.scaling_factor"
+        code: "scripts/build_electricity_demand.py — a new load source, or a regression on country HDD"
+        provenance: "scripts/build_electricity_demand.py:fixed_year; scripts/build_country_hdd.py:heat_demand"
+      - step: >
+          For the JOINT variant instead of the sequential one: pass lists to
+          snapshots.start/end and a list to atlite.default_cutout. get_snapshots
+          concatenates the ranges, load_cutout concatenates the cutouts on the time
+          axis, and Nyears in prepare_network scales the CO2 cap, gas limit and
+          transmission volume limit to the total. No code change — but check the memory
+          estimate in cost_profile before committing.
+        uses: [multi-weather-year, temporal-resolution-nh, time-segmentation-tsam]
+        config: "snapshots.start (list); snapshots.end (list); atlite.default_cutout (list); clustering.temporal.resolution_elec"
+        code: null
+        provenance: "scripts/_helpers.py:get_snapshots; scripts/_helpers.py:load_cutout; scripts/prepare_network.py:Nyears"
+      - step: >
+          Aggregate across members. make_global_summary already concatenates per-run
+          csvs over the scenario matrix, so the cross-year mean/spread is a script over
+          its output rather than new plumbing — but nothing computes the distribution
+          for you.
+        uses: [global-summary, summary-outputs]
+        config: null
+        code: "a new script over the make_global_summary csvs"
+        provenance: "rules/postprocess.smk:make_global_summary; scripts/make_summary.py:calculate_capacities"
+      - step: >
+          For cross-year validation: take member i's solved network, run
+          solve_operations_network against member j's profiles with capacities fixed.
+          fix_optimal_capacities is the handle; what you write is the N^2 wildcard
+          plumbing to cross design-year against weather-year, since no existing wildcard
+          carries two years.
+        uses: [operations-only-solve]
+        config: null
+        code: "rules/solve_electricity.smk — a rule with both a design-year and a weather-year wildcard"
+        provenance: "scripts/solve_operations_network.py:fix_optimal_capacities"
+    boundary:
+      - variant: single-design-year
+        rung: L1
+        note: >
+          Move snapshots.start/end and set atlite.default_cutout to a published cutout
+          for that year. L1 not L0 because the two must be changed together and the
+          cutout must exist: with data.cutout.source: archive you are limited to the
+          published set, and the default europe-2013-sarah3-era5 is download-only.
+      - variant: multi-year-sequential-ensemble
+        rung: L3
+        note: >
+          The config side is L1 per member and the fan-out is L1 via run.scenarios — so
+          the rung is set entirely by DATA. If every year you want is published on
+          data.pypsa.org, this is L1 and genuinely cheap. If not, each year is a
+          build_cutout run needing a CDS key, atlite.cutouts edited per year, and no
+          SARAH-3 solar; and any year before the observed-load window also needs a new
+          demand series. Cross-year aggregation (step 8) is a post-processing script on
+          top, small but not free.
+      - variant: multi-year-in-one-optimisation
+        rung: L1
+        note: >
+          Surprisingly the cheapest variant in CONFIG terms, which is why the registry
+          rates multi-weather-year `partial` rather than absent: snapshots.start/end
+          take lists, atlite.default_cutout takes a list, load_cutout concatenates on
+          time and Nyears scales the annual constraints. No code. The constraint is
+          memory and data, not the ladder — see cost_profile, and note L1 assumes the
+          cutouts exist (otherwise inherit L3 from the row above).
+      - variant: growing-subsequence-convergence
+        rung: L1
+        note: >
+          A scenario matrix over prefixes of a shuffled year list — the same lever as
+          the joint variant with N varied. Cheap to add to any ensemble already being
+          run, and the only variant that justifies the N you chose.
+      - variant: difficult-year-bracket
+        rung: L1
+        note: >
+          Two or three published years as scenario entries. Recommended entry point for
+          a sector-coupled or multi-horizon base case: L1 throughout, and the year
+          choice is a citation (1987/2020 from Grochowicz) rather than a computation you
+          must fund.
+      - variant: cross-year-design-validation
+        rung: L4
+        note: >
+          The dispatch handle exists and works (solve_operations_network,
+          fix_optimal_capacities) — this is eur's advantage over earth — but no wildcard
+          carries a design-year AND a weather-year, so the N^2 matrix needs a new rule
+          plus wildcard plumbing. L4 rather than L5 because nothing new is formulated;
+          it is DAG work.
+      - variant: climate-projection-years
+        rung: L3
+        note: >
+          EURO-CORDEX output is not a supported cutout source: data.cutout.source
+          offers archive|primary|build and build means atlite's ERA5/SARAH-3 modules via
+          the CDS API. Bringing in downscaled GCM fields means constructing an
+          atlite-shaped cutout from external NetCDF outside the workflow, then pointing
+          atlite.default_cutout at it. L3 because the workflow reads it as an ordinary
+          cutout once the file exists; the variable naming, units and grid conversion
+          are the work.
+      - variant: reanalysis-climatology-only
+        rung: L2
+        note: >
+          No optimisation, so no network. build_renewable_profiles' cutout-to-capacity-factor
+          conversion is what you want and it runs standalone; the analysis (event
+          counting, regime classification) is a script over its output. Cheapest useful
+          thing to do first, and it tells you whether the expensive ensemble is warranted.
+    where:
+      - change: "which cutout the weather-dependent rules read"
+        anchor: "atlite.default_cutout -> rules/common.smk::input_cutout (accepts a list)"
+        provenance: "rules/common.smk:input_cutout; scripts/_helpers.py:load_cutout"
+      - change: "retrieve-vs-build decision for a cutout year"
+        anchor: "data.cutout.source -> rule retrieve_cutout / rule build_cutout"
+        provenance: "rules/retrieve.smk:retrieve_cutout; rules/build_electricity.smk:build_cutout"
+      - change: "a new cutout definition (extra year, other module, SARAH directory)"
+        anchor: "atlite.cutouts.<name> -> scripts/build_cutout.py (indexes the dict by the cutout wildcard)"
+        provenance: "scripts/build_cutout.py:cutout_params"
+      - change: "demand series for a year outside the observed-load window"
+        anchor: "rule build_electricity_demand -> scripts/build_electricity_demand.py::manual_adjustment"
+        provenance: "scripts/build_electricity_demand.py:manual_adjustment"
+      - change: "annualised constraint scaling for a multi-year snapshot set"
+        anchor: "scripts/prepare_network.py — Nyears from snapshot_weightings, applied to add_co2limit / set_transmission_limit"
+        provenance: "scripts/prepare_network.py:Nyears; scripts/prepare_network.py:add_co2limit"
+      - change: "per-year fan-out as managed runs"
+        anchor: "run.scenarios + the {run} wildcard; config/create_scenarios.py"
+        provenance: "scripts/_helpers.py:get_scenarios; rules/common.smk:scenario_config"
+      - change: "cross-year design x weather dispatch matrix"
+        anchor: "rule solve_operations_network — needs a second year wildcard"
+        provenance: "scripts/solve_operations_network.py:fix_optimal_capacities"
+      - change: "cross-member aggregation"
+        anchor: "rule make_global_summary (rules/postprocess.smk)"
+        provenance: "rules/postprocess.smk:make_global_summary"
+    data_dependencies:
+      - input: "one atlite cutout per weather year covering the European extent"
+        required_for: "multi-year-sequential-ensemble, multi-year-in-one-optimisation"
+        availability: >
+          exists by default for the DEFAULT YEAR ONLY, and by download. NO DOWNLOAD WAS
+          PERFORMED for this card — data/cutout/archive is empty at this ref, so the
+          published year list is not enumerated here and must be checked against
+          data.pypsa.org/workflows/cutout/v1.0 before promising a year. What IS verified:
+          atlite.default_cutout is europe-2013-sarah3-era5 and that name is not a key in
+          atlite.cutouts, so it cannot be built — only retrieved. The one buildable
+          definition, europe-1940-2024-era5, is module: era5 with sarah_dir: null and
+          time ['2013','2013']. Volume: a 0.3-degree European ERA5 cutout with the
+          default feature set is tens of GB per year, and monthly_requests: true exists
+          in prepare_kwargs precisely because a full-year single request is too large —
+          budget disk and CDS queue time per ensemble member before agreeing to N years.
+      - input: "SARAH-3 satellite solar influx"
+        required_for: "any year where solar detail matters and the cutout is built rather than retrieved"
+        availability: >
+          absent from the build path as configured. The default cutout name says
+          sarah3, the only buildable one does not, and prepare_kwargs.sarah_dir is null
+          — SARAH-3 is not fetched by the CDS API and must be staged separately. So
+          building your own weather years silently downgrades solar to ERA5 reanalysis
+          influx. Flag this to the user: it is a change in the solar resource, not just
+          the year.
+      - input: "hourly electricity demand for each weather year"
+        required_for: "multi-year-sequential-ensemble, multi-year-in-one-optimisation, climate-projection-years"
+        availability: >
+          region- and PERIOD-dependent, and the binding constraint for long ensembles.
+          The sources are OPSD, ENTSO-E transparency and NESO — observed series whose
+          coverage is roughly the last fifteen years, and build_electricity_demand's own
+          manual-adjustment block patches missing country-years by copying templates
+          within 2010-2026. For earlier weather years the choices are load.fixed_year
+          (which breaks weather/demand correlation) or a temperature-regressed series as
+          Grochowicz built. Not a download away.
+      - input: "EIA/reported hydro generation for the normalisation year"
+        required_for: "multi-year-sequential-ensemble in hydro-heavy regions"
+        availability: >
+          exists by default via the databundle, but eia_norm_year defaults to false —
+          i.e. no normalisation — so per-year inflow variability passes through
+          unrescaled unless you set it, and if you set it, it must track the weather year.
+      - input: "downscaled climate-projection fields (EURO-CORDEX or equivalent)"
+        required_for: climate-projection-years
+        availability: >
+          absent. No retrieval rule, no atlite module, not in data/versions.csv. Must be
+          obtained from the CORDEX archive and converted to an atlite-compatible cutout
+          externally. Both corpus papers using this path did so with bespoke tooling.
+    cost_profile:
+      solves: >
+        N for multi-year-sequential-ensemble (N = years, fully parallel); 1 for
+        multi-year-in-one-optimisation but at N-times the snapshot count; N^2 dispatch
+        LPs for cross-year-design-validation; 2-3 for difficult-year-bracket; ~6 for a
+        growing-subsequence convergence check.
+      relative: >
+        Sequential is exactly Nx a single solve in CPU and 1x in memory — the reason
+        every large corpus ensemble took this route. Joint is worse than Nx: the corpus's
+        41-year joint solve needed ~134 GB and 1-2 days against 3.5-4 GB and ~23 min per
+        single year on the same 3-hourly one-node-per-country network — roughly 35x the
+        memory and ~60-125x the wall time of one member, for one design instead of 41.
+        At the top end, 80 hourly 90-node members cost ~60 GB and ~3 h each on an HPC
+        cluster.
+      note: >
+        The cost is not only the solves. Every member re-runs the weather-dependent half
+        of the DAG (availability matrices, VRE profiles, hydro inflow, heat demand),
+        which for a fine-resolution European run is comparable to the solve — and
+        run.shared_resources cannot be used to avoid it, because that is exactly the
+        thing that differs. Corpus mitigations, all L1 here: 3-hourly resolution or TSAM
+        segmentation to 750-1500 steps (prefer segmentation — extremes are the signal),
+        country-level clustering, electricity-only for the ensemble with a sector-coupled
+        spot check, and the difficult-year-bracket instead of the full record.
+    verifies:
+      - variant: multi-year-sequential-ensemble
+        check: "len({n.snapshots[0].year for n in ns}) == len(ns)"
+        over: ensemble
+        note: >
+          Every member must sit in a distinct year. If years collide, the scenario file
+          did not vary snapshots — the classic failure where run.scenarios expanded but
+          the override key was misspelt, and N identical runs are reported as a spread
+          of zero.
+      - variant: multi-year-sequential-ensemble
+        check: "len({tuple(n.generators_t.p_max_pu.iloc[:, 0].round(6)) for n in ns}) == len(ns)"
+        over: ensemble
+        note: >
+          The VRE profiles must actually differ between members. Identical profiles with
+          different snapshot labels is the shared-resources footgun firing: every member
+          read one year's cached profiles, so the ensemble measures nothing while every
+          run succeeds.
+      - variant: multi-year-in-one-optimisation
+        check: "abs(n.snapshot_weightings.objective.sum() / 8760 - n_years) < 0.01"
+        over: run
+        note: >
+          Nyears must equal the number of years in the snapshot set. If it does not, the
+          CO2 cap, gas limit and transmission volume limit were scaled to the wrong
+          horizon and the joint solve is answering a different question at a plausible
+          cost.
+      - variant: multi-year-in-one-optimisation
+        check: "n.snapshots.is_unique and n.snapshots.is_monotonic_increasing"
+        over: run
+        note: >
+          Concatenating cutouts and snapshot ranges can duplicate a boundary hour
+          (snapshots.inclusive) or interleave years out of order. Duplicates corrupt
+          storage state-of-charge continuity silently.
+      - variant: single-design-year
+        check: "set(n.loads_t.p_set.index.year) == set(n.generators_t.p_max_pu.index.year)"
+        over: run
+        note: >
+          Demand and weather must be labelled with the same year. A mismatch means
+          load.fixed_year pasted a different year's demand onto the weather — the card's
+          first pitfall, and invisible in any result plot.
+  - model: pypsa-earth
+    version_anchor:
+      ref: "8435f4c8cc05f30088933b37b7db497ff860dc53"
+      date: "2026-07-25"
+    functionality:
+      - id: weather-year-selection
+        role: >
+          the entry surface — registry `working`, and its note is the warning:
+          snapshots.start/end plus atlite.cutouts plus load_options.weather_year, "one
+          weather year per run; cutout year and demand weather year must be chosen
+          consistently". Earth makes the demand-year coupling EXPLICIT where eur leaves
+          it implicit
+      - id: multi-weather-year
+        role: >
+          registry `absent`, and the code agrees: base_network calls
+          pd.date_range(freq='h', **snapshots_config), a single contiguous range, so
+          there is no list form and no cutout concatenation helper. Inter-annual
+          variability is only available as separate runs compared afterwards
+      - id: data-retrieval-bundles
+        role: >
+          the gate, and it is harder here: enable.retrieve_cutout pulls a pre-built
+          regional bundle, enable.build_cutout builds from the CDS API per region. Every
+          published cutout bundle is cutout-2013-era5* — one year
+      - id: scenario-matrix
+        role: >
+          the fan-out for a per-year sweep, but note earth's scenario lists are
+          simpl/clusters/ll/opts/sopts/demand/h2export — none of them is a weather year,
+          so the year cannot ride an existing wildcard
+      - id: monte-carlo-sampling
+        role: >
+          registry `partial` — earth's many-solve harness, which eur lacks. It samples
+          PARAMETERS via LHS, not weather years, and cannot vary the cutout (that would
+          re-trigger the resource half of the DAG), so it is the wrong shape here.
+          Worth naming so it is not mistaken for the answer
+      - id: hydro-inflow-normalization
+        role: >
+          registry `working`: renewable.hydro.normalization.{method,year,multiplier},
+          defaulting to irena/2023. Must track the weather year, and rescale_hydro warns
+          and silently skips normalisation if statistics for the year are missing
+      - id: probabilistic-adequacy
+        role: "registry `absent`, as on eur — the ceiling on what an ensemble can deliver"
+      - id: operations-only-solve
+        role: >
+          registry `absent` here where eur has it working — so
+          cross-year-design-validation has no handle at all on earth. The single
+          sharpest asymmetry for this method
+      - id: temporal-resolution-nh
+        role: "affordability lever (scenario.opts nH token)"
+      - id: time-segmentation-tsam
+        role: "affordability lever; preferred over averaging because extremes are the signal"
+      - id: summary-outputs
+        role: >
+          per-run summary csvs — the input to cross-year aggregation. Earth has no
+          global-summary equivalent, so the concatenation across members is also yours
+      - id: spatial-clustering
+        role: >
+          the affordability lever earth is unusually good at: a small country at a
+          handful of nodes makes a per-year ensemble tractable where eur's continental
+          scope would not
+    available:
+      verdict: assemble
+      how: >
+        Selecting one weather year works and is explicitly parameterised — arguably
+        better than eur, because load_options.weather_year names the demand year as a
+        first-class key instead of leaving it as a side effect of the snapshot window.
+        build_cutout derives the cutout time slice from config.snapshots directly
+        (cutout_params['time'] defaults to [snapshots[0], snapshots[-1]]), so a built
+        cutout automatically covers the requested window. Multiple years is then a
+        scenario sweep: N runs, each with its own snapshots, weather_year and cutout,
+        compared afterwards.
+      missing: >
+        Procedure step 6's joint route does not exist: base_network sets snapshots from
+        a single pd.date_range over one start/end pair, there is no list form and no
+        load_cutout-style time concatenation, and the registry rates multi-weather-year
+        `absent`. Step 9 (cross-year dispatch validation) has no handle either —
+        operations-only-solve is `absent`, so fixing capacities and re-solving is itself
+        an assembly job. Steps 1, 2 and 8 have no handle, as on eur. And step 3 is a
+        genuine blocker rather than an inconvenience: every published cutout bundle is
+        cutout-2013-era5, so any other year is a per-region CDS build.
+      provenance: "scripts/base_network.py:set_snapshots; scripts/build_cutout.py:cutout_params; scripts/build_demand_profiles.py:weather_year"
+    levers:
+      - key: "snapshots.start"
+        effect: >
+          Start of the single contiguous snapshot range, consumed by base_network via
+          pd.date_range(freq='h', **snapshots_config) and ALSO by build_cutout to derive
+          the cutout's time slice. One range only — no list form, unlike eur.
+        default: "'2013-01-01'"
+        provenance: "config.default.yaml:snapshots; scripts/base_network.py:set_snapshots"
+      - key: "snapshots.end"
+        effect: "End of the range; same two consumers."
+        default: "'2014-01-01'"
+        provenance: "config.default.yaml:snapshots; scripts/base_network.py:set_snapshots"
+      - key: "atlite.cutouts"
+        effect: >
+          The cutout definitions. Contains one entry, cutout-2013-era5 (module: era5,
+          dx/dy 0.3), and crucially NO x/y bounds — earth derives the extent from the
+          region's onshore/offshore shapes, which is why a cutout is per-study-region
+          rather than a shared continental file.
+        default: "{cutout-2013-era5: {module: era5, dx: 0.3, dy: 0.3}}"
+        provenance: "config.default.yaml:cutouts; scripts/build_cutout.py:cutout_params"
+      - key: "atlite.default"
+        effect: >
+          Which cutout the profile rules read. Renaming per year (cutout-2016-era5 etc.)
+          is how an ensemble member is expressed, alongside a matching atlite.cutouts
+          entry.
+        default: "'cutout-2013-era5'"
+        provenance: "config.default.yaml:default; scripts/build_cutout.py:cutout_params"
+      - key: "enable.build_cutout"
+        effect: >
+          Builds the cutout from the CDS API for the region and the configured snapshot
+          window. This is the only route to a non-2013 weather year on earth, and it
+          needs a Copernicus CDS account and API key — a per-member external credential,
+          not just compute.
+        default: "false"
+        provenance: "config.default.yaml:build_cutout; Snakefile:build_cutout"
+      - key: "enable.retrieve_cutout"
+        effect: >
+          Downloads a pre-built regional cutout bundle instead. Fast and keyless, but
+          every bundle in configs/bundle_config.yaml produces cutout-2013-era5 (or the
+          tutorial variant) — one year. Mutually exclusive with build_cutout in practice:
+          terminate_if_cutout_exists aborts if the target file is already present.
+        default: "true"
+        provenance: "config.default.yaml:retrieve_cutout; Snakefile:retrieve_cutout; configs/bundle_config.yaml:bundle_cutouts_mainland_africa"
+      - key: "load_options.weather_year"
+        effect: >
+          The demand-side weather year, consumed by build_demand_profiles, which
+          selects the matching year from the GEGIS/demand dataset. Must be moved
+          TOGETHER with snapshots and the cutout — earth's advantage is that this
+          coupling is an explicit key you can see and set, rather than eur's implicit
+          derivation from the snapshot window.
+        default: "2013"
+        provenance: "config.default.yaml:weather_year; scripts/build_demand_profiles.py:weather_year"
+      - key: "load_options.prediction_year"
+        effect: >
+          The demand PROJECTION year, orthogonal to weather_year: build_demand_profiles
+          keys the demand file on both. Holding prediction_year fixed while sweeping
+          weather_year is what isolates weather variability from demand growth — and
+          confusing the two is the earth-specific version of the mismatch pitfall.
+        default: "2030"
+        provenance: "config.default.yaml:prediction_year; scripts/build_demand_profiles.py:prediction_year"
+      - key: "load_options.scale"
+        effect: >
+          Scales the demand series; the way to hold total annual demand constant across
+          ensemble members so capacity differences are attributable to weather.
+        default: "1"
+        provenance: "config.default.yaml:load_options; scripts/build_demand_profiles.py:weather_year"
+      - key: "renewable.hydro.normalization.year"
+        effect: >
+          Year of reported IRENA/EIA hydro generation the runoff inflow is rescaled to.
+          Must track the weather year; rescale_hydro logs a warning and performs NO
+          normalisation if statistics for that year are absent, so a mis-set year fails
+          quietly rather than loudly.
+        default: "2023 (method: irena)"
+        provenance: "config.default.yaml:normalization; scripts/build_renewable_profiles.py:rescale_hydro"
+      - key: "renewable.hydro.multiplier"
+        effect: >
+          Blanket inflow scaling, the crude substitute users reach for when per-year
+          hydro statistics are missing — probes sensitivity, does not represent a
+          different hydro year.
+        default: "1.1"
+        provenance: "config.default.yaml:multiplier; scripts/build_renewable_profiles.py:rescale_hydro"
+    assembly:
+      - step: >
+          Settle the cutout question first, because on earth it dominates everything
+          else. Either accept 2013 (retrieve_cutout, keyless) or commit to a CDS API key
+          and one build_cutout run per year for your region. There is no third option
+          and no multi-year archive.
+        uses: [data-retrieval-bundles, weather-year-selection]
+        config: "enable.retrieve_cutout; enable.build_cutout; atlite.cutouts"
+        code: null
+        provenance: "Snakefile:retrieve_cutout; Snakefile:build_cutout; configs/bundle_config.yaml:bundle_cutouts_mainland_africa"
+      - step: >
+          Per member, set snapshots.start/end, add the year's atlite.cutouts entry,
+          point atlite.default at it, set load_options.weather_year to the same year and
+          renewable.hydro.normalization.year to a year with statistics. Note
+          build_cutout reads snapshots itself, so the cutout window follows automatically
+          — one fewer thing to desynchronise than on eur.
+        uses: [weather-year-selection, hydro-inflow-normalization]
+        config: "snapshots.start; snapshots.end; atlite.cutouts; atlite.default; load_options.weather_year; renewable.hydro.normalization.year"
+        code: null
+        provenance: "scripts/build_cutout.py:cutout_params; scripts/build_demand_profiles.py:weather_year; scripts/build_renewable_profiles.py:rescale_hydro"
+      - step: >
+          Fan the members out. earth's scenario lists cover simpl/clusters/ll/opts/sopts
+          — none is a weather year, so unlike eur there is no run-override mechanism to
+          borrow: either drive N separate config files from outside snakemake (simplest,
+          and the corpus's actual practice) or add a year wildcard through the resource
+          rules. Do NOT reach for monte_carlo: it samples network parameters after the
+          resources are built and cannot vary a cutout.
+        uses: [scenario-matrix, monte-carlo-sampling]
+        config: "run.name; scenario.*"
+        code: "N config files driven externally, or a new {weather_year} wildcard in Snakefile"
+        provenance: "Snakefile:scenario; scripts/monte_carlo.py:monte_carlo_sampling_chaospy"
+      - step: >
+          Aggregate across members from the per-run summary csvs. Earth has no
+          cross-scenario collector (eur's make_global_summary has no counterpart here),
+          so both the concatenation and the distribution are yours to write.
+        uses: [summary-outputs]
+        config: null
+        code: "a new script over results/<run>/summaries/"
+        provenance: "scripts/make_summary.py:make_summary"
+      - step: >
+          For cross-year validation there is no handle: operations-only-solve is absent.
+          The documented workaround is to set every extendable flag false and re-solve
+          with capacities fixed from member i under member j's profiles — assembly, not
+          a rule, and it must be written before this variant is promised.
+        uses: [operations-only-solve]
+        config: "electricity.extendable_carriers (emptied); renewable.<tech>.extendable: false"
+        code: "scripts/solve_network.py — a fixed-capacity dispatch path"
+        provenance: "scripts/solve_network.py:solve_network"
+    boundary:
+      - variant: single-design-year
+        rung: L1
+        note: >
+          2013 only, at L1: snapshots plus load_options.weather_year plus the retrieved
+          cutout, all consistent out of the box. Any OTHER single year is L3 — the
+          cutout must be built. Duque-Perez's low-wind-2016 Morocco sensitivity is
+          exactly this L3 case, and it is the only weather-year sensitivity on earth in
+          the corpus.
+      - variant: difficult-year-bracket
+        rung: L3
+        note: >
+          Two or three years means two or three CDS cutout builds for your region. The
+          pragmatic recommendation for earth: this is the ONLY multi-year variant worth
+          proposing, because the per-year data cost is what it is and 3 x is affordable
+          where 40 x is not. There is also no published list of difficult years outside
+          Europe to borrow, so the year choice must be argued from local resource
+          statistics.
+      - variant: multi-year-sequential-ensemble
+        rung: L3
+        note: >
+          Config-wise L1 per member; data-wise a CDS build per year per region, and the
+          fan-out has no weather-year wildcard to ride. This is why the registry rates
+          the surrounding capability absent and why the corpus contains no earth
+          ensemble: the blocker is data provisioning and credentials, exactly the shape
+          of blocker earth usually has. Quote the per-year build cost before agreeing.
+      - variant: multi-year-in-one-optimisation
+        rung: L5
+        note: >
+          Genuinely absent, not merely unwired. base_network builds snapshots from one
+          pd.date_range over a single start/end pair, and there is no load_cutout
+          equivalent concatenating cutouts on the time axis — both of which eur has.
+          Supporting it means changing the snapshot construction and the cutout loading
+          in the resource rules, then auditing every Nyears use. This is the sharpest
+          eur/earth split on this card: L1 there, L5 here.
+      - variant: growing-subsequence-convergence
+        rung: L5
+        note: >
+          Inherits the joint variant's blocker — it varies the NUMBER of years in one
+          snapshot set. A sequential approximation (report the running mean over N
+          separately-solved years) is L3 instead, and answers a weaker question.
+      - variant: cross-year-design-validation
+        rung: L5
+        note: >
+          No operations-only rule and no rolling horizon (registry `absent`,
+          comment-only in solve_network). Both the fixed-capacity dispatch path and the
+          N^2 pairing must be written, versus L4 on eur where the dispatch half already
+          exists.
+      - variant: climate-projection-years
+        rung: L3
+        note: >
+          Same as eur: no CORDEX retrieval, no atlite module, so an atlite-shaped cutout
+          must be constructed externally. Marginally less bad here in one respect — a
+          single-country extent is a smaller conversion job than a continental one — but
+          no corpus paper has done it on earth.
+      - variant: reanalysis-climatology-only
+        rung: L3
+        note: >
+          The cheapest honest starting point for a non-European region, and the one to
+          recommend when the user wants "weather robustness" on a country with no
+          published ensemble: build cutouts for a few years, run
+          build_renewable_profiles' conversion, and characterise the inter-annual spread
+          in capacity factors before funding any optimisation. Still L3 because it is
+          the cutouts that cost.
+    where:
+      - change: "which cutout the profile rules read, and its definition"
+        anchor: "atlite.default / atlite.cutouts.<name> -> scripts/build_cutout.py (cutout_params, time from snapshots)"
+        provenance: "scripts/build_cutout.py:cutout_params"
+      - change: "retrieve-vs-build decision per weather year"
+        anchor: "enable.retrieve_cutout / enable.build_cutout -> rule retrieve_cutout / rule build_cutout"
+        provenance: "Snakefile:retrieve_cutout; Snakefile:build_cutout"
+      - change: "guard that aborts when a cutout file already exists"
+        anchor: "Snakefile::terminate_if_cutout_exists — must be handled when building a second year in place"
+        provenance: "Snakefile:terminate_if_cutout_exists"
+      - change: "demand year, separately from the projection year"
+        anchor: "load_options.weather_year -> scripts/build_demand_profiles.py"
+        provenance: "scripts/build_demand_profiles.py:weather_year; scripts/build_demand_profiles.py:prediction_year"
+      - change: "multi-year snapshot construction (does not exist)"
+        anchor: "scripts/base_network.py::base_network — n.set_snapshots(pd.date_range(freq='h', **snapshots_config))"
+        provenance: "scripts/base_network.py:set_snapshots"
+      - change: "hydro inflow normalisation year"
+        anchor: "renewable.hydro.normalization.year -> scripts/build_renewable_profiles.py::rescale_hydro"
+        provenance: "scripts/build_renewable_profiles.py:rescale_hydro"
+      - change: "annualised cost scaling for a multi-year set"
+        anchor: "scripts/process_cost_data.py — Nyears parameter threaded through the cost preparation"
+        provenance: "scripts/process_cost_data.py:Nyears"
+      - change: "cross-member aggregation (no global collector exists)"
+        anchor: "rule make_summary -> scripts/make_summary.py::make_summary"
+        provenance: "scripts/make_summary.py:make_summary"
+    data_dependencies:
+      - input: "one atlite cutout per weather year, per study region"
+        required_for: "multi-year-sequential-ensemble, difficult-year-bracket, reanalysis-climatology-only, single-design-year (non-2013)"
+        availability: >
+          must be built, for every year except 2013. All published bundles in
+          configs/bundle_config.yaml output cutout-2013-era5 (or
+          cutout-2013-era5-tutorial for NG/BJ, BW, MA, KZ) — one year, and the mainland
+          Africa bundle is the largest continental one. Building requires a Copernicus
+          CDS account and API key (documented in scripts/build_cutout.py's header), so
+          each ensemble member carries an external credential and a queue wait, not just
+          compute. NO DOWNLOAD WAS PERFORMED for this card. Volume scales with region
+          area at dx/dy 0.3 and there are no x/y bounds in the config — the extent comes
+          from the region's shapes — so a single-country cutout is small (order GB/year)
+          while a continental one is large; size the request before promising N years.
+          This is what makes an earth ensemble genuinely expensive: the cost is
+          per-year data provisioning, not solving.
+      - input: "hourly demand for each weather year (GEGIS or the demand dataset in use)"
+        required_for: "multi-year-sequential-ensemble, difficult-year-bracket"
+        availability: >
+          region-dependent, and narrower than the reanalysis. The distributed dataset
+          pairs demand predictions for 2030/2040/2050/2100 with ERA5 weather years 2011,
+          2013 and 2018 — three years, against ERA5's nominal 1959-2021. So even with
+          cutouts built, a weather year outside {2011, 2013, 2018} has no matching
+          demand profile and load_options.weather_year has nothing to select. Grade the
+          country in cookbooks/pypsa-earth/data_quality before promising an ensemble.
+      - input: "reported hydro generation statistics (IRENA/EIA) for the normalisation year"
+        required_for: "multi-year-sequential-ensemble in hydro-heavy regions"
+        availability: >
+          region-dependent. rescale_hydro checks the requested year against the
+          statistics index and, if missing, logs a warning and skips normalisation
+          entirely — so a hydro-heavy ensemble can run with inflow silently unnormalised
+          across all members. Check the country has IRENA hydro data for every year you
+          intend to normalise to.
+      - input: "downscaled climate-projection fields"
+        required_for: climate-projection-years
+        availability: "absent — no retrieval rule, no atlite module, must be constructed externally"
+    cost_profile:
+      solves: >
+        N for a sequential ensemble (parallel), 2-3 for difficult-year-bracket, 0 for
+        reanalysis-climatology-only. The joint and convergence variants are not
+        expressible without code changes, so they have no solve count here.
+      relative: >
+        The SOLVE side is cheap and often much cheaper than eur — a single country at
+        GADM-level-1 or a handful of clusters, electricity-only, is minutes to hours, so
+        N x that is affordable at N in the tens. The binding cost is the N cutout
+        BUILDS: each is a CDS API request for the region over a full year, subject to
+        Copernicus queueing, and it must complete before any solve. Budget the ensemble
+        in cutout-builds, not in solves — the inverse of the eur calculus.
+      note: >
+        Mitigations: keep the region tight (the cutout extent is derived from the region
+        shapes, so a smaller study area is a proportionally smaller download), coarsen
+        with the nH or nSEG opts token, and cluster aggressively — earth is good at
+        small-and-coarse in a way that makes a per-year ensemble tractable once the data
+        exists. Do NOT try to route this through monte_carlo: it samples parameters on
+        an already-built network and cannot re-derive profiles from a different cutout.
+    verifies:
+      - variant: multi-year-sequential-ensemble
+        check: "len({n.snapshots[0].year for n in ns}) == len(ns)"
+        over: ensemble
+        note: >
+          Distinct years per member. Because earth has no run-override mechanism, an
+          ensemble is N externally-driven config files — the commonest failure is one
+          config not being edited, producing a duplicate member and a falsely narrow
+          spread.
+      - variant: single-design-year
+        check: "n.snapshots[0].year == config['load_options']['weather_year']"
+        over: run
+        note: >
+          The snapshot year and load_options.weather_year must agree. Earth exposes the
+          demand year as its own key, which makes the mismatch easy to create and
+          equally easy to check: a disagreement means VRE profiles from one year are
+          paired with demand from another.
+      - variant: difficult-year-bracket
+        check: "len({tuple(n.generators_t.p_max_pu.iloc[:, 0].round(6)) for n in ns}) == len(ns)"
+        over: ensemble
+        note: >
+          Profiles must differ between members. Identical profiles mean every run read
+          the same cutout file — likely because terminate_if_cutout_exists was disabled
+          and a second year was never actually built, leaving 2013 in place.

@@ -1,0 +1,140 @@
+id: electrolysers
+title: Hydrogen electrolysers
+summary: >
+  Water electrolysis converting electricity to hydrogen — the primary
+  power-to-H2 conversion asset, its siting, costs, operational limits
+  and waste-heat recovery.
+when_to_use:
+  - "add electrolysers / electrolysis"
+  - "power-to-hydrogen / P2H2 capacity"
+  - "green hydrogen production plant"
+  - "PEM / alkaline / SOEC electrolyser"
+  - "electrolyser capacity expansion or caps"
+  - "electrolyser part load / flexibility"
+  - "electrolyser waste heat to district heating"
+  - "hydrogen production from renewables"
+  - "pypsa-eur carrier names: H2 Electrolysis, H2 Fuel Cell, H2 Store"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Fully covered as a greenfield investment option, in BOTH workflows.
+        Sector runs: add_h2_gas_infrastructure UNCONDITIONALLY adds an
+        extendable "H2 Electrolysis" Link at every clustered node (bus0 = the
+        regional AC bus, bus1 = the nodal H2 bus) — there is no on/off config
+        switch for electrolysis itself; it exists in every sector network.
+        Efficiency, capital cost and lifetime come from the "electrolysis"
+        cost row; p_min_pu is sector.min_part_load_electrolysis (0 by
+        default, i.e. fully flexible); p_nom_max is unbounded. With district
+        heating present, add_waste_heat re-wires the urban-central-node
+        electrolysers to deliver waste heat (bus2 = urban central heat,
+        efficiency2 = (0.84 - efficiency) * sector.use_electrolysis_waste_heat,
+        default factor 0.25). Electricity-only workflow: "H2" is in
+        electricity.extendable_carriers.Store by default, so attach_stores
+        (via STORE_LOOKUP, charger "electrolysis", discharger "fuel cell")
+        adds a per-bus H2 bus + Store + extendable "Electrolysis" charger
+        Link and "Fuel Cell" discharger Link — an H2-cycle representation
+        without any H2 demand. In sector runs the main script strips "H2"
+        from the extendable store list ("Hydrogen already implemented in
+        add_h2_gas_infrastructure") to avoid duplication. Myopic/perfect
+        foresight: optimised electrolyser capacities of earlier horizons are
+        carried over as fixed vintaged assets by add_brownfield (generic
+        Link handling, capacity_threshold pruning); add_existing_baseyear
+        contains no electrolysis branch, i.e. no exogenous 2020s fleet.
+      mechanism: >
+        rule prepare_sector_network runs scripts/prepare_sector_network.py::
+        add_h2_gas_infrastructure (first block after the H2 buses are
+        created); waste heat is attached later by add_waste_heat (only at
+        nodes holding an "urban central heat" bus). Electricity workflow:
+        rule add_electricity runs scripts/add_electricity.py::attach_stores.
+        Costs come from rule process_cost_data (row "electrolysis").
+      not_covered: >
+        One generic electrolyser technology only — no PEM / alkaline / SOEC
+        classes, stack degradation, or size classes (a single "electrolysis"
+        cost row prices everything). No existing/brownfield electrolyser
+        fleet data anywhere (add_existing_baseyear handles power plants and
+        heating, not H2 assets). No per-node or per-country capacity
+        caps/floors via config: electrolysis is a Link, so the CCL
+        country-capacity machinery (which acts on Generators) does not reach
+        it. No water demand or oxygen co-product. No dedicated-RES pairing,
+        temporal matching or certification — bus0 is the zonal electricity
+        bus, whatever its mix (see the green-hydrogen recipe). H2 storage
+        itself belongs to the storage family (see
+        hydrogen-storage-salt-caverns).
+      provenance: "scripts/prepare_sector_network.py:add_h2_gas_infrastructure; scripts/prepare_sector_network.py:H2 Electrolysis; scripts/prepare_sector_network.py:add_waste_heat; scripts/add_electricity.py:attach_stores; scripts/add_electricity.py:STORE_LOOKUP; scripts/add_brownfield.py:add_brownfield"
+    levers:
+      - key: sector.min_part_load_electrolysis
+        effect: "Sets p_min_pu of every H2 Electrolysis Link — a must-run floor as fraction of built capacity in every snapshot; 0 means fully flexible operation."
+        default: "0"
+        provenance: "config/config.default.yaml:min_part_load_electrolysis; scripts/prepare_sector_network.py:min_part_load_electrolysis"
+      - key: sector.use_electrolysis_waste_heat
+        effect: "Fraction (0-1) of recoverable electrolyser waste heat delivered to urban central heat buses; 0/false disables the bus2 rewiring in add_waste_heat."
+        default: "0.25"
+        provenance: "config/config.default.yaml:use_electrolysis_waste_heat; scripts/prepare_sector_network.py:add_waste_heat"
+      - key: electricity.extendable_carriers.Store
+        effect: "Electricity-only workflow: keeping 'H2' in this list adds the per-bus H2 Store with Electrolysis charger and Fuel Cell discharger links; remove 'H2' to drop electrolysis there."
+        default: "[battery, H2]"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_stores"
+      - key: costs.overwrites
+        effect: "Override investment/efficiency/lifetime/FOM of the 'electrolysis' cost row from config (e.g. {investment: {electrolysis: 400}}); deprecated in favour of rows in data/custom_costs.csv (costs.custom_cost_fn)."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+      - key: costs.custom_cost_fn
+        effect: "Path to a user cost file whose rows (e.g. a cheaper 'electrolysis' entry, or year-dependent values) overwrite the technology-data defaults in process_cost_data."
+        default: "data/custom_costs.csv"
+        provenance: "config/config.default.yaml:custom_cost_fn; scripts/process_cost_data.py:overwrite_costs"
+    boundary:
+      - variant: "electrolysers as an investment option at every node (sector run)"
+        rung: L0
+        note: "default and unconditional — add_h2_gas_infrastructure always adds the H2 Electrolysis Link; there is no config switch to disable it (removing it entirely is an L2 edit)"
+      - variant: "electrolysis + H2 storage in an electricity-only run"
+        rung: L0
+        note: "default — 'H2' is in electricity.extendable_carriers.Store (attach_stores adds Store + Electrolysis + Fuel Cell per bus)"
+      - variant: "impose a minimum part load / must-run on electrolysers"
+        rung: L1
+        note: "sector.min_part_load_electrolysis (fraction of p_nom, default 0)"
+      - variant: "use electrolyser waste heat in district heating"
+        rung: L0
+        note: "on by default at 0.25; scale with sector.use_electrolysis_waste_heat (only nodes with an urban central heat bus)"
+      - variant: "custom electrolyser CAPEX / efficiency assumptions"
+        rung: L1
+        note: "costs.overwrites or a 'electrolysis' row in data/custom_costs.csv"
+      - variant: "model a specific electrolyser class (PEM vs alkaline vs SOEC)"
+        rung: L2
+        note: "single class only: overwrite the generic 'electrolysis' row for ONE class (L1); several classes side by side need cloned n.add blocks in add_h2_gas_infrastructure plus cost rows (L3 for the data)"
+      - variant: "cap or force electrolyser capacity per node or country"
+        rung: L2
+        note: "no config key and CCL constraints only reach Generators — set p_nom_max/p_nom_min on the H2 Electrolysis n.add call in add_h2_gas_infrastructure, or add a custom constraint via solving.options custom_extra_functionality"
+      - variant: "existing/brownfield electrolyser fleet with build years"
+        rung: L2
+        note: "no data hook exists; myopic runs carry over MODEL-BUILT capacity automatically (add_brownfield), but an exogenous today-fleet needs manual non-extendable Links with build_year in add_h2_gas_infrastructure"
+      - variant: "electrolysers restricted to renewable electricity (additionality)"
+        rung: L5
+        note: "no origin tracking on the AC bus — see green-hydrogen recipe; needs a bespoke constraint"
+    where:
+      - change: "electrolyser Link creation (siting, p_nom bounds, part load, removal)"
+        anchor: "scripts/prepare_sector_network.py::add_h2_gas_infrastructure (H2 Electrolysis block, first n.add after the H2 buses)"
+        provenance: "scripts/prepare_sector_network.py:add_h2_gas_infrastructure"
+      - change: "waste heat delivery to district heating"
+        anchor: "scripts/prepare_sector_network.py::add_waste_heat (use_electrolysis_waste_heat branch)"
+        provenance: "scripts/prepare_sector_network.py:add_waste_heat"
+      - change: "electricity-only H2 cycle (store + charger/discharger)"
+        anchor: "scripts/add_electricity.py::attach_stores + STORE_LOOKUP dict"
+        provenance: "scripts/add_electricity.py:attach_stores; scripts/add_electricity.py:STORE_LOOKUP"
+      - change: "cost row values"
+        anchor: "scripts/process_cost_data.py::prepare_costs / ::overwrite_costs (rule process_cost_data)"
+        provenance: "scripts/process_cost_data.py:prepare_costs; scripts/process_cost_data.py:overwrite_costs"
+      - change: "carry-over of built electrolysers across myopic horizons"
+        anchor: "scripts/add_brownfield.py::add_brownfield (generic Link handling)"
+        provenance: "scripts/add_brownfield.py:add_brownfield"
+    data_dependencies:
+      - input: "cost row 'electrolysis' (and 'fuel cell', 'hydrogen storage underground' for the elec-only H2 cycle) in the technology-data costs file"
+        required_for: "all electrolyser economics"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "clustered population layout (defines the node set electrolysers are placed at)"
+        required_for: "siting"
+        availability: "must be built (rule build_clustered_population_layouts); default in workflow"
+      - input: "urban central heat buses (district heating footprint)"
+        required_for: "waste-heat delivery"
+        availability: "exists by default in sector runs where district heat share > 0"

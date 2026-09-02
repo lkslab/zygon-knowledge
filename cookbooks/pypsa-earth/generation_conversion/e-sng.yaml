@@ -1,0 +1,92 @@
+id: e-sng
+title: Synthetic natural gas (e-SNG)
+summary: Synthetic methane from hydrogen or electricity plus captured CO2 (Sabatier methanation, HELMETH), injected into the gas system.
+when_to_use:
+  - "synthetic natural gas / e-SNG / e-methane"
+  - "methanation of hydrogen"
+  - "power-to-gas (methane)"
+  - "Sabatier reactor"
+  - "green gas for existing gas users"
+  - "known in pypsa-eur as: BioSNG, BioSNG CC, Sabatier, methanation, power-to-gas"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        Two always-available (default true) synthesis routes, each one extendable Link per node
+        into spatial.gas.nodes: (1) "Sabatier" (sector.methanation): bus0 = node H2 bus, bus1 =
+        gas bus, bus2 = co2 stored with negative efficiency2 (consumes stored CO2 proportional to
+        gas CO2 intensity x efficiency), costs from technology-data "methanation" row; (2)
+        "helmeth" (sector.helmeth): direct power-to-gas, bus0 = AC bus, bus1 = gas bus, bus2 =
+        co2 stored (consumed), costs from "helmeth" row. Output is ordinary "gas" carrier, so
+        e-SNG serves every gas demand (OCGT/CCGT via converted links, gas boilers, gas for
+        industry, SMR feedstock) and displaces fossil gas economically; downstream combustion
+        re-emits, netting against the stored CO2 drawn by the synthesis link. Biogas upgrading
+        ("biogas to gas" in add_biomass) is the parallel biogenic route into the same bus.
+      mechanism: >
+        scripts/prepare_sector_network.py:h2_hc_conversions, called unconditionally from the main
+        block; each route individually gated by options["methanation"] / options["helmeth"].
+        Gas spatial structure from define_spatial (sector.gas.spatial_gas).
+      not_covered: >
+        No SNG grid-injection limits or gas-quality constraints; no minimum green-gas quota on gas
+        demand; no dedicated SNG export; no seasonal gas storage investment tied specifically to
+        SNG (gas buses/storage follow the generic gas representation); CO2 source is the pooled
+        co2 stored carrier (no biogenic-only restriction).
+      provenance: "scripts/prepare_sector_network.py:h2_hc_conversions"
+    levers:
+      - key: sector.methanation
+        effect: Enables the Sabatier H2-to-CH4 links.
+        default: "true"
+        provenance: "config.default.yaml:methanation; scripts/prepare_sector_network.py:h2_hc_conversions"
+      - key: sector.helmeth
+        effect: Enables the HELMETH direct electricity-to-CH4 links.
+        default: "true"
+        provenance: "config.default.yaml:helmeth; scripts/prepare_sector_network.py:h2_hc_conversions"
+      - key: sector.gas.spatial_gas
+        effect: Nodal gas buses (SNG usable locally) vs single "Earth gas" bus.
+        default: "true (commented ALWAYS TRUE)"
+        provenance: "config.default.yaml:spatial_gas; scripts/prepare_sector_network.py:define_spatial"
+      - key: sector.co2_network
+        effect: Whether stored CO2 for methanation is nodal (with CO2 pipelines) or a global pool.
+        default: "true"
+        provenance: "config.default.yaml:co2_network; scripts/prepare_sector_network.py:add_co2"
+      - key: sector.biogas_potential
+        effect: TWh/a of biogas that can be upgraded into the same gas bus (biogenic alternative to e-SNG).
+        default: "0.5"
+        provenance: "config.default.yaml:biogas_potential; scripts/prepare_sector_network.py:add_biomass"
+    boundary:
+      - variant: "e-SNG as an investment option"
+        rung: L0
+        note: Default on (both routes).
+      - variant: "Sabatier-only (drop HELMETH) or vice versa"
+        rung: L0
+        note: Flip sector.methanation / sector.helmeth.
+      - variant: "Green-gas quota on gas consumption"
+        rung: L5
+        note: Needs a custom constraint linking Sabatier/helmeth/biogas-to-gas output to gas demand in solve_network.
+      - variant: "SNG capacity or injection limits per node"
+        rung: L2
+        note: Add p_nom_max in the madd calls in h2_hc_conversions.
+      - variant: "SNG export"
+        rung: L5
+        note: No gas export machinery; export chain is H2-only.
+      - variant: "Restrict methanation CO2 to biogenic/DAC sources"
+        rung: L5
+        note: Pooled co2 stored carrier; needs CO2 provenance carriers and rewiring.
+    where:
+      - change: "Sabatier/HELMETH link definitions"
+        anchor: "scripts/prepare_sector_network.py:h2_hc_conversions"
+        provenance: "scripts/prepare_sector_network.py:h2_hc_conversions"
+      - change: "Biogenic route into the gas bus"
+        anchor: "scripts/prepare_sector_network.py:add_biomass ('biogas to gas' link)"
+        provenance: "scripts/prepare_sector_network.py:add_biomass"
+      - change: "Custom quota constraints"
+        anchor: "scripts/solve_network.py:extra_functionality"
+        provenance: "scripts/solve_network.py:extra_functionality"
+    data_dependencies:
+      - input: "technology-data costs csv rows: methanation, helmeth, gas (CO2 intensity)"
+        required_for: "both synthesis routes"
+        availability: "must be built (rule retrieve_cost_data); rows confirmed in built costs file"
+      - input: "stored CO2 supply (sector.cc point sources or sector.dac)"
+        required_for: "carbon feedstock"
+        availability: "exists by default"

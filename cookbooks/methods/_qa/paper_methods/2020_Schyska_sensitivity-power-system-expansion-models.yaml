@@ -1,0 +1,206 @@
+paper: "2020_Schyska_sensitivity-power-system-expansion-models.pdf"
+tier: 2
+model_used: >
+  PyPSA-Eur, electricity-only, clustered to 45/64/90/128 nodes,
+  1-hourly to 24-hourly temporal resolution; bespoke misallocation
+  metric formulated on top of the standard PyPSA-Eur LP.
+scope: >
+  Introduces a novel misallocation metric (pseudometric based on
+  cross-constraining solutions from two parameter scenarios) and
+  applies it to quantify PyPSA-Eur's sensitivity to capital costs,
+  weather-year choice, and spatial/temporal resolution.
+methods:
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: defines
+    evidence: >
+      "In this work, we introduce a novel method to quantify the
+      sensitivity of power system models to different model parameters
+      based on measuring the additional cost arising from misallocating
+      generation capacities." (Abstract). The misallocation metric M is
+      defined in Sec. 2 (Eq. 3) and applied across four test cases:
+      capital cost scenarios, weather periods, and spatial/temporal
+      resolution sweeps.
+    procedure_notes: >
+      For each pair of parameter scenarios αi and αj, the model is
+      solved unconstrained for both, then each optimal capacity vector
+      is set as a lower bound in the other scenario's LP (Eq. 4,
+      applied only to investment variables: generation, storage,
+      transmission). The sensitivity metric M = (Γ^αj_αi − Γ^0_αi) +
+      (Γ^αi_αj − Γ^0_αj) (Eq. 3). Cross-resolution lower bounds use
+      weighted cluster-overlap sums (Eqs. 17-19). Four test cases run:
+      (1) homogeneous vs regional cost of capital, (2) four climate
+      periods (1970-1976, 2000-2006, 2038-2044, 2094-2101) in 3-hourly
+      resolution from CNRM/EURO-CORDEX, (3) spatial resolution 45/64/
+      90/128 nodes × temporal resolution 1/3/6/12/24 h (20 combinations,
+      heatmap Fig. 9), (4) spatial correlation length analysis.
+    variant: misallocation-metric
+    parameters:
+      node_counts: "45, 64, 90, 128"
+      temporal_resolutions_hours: "1, 3, 6, 12, 24"
+      weather_periods: "1970-1976, 2000-2006, 2038-2044, 2094-2101"
+      CO2_cap_pct_of_1990: "5%"
+      transmission_cap: "3x today's NTC (3 × 31.25 TWkm)"
+
+  - slug: temporal-aggregation-and-segmentation
+    role: critiques
+    evidence: >
+      "We find that the model is most sensitive to the temporal
+      resolution." (Abstract). Sec. 4.3 shows M ≥ 7.2 EUR/MWh for
+      combinations spanning the 6h–12h boundary, vs M ≤ 4.2 EUR/MWh
+      within each block; Sec. 3.2 describes the downsampling technique.
+    procedure_notes: >
+      A simple downsampling approach is applied: parameter time series
+      (capacity factors and demand) are averaged over consecutive time
+      spans of length τ ∈ {3, 6, 12, 24} hours (rolling window),
+      yielding T/τ time steps. Snapshot weightings wt and ωt are set to
+      τ (Sec. 3.2). The paper explains why averaging acts as a low-pass
+      filter that removes sub-τ variability, causing the battery storage
+      (r = 6 h) to disappear from the optimal mix below 6-hourly
+      resolution (Fig. 10). The conclusion is that resolution must exceed
+      the characteristic storage horizon of deployed storage.
+    variant: downsampling-averaging
+    parameters:
+      averaging_windows_hours: "3, 6, 12, 24"
+      battery_energy_to_power_ratio_h: 6
+      hydrogen_energy_to_power_ratio_h: 168
+
+  - slug: spatial-clustering-and-resolution
+    role: critiques
+    evidence: >
+      "The expansion problem is much less sensitive to changes in the
+      spatial resolution as it is to changes in the temporal resolution."
+      (Sec. 4.3). Sensitivity to increasing nodes from 45 to 128 is
+      below 4 EUR/MWh at any temporal resolution.
+    procedure_notes: >
+      The original PyPSA-Eur network (3567 substations, 6047 lines) is
+      clustered to 45, 64, 90, 128 nodes using the network clustering
+      algorithm of Hörsch and Brown [44]. The paper explains why
+      sensitivity is low: the average inter-node distance (60 km at
+      1000 nodes to 350 km at 45 nodes) is well below the wind power
+      correlation length (~670 km for Europe, Fig. 11), so aggregating
+      nodes loses little meteorologically relevant information. This
+      result is characterised as holding only under hourly-or-coarser
+      time series; sub-hourly data could change the conclusion.
+    variant: k-means-network
+    parameters:
+      node_counts: "45, 64, 90, 128"
+      original_substations: 3567
+      original_lines: 6047
+
+  - slug: weather-year-ensembles
+    role: canonical-use
+    evidence: >
+      "We use four time slices of length 6-7 years in 3-hourly
+      resolution: 1970-1976, 2000-2006, 2038-2044 and 2094-2101."
+      (Sec. 3.1). The sensitivity metric is computed for all six
+      pairwise combinations (Fig. 7).
+    procedure_notes: >
+      Climate data from CNRM global climate model downscaled via
+      EURO-CORDEX, covering onshore/offshore wind, solar PV, run-of-
+      river inflow, and hydro dam inflow for each PyPSA-Eur node in
+      its one-node-per-country setup. The misallocation metric for the
+      worst pair (2000-2006, 2094-2101) is 5.1 EUR/MWh; the best pair
+      (1970-1976, 2038-2044) is 3.5 EUR/MWh. The authors conclude the
+      2000-2006 period is unrepresentative.
+    variant: multi-period-climate-model
+    parameters:
+      period_length_years: "6-7"
+      temporal_resolution_h: 3
+      climate_model: "CNRM / EURO-CORDEX"
+      n_periods: 4
+      n_pairs: 6
+
+  - slug: discounting-and-cost-of-capital
+    role: canonical-use
+    evidence: >
+      "The first scenario (hom) assumes a homogeneous distribution of
+      the cost of capital across the European countries. The second
+      scenario (dia) takes regional differences into account ... the rate
+      of return on capital ranges from 12% in South-Eastern European
+      Countries to only 4% in Germany." (Sec. 4.1).
+    procedure_notes: >
+      Misallocation metric applied to the cost-of-capital test case:
+      M_hom/dia = 4.6 EUR/MWh, which is >3× the naïve LCOE difference
+      (1.4 EUR/MWh) between the two scenarios. Regional WACC values
+      taken from Noothout et al. [49] (Diacore project). Capital costs
+      set per technology and country using those rates; the paper cites
+      an earlier companion paper (Schyska and Kies [50]) for the
+      detailed design differences between the two scenarios.
+    variant: regional-wacc
+    parameters:
+      wacc_range_pct: "4% (Germany) to 12% (SE Europe)"
+      misallocation_EUR_per_MWh: 4.6
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "Upper limits of generation capacities have been derived by
+      restricting the available area to agricultural areas and forest
+      and semi natural areas given in the CORINE Land Cover data set
+      [42] and by excluding all nature reserves and restricted areas
+      [43]." (Sec. 3.1).
+    procedure_notes: >
+      Fixed densities used: 3 MW/km² onshore wind, 1.45 MW/km² solar
+      PV. CORINE Land Cover 2012 and Natura 2000 exclusions applied.
+      This provides the extendable capacity upper bounds (Gn,s upper
+      bounds in the LP). Implemented as in the standard PyPSA-Eur
+      dataset described by Hörsch and Brown [44]; not independently
+      varied or analysed in this paper.
+    variant: null
+    parameters:
+      onshore_wind_density_MW_per_km2: 3
+      solar_pv_density_MW_per_km2: 1.45
+      land_data: "CORINE 2012, Natura 2000"
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "Inline with European emission reduction targets, we define a
+      global CO2 cap of 5% of the historic level of 1990." (Sec. 3.1,
+      Eq. 16).
+    procedure_notes: >
+      A hard annual CO2 cap is imposed on the total power system
+      (electricity-only). Only OCGT has non-zero emissions: en,s =
+      0.18 tCO2/MWh primary energy, efficiency ηn,s = 0.39. The cap
+      is not swept; it is a fixed background constraint across all
+      scenarios.
+    variant: null
+    parameters:
+      co2_cap_pct_1990: "5%"
+      ocgt_emission_factor_tCO2_per_MWh_primary: 0.18
+      ocgt_efficiency: 0.39
+
+  - slug: storage-sizing-and-duration
+    role: routine-use
+    evidence: >
+      "We consider two generic storage types with fixed power-to-energy
+      ratio r: 1. batteries: r = 6 h; 2. hydrogen storage: r = 168 h."
+      (Sec. 3.1).
+    procedure_notes: >
+      Storage energy capacity is not co-optimised independently; it is
+      fixed at a given multiple of the optimised nominal power. Batteries
+      at 6 h are shown to disappear from the optimal mix when temporal
+      resolution is coarser than 6 h (Sec. 4.3, Fig. 10), because the
+      sub-daily variability they balance is filtered away. Hydrogen
+      storage (168 h) remains deployed at all tested resolutions because
+      weekly variability survives downsampling. This is a central
+      explanatory finding, not just a model parameter.
+    variant: fixed-e-to-p-ratio
+    parameters:
+      battery_energy_to_power_h: 6
+      hydrogen_energy_to_power_h: 168
+
+unmatched_methods:
+  - name: "misallocation-metric (cross-scenario LP lower-bound sensitivity)"
+    evidence: >
+      The paper's primary contribution is a novel pseudometric M defined
+      by solving each scenario's LP with the other scenario's optimal
+      capacity vector imposed as a lower bound, then summing the
+      additional costs (Eq. 3, Sec. 2). This is distinct from
+      sensitivity-and-uncertainty-sweeps (which reports output change
+      per input perturbation) and from mga-near-optimal-space (which
+      explores the solution set within a cost slack). The authors
+      explicitly compare their metric to MGA in Sec. 5, noting the key
+      difference: they collapse the sensitivity to a single number rather
+      than exploring it visually. No existing slug captures this
+      cross-constraining pseudometric construction.

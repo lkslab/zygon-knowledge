@@ -1,0 +1,158 @@
+id: space-cooling-demand
+title: Space cooling / air conditioning demand
+summary: Electricity (or district-cooling) demand for cooling buildings — a growing end-use, especially in hot climates.
+
+when_to_use:
+  - "space cooling"
+  - "air conditioning demand"
+  - "AC load"
+  - "cooling degree days"
+  - "chillers / district cooling"
+  - "heat waves increase electricity demand"
+  - "cooling in hot countries"
+  - "refrigeration comfort cooling in buildings"
+
+reference_taxonomy:
+  framework: "FORECAST (Fraunhofer ISI)"
+  concepts:
+    - "Space cooling is modelled as an explicit building end-use alongside space heating, hot water and lighting, with diffusion of air-conditioning stock as a scenario driver"
+    - "Cooling demand scales with cooling degree days, floor area and appliance/AC ownership rates rather than with population alone"
+    - "Temperature-banded useful-energy demand distinguishes comfort cooling from process/industrial cooling"
+  sources:
+    - "https://irees.de/wp-content/uploads/2020/06/1-031-16_Rehfeldt.pdf"
+    - "https://www.forecast-model.eu/forecast-en/content/methodology.php"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        NOTHING — grounded absence. Grepping this repository for cooling finds no space-cooling
+        or air-conditioning logic: build_heat_demand only calls atlite's cutout.heat_demand
+        (heating degree-days), prepare_heat_data builds only 'space'/'water' heating uses,
+        prepare_sector_network has no cooling carrier or load, and config.default.yaml has no
+        cooling key. Any electricity used for cooling today is implicitly inside the
+        GEGIS/DemandCast base electricity profiles and the UNSD 'electricity residential' /
+        'services electricity' totals, without being identified, weather-driven or scalable
+        as an end-use. Note: this is a claim about pypsa-earth at this commit only.
+      mechanism: >
+        None. The nearest structural template is the heating chain: rule build_heat_demand
+        (atlite conversion, population-layout weighting) -> prepare_heat_data (intraday x
+        totals) -> add_heat (loads per heat system).
+      not_covered: >
+        Everything: no cooling degree-day shape, no AC-stock or ownership data, no cooling
+        loads/carriers, no district cooling, no heat-pump reversibility.
+      provenance: "scripts/build_heat_demand.py:cutout.heat_demand; scripts/prepare_heat_data.py:prepare_heat_data; scripts/prepare_sector_network.py:add_heat"
+
+    levers: []
+
+    boundary:
+      - variant: "Represent today's AC electricity implicitly"
+        rung: L0
+        note: "Already implicit in the base electricity load (GEGIS profiles reflect measured/predicted national demand incl. cooling); nothing identifiable to tune."
+      - variant: "Weather-driven cooling demand time series"
+        rung: L4
+        note: "Needs a new rule mirroring build_heat_demand; the installed atlite (0.5.0 in this repo's pixi environment) exposes Cutout.cooling_demand alongside heat_demand, so the conversion function exists upstream — the rule, outputs and Snakefile plumbing do not."
+      - variant: "Cooling as an explicit electric load (AC) at nodes"
+        rung: L5
+        note: "Beyond the L4 rule: annual cooling totals per country (absent from UNSD extraction — L3 data), a load-construction block in prepare_sector_network, and a decision whether to subtract implicit cooling from the base load."
+      - variant: "District cooling / chillers as optimisable supply"
+        rung: L5
+        note: "New buses, carriers and conversion links; no analogue exists (district heating is the closest pattern in add_heat/create_nodes_for_heat_sector)."
+      - variant: "AC-stock growth scenarios"
+        rung: L3
+        note: "Would slot into the prepare_energy_totals CAGR pattern (data/demand/*.csv) once a cooling column exists — data first, then wiring (L2 on top)."
+
+    where:
+      - change: "Template for a cooling-demand rule"
+        anchor: "rule build_heat_demand -> scripts/build_heat_demand.py (swap the atlite conversion)"
+        provenance: "Snakefile:build_heat_demand; scripts/build_heat_demand.py:cutout.heat_demand"
+      - change: "Template for load construction"
+        anchor: "scripts/prepare_sector_network.py:add_heat (loads per system) or add_services (electric load on AC buses)"
+        provenance: "scripts/prepare_sector_network.py:add_services"
+      - change: "Template for scenario scaling"
+        anchor: "scripts/prepare_energy_totals.py (CAGR growth/efficiency pattern)"
+        provenance: "scripts/prepare_energy_totals.py:calculate_end_values"
+
+    data_dependencies:
+      - input: "Cooling totals per country (annual TWh)"
+        required_for: "Any explicit cooling load"
+        availability: "absent (UNSD extraction has no cooling category)"
+      - input: "ERA5 cutout"
+        required_for: "Cooling degree-day shape"
+        availability: "must be built (already required for heating)"
+      - input: "AC ownership / saturation data"
+        required_for: "Scenario trajectories"
+        availability: "absent"
+
+    demand_dimensions:
+      driver: "None modelled; conceptually AC stock x cooling degree days (see reference_taxonomy)"
+      spatial: "None; population layouts would be the natural allocation key (as for heat)"
+      temporal: "None; atlite cooling_demand (CDD) would be the natural shape"
+      scenario: "None; CAGR-file pattern of prepare_energy_totals is the natural hook"
+
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+
+    out_of_box:
+      covers: >
+        NO building space-cooling end-use — grounded absence for buildings. Cooling appears in
+        the repo only as: (1) industrial process cooling, parsed from JRC-IDEES industry
+        sheets ('Process cooling' subsectors, e.g. Chemicals and Food) into electricity
+        demand inside the industry sector ratios — embedded in 'industry electricity', not
+        weather-driven; (2) vehicle cabin heating/cooling corrections in
+        build_transport_demand; (3) a district-heating heat-source parameter named
+        heat_source_cooling in the config. Residential/services air conditioning is implicitly
+        inside the historical base electricity load and is neither identified nor scalable.
+        The heating pipeline (build_daily_heat_demand) is HDD-only.
+      mechanism: >
+        None for buildings. Industrial process cooling: rule-chain around
+        build_industry_sector_ratios folds JRC 'Process cooling' electricity into industry
+        demand.
+      not_covered: >
+        Cooling degree-day time series, AC loads, district cooling, reversible heat pumps,
+        cooling in the JRC residential/tertiary extraction (build_energy_totals reads space
+        heating, water heating and cooking — no cooling rows).
+      provenance: "scripts/build_daily_heat_demand.py:cutout.heat_demand; scripts/build_industry_sector_ratios.py:Process cooling; scripts/build_transport_demand.py:cooling; config/config.default.yaml:heat_source_cooling"
+
+    levers: []
+
+    boundary:
+      - variant: "Today's AC electricity implicitly in the load"
+        rung: L0
+        note: "Historical ENTSO-E/OPSD profiles include actual cooling consumption; not separable."
+      - variant: "Weather-driven cooling demand time series"
+        rung: L4
+        note: "New rule mirroring build_daily_heat_demand/build_hourly_heat_demand (atlite exposes cooling_demand in recent versions); wildcard/output plumbing in rules/build_sector.smk."
+      - variant: "Explicit cooling load with totals"
+        rung: L5
+        note: "Cooling totals would need extraction from JRC-IDEES residential/tertiary data (not currently read) or Odyssee — L3 data — plus load construction and base-load subtraction in prepare_sector_network."
+      - variant: "District cooling"
+        rung: L5
+        note: "No carrier/bus structure; district heating in add_heat is the closest pattern."
+
+    where:
+      - change: "Template for a cooling rule"
+        anchor: "rule build_daily_heat_demand -> scripts/build_daily_heat_demand.py"
+        provenance: "rules/build_sector.smk:build_daily_heat_demand"
+      - change: "Where industrial process cooling already lives"
+        anchor: "scripts/build_industry_sector_ratios.py ('Process cooling' keys)"
+        provenance: "scripts/build_industry_sector_ratios.py:Process cooling"
+      - change: "Template for load construction and subtraction"
+        anchor: "scripts/prepare_sector_network.py:build_heat_demand (electric-heat subtraction pattern)"
+        provenance: "scripts/prepare_sector_network.py:build_heat_demand"
+
+    data_dependencies:
+      - input: "Cooling totals per country"
+        required_for: "Explicit cooling load"
+        availability: "absent from the extracted energy totals (JRC parsing reads no cooling rows)"
+      - input: "Weather cutout"
+        required_for: "CDD shape"
+        availability: "exists by default"
+
+    demand_dimensions:
+      driver: "None for buildings; industrial process cooling embedded in JRC industry sector ratios"
+      spatial: "None; population layouts would be the natural key"
+      temporal: "None; CDD via atlite would be the natural shape"
+      scenario: "None"

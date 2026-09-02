@@ -1,0 +1,55 @@
+id: green-h2-export-cost-benchmarking
+title: "Green-H2 export cost benchmarking"
+rank: 77
+question: >
+  At what delivered cost can a country export green hydrogen, how does that
+  cost move with export volume, and can it compete with the Gulf, Chile, and
+  Australia? The "from barrels to molecules" question — Gulf diversification,
+  African/Latin American export hubs, EU import benchmarks.
+when_to_use:
+  - "levelized cost of exported green hydrogen"
+  - "H2 export supply curve vs volume"
+  - "can my country compete with NEOM / Chile / Australia"
+  - "export volume vs domestic decarbonization trade-off"
+  - "RE matching rules on exported hydrogen"
+recipes:
+  generation_conversion: [green-hydrogen, electrolysers, hydrogen-pipelines,
+                          hydrogen-storage-salt-caverns, green-energy-imports]
+  demand: [hydrogen-export-demand, electricity-load]
+functionality:
+  - id: h2-export-chain
+    role: "absent — the topic's core machinery (export bus at ports, volume wildcard, endogenous export price) does not exist in eur"
+  - id: green-energy-imports
+    role: "the built-in mirror: Europe as importer — sector.imports.price is the benchmark exporters must beat"
+  - id: h2-network-retrofit
+    role: "intra-European H2 delivery is endogenous pipeline transmission, not an export demand"
+  - id: nodal-marginal-prices
+    role: "H2 bus duals give per-country supply-cost benchmarks inside Europe"
+  - id: cf-config-injection
+    role: "escape hatch for hand-built export loads — no dedicated token or wildcard carries export volume"
+  - id: custom-constraint-hook
+    role: "landing point for bespoke export-side constraints (e.g. RE-matching on an added export sink)"
+  - id: scenario-matrix
+    role: "a hand-rolled volume sweep needs scenario overrides; there is no h2export wildcard to expand"
+gap_assessment: >
+  Gap — a sharp downgrade from pypsa-earth, where this topic is the
+  showcase. pypsa-eur has no export machinery at all: no export bus, no
+  export ports, no {h2export} volume wildcard, no endogenous
+  price-driven export sink, and no RE-certification constraints on exported
+  hydrogen (the hydrogen-export-demand recipe's eur section documents the
+  absence: covers "nothing"). The model faces the other direction — Europe
+  as green-fuel IMPORTER via sector.imports with per-carrier prices, which
+  makes eur the tool for setting the import-price benchmark that would-be
+  exporters compete against, not for computing an exporter's supply curve.
+  What survives: intra-European "export" is just endogenous H2 pipeline
+  trade, and per-country H2 supply-cost comparisons (Spain vs Germany) can
+  be read from H2 nodal duals of a solved sector network. Building a real
+  export study here is L3-L4: attach exogenous H2 loads at port buses
+  (mirror add_shipping) or a negative-priced sink (mirror
+  add_import_options), plus new wildcard plumbing for volume sweeps. For an
+  actual exporter-country benchmark (Morocco, Namibia, Chile), use
+  pypsa-earth's first-class h2export chain instead.
+coverage: gap
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

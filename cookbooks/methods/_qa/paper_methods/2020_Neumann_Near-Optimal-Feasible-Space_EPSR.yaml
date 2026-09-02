@@ -1,0 +1,171 @@
+paper: "2020_Neumann_Near-Optimal-Feasible-Space_EPSR.pdf"
+tier: 1
+model_used: >
+  PyPSA-Eur, 100 nodes, electricity-only, 4380 snapshots (2-hourly full year);
+  also a 3-hourly variant for country-wise MGA runs.
+scope: >
+  Systematically explores the near-optimal feasible space of a fully renewable
+  European electricity system using MGA, deriving technology-specific capacity
+  bounds that must be satisfied to remain within a cost slack epsilon of the optimum.
+methods:
+  - slug: mga-near-optimal-space
+    role: defines
+    evidence: >
+      "We apply the modeling-to-generate-alternatives (MGA) methodology to
+      systematically explore the near-optimal feasible space of a completely
+      renewable European electricity system model." The paper pursues "a more
+      structured approach to MGA to span the near-optimal feasible space. The
+      search directions are not determined by the Hop-Skip-Jump (HSJ) algorithm
+      … but by pre-defined groups of investment variables." (Sec. II.B)
+    procedure_notes: >
+      After solving the cost-optimal LP, the objective is encoded as a constraint
+      f(G,H,F,g) <= (1+epsilon)*f* (Eq. 15). New objectives minimise/maximise sums
+      of capacity subsets: (i) all wind, (ii) onshore wind, (iii) offshore wind,
+      (iv) solar, (v) gas turbines, (vi) hydrogen storage, (vii) battery storage,
+      (viii) transmission volume — both system-wide and country-wise. Run for epsilon
+      in {0.5%,1%,2%,3%,4%,5%,7.5%,10%} and GHG targets of 80%, 95%, 100%.
+      System-wide sweep yields 384 near-optimal solutions; country-wise runs add
+      1584 solutions. Solved with Gurobi; each system-wide problem ~6.5 h / 31 GB RAM.
+    variant: carrier-and-region-aligned-directions
+    parameters:
+      slack: "0.5%–10%"
+      ghg_targets: "80%, 95%, 100% reduction vs 1990"
+      system_wide_solutions: 384
+      country_wise_solutions: 1584
+      solver: "Gurobi"
+
+  - slug: linearised-optimal-power-flow
+    role: canonical-use
+    evidence: >
+      "The objective function is subject to a set of linear constraints, including
+      multi-period linear optimal power flow (LOPF) equations, resulting in a convex
+      linear program (LP)." Kirchhoff's Voltage Law is enforced via cycle flows:
+      "sum_l C_lc * x_l * f_lt = 0 for all c, t" (Eq. 12, Sec. II.A). The paper
+      notes this is unique for MGA applications: "co-optimization of generation,
+      storage and transmission infrastructure subject to linear optimal power flow
+      (LOPF) constraints is unique for MGA applications."
+    procedure_notes: >
+      Cycle-flow formulation (citing Hoersch et al. 2018). HVDC links are
+      controllable and not subject to the KVL cycle constraint. Line flows bounded
+      by f_bar * F_l where f_bar acts as a per-unit security margin (set to 70% to
+      approximate N-1 security). Impedance update for transmission expansion handled
+      via sequential linear programming (Sec. II.C, citing Neumann & Brown 2019).
+    variant: cycle-flow
+    parameters:
+      snapshots: 4380
+      resolution: "2-hourly"
+      security_margin: "70% of nominal rating (N-1 approximation)"
+
+  - slug: transmission-expansion-cooptimisation
+    role: canonical-use
+    evidence: >
+      "Following a greenfield approach … we allow simultaneous capacity expansion of
+      transmission lines, HVDC links and various types of storage units and generators."
+      AC line capacities expandable continuously up to 4x current capacity; new HVDC
+      corridors from TYNDP 2018 limited to 30 GW. (Sec. II.C)
+    procedure_notes: >
+      "The dependence of line capacity expansion on line impedance is addressed in a
+      sequential linear programming approach." (Sec. II.C, ref [27]). Expansion is
+      co-optimised jointly with generation and storage in the same LP. Transmission
+      volume (TWkm) is one of the MGA search directions.
+    variant: sequential-lp-impedance-update
+    parameters:
+      ac_expansion_limit: "up to 4x current capacity"
+      hvdc_limit: "30 GW per corridor"
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "This formulation does not include pathway optimization (i.e. no sequences of
+      investments), but searches for a cost-optimal layout corresponding to a given
+      GHG emission reduction level. For capacity expansion planning, it assumes
+      perfect foresight for the reference year based on which capacities are
+      optimized." (Sec. II.A)
+    procedure_notes: >
+      Single target-year overnight optimisation; no myopic stepping or transition
+      pathway. Greenfield assumption for all technologies except existing transmission
+      grid and hydropower installations.
+    variant: overnight-greenfield
+    parameters: {}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "Total CO2 emissions may not exceed a target level Γ_CO2. The emissions are
+      determined from the time-weighted generator dispatch using the specific
+      emissions ρ_r of fuel r and the generator efficiencies η_ir." (Eq. 14, Sec. II.A)
+      Results reported for 80%, 95% and 100% GHG emission reduction targets.
+    procedure_notes: >
+      Annual emissions cap constraint in the LP. Gas turbines carry an emission
+      intensity of 0.19 t_CO2/MWh_th (Table II footnote). Tightening the cap is
+      the main scenario dimension alongside MGA slack.
+    variant: annual-cap
+    parameters:
+      ghg_reduction_targets: "80%, 95%, 100% vs 1990"
+
+  - slug: discounting-and-cost-of-capital
+    role: routine-use
+    evidence: >
+      "The annuity factor (1-(1+τ)^-n)/τ converts the overnight investment of an
+      asset to annual payments considering its lifetime n and cost of capital τ."
+      (Footnote 1, Sec. II.A). "For all technologies a discount rate of 4% is
+      assumed." (Table II footnote e)
+    procedure_notes: >
+      Uniform 4% discount rate applied to all technologies. Annualised capital costs
+      enter the objective function directly (Eq. 1). No technology- or country-specific
+      WACC differentiation.
+    variant: uniform-discount-rate
+    parameters:
+      discount_rate: "4%"
+
+  - slug: storage-sizing-and-duration
+    role: routine-use
+    evidence: >
+      "To reduce the number of decision variables, we tie the energy storage volume
+      to power ratings using a technology-specific parameter T^s that describes the
+      maximum duration a storage unit can discharge at full power rating." (Eq. 10,
+      Sec. II.A). Battery T^s = 6 h, hydrogen T^s = 168 h (Table II).
+    procedure_notes: >
+      Fixed energy-to-power ratio (max_hours) for battery (6 h) and hydrogen (168 h).
+      Storage dispatch split into separate charging and discharging variables to
+      maintain LP convexity. Cyclic state-of-charge boundary condition (Eq. 9).
+      Both hydrogen and battery storage are MGA search directions.
+    variant: fixed-duration-ratio
+    parameters:
+      battery_max_hours: 6
+      hydrogen_max_hours: 168
+
+  - slug: cost-allocation-and-equity-metrics
+    role: extends
+    evidence: >
+      "Surveys suggest that an equal distribution of power supply is preferred among
+      the population … Sasse et al. and Drechsler et al. investigate the trade-offs
+      between least-cost and regionally equitable solutions … using concepts of the
+      Lorenz curves and the Gini coefficients as equity measures." The paper computes
+      Lorenz curves and Gini coefficients across the 100 model regions for all
+      near-optimal solutions. (Sec. III.D, Figs. 7–8)
+    procedure_notes: >
+      Lorenz curve relates cumulative share of regional electricity generation to
+      cumulative share of demand. Gini coefficient computed as twice the area between
+      Lorenz curve and the identity line. Tracked as a function of transmission
+      network volume (TWkm) across four MGA search directions (min/max transmission,
+      min/max storage). Not an optimisation objective — observed as a side-effect.
+    variant: gini-lorenz-across-mga-solutions
+    parameters: {}
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      "The exploration of the near-optimal feasible space is executed for the open
+      model dataset PyPSA-Eur of the European power system with a spatial resolution
+      of 100 nodes and a temporal resolution of 4380 snapshots." (Sec. II.C)
+    procedure_notes: >
+      100-node network inherited from PyPSA-Eur (citing Hoersch et al. 2018 and
+      Hoersch & Brown 2017). Resolution chosen to reflect "transmission bottlenecks
+      and … spatially and temporally varying renewable potentials with passable
+      detail" while remaining computationally tractable for ~2000 MGA solves.
+    variant: null
+    parameters:
+      nodes: 100
+
+unmatched_methods: []

@@ -1,0 +1,188 @@
+country: PT
+name: Portugal
+fleet_evidence:
+  plants: 505
+  capacity_mw: 26848.2
+  fueltypes:
+  - Battery
+  - Geothermal
+  - Hard Coal
+  - Hydro
+  - Hydrogen Storage
+  - Mechanical Storage
+  - Natural Gas
+  - Oil
+  - Solar
+  - Solid Biomass
+  - Waste
+  - Wind
+families:
+  demand-balances:
+    grade: B
+    detail:
+      jrc-idees: A
+      eurostat-balances: A
+      swiss-energy-balances: B
+      jrc-energy-atlas: A
+  electricity-load:
+    grade: B
+    detail:
+      electricity-demand-historic: A
+      gb-national-demand: B
+      synthetic-demand: B
+  power-fleet:
+    grade: A
+    detail:
+      powerplantmatching-fleet: A
+      eia-hydro-annual: A
+      hydro-capacities: A
+  grid:
+    grade: B
+    detail:
+      osm-grid: B
+      tyndp-transmission-projects: A
+  gas-h2-co2:
+    grade: C
+    detail:
+      scigrid-gas-network: A
+      gas-input-locations: B
+      h2-salt-caverns: A
+      co2stop-sequestration: C
+  renewables-land:
+    grade: B
+    detail:
+      era5-sarah-cutout: B
+      corine-landcover: B
+      natura-and-offshore-exclusions: A
+      eez: A
+  industry:
+    grade: D
+    detail:
+      hotmaps-industrial-sites: A
+      gem-steel-cement-trackers: B
+      ammonia-production-usgs: D
+  biomass:
+    grade: A
+    detail:
+      enspreso-biomass: A
+  heat-buildings:
+    grade: C
+    detail:
+      district-heating-potentials: B
+      retro-building-stock: A
+      heat-profile-bdew: C
+  spatial-population:
+    grade: A
+    detail:
+      nuts3-population-gdp: A
+      worldbank-urban-population: A
+  transport:
+    grade: C
+    detail:
+      transport-data-emobility: C
+  parameters:
+    grade: C
+    detail:
+      unit-commitment-parameters: B
+      technology-costs: C
+datasets:
+  jrc-idees:
+    grade: A
+    detail: per-country JRC-IDEES 2023 workbook directory
+  eurostat-balances:
+    grade: A
+    detail: national energy-balance rows (nrg_bal_c)
+  swiss-energy-balances:
+    grade: B
+    detail: "not applicable \u2014 Eurostat covers this country"
+  electricity-demand-historic:
+    grade: A
+    detail: ENTSO-E transparency + OPSD historical load columns
+  gb-national-demand:
+    grade: B
+    detail: "not applicable \u2014 ENTSO-E/OPSD cover this country"
+  synthetic-demand:
+    grade: B
+    detail: synthetic profile column available as gap-fill layer
+  powerplantmatching-fleet:
+    grade: A
+    detail: 505 plants, 26848.2 MW (Battery, Geothermal, Hard Coal, Hydro, Hydrogen
+      Storage, Mechanical Storage)
+  osm-grid:
+    grade: B
+    detail: Europe-wide OSM prebuilt grid; completeness is volunteer-dependent (thinner
+      in the Balkans)
+  tyndp-transmission-projects:
+    grade: A
+    detail: TYNDP 2020 project endpoint(s) in country
+  scigrid-gas-network:
+    grade: A
+    detail: IGGIELGN pipe segments present
+  gas-input-locations:
+    grade: B
+    detail: GEM Europe Gas Tracker + IGGIELGN border/LNG/storage points
+  enspreso-biomass:
+    grade: A
+    detail: ENSPRESO NUTS2 biomass potential rows
+  hotmaps-industrial-sites:
+    grade: A
+    detail: 145 industrial sites
+  gem-steel-cement-trackers:
+    grade: B
+    detail: global GEM trackers (probe unavailable)
+  ammonia-production-usgs:
+    grade: D
+    detail: "no ammonia plants listed \u2014 zero NH3 production assumed"
+  h2-salt-caverns:
+    grade: A
+    detail: salt-cavern potential polygons (on/near-shore)
+  eia-hydro-annual:
+    grade: A
+    detail: EIA annual hydro generation rows (inflow normalization)
+  hydro-capacities:
+    grade: A
+    detail: hydro capacity row
+  era5-sarah-cutout:
+    grade: B
+    detail: gridded ERA5 + SARAH3 cutout covers the full domain (single weather year
+      2013 on disk)
+  corine-landcover:
+    grade: B
+    detail: EEA39 CORINE raster covers the full default scope
+  natura-and-offshore-exclusions:
+    grade: A
+    detail: Natura 2000 protected-area raster (EU member)
+  eez:
+    grade: A
+    detail: EEZ polygons for offshore regions
+  nuts3-population-gdp:
+    grade: A
+    detail: JRC ARDECO NUTS3 GDP + population rows
+  worldbank-urban-population:
+    grade: A
+    detail: World Bank urban-population share row (XKX included)
+  jrc-energy-atlas:
+    grade: A
+    detail: JRC Energy Atlas spatial electricity-demand raster
+  district-heating-potentials:
+    grade: B
+    detail: Fraunhofer DH areas + ISI geothermal potentials (runtime-fetched, EU-scoped)
+  retro-building-stock:
+    grade: A
+    detail: building stock rows (EU Building Stock Observatory)
+  co2stop-sequestration:
+    grade: C
+    detail: "co2stop probe failed \u2014 no readable shapefiles"
+  transport-data-emobility:
+    grade: C
+    detail: German BASt kfz/pkw weekly profiles applied as proxy
+  unit-commitment-parameters:
+    grade: B
+    detail: per-carrier global UC parameters (no oil column)
+  technology-costs:
+    grade: C
+    detail: "uniform European cost table \u2014 no country-specific capital costs\
+      \ or WACC"
+  heat-profile-bdew:
+    grade: C
+    detail: German BDEW intraday heat profile applied as proxy

@@ -1,0 +1,176 @@
+id: industrial-crosscutting-electricity
+title: Industrial cross-cutting electricity (motors, compressed air, lighting)
+summary: >
+  The electricity used by cross-cutting technologies present in every factory —
+  electric motor systems, pumps and fans, compressed air, lighting — as opposed
+  to process-specific electricity (electrolysis, arc furnaces), each with its
+  own efficiency-improvement potential.
+
+when_to_use:
+  - "electric motor efficiency in industry"
+  - "compressed air demand / leakage savings"
+  - "industrial lighting electricity"
+  - "cross-cutting technologies"
+  - "motor systems / variable speed drives"
+  - "split industry electricity by end-use"
+  - "pumps and fans electricity"
+  - "industrial electricity demand breakdown"
+  - "known in pypsa-eur as: industry electricity, industry new electricity"
+
+reference_taxonomy:
+  framework: "FORECAST (Fraunhofer ISI)"
+  concepts:
+    - "FORECAST distinguishes process-specific from CROSS-CUTTING technologies — electric motors, steam & hot water systems, space heating, lighting — with technology data drawn from IPPC BREF studies."
+    - "Cross-cutting electricity carries its own energy-efficiency measures (EEMs) with explicit technology diffusion and stock turnover, separate from process-route changes."
+    - "The bottom-up structure (60+ products/processes) lets cross-cutting demand scale with activity in each sector while EEMs bend the intensity."
+    - "More than 10 energy carriers are tracked, so motor electrification vs steam-system fuel choices are separable."
+  sources:
+    - "https://www.forecast-model.eu/forecast-en/content/methodology.php"
+    - "https://www.sciencedirect.com/science/article/pii/S2211467X18300890"
+    - "https://irees.de/wp-content/uploads/2020/06/1-031-16_Rehfeldt.pdf"
+    - "https://github.com/fraunhofer-isi/forecast-sites"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        Not covered as a distinct category. All industrial electricity —
+        motors, compressed air, lighting and process-specific uses alike — is
+        one aggregate per (country, industry) from UNSD balances, attached as a
+        single flat "industry electricity" load per node. The pipeline has no
+        end-use dimension at any stage.
+      mechanism: >
+        build_base_industry_totals produces (country, carrier) x industry
+        totals; build_industry_demand grows them with per-industry CAGRs and
+        distributes nodally; prepare_sector_network.add_industry adds the
+        "industry electricity" Load on the AC bus.
+      not_covered: >
+        No motors/compressed-air/lighting split, no efficiency measure for any
+        of them, no way to target motor-system savings other than shrinking
+        the whole electricity column.
+      provenance: "scripts/prepare_sector_network.py:industry electricity; scripts/build_base_industry_totals.py:create_industry_base_totals; scripts/build_industry_demand.py:country_to_nodal"
+
+    levers:
+      - key: sector.enable.industry
+        effect: "On/off for the aggregate industry electricity load."
+        default: "true"
+        provenance: "config.default.yaml:industry; Snakefile:rule build_industry_demand"
+      - key: custom_data.industry_demand
+        effect: "Custom csv path — the only supported way to impose a lower (efficiency-adjusted) electricity total per industry."
+        default: "false"
+        provenance: "config.default.yaml:industry_demand; scripts/build_industry_demand.py:country_to_nodal"
+
+    boundary:
+      - variant: "apply an economy-wide motor-efficiency saving (shrink industry electricity)"
+        rung: L3
+        note: "lower the electricity rows in a custom industry demand csv, or reduce per-industry CAGRs in data/demand/industry_growth_cagr.csv (conflates activity growth with efficiency)."
+      - variant: "report cross-cutting vs process-specific electricity"
+        rung: L3
+        note: "needs external end-use shares (FORECAST/BREF-style) per industry; then a small assembly edit in build_industry_demand to carry extra columns."
+      - variant: "separate loads for motors / compressed air / lighting"
+        rung: L4
+        note: "new columns through the resource plus new Load blocks in add_industry."
+      - variant: "endogenous motor-efficiency investment (pay capex to cut load)"
+        rung: L5
+        note: "demand-side investment options do not exist; would need e.g. a negative-load 'efficiency' link with capital cost — bespoke component logic."
+
+    where:
+      - change: "electricity column assembly / place for end-use columns"
+        anchor: "all_carriers list and nodal_df assembly in build_industry_demand"
+        provenance: "scripts/build_industry_demand.py:all_carriers"
+      - change: "network load"
+        anchor: "add_industry in prepare_sector_network"
+        provenance: "scripts/prepare_sector_network.py:add_industry"
+      - change: "activity scaling that doubles as crude efficiency lever"
+        anchor: "data/demand/industry_growth_cagr.csv (per-country per-industry CAGR, DEFAULT fallback)"
+        provenance: "data/demand/industry_growth_cagr.csv:DEFAULT; scripts/build_industry_demand.py:industry_growth_cagr"
+
+    data_dependencies:
+      - input: "end-use shares of industrial electricity (motors, compressed air, lighting) per industry"
+        required_for: "any cross-cutting split"
+        availability: "absent — not in the repo"
+      - input: "data/custom/industry_demand_{demand}_{planning_horizons}.csv"
+        required_for: "efficiency-adjusted totals"
+        availability: "absent — user-supplied"
+
+    demand_dimensions:
+      driver: "UNSD industry electricity per country grown by per-industry CAGRs; no end-use driver"
+      spatial: "industrial database plant keys per industry, GDP fallback"
+      temporal: "flat annual/8760 constant"
+      scenario: "{demand} wildcard + planning_horizons via CAGR or custom csv"
+
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+
+    out_of_box:
+      covers: >
+        Not covered as a distinct category in the network — but the derivation
+        is end-use aware: in build_industry_sector_ratios every sector function
+        explicitly sums the JRC-IDEES rows "Lighting", "Air compressors",
+        "Motor drives" and "Fans and pumps" (sel list) into the sector's
+        "elec" intensity, alongside electrified process end-uses. The network
+        then sees only the aggregate flat "industry electricity" load
+        (plus band electricity via heat pumps/electric boilers when
+        industry_t.endogen is on).
+      mechanism: >
+        Per-sector MWh/t ratios x kt/a nodal production
+        (build_industrial_energy_demand_per_node) become the "industry
+        electricity" Load in prepare_sector_network.add_industry; today's
+        industrial electricity is simultaneously deducted from the base
+        electricity load profile via the "current electricity" column.
+      not_covered: >
+        No separate motors/compressed-air/lighting loads, no EEM or motor-class
+        (IE3/IE4) representation, no endogenous trade-off between paying for
+        efficient drives and buying electricity.
+      provenance: "scripts/build_industry_sector_ratios.py:Air compressors; scripts/build_industry_sector_ratios.py:Motor drives; scripts/build_industry_sector_ratios.py:Lighting; scripts/prepare_sector_network.py:industry electricity"
+
+    levers:
+      - key: sector.industry
+        effect: "On/off for the industry block."
+        default: "true"
+        provenance: "config/config.default.yaml:industry; scripts/prepare_sector_network.py:add_industry"
+      - key: industry.sector_ratios_fraction_future
+        effect: "Interpolates toward best-in-class ratios — the only built-in intensity-reduction lever covering cross-cutting electricity."
+        default: "0.0 (2020) rising to 1.0 (2050)"
+        provenance: "config/config.default.yaml:sector_ratios_fraction_future; scripts/build_industry_sector_ratios_intermediate.py:sector_ratios_fraction_future"
+
+    boundary:
+      - variant: "scale cross-cutting electricity intensity (e.g. 25% motor-system savings)"
+        rung: L2
+        note: "multiply the sel = [Lighting, Air compressors, Motor drives, Fans and pumps] contributions in build_industry_sector_ratios by a factor — the rows are already isolated per sector."
+      - variant: "carry cross-cutting electricity as its own carrier column"
+        rung: L3
+        note: "add an index entry in build_industry_sector_ratios and keep the sel sum separate from elec; plumb the new column through build_industrial_energy_demand_per_node."
+      - variant: "separate network loads for motors / lighting etc."
+        rung: L4
+        note: "new columns + Load blocks in add_industry; also extend the endogenous copy-over so industry_t runs keep them."
+      - variant: "endogenous motor-efficiency choice (invest in drives vs buy electricity)"
+        rung: L5
+        note: "demand-side efficiency investment components do not exist in the industry block; bespoke Python."
+
+    where:
+      - change: "cross-cutting end-use summation per sector"
+        anchor: "sel list in each sector function of build_industry_sector_ratios (iron_and_steel, chemicals_industry, food_beverages_tobacco, ...)"
+        provenance: "scripts/build_industry_sector_ratios.py:Air compressors; scripts/build_industry_sector_ratios.py:iron_and_steel"
+      - change: "column plumbing"
+        anchor: "rule build_industrial_energy_demand_per_node"
+        provenance: "rules/build_sector.smk:rule build_industrial_energy_demand_per_node; scripts/build_industrial_energy_demand_per_node.py:rename_sectors"
+      - change: "network loads and base-load deduction"
+        anchor: "add_industry in prepare_sector_network (industry electricity load; current electricity deduction)"
+        provenance: "scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:current electricity"
+
+    data_dependencies:
+      - input: "JRC-IDEES end-use sheets (Lighting / Air compressors / Motor drives / Fans and pumps rows)"
+        required_for: "any cross-cutting split or scaling"
+        availability: "must be built (retrieved); EU-focused"
+      - input: "motor-system efficiency measure data (savings, costs) if endogenising"
+        required_for: "L5 endogenous efficiency"
+        availability: "absent"
+
+    demand_dimensions:
+      driver: "kt/a production x MWh/t ratios whose elec term includes the four cross-cutting JRC-IDEES end-uses"
+      spatial: "Hotmaps/GEM distribution keys per sector"
+      temporal: "flat annual/nhours constant p_set"
+      scenario: "sector_ratios_fraction_future per planning horizon; production scenarios"

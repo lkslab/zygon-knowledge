@@ -1,0 +1,51 @@
+id: ccs-ccu-deployment
+title: CCS / CCU deployment
+rank: 56
+question: >
+  How much carbon capture gets built where — industrial point-source, BECCS,
+  DAC — where does the CO2 go (pipelines, sequestration, utilization), and at
+  what CO2 price does capture beat abatement alternatives?
+when_to_use:
+  - "CCS deployment under a carbon budget"
+  - "CO2 transport and storage infrastructure"
+  - "DAC vs point-source capture vs BECCS"
+  - "sequestration potential as a binding limit"
+  - "captured CO2 for synthetic fuels (CCU)"
+recipes:
+  generation_conversion: [industrial-ccs, direct-air-capture, beccs,
+                          e-diesel-fischer-tropsch, blue-hydrogen]
+  demand: [industrial-process-emissions, cement-minerals-demand]
+functionality:
+  - id: co2-network-sequestration
+    role: "core — captured-carbon buses, optional CO2 pipeline network, sequestration budget and cost, DAC"
+  - id: sector-coupled-workflow
+    role: "capture options live in the sector chain (industry CC, SMR CC, biomass CC, DAC)"
+  - id: co2-cap
+    role: "the binding budget that makes capture and removal deploy"
+  - id: emission-pricing
+    role: "Ep sweeps trace the CO2-price deployment threshold per capture route"
+  - id: carrier-attribute-scaling
+    role: "capture capex sensitivity as opts tokens"
+  - id: summary-outputs
+    role: "captured/vented/sequestered CO2 balances per carrier"
+gap_assessment: >
+  The CCS half is genuinely working machinery: extendable capture links for
+  industry (gas, biomass, process emissions), SMR CC, biomass CHP CC, and
+  DAC all feed per-node "co2 stored" buses with an optional CO2 pipeline
+  network, a sequestration cost, and an annual sequestration budget enforced
+  at solve time — CO2-price and budget sweeps produce deployment curves out
+  of the box, and negative emissions (BECCS, DACCS) are accounted through an
+  atmosphere store that can go net-negative. The CCU half is thin: the only
+  utilization sink for stored CO2 is Fischer-Tropsch liquids (undifferentiated
+  oil bus); methanol synthesis is a grounded absence (cost rows ship but no
+  component consumes them — see the e-methanol recipe), and there is no
+  mineralization or other utilization route. Cross-cutting caveats: one
+  global capture rate (sector.cc_fraction) shared by every CC technology; the
+  industrial capture efficiency and cement-capture cost basis are hardcoded
+  simplifications; and sequestration potential is a single system-wide number
+  — no geological siting of storage, so "where exactly does the CO2 go" is
+  answered by pipeline flows to a budget, not by basin data.
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

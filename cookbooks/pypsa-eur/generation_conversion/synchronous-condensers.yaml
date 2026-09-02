@@ -1,0 +1,90 @@
+id: synchronous-condensers
+title: Synchronous condensers
+summary: Rotating machines providing inertia, short-circuit strength and reactive power without generating energy — grid stability hardware, not an energy asset.
+when_to_use:
+  - "add synchronous condensers"
+  - "reactive power compensation"
+  - "inertia after coal/gas retirements"
+  - "short-circuit level / system strength hardware"
+  - "convert retired thermal plants to condensers"
+  - "voltage support equipment"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Not covered. The model is a linearised optimal power flow /
+        capacity-expansion LP (solve_network.py, n.optimize): there is no
+        reactive power, no short-circuit calculation and no inertia in the
+        formulation, so a device whose entire value is reactive/inertial
+        support has nothing to be paid for. No script references synchronous
+        condensers (no occurrence of the term in scripts/). The grid is
+        Lines/Links/Transformers from rule base_network — transformers carry
+        only x, s_nom and type from the transformers config
+        (_set_electrical_parameters_transformers) and are removed entirely in
+        the 380 kV collapse (simplify_network_to_380), so there is not even a
+        component slot where a shunt device would naturally live in the
+        solved network.
+      mechanism: >
+        Nearest mechanisms: the synchronous fleet that implicitly provides
+        these services is attached from powerplantmatching via
+        electricity.conventional_carriers
+        (attach_conventional_generators in add_electricity); stability-adjacent
+        constraints are the operational reserve
+        (electricity.operational_reserve, add_operational_reserve_margin) and
+        the SAFE conventional-capacity margin (solving.constraints.SAFE,
+        add_SAFE_constraints). Bespoke constraints can be injected without
+        forking the repo via solving.options.custom_extra_functionality.
+      not_covered: >
+        The device itself, its capital cost recovery, reactive dispatch,
+        inertia contribution, and retire-and-convert pathways for thermal
+        plants (add_existing_baseyear models vintages and retirement, but has
+        no conversion-to-condenser branch).
+      provenance: "scripts/solve_network.py:extra_functionality; scripts/base_network.py:_set_electrical_parameters_transformers; scripts/simplify_network.py:simplify_network_to_380; scripts/add_electricity.py:attach_conventional_generators"
+    levers:
+      - key: electricity.conventional_carriers
+        effect: "Which synchronous (rotating) generation technologies exist — the implicit carriers of the services condensers would replace after retirements."
+        default: "[nuclear, oil, OCGT, CCGT, coal, lignite, geothermal, waste, biomass]"
+        provenance: "config/config.default.yaml:conventional_carriers; scripts/add_electricity.py:attach_conventional_generators"
+      - key: solving.constraints.SAFE
+        effect: "Conventional capacity margin above peak demand (needs a user-added electricity.SAFE_reservemargin value) — closest lever when the underlying need is 'keep synchronous capacity around'."
+        default: "false"
+        provenance: "config/config.default.yaml:SAFE; scripts/solve_network.py:add_SAFE_constraints"
+      - key: electricity.operational_reserve.activate
+        effect: "Per-snapshot reserve requirement on generators — a headroom proxy, not an inertia model."
+        default: "false"
+        provenance: "config/config.default.yaml:operational_reserve; scripts/solve_network.py:add_operational_reserve_margin"
+      - key: solving.options.custom_extra_functionality
+        effect: "User Python module hook at solve time — where a minimum-synchronous-capacity constraint (which condensers could then satisfy) would be added without editing solve_network.py."
+        default: "../data/custom_extra_functionality.py"
+        provenance: "config/config.default.yaml:custom_extra_functionality; scripts/solve_network.py:custom_extra_functionality"
+    boundary:
+      - variant: "represent condenser investment cost in system totals"
+        rung: L3
+        note: "add a costs row (data/custom_costs.csv or costs.overwrites) and a zero-energy component or post-processing line item; without a constraint valuing the service the LP will never build it"
+      - variant: "minimum synchronous capacity online (condensers count toward it)"
+        rung: L5
+        note: "custom per-snapshot constraint via solving.options.custom_extra_functionality: floor on capacity of a labelled synchronous carrier set; condensers enter as a cheap way to satisfy it — bespoke Python plus a user-supplied requirement level"
+      - variant: "convert retiring thermal plants to condensers"
+        rung: L5
+        note: "no conversion pathway in add_existing_baseyear / add_brownfield; bespoke component logic tying condenser capacity to retired p_nom"
+      - variant: "reactive power / voltage / short-circuit studies"
+        rung: L5
+        note: "out of scope of the linearised LP; export the solved network to a power-flow tool"
+    where:
+      - change: "custom synchronous-capacity constraint"
+        anchor: "solving.options.custom_extra_functionality module (executed in scripts/solve_network.py::extra_functionality)"
+        provenance: "scripts/solve_network.py:custom_extra_functionality; scripts/solve_network.py:extra_functionality"
+      - change: "existing rotating fleet (what condensers would supplement)"
+        anchor: "rule build_powerplants -> scripts/add_electricity.py::attach_conventional_generators (electricity.conventional_carriers)"
+        provenance: "scripts/add_electricity.py:attach_conventional_generators; config/config.default.yaml:conventional_carriers"
+      - change: "vintages/retirement of the thermal fleet a conversion pathway would hook into"
+        anchor: "scripts/add_existing_baseyear.py::add_power_capacities_installed_before_baseyear"
+        provenance: "scripts/add_existing_baseyear.py:add_power_capacities_installed_before_baseyear"
+    data_dependencies:
+      - input: "costs row for synchronous condenser CAPEX/FOM"
+        required_for: "any costed representation"
+        availability: "absent — must be added (technology-data has no condenser row wired into the workflow)"
+      - input: "requirement level for synchronous capacity (per country/region)"
+        required_for: "L5 constraint variant"
+        availability: "absent — user-provided assumption"

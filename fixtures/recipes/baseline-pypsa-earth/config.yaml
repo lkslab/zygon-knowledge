@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
+# SPDX-License-Identifier: CC0-1.0
+#
+# Recipe-book VALIDATION config — Mexico, deliberately coarse (4 clusters, one
+# week of 2013 snapshots) so the runs stay RAM-light. Two targets share this file:
+#   a) solved power network      results/mexico-power/networks/elec_s_4_ec_lcopt_Co2L.nc
+#   b) sector prenetwork (unsolved)
+#      results/mexico-sector/prenetworks/elec_s_4_ec_lcopt_Co2L_144h_2030_0.071_AB.nc
+#
+# Diff on config.default.yaml (NOT config.tutorial.yaml: bundle_config.yaml has
+# tutorial bundles only for NG/BJ, BW, MA, KZ — no MX).
+#
+# Temporal resolution lives ONLY in the sector chain (sopts: 144h). The power
+# opts wildcard is plain Co2L — no "-24h" — to avoid stacking two resampling
+# passes (prepare_network.average_every_nhours then
+# prepare_sector_network.average_every_nhours), which is error-prone when the
+# resolutions don't align. A 4-bus hourly week solves in seconds anyway.
+#
+# Deliberate lever tests baked in (each validates a recipe claim):
+#   - csp added to renewable_carriers + extendable Generators  (L1 lever)
+#   - battery as StorageUnit AND as Store+Links (both representations)
+#   - sector.hydrogen.underground_storage: true with no MX row in
+#     data/hydrogen_salt_cavern_potentials.csv -> graceful fallback to H2 tanks
+
+run:
+  name: mexico-power
+  sector_name: mexico-sector
+  shared_cutouts: true
+  base_config: config.default.yaml
+
+countries: [MX]
+tutorial: false
+custom_rules: []
+
+enable:
+  retrieve_databundle: true
+  retrieve_databundle_sector: true
+  retrieve_cost_data: true
+  download_osm_data: true
+  retrieve_cutout: false      # cutouts/cutout-2013-era5-northamerica.nc already on disk
+  build_cutout: false
+  build_natura_raster: false
+  progress_bar: false
+
+scenario:
+  simpl: [""]
+  clusters: [4]
+  ll: ["copt"]
+  opts: [Co2L]
+  planning_horizons: [2030]
+  sopts: ["144h"]
+  demand: [AB]
+
+snapshots:
+  start: "2013-03-01"
+  end: "2013-03-08"
+
+electricity:
+  # EDGAR-pinned, not runtime-derived: automatic_emission:true re-downloads
+  # the EDGAR inventory inside prepare_network (crashes offline, violates
+  # no-downloads; issue #1 runs/issues/interview-evals-20260728.md). Values
+  # below = emission_extractor(v60 xls, 1990, [MX]) — identical numbers,
+  # zero downloads. Pinned 2026-07-30 from the on-disk EDGAR file.
+  automatic_emission: false
+  co2limit: 63963.909   # plain Co2L cap: MX 1990 power+heat CO2 (EDGAR v6.0, kt)
+  co2base: 63963.909    # base for fractional Co2Lx.xx wildcards
+  renewable_carriers: [solar, onwind, offwind-ac, offwind-dc, hydro, csp]
+  extendable_carriers:
+    Generator: [solar, onwind, offwind-ac, offwind-dc, OCGT, csp]
+    StorageUnit: [battery]
+    Store: [battery, H2]
+    Link: []
+
+atlite:
+  default: cutout-2013-era5-northamerica
+  cutouts:
+    cutout-2013-era5-northamerica:
+      module: era5
+      dx: 0.3
+      dy: 0.3
+
+renewable:
+  onwind: {cutout: cutout-2013-era5-northamerica}
+  offwind-ac: {cutout: cutout-2013-era5-northamerica}
+  offwind-dc: {cutout: cutout-2013-era5-northamerica}
+  solar: {cutout: cutout-2013-era5-northamerica}
+  hydro: {cutout: cutout-2013-era5-northamerica}
+  csp: {cutout: cutout-2013-era5-northamerica}
+
+sector:
+  hydrogen:
+    underground_storage: true
+
+solving:
+  solver:
+    name: highs

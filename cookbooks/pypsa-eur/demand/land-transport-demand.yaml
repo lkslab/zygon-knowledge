@@ -1,0 +1,293 @@
+id: land-transport-demand
+title: Land transport demand (road vehicles)
+summary: >
+  Final energy demand of road vehicles (cars, trucks, buses), split exogenously
+  into electric (EV), hydrogen fuel-cell (FCEV) and internal-combustion (ICE)
+  drivetrains, with a weekly traffic profile and temperature-dependent corrections.
+
+when_to_use:
+  - "add electric vehicles / EVs to the model"
+  - "change EV or hydrogen car uptake"
+  - "model road transport / car / truck energy demand"
+  - "electrify transport"
+  - "how much electricity do EVs need"
+  - "fuel cell vehicles / FCEV share"
+  - "petrol / diesel / gasoline demand for cars"
+  - "transport decarbonisation scenario"
+  - "change the driving / charging profile of vehicles"
+  - "vehicle fleet assumptions (number of cars, fuel efficiency)"
+  - "known in pypsa-eur as: land transport oil, land transport demand"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        Nodal hourly land-transport energy demand for every modelled country, split into
+        three loads: 'land transport EV' (on EV battery buses), 'land transport fuel cell'
+        (on H2 buses) and 'land transport oil' (on oil buses, with a negative 'land
+        transport oil emissions' load on the co2 atmosphere bus). Drivetrain shares are
+        exogenous per demand-scenario and planning-horizon.
+      mechanism: >
+        rule prepare_transport_data (scripts/prepare_transport_data.py) takes country
+        energy totals ('total road' + 'total rail' - 'electricity rail' unless
+        custom_data.transport_demand is true, then 'total road' only), distributes them to
+        nodes by population fraction (pop_layout.fraction), shapes them with the German
+        BASt weekly traffic count profile (data/emobility/KFZ__count) time-zone-shifted per
+        country via generate_periodic_profiles, and applies transport_degree_factor
+        heating/cooling corrections (ICE correction divided out, EV correction multiplied
+        in) plus an EV efficiency gain based on 'average fuel efficiency' vs
+        bev_plug_to_wheel_efficiency. Vehicle stock and fuel efficiency come from rule
+        prepare_transport_data_input (WHO GHO registered-vehicle statistics completed with
+        Wikipedia, fuel efficiency proxied from World Bank transport-CO2 shares, with a
+        hard-coded fallback file when downloads fail). add_land_transport in
+        scripts/prepare_sector_network.py then splits the demand by
+        land_transport_electric_share / land_transport_fuel_cell_share keyed
+        '{demand}_{planning_horizons}' (or by the Co2L opts wildcard when
+        dynamic_transport.enable), dividing FCEV/ICE demand by
+        transport_fuel_cell_efficiency / transport_internal_combustion_efficiency.
+      not_covered: >
+        No per-vehicle-class segmentation (trucks/buses/two-wheelers are lumped with cars);
+        the weekly traffic profile is German everywhere (only time-zone shifted); fuel
+        efficiency is a coarse World Bank CO2-share proxy; no endogenous drivetrain choice
+        (shares are exogenous and only defined for the scenario keys present in the config
+        dicts); non-electric rail is folded into the same demand pool.
+      provenance: "scripts/prepare_transport_data.py:prepare_transport_data;scripts/prepare_sector_network.py:add_land_transport;scripts/prepare_transport_data_input.py:download_number_of_vehicles"
+    levers:
+      - key: sector.enable.land_transport
+        effect: "Toggles the whole land-transport block (add_land_transport) on/off."
+        default: "true"
+        provenance: "config.default.yaml:land_transport;scripts/prepare_sector_network.py:add_land_transport"
+      - key: sector.land_transport_electric_share
+        effect: >
+          EV share of land-transport demand, dict keyed '{demand}_{planning_horizons}'
+          (e.g. NZ_2050: 0.68); resolved via get() with demand_sc + '_' + investment_year.
+        default: "dict BU/AP/NZ/DF/AB x 2030/2050, e.g. AB_2030: 0.01"
+        provenance: "config.default.yaml:land_transport_electric_share;scripts/prepare_sector_network.py:land_transport_electric_share"
+      - key: sector.land_transport_fuel_cell_share
+        effect: "FCEV share, same '{demand}_{year}' keying; ICE share is the residual 1 - EV - FCEV."
+        default: "dict, e.g. NZ_2050: 0.28"
+        provenance: "config.default.yaml:land_transport_fuel_cell_share;scripts/prepare_sector_network.py:land_transport_fuel_cell_share"
+      - key: sector.dynamic_transport.enable
+        effect: >
+          If true, EV/FCEV shares are instead looked up by the Co2L value in the opts
+          wildcard (dicts under sector.dynamic_transport), coupling fleet mix to CO2 cap.
+        default: "false"
+        provenance: "config.default.yaml:dynamic_transport;scripts/prepare_sector_network.py:dynamic_transport"
+      - key: sector.transport_fuel_cell_efficiency
+        effect: "Divides FCEV demand to convert wheel energy to H2 demand."
+        default: "0.5"
+        provenance: "config.default.yaml:transport_fuel_cell_efficiency;scripts/prepare_sector_network.py:transport_fuel_cell_efficiency"
+      - key: sector.transport_internal_combustion_efficiency
+        effect: "Divides ICE demand to convert wheel energy to oil demand."
+        default: "0.3"
+        provenance: "config.default.yaml:transport_internal_combustion_efficiency;scripts/prepare_sector_network.py:transport_internal_combustion_efficiency"
+      - key: sector.transport_heating_deadband_lower
+        effect: "Below this ambient temperature vehicle demand is increased by the degree factors."
+        default: "15."
+        provenance: "config.default.yaml:transport_heating_deadband_lower;scripts/prepare_transport_data.py:transport_heating_deadband_lower"
+      - key: sector.transport_heating_deadband_upper
+        effect: "Above this temperature cooling demand kicks in."
+        default: "20."
+        provenance: "config.default.yaml:transport_heating_deadband_upper;scripts/prepare_transport_data.py:transport_heating_deadband_upper"
+      - key: sector.ICE_lower_degree_factor
+        effect: "% extra ICE fuel use per degree below the deadband (analogues: ICE_upper, EV_lower, EV_upper_degree_factor)."
+        default: "0.375"
+        provenance: "config.default.yaml:ICE_lower_degree_factor;scripts/prepare_transport_data.py:ICE_lower_degree_factor"
+      - key: sector.EV_lower_degree_factor
+        effect: "% extra EV energy use per degree below the deadband."
+        default: "0.98"
+        provenance: "config.default.yaml:EV_lower_degree_factor;scripts/prepare_transport_data.py:EV_lower_degree_factor"
+      - key: custom_data.transport_demand
+        effect: >
+          If true, transport demand uses only 'total road' from the energy totals and skips
+          the EV-efficiency-gain and temperature corrections (raw shaped totals).
+        default: "false"
+        provenance: "config.default.yaml:transport_demand;scripts/prepare_transport_data.py:transport_demand"
+      - key: scenario.demand
+        effect: "Demand-scenario wildcard(s) selecting which '{demand}_{year}' share keys and CAGR pathway are used."
+        default: "[AB]"
+        provenance: "config.default.yaml:demand:;scripts/prepare_sector_network.py:demand_sc"
+      - key: demand_data.base_year
+        effect: "Base year of UNSD energy totals from which CAGR growth/efficiency factors are compounded."
+        default: "2019"
+        provenance: "config.default.yaml:base_year;scripts/prepare_energy_totals.py:calculate_end_values"
+    boundary:
+      - variant: "change EV/FCEV uptake for a given scenario and year"
+        rung: L1
+        note: "Edit the '{demand}_{year}' entries of sector.land_transport_electric_share / fuel_cell_share (all-EV = 1.0); keys must exist for every demand x planning_horizons combination run."
+      - variant: "couple fleet mix to the CO2 cap instead of the demand scenario"
+        rung: L1
+        note: "Set sector.dynamic_transport.enable and fill its per-Co2L dicts."
+      - variant: "scale total road-transport activity up/down"
+        rung: L3
+        note: "No direct multiplier key; edit the 'total road' column of data/demand/growth_factors_cagr.csv / efficiency_gains_cagr.csv (per-country CAGRs compounded from demand_data.base_year), or supply custom energy totals."
+      - variant: "country-specific weekly driving profile"
+        rung: L3
+        note: "Replace data/emobility/KFZ__count and Pkw__count with same-format count files; the profile is otherwise German for all countries."
+      - variant: "use real national vehicle stock / fuel efficiency"
+        rung: L3
+        note: "Override resources/transport_data.csv (country, number cars, average fuel efficiency) — e.g. edit data/temp_hard_coded/transport_data.csv which is the fallback copied by prepare_transport_data_input."
+      - variant: "separate truck / bus / two-wheeler demand with own drivetrain shares"
+        rung: L5
+        note: "Single lumped vehicle pool; segmentation needs new data columns and new split logic in prepare_transport_data.py and add_land_transport."
+      - variant: "endogenous drivetrain choice (model picks EV vs ICE)"
+        rung: L5
+        note: "Shares are exogenous; endogenising needs new components representing vehicle stock investment."
+    where:
+      - change: "demand level, spatial split and profile construction"
+        anchor: "rule prepare_transport_data -> scripts/prepare_transport_data.py:prepare_transport_data"
+        provenance: "Snakefile:rule prepare_transport_data;scripts/prepare_transport_data.py:prepare_transport_data"
+      - change: "drivetrain split and load creation"
+        anchor: "scripts/prepare_sector_network.py:add_land_transport"
+        provenance: "scripts/prepare_sector_network.py:add_land_transport"
+      - change: "vehicle stock / fuel efficiency input"
+        anchor: "rule prepare_transport_data_input -> scripts/prepare_transport_data_input.py (fallback data/temp_hard_coded/transport_data.csv)"
+        provenance: "Snakefile:rule prepare_transport_data_input;scripts/prepare_transport_data_input.py:temp_hard_coded/transport_data.csv"
+      - change: "country demand totals and scenario scaling"
+        anchor: "rule prepare_energy_totals -> scripts/prepare_energy_totals.py + data/demand/*_cagr.csv"
+        provenance: "Snakefile:rule prepare_energy_totals;scripts/prepare_energy_totals.py:efficiency_gains_cagr"
+    data_dependencies:
+      - input: "UNSD energy balances (data/demand/unsd/data) -> energy_totals_base.csv 'total road' column"
+        required_for: "any land-transport demand level"
+        availability: "must be built (downloaded by build_base_energy_totals; global coverage)"
+      - input: "WHO GHO + Wikipedia vehicle registrations and World Bank transport CO2 share (live downloads)"
+        required_for: "number cars (charger power) and ICE fuel efficiency"
+        availability: "region-dependent (downloaded at runtime; falls back to data/temp_hard_coded/transport_data.csv when URLs fail)"
+      - input: "data/emobility/KFZ__count and Pkw__count weekly traffic profiles"
+        required_for: "hourly demand shape and EV plug-in availability"
+        availability: "exists by default (German BASt counts shipped in repo)"
+      - input: "temp_air_total_*.nc air temperature (from cutout)"
+        required_for: "temperature degree-factor correction"
+        availability: "must be built (requires cutout for the region)"
+      - input: "data/demand/growth_factors_cagr.csv and efficiency_gains_cagr.csv"
+        required_for: "scenario scaling of 'total road' to the planning horizon"
+        availability: "exists by default (DEFAULT row used where country missing)"
+    demand_dimensions:
+      driver: "Country final energy of road transport (UNSD 'total road' plus non-electric rail), converted to drivetrain fuels via fleet fuel-efficiency proxy"
+      spatial: "Population fraction of the clustered population layout (pop_layout.fraction)"
+      temporal: "German BASt weekly traffic-count profile, time-zone shifted per country, with transport_degree_factor temperature corrections"
+      scenario: "CAGR growth/efficiency csvs compounded to the planning horizon; drivetrain share dicts keyed '{demand}_{planning_horizons}' (or Co2L opts via dynamic_transport)"
+
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Nodal hourly land-transport demand in units of driven km (100 km), split into
+        'land transport EV', 'land transport fuel cell' and 'land transport oil' loads via
+        per-investment-year shares, each converted to fuel demand with its own
+        temperature-corrected drivetrain efficiency.
+      mechanism: >
+        rule build_transport_demand (scripts/build_transport_demand.py) forms the
+        transport activity pool from population-weighted energy totals ('total road' +
+        'total rail' - 'electricity rail'), divides by nodal 'average fuel efficiency'
+        (MWh/100km, from build_transport_data in scripts/build_energy_totals.py: JRC-IDEES
+        passenger cars + Swiss BFS vehicle stock, gaps filled by population) and by an
+        ICE temperature correction, and shapes it with the BASt mobility profile
+        (kfz.csv/pkw.csv from the mobility_profiles dataset). add_land_transport in
+        scripts/prepare_sector_network.py reads land_transport_{engine}_share for
+        fuel_cell/electric/ice keyed by investment year (shares must sum to 1, checked by
+        check_land_transport_shares), then add_EVs / add_fuel_cell_cars / add_ice_cars
+        convert km to MWh with transport_electric_efficiency /
+        transport_fuel_cell_efficiency / transport_ice_efficiency, each modulated by
+        get_temp_efficency (deadbands + EV/ICE degree factors). ICE oil demand goes to
+        'land transport oil' buses (regional or EU per regional_oil_demand) with CO2
+        accounted on the supply link.
+      not_covered: >
+        Single lumped vehicle pool (no truck/bus segmentation); German weekly profile
+        applied to all countries (time-zone shifted); no endogenous drivetrain choice; no
+        direct config multiplier for total transport activity (only the engine shares and
+        the underlying energy totals).
+      provenance: "scripts/build_transport_demand.py:build_transport_demand;scripts/prepare_sector_network.py:add_land_transport;scripts/build_energy_totals.py:build_transport_data"
+    levers:
+      - key: sector.transport
+        effect: "Toggles the land-transport block on/off."
+        default: "true"
+        provenance: "config/config.default.yaml:transport;scripts/prepare_sector_network.py:add_land_transport"
+      - key: sector.land_transport_electric_share
+        effect: "EV share per investment year (dict 2020-2050); read via get() in add_land_transport."
+        default: "2020: 0 ... 2050: 1"
+        provenance: "config/config.default.yaml:land_transport_electric_share;scripts/prepare_sector_network.py:land_transport_{engine}_share"
+      - key: sector.land_transport_fuel_cell_share
+        effect: "FCEV share per investment year."
+        default: "0 for all years"
+        provenance: "config/config.default.yaml:land_transport_fuel_cell_share;scripts/prepare_sector_network.py:land_transport_{engine}_share"
+      - key: sector.land_transport_ice_share
+        effect: "ICE share per investment year; the three shares must sum to 1."
+        default: "2020: 1 ... 2050: 0"
+        provenance: "config/config.default.yaml:land_transport_ice_share;scripts/prepare_sector_network.py:land_transport_{engine}_share"
+      - key: sector.transport_electric_efficiency
+        effect: "EV drivetrain efficiency in km/MWh-equivalent terms (53.19 = MWh/100km basis) converting km demand to electricity."
+        default: "53.19"
+        provenance: "config/config.default.yaml:transport_electric_efficiency;scripts/prepare_sector_network.py:transport_electric_efficiency"
+      - key: sector.transport_fuel_cell_efficiency
+        effect: "FCEV efficiency converting km demand to H2."
+        default: "30.003"
+        provenance: "config/config.default.yaml:transport_fuel_cell_efficiency;scripts/prepare_sector_network.py:transport_fuel_cell_efficiency"
+      - key: sector.transport_ice_efficiency
+        effect: "ICE efficiency converting km demand to oil."
+        default: "16.0712"
+        provenance: "config/config.default.yaml:transport_ice_efficiency;scripts/prepare_sector_network.py:transport_ice_efficiency"
+      - key: sector.transport_heating_deadband_lower
+        effect: "Deadband below which vehicle energy use rises (with transport_heating_deadband_upper for cooling)."
+        default: "15.0"
+        provenance: "config/config.default.yaml:transport_heating_deadband_lower;scripts/build_transport_demand.py:transport_heating_deadband_lower"
+      - key: sector.ICE_lower_degree_factor
+        effect: "% extra ICE energy per degree below deadband (with ICE_upper_degree_factor above)."
+        default: "0.375"
+        provenance: "config/config.default.yaml:ICE_lower_degree_factor;scripts/build_transport_demand.py:ICE_lower_degree_factor"
+      - key: sector.EV_lower_degree_factor
+        effect: "% extra EV energy per degree below deadband (with EV_upper_degree_factor above), applied in get_temp_efficency."
+        default: "0.98"
+        provenance: "config/config.default.yaml:EV_lower_degree_factor;scripts/prepare_sector_network.py:EV_lower_degree_factor"
+      - key: energy.energy_totals_year
+        effect: "Reporting year of energy balances and vehicle stock used as the demand baseline."
+        default: "2023"
+        provenance: "config/config.default.yaml:energy_totals_year;scripts/build_transport_demand.py:energy_totals_year"
+    boundary:
+      - variant: "change EV/FCEV/ICE mix per investment year"
+        rung: L0
+        note: "Edit the per-year dicts sector.land_transport_{electric,fuel_cell,ice}_share; they must sum to 1."
+      - variant: "change drivetrain efficiencies or temperature sensitivity"
+        rung: L0
+        note: "transport_*_efficiency and degree-factor/deadband keys."
+      - variant: "scale total land-transport activity"
+        rung: L2
+        note: "No demand-factor key (unlike aviation); multiply in build_transport_demand (scripts/build_transport_demand.py) or adjust the energy-totals inputs. adjustments.sector cannot scale it because the EV/ICE loads carry time-series p_set (modify_attribute only touches static attributes)."
+      - variant: "country-specific mobility profile"
+        rung: L3
+        note: "Replace the kfz.csv/pkw.csv of the mobility_profiles dataset (datasets.mobility_profiles, or build from BASt zips via rule build_mobility_profiles) with same-format weekly counts."
+      - variant: "truck/bus segmentation or endogenous drivetrain choice"
+        rung: L5
+        note: "Needs new demand-splitting logic and components; the pool is a single km-driven series per node."
+    where:
+      - change: "km-driven demand, availability and DSM profiles"
+        anchor: "rule build_transport_demand -> scripts/build_transport_demand.py:build_transport_demand"
+        provenance: "rules/build_sector.smk:rule build_transport_demand;scripts/build_transport_demand.py:build_transport_demand"
+      - change: "drivetrain loads (demand side of EV/FCEV/ICE)"
+        anchor: "scripts/prepare_sector_network.py:add_land_transport (add_EVs / add_fuel_cell_cars / add_ice_cars)"
+        provenance: "scripts/prepare_sector_network.py:add_land_transport, add_EVs, add_fuel_cell_cars, add_ice_cars"
+      - change: "vehicle stock (number cars, fuel efficiency)"
+        anchor: "scripts/build_energy_totals.py:build_transport_data (rule build_energy_totals output transport_data.csv)"
+        provenance: "scripts/build_energy_totals.py:build_transport_data;rules/build_sector.smk:rule build_energy_totals"
+      - change: "weekly mobility profile source"
+        anchor: "rule build_mobility_profiles / datasets.mobility_profiles"
+        provenance: "rules/build_sector.smk:MOBILITY_PROFILES_DATASET;config/config.default.yaml:mobility_profiles"
+    data_dependencies:
+      - input: "JRC-IDEES + eurostat energy balances -> energy_totals.csv ('total road', 'total rail', 'electricity rail')"
+        required_for: "demand level"
+        availability: "must be built (retrieved archives; Europe only)"
+      - input: "transport_data.csv (number cars, average fuel efficiency per country/year)"
+        required_for: "km conversion and BEV charger power"
+        availability: "must be built (rule build_energy_totals; Swiss data from BFS)"
+      - input: "mobility profiles kfz.csv/pkw.csv (BASt traffic counts)"
+        required_for: "weekly demand shape and plug-in availability"
+        availability: "exists by default (datasets.mobility_profiles archive)"
+      - input: "temp_air_total_base_s_{clusters}.nc"
+        required_for: "temperature-corrected efficiencies"
+        availability: "must be built (from cutout)"
+    demand_dimensions:
+      driver: "Country final energy of road + non-electric rail (JRC-IDEES/eurostat), converted to km driven via fleet average fuel efficiency"
+      spatial: "Population-weighted energy totals and population-downscaled car counts per clustered region"
+      temporal: "BASt weekly traffic profile per node time zone; temperature deadband/degree-factor corrections on each drivetrain's efficiency"
+      scenario: "Per-investment-year share and efficiency dicts (2020-2050) resolved with get(); baseline year via energy.energy_totals_year"

@@ -1,0 +1,210 @@
+paper: "2023_Zeyen_Endogenous-learning-green-hydrogen_NatComms.pdf"
+tier: 1
+model_used: >
+  PyPSA-Eur-Sec, single-node Europe with six representative regions for renewable
+  variability, 7 investment periods 2020-2050 at 5-year intervals, full sector
+  coupling (electricity, heating, transport, industry).
+scope: >
+  First model to apply endogenous learning-by-doing for the complete green hydrogen
+  production chain (electrolysis + renewables) in a fully sector-coupled European
+  energy system; compares endogenous, exogenous and sequential methods for
+  technology learning under different CO2 budgets.
+methods:
+  - slug: endogenous-technology-learning
+    role: defines
+    evidence: >
+      "We apply endogenous learning for electrolysis and renewable energy in the
+      European model PyPSA-Eur-Sec with full sector coupling and enough temporal
+      resolution to capture renewable variability." The investment costs of solar PV,
+      onshore and offshore wind, and hydrogen electrolysis are "not exogenously
+      specified but are part of the optimisation in form of a piecewise-realised
+      one-factor experience curve. This results in a mixed integer linear problem
+      MILP." (Methods, "Endogenous learning" section and abstract.)
+    procedure_notes: >
+      One-factor Wright experience curve c(E) = c0*(E/E0)^-alpha, piecewise-linearised
+      using Special Ordered Sets of type 2 (SOS2) with five line segments (six
+      interpolation points), following Barreto's approach (shorter segments at the
+      steep early part). Temporal-delayed learning: investment costs in period t
+      depend on cumulative capacities at t-1 to represent the time lag before costs
+      fall. Global learning for renewables (European new capacity scaled by current
+      EU share of global capacity); local learning for electrolysis (only European
+      installations count). Learning rates: solar PV 24%, onshore wind 10%, offshore
+      wind 10%, H2 electrolysis 16% (Table 1). Solved with Gurobi, 12 threads, ~21h
+      per scenario, ~30 GB RAM. Compared against (i) exogenous method (fixed cost
+      trajectories per year) and (ii) sequential method (solve LP with exogenous
+      costs, update costs from capacities, iterate until mean-square cost difference
+      <5%).
+    variant: sos2-piecewise-milp
+    parameters:
+      segments: 5
+      interpolation_points: 6
+      learning_rate_solar_pv: "24%"
+      learning_rate_onshore_wind: "10%"
+      learning_rate_offshore_wind: "10%"
+      learning_rate_h2_electrolysis: "16%"
+      learning_rate_sensitivity: "±10% all technologies"
+      sequential_convergence_threshold: "5% max mean-square cost difference"
+      solver: Gurobi
+      solver_threads: 12
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "The period from 2020 to 2050 is modelled, with perfect foresight and 7
+      investment periods at 5-year intervals." (Methods, "Model description".)
+      The paper explicitly notes this is a deliberate methodological choice: "This is
+      especially important when modelling with perfect foresight over a large time
+      horizon."
+    procedure_notes: >
+      Perfect foresight across the whole 2020-2050 horizon; investment decisions in
+      all seven periods are co-optimised simultaneously in a single MILP. No annual
+      CO2 emission paths or maximum annual expansion rates are imposed, unlike many
+      other studies, so the transition path itself is an output. Social discount rate
+      is set to zero ("The total system costs are not discounted by a social discount
+      rate") to isolate learning dynamics.
+    variant: perfect-foresight-multi-period
+    parameters:
+      horizon: "2020-2050"
+      investment_periods: 7
+      interval_years: 5
+      social_discount_rate: "0%"
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "Three different CO2 budgets of 25.7, 45 and 73.9 Gt CO2 are assumed for the
+      whole modelling horizon. These budgets correspond respectively to a warming of
+      +1.5°C, +1.7°C, +2°C." CO2 neutrality is also enforced for 2050 in all
+      scenarios. (Methods, "Model description".)
+    procedure_notes: >
+      Cumulative CO2 budget constraint over the full 2020-2050 horizon (not annual
+      caps). Budgets derived from global per-capita equal share. A fourth scenario
+      (noCO2limit) imposes no constraint. CO2 neutrality (net zero or negative
+      emissions) required in 2050 for all budget scenarios.
+    variant: cumulative-budget
+    parameters:
+      budget_1p5C: "25.7 Gt CO2"
+      budget_1p7C: "45 Gt CO2"
+      budget_2p0C: "73.9 Gt CO2"
+      net_zero_year: 2050
+
+  - slug: sector-coupled-network-assembly
+    role: routine-use
+    evidence: >
+      "We use the open-source European sector coupled model PyPSA-Eur-Sec, which
+      minimises total system costs while optimising generation, storage and
+      distribution capacity and dispatch. It covers energy and feedstock demand in
+      the sectors electricity, heating, transport and industry." (Methods, "Model
+      description".)
+    procedure_notes: >
+      Hydrogen production options: grey (SMR), blue (SMR+CC, 90% capture), green
+      (electrolysis AEC). Hydrogen used for methanation, boilers, fuel cells,
+      retrofitted OCGTs, industry, shipping. OCGTs and gas boilers can run flexibly
+      on natural gas or hydrogen. Distribution vs transmission grid explicitly
+      modelled; power transfer capacity between levels co-optimised. Distribution
+      grid cost 500 EUR/kW_elec, no existing infrastructure assumed.
+    variant: null
+    parameters: {}
+
+  - slug: temporal-aggregation-and-segmentation
+    role: routine-use
+    evidence: >
+      "In terms of temporal aggregation, 10 typical days per investment period are
+      considered." "The 10 typical days are obtained through k-medoids clustering
+      using the Python package tsam." (Methods, "Model description".)
+    procedure_notes: >
+      10 typical days per investment period (not per year) via k-medoids clustering
+      with tsam, capturing average statistics of weather and demand as well as more
+      extreme events. Each investment period has its own set of representative days.
+    variant: typical-days-k-medoids
+    parameters:
+      typical_days_per_period: 10
+      tool: tsam
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      "Spatially, energy transmission networks are reduced to a single node for
+      Europe, while six different typical regions are used to represent the
+      variability of renewable generation." A sensitivity with higher spatial
+      resolution is included in the Supplementary Material. (Methods, "Model
+      description".)
+    procedure_notes: >
+      Main results use single-node (copperplate) Europe for the transmission network,
+      with six representative regions for renewable capacity factors. No existing grid
+      infrastructure assumed for distribution. Supplementary sensitivity uses higher
+      spatial resolution with the exogenous cost method; infrastructure then accounts
+      for 0.1-7.6% of total annualised costs and total system costs increase 12-16%.
+    variant: single-node-plus-representative-regions
+    parameters:
+      transmission_nodes: 1
+      renewable_regions: 6
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: routine-use
+    evidence: >
+      "Learning rates are varied by ±10% for all learning technologies to understand
+      the robustness of the results. Only the extreme cases are covered, i.e. a very
+      optimistic scenario in which all default learning rates are higher by +10% and
+      a pessimistic case in which all learning rates are -10% compared to the base
+      case." Additional sensitivity scenarios for blue hydrogen (capture rate,
+      investment costs, CO2 sequestration potential), transport transition pathways,
+      and expansion rate limits are also reported. (Scenarios section and Limitations.)
+    procedure_notes: >
+      One-at-a-time style: learning rate sweeps apply to all learning technologies
+      simultaneously (not individually), covering only the two extremes (±10%). Blue
+      hydrogen sensitivity varies capture rate, SMR investment costs and CO2 storage
+      potential. A separate sensitivity limits maximum annual renewable expansion
+      rates. A higher spatial resolution sensitivity uses the exogenous cost method.
+    variant: one-at-a-time-extreme-cases
+    parameters:
+      learning_rate_variation: "±10% applied simultaneously to all learning technologies"
+
+  - slug: shadow-prices-and-marginal-values
+    role: routine-use
+    evidence: >
+      "The prices for hydrogen are an output of the linear optimisation and are
+      determined by the dual variables. For the exogenous and sequential method,
+      these are obtained directly from the optimisation. In the endogenous scenarios,
+      the investment costs and capacities of the learning technologies determined
+      from the optimisation are assumed fixed and the optimisation is rerun as a
+      linear problem." (Results, "Hydrogen prices".)
+    procedure_notes: >
+      Because the endogenous MILP does not yield clean duals, a post-hoc LP rerun
+      with learning-technology capacities fixed is used to extract hydrogen prices
+      from dual variables. Levelised cost of hydrogen (LCOH) compared across methods
+      and years.
+    variant: post-hoc-lp-for-duals
+    parameters:
+      reported_metric: "levelised cost of hydrogen (EUR/kgH2)"
+
+  - slug: discounting-and-cost-of-capital
+    role: routine-use
+    evidence: >
+      "We model a fixed weighted average cost of capital (WACC) of 7%, but do not
+      model country-dependence or learning in financing." "The total system costs are
+      not discounted by a social discount rate." (Limitations and Methods.)
+    procedure_notes: >
+      WACC of 7% used for annuitising investment costs of individual technologies;
+      no social discount rate applied to aggregate system costs across periods. This
+      is an explicit methodological choice to isolate learning dynamics from
+      discounting effects.
+    variant: null
+    parameters:
+      wacc: "7%"
+      social_discount_rate: "0% (explicit choice)"
+
+  - slug: powerplant-matching-and-fleet-assembly
+    role: routine-use
+    evidence: >
+      "Existing generation capacities (lignite, coal, gas, hydro, nuclear, solar,
+      offshore and onshore wind) are taken from the IRENA 2020 report and the
+      open-source package powerplantmatching." (Methods, "Model description".)
+    procedure_notes: >
+      Existing fleet initialises the 2020 investment period as brownfield starting
+      point. Technology costs, lifetimes and efficiencies from Danish Energy Agency
+      (DEA) Technology Data 2022 for all non-learning technologies.
+    variant: null
+    parameters: {}
+
+unmatched_methods: []

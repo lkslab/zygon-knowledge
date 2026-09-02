@@ -1,0 +1,56 @@
+id: just-transition-impacts
+title: Just transition impacts
+rank: 94
+question: >
+  What happens to fossil-dependent regions and workers as plants close —
+  which regions are exposed, on what timeline, and what replacement
+  investment arrives? Central to EU Just Transition Fund territories,
+  German/Polish coal-region politics, and JETP-style deals elsewhere.
+when_to_use:
+  - "regional impact of coal phase-out"
+  - "jobs and communities in the transition"
+  - "which regions lose plants, which gain build"
+  - "timing of closures vs replacement investment"
+  - "just transition plan evidence base"
+recipes:
+  generation_conversion: [coal-power-plants, gas-power-plants]
+  demand: [demand-scenarios-and-growth]
+functionality:
+  - id: fleet-retirement-filter
+    role: "retirement timing scenarios via DateIn/DateOut queries on the powerplantmatching fleet"
+  - id: perfect-foresight
+    role: "announced national coal/lignite (and nuclear) exit years are HARDCODED in prepare_perfect_foresight's phase-out step — official schedules retire without user wiring"
+  - id: country-carrier-capacity-limits
+    role: "phase-out caps/floors per country and horizon (CCL) to encode or vary policy commitments"
+  - id: myopic-foresight
+    role: "sequential horizons with brownfield ageing show WHEN closures and replacement build happen"
+  - id: existing-baseyear-brownfield
+    role: "vintaged power and heating fleets so ageing and phase-out interact correctly"
+  - id: administrative-clustering
+    role: "results on NUTS regions — Just Transition Fund territories are administrative units, so closures and buildout report on the right geography"
+  - id: nodal-marginal-prices
+    role: "regional price effects of closures"
+  - id: global-summary
+    role: "cumulative discounted pathway costs across the scenario matrix — the investment-timeline evidence base"
+  - id: market-design-mechanisms
+    role: "absent — no employment, revenue, or actor-level accounting of any kind; the social layer is outside the model"
+gap_assessment: >
+  The model computes the asset-side shadow of a just-transition question,
+  and does it better than pypsa-earth: which plants retire when
+  (powerplants_filter dates, CCL caps, and — unique to eur — announced
+  national coal/lignite exit years hardcoded into the perfect-foresight
+  chain), where replacement capacity and grid investment land across a
+  vintaged myopic or perfect pathway, and how regional prices shift — all
+  reportable on NUTS administrative units that map directly onto Just
+  Transition Fund territories. The social content is absent: no employment
+  or labour-market layer, no wage/skill data, no local fiscal impacts, no
+  socioeconomic satellite accounts, and no actor-level finance. Job impacts
+  therefore mean post-processing: apply external employment factors (jobs
+  per MW or per TWh, by technology and phase) to the model's capacity and
+  generation deltas per region and scenario. The model's real contribution
+  is a spatially explicit, internally consistent closure-and-buildout
+  timeline to hang that analysis on — not the impact assessment itself.
+coverage: gap
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

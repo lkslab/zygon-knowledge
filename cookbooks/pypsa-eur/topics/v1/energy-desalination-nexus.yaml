@@ -1,0 +1,57 @@
+id: energy-desalination-nexus
+title: Energy-desalination nexus
+rank: 60
+question: >
+  How should power, water, and industry be co-optimized where desalination is
+  a major load — the Gulf archetype: can flexible reverse-osmosis plants with
+  water storage soak up cheap midday solar, and what does water security cost
+  the power system?
+when_to_use:
+  - "desalination as a flexible grid load"
+  - "co-optimize power and water production"
+  - "solar + desalination + industry planning"
+  - "water storage as demand flexibility"
+  - "energy cost of water security"
+recipes:
+  generation_conversion: [desalination-flexible-load, utility-scale-solar-pv,
+                          grid-scale-batteries]
+  demand: [electricity-load, demand-scenarios-and-growth]
+functionality:
+  - id: load-sinks
+    role: "the zero-effort proxy earth lacks: price-taking sinks per bus carrier absorb energy below a willingness-to-pay — a cheap-power soak with no water accounting"
+  - id: bev-dsm-v2g
+    role: "add_EVs is the structural template to copy: device bus + conversion Link + product Store + fixed product Load"
+  - id: industry-t-endogenous
+    role: "the minimum-duty-cycle precedent (p_min_pu = must_run) for a flexible industrial process serving fixed demand"
+  - id: cost-data-pipeline
+    role: "custom_costs.csv can CREATE a desalination cost row without code (overwrite_costs concatenates new technologies)"
+  - id: demand-elasticity
+    role: "absent — loads are fixed profiles; 'flexible desalination' cannot be configured in"
+  - id: spatial-clustering
+    role: "onshore/offshore region shapes identify coastal buses for plant siting"
+  - id: scenario-matrix
+    role: "once a water block exists, water-demand scenarios sweep like any other dimension"
+gap_assessment: >
+  Grounded absence, same verdict as pypsa-earth: "desalination" appears
+  nowhere in scripts, rules or config — no water carrier, no water demand, no
+  desalination technology or cost row (the only "water" concepts are thermal
+  storage tanks and seawater TEMPERATURE for heat pumps). The workaround
+  ladder is slightly better equipped than earth's. Crudest (config-only):
+  solving.options.load_sinks attaches price-elastic sinks that soak up cheap
+  power — an interruptible load with no production target. Inflexible: fold
+  desalination electricity into the demand data (or crudely via
+  load.scaling_factor, which scales ALL load) — answers "energy cost of
+  water" only. Flexible: a bespoke block in prepare_sector_network — water
+  Bus per coastal node, extendable electricity-to-water Link (specific energy
+  as efficiency), water Store, fixed water Load — for which the model
+  contains exact patterns to copy (add_EVs for the bus+Store+Load shape, the
+  endogenous-industry must_run links for limited turndown) and a no-code
+  route to the cost row (custom_costs.csv), but zero data: water demand,
+  specific energy and costs are all user-supplied. Since the headline nexus
+  question is precisely the flexibility one, and that needs custom components
+  plus user data end to end — and the Gulf archetype is outside the European
+  scope anyway — this is a gap, not a partial.
+coverage: gap
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

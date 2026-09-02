@@ -1,0 +1,1151 @@
+id: stochastic-and-robust-optimisation
+title: "Stochastic and robust optimisation (two-stage recourse, scenario trees, min-max and min-regret decision rules)"
+summary: >
+  Put the uncertainty INSIDE the optimisation — a scenario-indexed second stage with
+  non-anticipativity coupling, or a worst-case objective over an uncertainty set — so
+  one program returns a decision that already accounts for what it does not know.
+question: >
+  What should I decide NOW, given that I will only learn the truth later and cannot
+  re-decide the part I have already committed?
+aliases:
+  - "stochastic optimisation"
+  - "stochastic programming"
+  - "two-stage stochastic program"
+  - "stochastic unit commitment"
+  - "scenario-based optimisation"
+  - "scenario tree"
+  - "recourse"
+  - "non-anticipativity constraints"
+  - "here-and-now vs wait-and-see"
+  - "expected-value objective"
+  - "robust optimisation"
+  - "min-max / minimax"
+  - "worst-case optimisation"
+  - "uncertainty set"
+  - "regret analysis"
+  - "minimax regret"
+  - "min-regret decision rule"
+  - "Chebyshev centre"
+  - "scenario generation"
+  - "scenario reduction"
+  - "ARIMAX scenario generation"
+when_to_use:
+  - "what should I build now if I do not know what prices/weather will be later"
+  - "I have to commit to a decision before the uncertainty resolves"
+  - "optimise for the worst case, not the average case"
+  - "hedge the investment rather than optimising for one forecast"
+  - "which plan has the least regret if the future turns out differently"
+  - "how much does it cost me to be wrong about which scenario happens"
+  - "bid into the day-ahead market without knowing tomorrow's prices"
+  - "give me a robust decision, not a scenario comparison"
+  - "put the uncertainty in the model instead of running it many times"
+  - "which single design is nearly-best across all the futures I can imagine"
+family: uncertainty-and-robustness
+prevalence:
+  papers: 4
+  tier1: 1
+  tier2: 3
+  sweep_hits: 13
+  basis: >
+    The RAREST method in this family and one of the rarest in the book: hand-coded pass 1
+    over all 100 PDFs (2026-07-25) found exactly ONE paper (2024_Welfonder) that puts
+    uncertainty inside the program, against 48 for sensitivity-and-uncertainty-sweeps and
+    6 for mga-near-optimal-space. That ratio is the single most useful number on this
+    card — relay it to a user who asks for "stochastic optimisation", because it means
+    the PyPSA literature has essentially not done this, and the reason is that neither
+    workflow has any machinery for it (see the model sections). Pass 1.5
+    (`_qa/RECONCILE.md`) kept the slug at 1 paper rather than folding it into
+    sensitivity-and-uncertainty-sweeps, on the grounds that recourse variables and a
+    min-max objective are DIFFERENT MATHEMATICS from re-solving a deterministic model
+    over samples, and folding would have hidden the distinction the interview most needs
+    to make. It absorbed two `unmatched_methods` entries as variants — `regret-analysis`
+    (2026_Xiong PCI) and `arimax scenario generation` (2024_Welfonder). This card then
+    adds two more papers from `unmatched_methods` that pass 1 filed under other slugs but
+    whose construct is genuinely a robust-optimisation one: 2022_Grochowicz
+    (`near-optimal-space intersection and chebyshev-centre robust design`, filed under
+    MGA) and 2020_Schyska (`misallocation-metric`, filed under sensitivity), giving 4.
+    Both are counted honestly as `extends`, not as stochastic programs — neither has a
+    recourse variable, and Grochowicz says outright that its robustness "is a geometric
+    concept and is only loosely connected to robust optimisation". The regex screen
+    returned 13 and OVER-counts by roughly 3x: "two-stage", "scenario tree" and "robust"
+    are used in the ordinary English sense throughout the corpus (a "two-stage" workflow,
+    a "robust" conclusion), and the pattern also fires on every paper that cites
+    stochastic UC as future work. No paper in this slice is flagged mention-only in
+    `_qa/EVIDENCE_INDEX.md`.
+procedure:
+  - step: >
+      Decide WHICH decisions are first-stage (here-and-now: committed before the
+      uncertainty resolves) and which are second-stage (wait-and-see: chosen after,
+      differently per scenario). This partition is the whole method — get it wrong and
+      the program is either a deterministic model with extra variables or an
+      unimplementable one. In an investment study the first stage is capacity; in
+      Welfonder's unit-commitment case it is the market BIDS, while dispatch and
+      state-of-charge are second-stage.
+    handle: null
+    provenance: null
+  - step: >
+      Characterise the uncertainty. For a stochastic program this is a probability
+      distribution or an explicitly weighted scenario set; for a robust program it is an
+      uncertainty SET with no probabilities (a box, a budget set, or a polytope). The
+      choice determines whether the objective is an expectation or a worst case, and the
+      corpus's uncertain quantities are day-ahead prices, reserve prices, heat demand
+      (Welfonder), weather year (Grochowicz), and policy/infrastructure realisation
+      (Xiong).
+    handle: null
+    provenance: null
+  - step: >
+      Generate the scenarios. This is a modelling step in its own right and NOT an
+      afterthought — the answer is only as good as the tree. Welfonder's route:
+      fit ARIMAX time-series models (autoregressive integrated moving-average with
+      exogenous regressors; sinh^-1 variance stabilisation for prices, sine/cosine
+      exogenous variables for seasonality), draw 1000 realisations per uncertain
+      variable, then reduce to 5 clusters by K-means with cluster-membership fractions as
+      the scenario probabilities. Independent variables are assumed across the uncertain
+      inputs and combined combinatorially for the multi-variable case.
+    handle: null
+    provenance: null
+  - step: >
+      Replicate the second-stage variables across the scenario index. Every operational
+      variable becomes scenario-indexed; every operational constraint is written once per
+      scenario. This is the step that multiplies problem SIZE by the scenario count in one
+      program — as opposed to multiplying the number of programs, which is what
+      sensitivity-and-uncertainty-sweeps does. In linopy that is a new coordinate
+      dimension on the operational variables.
+    handle: null
+    provenance: null
+  - step: >
+      Add non-anticipativity (coupling) constraints: every first-stage variable must take
+      the SAME value in every scenario. Welfonder enforces these as equality constraints
+      on the bid decision variables across scenarios. Omitting them is the defining silent
+      failure of a hand-rolled stochastic program: the model still solves, and returns the
+      perfect-foresight wait-and-see solution, whose objective is a LOWER bound and whose
+      "decision" is not implementable.
+    handle: null
+    provenance: null
+  - step: >
+      Form the objective. Expected value = sum_s p_s * (second-stage cost of scenario s),
+      plus first-stage cost, which is the scenario-based expected-value program. For a
+      min-max robust program instead introduce one auxiliary scalar variable z, constrain
+      z >= cost_s for every scenario s, and minimise z — the standard epigraph
+      linearisation that keeps the program an LP/MILP.
+    handle: null
+    provenance: null
+  - step: >
+      Solve the single (much larger) program and read off the first-stage decision. Also
+      compute the value of the stochastic solution: the gap between the expected cost of
+      this decision and the expected cost of the deterministic decision evaluated over
+      the same scenarios. Without that number there is no evidence the extra machinery
+      bought anything.
+    handle: null
+    provenance: null
+  - step: >
+      (min-regret alternative, and the ONLY route anyone does at scale) Skip the coupled
+      program entirely. Solve N deterministic plans and M realisations independently, then
+      evaluate every plan under every realisation and pick the plan minimising maximum or
+      expected regret, where regret is the cost difference between the plan you committed
+      to and the plan you would have chosen had you known. Xiong's 5x3 matrix over three
+      horizons = 60 independent optimisations. This is post-processing over an ensemble,
+      not a formulation, which is exactly why it is affordable.
+    handle: "snakemake fan-out over the scenario/run wildcard, then a post-processor"
+    provenance: "scripts/_helpers.py:get_scenarios; scripts/make_summary.py:calculate_costs"
+  - step: >
+      (Chebyshev-centre alternative) Compute one near-optimal polytope per uncertainty
+      realisation via mga-near-optimal-space, intersect them, and take the Chebyshev
+      centre — the point maximising distance to the intersection's boundary — as the
+      maximally-interior, hence maximally-robust, single design. A genuine robust-design
+      construct built entirely from many deterministic solves plus geometry.
+    handle: null
+    provenance: null
+variants:
+  - id: two-stage-stochastic-with-recourse
+    what: >
+      The canonical form: first-stage investment or commitment variables, second-stage
+      per-scenario dispatch variables, non-anticipativity equalities coupling the first
+      stage, and an expected-value objective weighted by scenario probabilities. ONE
+      program, whose size scales with the scenario count. Buys an implementable
+      here-and-now decision that hedges; costs a problem N times larger and a formulation
+      neither workflow can express. Welfonder's is strictly multi-stage (bids couple
+      across scenarios at each market stage) but is the corpus's only instance.
+    papers:
+      - "2024_Welfonder_open-source-stochastic-unit-commitment-PyPSA.pdf"
+  - id: min-max-robust
+    what: >
+      Replace the expectation with a worst case over an uncertainty SET, using the
+      epigraph trick (auxiliary z, z >= cost_s for all s, minimise z) so the program stays
+      linear. Needs no probabilities, which is its selling point when the user cannot
+      defend any distribution, and its weakness: the answer is set by the single worst
+      corner and is usually expensive. NO paper in this corpus runs one — recorded here
+      because users ask for it by name and the card must be able to say honestly that the
+      PyPSA literature has not done it.
+    papers: []
+  - id: min-regret-decision-rule
+    what: >
+      Post-hoc over an ensemble of INDEPENDENT deterministic solves: build a
+      plan-by-realisation cost matrix, define regret as the cost penalty of having
+      committed to plan i when realisation j occurred, and choose the plan minimising
+      maximum or expected regret. No scenario-indexed variables, no coupling constraints,
+      no larger program — so it is affordable, parallel, and reachable on both models
+      today. The only variant anyone in this corpus does at system scale, and it answers
+      many users' actual question.
+    papers:
+      - "2026_Xiong_Projects-of-Common-Interest_ERL.pdf"
+      - "2020_Schyska_sensitivity-power-system-expansion-models.pdf"
+  - id: chebyshev-centre-robust-design
+    what: >
+      Compute one epsilon-near-optimal polytope per uncertainty realisation, intersect
+      them, and select the Chebyshev centre of the intersection — the maximally interior
+      point — as the robust design. Robustness becomes a GEOMETRIC property of a feasible
+      set rather than an objective term, so it needs no probabilities and no recourse, but
+      it does need the full MGA harness underneath and one polytope per realisation.
+    papers:
+      - "2022_Grochowicz_intersecting-near-optimal-spaces-weather.pdf"
+  - id: scenario-generation
+    what: >
+      The prerequisite step, separated out because it is where a stochastic study
+      actually fails: constructing the scenario tree and its probabilities. Welfonder's
+      pipeline is ARIMAX models per uncertain series (sinh^-1 variance stabilisation for
+      prices, sine/cosine seasonality regressors), 1000 Monte-Carlo realisations, K-means
+      reduction to 5 clusters, membership fractions as probabilities, combinatorial
+      combination across independent variables. A copula or a weather-year ensemble is the
+      alternative construction. Runs in both models' territory only as a preprocessing
+      script — nothing in either repo generates or reduces scenarios.
+    papers:
+      - "2024_Welfonder_open-source-stochastic-unit-commitment-PyPSA.pdf"
+literature:
+  - paper: "2024_Welfonder_open-source-stochastic-unit-commitment-PyPSA.pdf"
+    tier: 2
+    role: defines
+    note: >
+      The corpus's ONLY genuine stochastic program, and therefore the template for
+      everything on this card. Modular extensions to PyPSA turn a deterministic unit
+      commitment into a scenario-based stochastic MILP with an expected-value objective
+      and explicit non-anticipativity (coupling) constraints on the BID decision
+      variables across scenarios; uncertain inputs are day-ahead prices, aFRR prices and
+      district-heat demand. Scenario generation is ARIMAX -> 1000 realisations -> K-means
+      to n_clust=5 with membership fractions as probabilities. Read the scope honestly
+      before promising anything: the demonstration network is a SINGLE-NODE,
+      single-portfolio system (waste-to-energy CHP + BESS + heat storage, hourly,
+      Germany) trading day-ahead and aFRR. Nothing here is a European system model, and
+      nothing here is merged into pypsa-eur or pypsa-earth. What transfers is the
+      construction — that a two-stage program CAN be written by hand against the exposed
+      linopy model object, and how.
+  - paper: "2026_Xiong_Projects-of-Common-Interest_ERL.pdf"
+    tier: 1
+    role: extends
+    note: >
+      The corpus's reference for min-regret at SYSTEM scale, and the cheap substitute this
+      card recommends most often. Assesses EU PCI/PMI hydrogen and CO2 infrastructure by
+      building a 5x3 regret matrix — five long-term infrastructure build-out scenarios x
+      three short-term realisations (reduced targets, delayed pipelines, no pipelines) x
+      three horizons = 60 independent optimisations — where regret is the cost difference
+      between the plan committed to and the realised outcome. Crucially it is NOT a
+      stochastic program: there is no scenario tree inside the optimiser and no recourse
+      variable. The structure it does use is myopic non-anticipative foresight across
+      2030/2040/2050 with PCI assets inserted at their stated commissioning year and
+      carried forward as committed capacity — which is `foresight-and-planning-horizons`
+      plus `brownfield-and-capacity-vintaging`, both working config in pypsa-eur. That is
+      why this variant is L1/L2 while the others are L5.
+  - paper: "2022_Grochowicz_intersecting-near-optimal-spaces-weather.pdf"
+    tier: 2
+    role: extends
+    note: >
+      The source of chebyshev-centre-robust-design, and the corpus's most careful
+      statement of what "robust" can mean without a stochastic program. Formalises the
+      epsilon-near-optimal space as a convex polytope, projects it to k=5 investment
+      dimensions (transmission, PV, onshore, offshore, gas), approximates it with 150
+      alternative-objective solves per weather year over 41 weather years (1980-2020,
+      one node per country, 3-hourly, epsilon = 5% above the most expensive single year's
+      optimum), intersects the 41 polytopes with qhull, and takes the Chebyshev centre of
+      the intersection as the robust allocation. Quote its own caveat to users rather than
+      overselling it: the authors state that their robustness "is a geometric concept and
+      is only loosely connected to robust optimisation". Filed under
+      mga-near-optimal-space by pass 1; it appears here because the intersect-plus-centre
+      construct is a robust-DESIGN method that any user asking for robust optimisation on
+      a PyPSA model should be offered first.
+  - paper: "2020_Schyska_sensitivity-power-system-expansion-models.pdf"
+    tier: 2
+    role: extends
+    note: >
+      Contributes the cheapest possible regret computation and, with it, the argument for
+      why regret is the right currency at all. Defines a misallocation pseudometric M:
+      solve scenario i and scenario j each unconstrained, then re-solve each with the
+      OTHER's optimal capacity vector imposed as a lower bound on the investment
+      variables, and sum the additional cost. That is exactly a two-point regret matrix,
+      computed with 2 extra solves rather than a scenario-indexed program. Its finding is
+      the load-bearing one for this whole card: because the objective is flat near the
+      optimum, the cost PENALTY of committing to the wrong plan is small while the
+      ALLOCATION moves a great deal — so regret measured in cost systematically
+      understates how much the decision depends on the uncertainty. Filed under
+      sensitivity-and-uncertainty-sweeps by pass 1; the cross-constraining construction
+      belongs here.
+pitfalls:
+  - pitfall: >
+      Forgetting, or mis-scoping, the non-anticipativity constraints. Without them the
+      program decomposes into independent per-scenario problems and returns the
+      perfect-foresight WAIT-AND-SEE solution: a different first-stage decision per
+      scenario, an objective that is a strict lower bound on the true stochastic optimum,
+      and a "decision" that cannot be implemented because it depends on knowing which
+      scenario you are in. The model solves cleanly and reports a suspiciously good
+      number. This is the defining silent failure of a hand-rolled stochastic program.
+    evidence: "2024_Welfonder_open-source-stochastic-unit-commitment-PyPSA.pdf"
+    note: >
+      Assert it mechanically, not by inspection: for every first-stage variable, check
+      that its value is identical across all scenario indices (see `verifies`). Welfonder
+      writes them as explicit equality constraints on the bid variables; enumerate your
+      first-stage set on paper BEFORE writing the model and check the count of coupling
+      constraints against it.
+  - pitfall: >
+      The answer is only as good as the scenario tree, and the tree is invisible in the
+      result. Five K-means clusters from 1000 ARIMAX draws is a defensible reduction of a
+      fitted distribution, but the fitted distribution is a modelling assumption, the
+      independence assumption across uncertain variables is another, and the combinatorial
+      combination of independently-reduced marginals destroys any correlation between
+      price and demand that the physical system cares about most.
+    evidence: "2024_Welfonder_open-source-stochastic-unit-commitment-PyPSA.pdf"
+    note: >
+      Report the scenario tree as part of the result — its size, its probabilities, and
+      the reduction method — and test stability by re-generating the tree with a different
+      seed and re-solving. If the first-stage decision moves between two trees of the same
+      size, the tree is doing the deciding, not the optimisation. Where the uncertainty is
+      weather, prefer a physically-consistent ensemble (weather-year-ensembles) over a
+      fitted marginal, precisely because it preserves cross-variable correlation.
+  - pitfall: >
+      Regret measured in system cost understates the decision's dependence on the
+      uncertainty, because the objective is flat near the optimum: a wrong plan is cheap
+      in EUR while being very different in what it builds and where. A min-regret study
+      that reports only cost differences can conclude "all plans are nearly equivalent"
+      about plans that share almost no infrastructure.
+    evidence: "2020_Schyska_sensitivity-power-system-expansion-models.pdf"
+    note: >
+      Report regret in the quantities the user will act on alongside cost — per-carrier
+      capacity, per-region siting, which specific assets get built — and state the cost
+      flatness explicitly. Schyska's cross-constraining formulation (impose plan i's
+      capacities as lower bounds inside realisation j) is the principled cheap version and
+      is the two-solve diagnostic to run first.
+  - pitfall: >
+      A min-max robust answer is set by the single worst corner of the uncertainty set,
+      so it is exquisitely sensitive to how that set was drawn and is usually expensive
+      enough that no decision-maker would choose it. Widening the set to be defensible
+      makes the answer more conservative, not more informative.
+    evidence: "2022_Grochowicz_intersecting-near-optimal-spaces-weather.pdf"
+    note: >
+      Prefer the geometric route when the user's real question is "which single design
+      works acceptably across all the futures": Grochowicz's intersected near-optimal
+      space with a Chebyshev centre gives a maximally-interior design and a visible
+      measure of how much slack it has, rather than a corner solution. If a worst case is
+      genuinely wanted, report the price of robustness — the cost gap against the
+      expected-value solution — as a first-class result.
+  - pitfall: >
+      Confusing this method with the other two in the family. Re-running a deterministic
+      model over samples (sensitivity-and-uncertainty-sweeps) gives a DISTRIBUTION OF
+      OPTIMA, each of which assumed perfect knowledge; it never produces a hedged
+      decision. Perturbing the objective within a cost slack (mga-near-optimal-space)
+      maps ALTERNATIVES at the optimum, not decisions under uncertainty. Only a program
+      with recourse variables or a min-max objective answers "what do I commit to now".
+    evidence: "2026_Xiong_Projects-of-Common-Interest_ERL.pdf"
+    note: >
+      Route on the mathematics, not the vocabulary: recourse variables or a min-max
+      objective in ONE program lands here; independent re-solves land in
+      sensitivity-and-uncertainty-sweeps; alternative objectives under a budget constraint
+      land in mga-near-optimal-space. Most users who say "stochastic" want either a sweep
+      (cheap, L0/L1) or min-regret over one (cheap, L1/L2) — establish that before
+      quoting an L5 research project.
+requires_methods:
+  - custom-constraints-with-linopy
+combines_with:
+  - sensitivity-and-uncertainty-sweeps
+  - mga-near-optimal-space
+  - weather-year-ensembles
+  - unit-commitment-and-ramping
+  - balancing-and-ancillary-services
+  - foresight-and-planning-horizons
+  - brownfield-and-capacity-vintaging
+  - operational-dispatch-and-rolling-horizon
+topics:
+  - robust-decision-making
+  - uncertainty-near-optimal-mga
+  - multi-year-weather-variability
+  - resource-adequacy
+  - capacity-expansion
+pypsa_primitive: null
+models:
+  - model: pypsa-eur
+    version_anchor:
+      ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d"
+      date: "2026-07-25"
+    functionality:
+      - id: mga-near-optimal
+        role: >
+          registry status `absent`. There is no registry id for stochastic programming at
+          all in either model — this is the nearest neighbour, and its absence is the
+          honest answer. Also the prerequisite for chebyshev-centre-robust-design.
+      - id: custom-constraint-hook
+        role: >
+          registry status `working`, and the ONLY landing point for any of this. The user
+          module is called with (n, snapshots, snakemake) AFTER create_model, so
+          n.model is a live linopy Model — scenario-indexed variables, coupling equalities
+          and an epigraph min-max objective all go here. This is what Welfonder did, one
+          layer lower.
+      - id: scenario-matrix
+        role: >
+          registry status `working`. For min-regret-decision-rule this IS the method's
+          engine: one managed run per (plan, realisation) cell, fanned out by the {run}
+          wildcard, schema-validated. It cannot help the coupled variants at all — a
+          scenario there is a variable dimension, not a separate run.
+      - id: perfect-foresight
+        role: >
+          THE eur-only structural asset, and absent from earth's registry entirely.
+          prepare_perfect_foresight builds a MultiIndex snapshot axis
+          (pd.MultiIndex.from_product over investment periods x snapshots) and solves all
+          periods in ONE model with per-period weightings. That is mechanically the same
+          trick a scenario dimension needs — an outer index on the operational axis with
+          weights — so a scenario-indexed program has a working in-repo pattern to copy
+          here and none in earth.
+      - id: myopic-foresight
+        role: >
+          registry status `working`. The corpus's actual substitute for
+          non-anticipativity: myopic horizons are non-anticipative BY CONSTRUCTION across
+          time, which is what Xiong relies on for its regret matrix.
+      - id: linearized-unit-commitment
+        role: >
+          registry status `partial`. Welfonder's variant is stochastic UNIT COMMITMENT, so
+          the deterministic UC underneath must exist first — conventional.unit_commitment
+          plus data/unit_commitment.csv, off by default and solved as an LP relaxation
+          when solving.options.linearized_unit_commitment is true.
+      - id: operational-reserves
+        role: >
+          registry status `working`. The nearest thing to Welfonder's aFRR product, and a
+          much weaker thing: a deterministic hourly reserve MARGIN co-optimised with
+          dispatch, not a priced reserve bid with uncertain clearing. See
+          balancing-and-ancillary-services.
+      - id: operations-only-solve
+        role: >
+          registry status `working`, and earth's is `absent`. Fixes capacities from a
+          prior expansion run and re-solves dispatch — exactly the evaluation step a
+          min-regret matrix needs (plan i's capacities, realisation j's time series), and
+          a dedicated rule here that earth lacks.
+      - id: config-schema-validation
+        role: >
+          eur-only. Every merged scenario override is typed-checked before the DAG builds,
+          which is what makes a 60-cell regret matrix survivable — a typo in one cell
+          fails at parse time instead of silently running the base plan and reporting zero
+          regret.
+      - id: global-summary
+        role: >
+          eur-only cross-run collection (make_global_summary concatenates per-run csvs
+          across the whole matrix) — the regret matrix's assembly point already exists.
+      - id: time-segmentation-tsam
+        role: >
+          the affordability lever that decides whether a coupled program is even
+          formulable: problem size is scenarios x snapshots, so segmentation to a few
+          hundred representative steps is not an optimisation but a precondition.
+    available:
+      verdict: absent
+      how: >
+        Nothing in pypsa-eur performs stochastic or robust optimisation, and this is a
+        verified negative rather than an unexamined field: a case-insensitive grep of the
+        whole repo for `scenario_tree`, `non_anticipativ`, `recourse`, `stochastic`,
+        `first_stage`, `min_max`, `minimax`, `regret` and `chebyshev` across .py/.smk/.yaml
+        and the Snakefile returns ZERO hits (the single hit for `expectation` is an
+        unrelated word in prepare_sector_network.py). pypsa 0.30.3 has nothing either —
+        hence `pypsa_primitive: null`, which is the sharp difference from
+        mga-near-optimal-space, where optimize_mga exists one layer down. What DOES exist
+        is a set of adjacent surfaces: the custom_extra_functionality hook, which hands
+        you the live linopy model after every standard constraint is built and is where a
+        two-stage program would be written by hand (Welfonder's route); the scenario matrix
+        plus make_global_summary, which is a complete engine for min-regret; and
+        prepare_perfect_foresight's MultiIndex-snapshot pattern, which is the in-repo
+        precedent for adding an outer index to the operational axis.
+      missing: >
+        Procedure steps 1-7 have NO handle: no first/second-stage partition, no
+        uncertainty-set or distribution specification, no scenario generation or reduction,
+        no scenario-indexed variable replication, no non-anticipativity constraints, no
+        expectation or epigraph objective, and no value-of-the-stochastic-solution
+        reporting. Concretely, that means the two-stage-stochastic-with-recourse and
+        min-max-robust variants are new formulation work, not configuration and not a
+        harness: every operational variable pypsa builds in create_model is indexed by
+        (snapshot, component) with no scenario dimension, so a scenario-indexed program
+        means either adding variables yourself in the hook alongside the ones pypsa
+        already built (and then constraining pypsa's to be consistent with them), or
+        building the scenario replication into the NETWORK before create_model runs by
+        stacking scenarios along a MultiIndex snapshot axis and writing the coupling
+        constraints in the hook. Only steps 8 (min-regret) and, via
+        mga-near-optimal-space, 9 (Chebyshev centre) are reachable at all. Tell an
+        interview plainly: a coupled stochastic program on pypsa-eur is a research
+        project measured in months, not a config change.
+      provenance: "scripts/solve_network.py:custom_extra_functionality; scripts/prepare_perfect_foresight.py:concat_networks; scripts/_helpers.py:get_scenarios"
+    levers:
+      - key: "solving.options.custom_extra_functionality"
+        effect: >
+          Path to a user module imported and called with (n, snapshots, snakemake) after
+          the built-in constraints — the ONLY sanctioned place a scenario-coupling
+          equality, a replicated second-stage variable set or an epigraph min-max
+          objective can be written. Not a lever that turns the method on; a lever that
+          decides where your Python lands.
+        default: "'../data/custom_extra_functionality.py' (present but a no-op stub)"
+        provenance: "config/config.default.yaml:custom_extra_functionality; scripts/solve_network.py:custom_extra_functionality"
+      - key: "run.scenarios.enable"
+        effect: >
+          Turns on scenario-file expansion so each (plan, realisation) cell of a regret
+          matrix is an independent managed run under the {run} wildcard. This is the whole
+          fan-out for min-regret-decision-rule, and does nothing for the coupled variants.
+        default: "false"
+        provenance: "config/config.default.yaml:scenarios; scripts/_helpers.py:get_scenarios"
+      - key: "run.scenarios.file"
+        effect: >
+          Where the plan x realisation matrix is read from; config/create_scenarios.py is
+          the shipped itertools.product generator that writes it.
+        default: "'config/scenarios.yaml'"
+        provenance: "config/config.default.yaml:scenarios; Snakefile:create_scenarios"
+      - key: "foresight"
+        effect: >
+          myopic | perfect | overnight. `myopic` gives non-anticipativity across TIME for
+          free — each horizon decides without seeing later ones — which is the structure
+          Xiong's regret analysis rests on and the closest thing in the repo to a
+          here-and-now/wait-and-see split. `perfect` is the opposite (full anticipation)
+          and is the LOWER BOUND a stochastic study should report against.
+        default: "'overnight'"
+        provenance: "config/config.default.yaml:foresight; scripts/prepare_perfect_foresight.py:concat_networks"
+      - key: "conventional.unit_commitment"
+        effect: >
+          Turns on committable generators from data/unit_commitment.csv — the
+          deterministic UC that Welfonder's stochastic variant sits on top of. Required
+          before "stochastic unit commitment" means anything here.
+        default: "false"
+        provenance: "config/config.default.yaml:unit_commitment; scripts/add_electricity.py:unit_commitment"
+      - key: "solving.options.linearized_unit_commitment"
+        effect: >
+          Solves the UC binaries as an LP relaxation. Load-bearing for this card's cost
+          story: a scenario-indexed MILP is often simply unsolvable, and the relaxation is
+          the difference between a formulable and an unformulable stochastic UC.
+        default: "true"
+        provenance: "config/config.default.yaml:linearized_unit_commitment; scripts/solve_network.py:linearized_unit_commitment"
+      - key: "clustering.temporal.resolution_elec"
+        effect: >
+          Coarsens or segments snapshots (an nSEG token routes TSAM through the same key).
+          For a coupled program this is a precondition rather than an optimisation, because
+          problem size is scenarios x snapshots.
+        default: "false (hourly)"
+        provenance: "config/config.default.yaml:resolution_elec; scripts/prepare_network.py:apply_time_segmentation"
+    assembly:
+      - step: >
+          Establish first which variant the user actually needs. If the question is "which
+          plan has least regret across futures", stop here and build min-regret: it is
+          config plus post-processing and answers most requests that arrive worded as
+          stochastic optimisation. Only proceed to a coupled program if the decision is
+          genuinely committed before the uncertainty resolves and a per-scenario recourse
+          decision changes the answer.
+        uses: [scenario-matrix]
+        config: "run.scenarios.enable; run.scenarios.file"
+        code: null
+        provenance: "scripts/_helpers.py:get_scenarios; Snakefile:create_scenarios"
+      - step: >
+          (min-regret) Enumerate the plan x realisation matrix as scenario-file entries —
+          Xiong's shape is 5 plans x 3 realisations x 3 horizons. Plans are usually
+          config-expressible (an infrastructure set forced in via brownfield/committed
+          capacity, a policy target, a technology exclusion); realisations are usually a
+          weather year, a demand level or a delayed-project assumption. Every cell is an
+          independent solve, and eur's schema validation catches a mistyped override
+          before the DAG builds.
+        uses: [scenario-matrix, config-schema-validation, myopic-foresight]
+        config: "run.scenarios.file; foresight: myopic; scenario.planning_horizons"
+        code: "config/create_scenarios.py (edit the product to emit plan x realisation cells)"
+        provenance: "Snakefile:create_scenarios; scripts/_helpers.py:get_scenarios; scripts/add_brownfield.py:add_brownfield"
+      - step: >
+          (min-regret) Evaluate each plan under each realisation rather than re-optimising
+          both: fix plan i's capacities and re-solve realisation j's dispatch through rule
+          solve_operations_network, which calls n.optimize.fix_optimal_capacities(). That
+          is the correct regret evaluation — the plan is COMMITTED, only operation adapts
+          — and it is much cheaper than a second expansion solve. Schyska's variant instead
+          imposes plan i's capacities as LOWER bounds inside realisation j's full expansion
+          LP, which is L5 (custom bounds on the investment variables in the hook) but
+          measures the cost of being wrong while still allowed to top up.
+        uses: [operations-only-solve, custom-constraint-hook]
+        config: "the solve_operations_network rule; solving.options.custom_extra_functionality for the lower-bound variant"
+        code: "scripts/solve_operations_network.py"
+        provenance: "scripts/solve_operations_network.py:fix_optimal_capacities; scripts/solve_network.py:custom_extra_functionality"
+      - step: >
+          (min-regret) Build the regret matrix from the collected costs.
+          make_global_summary already concatenates per-run cost csvs across the whole
+          matrix, so the remaining work is one post-processor: subtract each realisation's
+          own best plan from every plan's cost in that realisation, then report max and
+          expected regret per plan — AND report the same matrix in per-carrier capacity
+          terms, because cost regret is flat (see pitfalls).
+        uses: [global-summary, summary-outputs]
+        config: null
+        code: "new post-processor over the global summary csvs"
+        provenance: "rules/postprocess.smk:make_global_summary; scripts/make_summary.py:calculate_costs"
+      - step: >
+          (coupled program, L5) Generate and reduce the scenario tree OUTSIDE the
+          workflow: fit the time-series models, draw realisations, cluster, and write the
+          per-scenario time series plus probabilities to disk as a new input. Nothing in
+          the repo does any part of this, and it is an L3 data dependency for the rule that
+          consumes it.
+        uses: []
+        config: null
+        code: "new script under scripts/ + a new rule; no existing rule owns scenario generation"
+        provenance: "scripts/prepare_network.py:apply_time_segmentation"
+      - step: >
+          (coupled program, L5) Choose the replication mechanism. The cheaper of the two
+          reuses an in-repo pattern: stack the scenarios along a MultiIndex snapshot axis
+          exactly as prepare_perfect_foresight does for investment periods
+          (pd.MultiIndex.from_product over [scenario, snapshots], then n.set_snapshots),
+          set snapshot_weightings to the scenario probabilities so pypsa's own objective
+          becomes the expectation for free, and let create_model build the replicated
+          operational variables and constraints. The alternative — adding scenario-indexed
+          variables yourself in the hook — duplicates machinery pypsa already has and is
+          not recommended.
+        uses: [perfect-foresight]
+        config: null
+        code: "a new prepare_stochastic_network.py modelled on scripts/prepare_perfect_foresight.py"
+        provenance: "scripts/prepare_perfect_foresight.py:concat_networks; scripts/prepare_network.py:snapshot_weightings"
+      - step: >
+          (coupled program, L5) Write the non-anticipativity constraints in the
+          custom_extra_functionality hook: for every first-stage variable, equality across
+          the scenario level of the index. With the MultiIndex-stacking route, INVESTMENT
+          variables (p_nom) are already scenario-independent because pypsa builds one per
+          component, so the coupling you must write is for any first-stage OPERATIONAL
+          decision — a commitment status, a bid, a day-ahead schedule — which is precisely
+          Welfonder's case. Then, if the objective is min-max rather than expectation, add
+          the auxiliary z via n.model.add_variables and z >= per-scenario cost, and replace
+          the objective.
+        uses: [custom-constraint-hook, linearized-unit-commitment]
+        config: "solving.options.custom_extra_functionality; conventional.unit_commitment; solving.options.linearized_unit_commitment"
+        code: "the user module named by solving.options.custom_extra_functionality"
+        provenance: "scripts/solve_network.py:custom_extra_functionality; scripts/solve_network.py:extra_functionality"
+      - step: >
+          (coupled program, L5) Buy back the problem size before solving, because it is
+          scenarios x snapshots: segment to a few hundred representative steps, keep the
+          UC relaxation linear, and cut the cluster count. Then report the value of the
+          stochastic solution against the deterministic decision evaluated on the same
+          tree — without it there is no evidence the formulation earned its cost.
+        uses: [time-segmentation-tsam, temporal-resolution-nh]
+        config: "clustering.temporal.resolution_elec (nSEG token); solving.options.linearized_unit_commitment"
+        code: null
+        provenance: "scripts/prepare_network.py:apply_time_segmentation; scripts/solve_network.py:linearized_unit_commitment"
+    boundary:
+      - variant: two-stage-stochastic-with-recourse
+        rung: L5
+        note: >
+          The most expensive rung in this card. No config path, no workflow support, and —
+          unlike MGA — no pypsa primitive to call, so this is formulation work rather than
+          a harness. The one mitigating fact: prepare_perfect_foresight already stacks a
+          MultiIndex snapshot axis with per-level weightings for investment periods, so the
+          replication mechanism has a working in-repo precedent to copy, and pypsa's
+          objective becomes the expectation automatically once probabilities are set as
+          snapshot weightings. Coupling constraints and the first-stage partition remain
+          yours. Also an L3 data dependency: the scenario tree is a new input.
+      - variant: min-max-robust
+        rung: L5
+        note: >
+          Same replication work as the two-stage variant plus an objective replacement:
+          one auxiliary variable and one inequality per scenario in the hook, then swap the
+          objective. Mechanically the SMALLER addition of the two — the epigraph trick is a
+          handful of linopy lines — but it inherits the whole scenario-replication problem
+          underneath, so it is not cheaper in practice. No corpus paper to copy from.
+      - variant: min-regret-decision-rule
+        rung: L2
+        note: >
+          The entry point, and the answer to give most users. The fan-out is L0/L1
+          (run.scenarios + create_scenarios.py), plan commitment is L1 (foresight: myopic
+          plus existing/brownfield capacity, exactly Xiong's construction), evaluation is
+          an existing rule (solve_operations_network), and collection is an existing rule
+          (make_global_summary). L2 rather than L1 only because the regret arithmetic is a
+          post-processor nobody has written — a small localised script over csvs. Schyska's
+          lower-bound variant is L5 instead, since imposing plan i's capacities as bounds
+          inside realisation j's expansion LP means custom bounds in the hook.
+      - variant: chebyshev-centre-robust-design
+        rung: L5
+        note: >
+          L5, but inherited rather than intrinsic: the cost is the MGA harness
+          (mga-near-optimal-space, primitive-only here — optimize_mga exists in pypsa but
+          no config reaches it) plus polytope intersection and a Chebyshev-centre LP, both
+          scipy/qhull post-processing. The ensemble it loops over is cheap on this side:
+          weather years are L0/L1 (move the snapshots window; multi-weather-year is
+          `partial` and load_cutout concatenates cutouts on the time axis). Nothing in the
+          repo computes a hull or a centre.
+      - variant: scenario-generation
+        rung: L5
+        note: >
+          Genuinely absent as code, but the smallest and least risky piece of work on this
+          card: a standalone preprocessing script (statsmodels/ARIMAX or a copula, plus
+          K-means reduction) writing per-scenario time series and probabilities, wired in
+          as a new rule. Also L3 on the data side — the output is a new input resource that
+          no existing rule produces. Note the alternative that costs nothing: if the
+          uncertainty is weather, weather-year-ensembles gives a physically consistent,
+          correlation-preserving tree straight from the cutout, and the default cutout spans
+          multiple years.
+    where:
+      - change: "non-anticipativity constraints, replicated second-stage constraints, epigraph min-max objective"
+        anchor: "solving.options.custom_extra_functionality -> the user module's entry function, called with (n, snapshots, snakemake) after create_model, so n.model is a live linopy Model"
+        provenance: "scripts/solve_network.py:custom_extra_functionality; scripts/solve_network.py:extra_functionality"
+      - change: "scenario replication as an outer index on the operational axis (the recommended mechanism)"
+        anchor: "a new script modelled on scripts/prepare_perfect_foresight.py::concat_networks — pd.MultiIndex.from_product over [scenario, snapshots] + n.set_snapshots, with scenario probabilities as snapshot_weightings"
+        provenance: "scripts/prepare_perfect_foresight.py:concat_networks; scripts/prepare_network.py:snapshot_weightings"
+      - change: "plan x realisation fan-out for min-regret"
+        anchor: "run.scenarios + the {run} wildcard; config/scenarios.yaml generated by config/create_scenarios.py"
+        provenance: "scripts/_helpers.py:get_scenarios; rules/common.smk:scenario_config"
+      - change: "regret evaluation: commit plan i's capacities, re-solve realisation j's dispatch"
+        anchor: "rule solve_operations_network -> n.optimize.fix_optimal_capacities()"
+        provenance: "scripts/solve_operations_network.py:fix_optimal_capacities"
+      - change: "regret matrix assembly over the ensemble"
+        anchor: "rule make_global_summary (concatenates per-run csvs across the matrix), plus a new post-processor"
+        provenance: "rules/postprocess.smk:make_global_summary; scripts/make_summary.py:calculate_costs"
+      - change: "scenario tree generation and reduction"
+        anchor: "a new scripts/ module + rule; nothing upstream of prepare_network produces scenario-indexed time series"
+        provenance: "scripts/prepare_network.py:apply_time_segmentation"
+    data_dependencies:
+      - input: "scenario-indexed time series (per-scenario prices / demand / capacity factors) plus scenario probabilities"
+        required_for: two-stage-stochastic-with-recourse
+        availability: >
+          absent — no rule produces this and no config key names it. Must be built by a new
+          preprocessing step (variant scenario-generation), either fitted from historical
+          series or drawn from a weather-year ensemble
+      - input: "fitted time-series models or historical series for the uncertain quantities"
+        required_for: scenario-generation
+        availability: >
+          must be built. Market-price and reserve-price histories are not in the pypsa-eur
+          data pipeline at all; weather-derived quantities ARE available (the default cutout
+          spans multiple years, and load_cutout concatenates cutouts along time), which is
+          why a weather-based tree is far cheaper to source than a price-based one
+      - input: "one near-optimal polytope per uncertainty realisation"
+        required_for: chebyshev-centre-robust-design
+        availability: >
+          must be built — the output of an MGA harness that does not exist in-repo
+          (mga-near-optimal-space is primitive-only here), at 150+ solves per polytope in
+          Grochowicz's construction
+    cost_profile:
+      solves: >
+        ONE program for two-stage-stochastic-with-recourse and min-max-robust, but sized
+        scenarios x snapshots x components — Welfonder used 5 scenarios reduced from 1000
+        draws, and combined independent uncertain variables COMBINATORIALLY, so three
+        uncertain inputs at 5 clusters each is 125 scenarios if not reduced jointly.
+        N_plans x M_realisations independent solves for min-regret-decision-rule
+        (Xiong: 5 x 3 x 3 horizons = 60; Schyska's two-scenario version: 2 + 2).
+        N_realisations x ~150 solves for chebyshev-centre-robust-design (Grochowicz:
+        41 x 150 = 6150).
+      relative: >
+        The coupled variants are the one place in this book where cost is NOT multiplicative
+        in a run count and is therefore much worse: a single LP/MILP N times larger solves
+        superlinearly, and a scenario-indexed MILP with unit-commitment binaries can be
+        unsolvable at a size whose deterministic version is routine. min-regret is
+        embarrassingly parallel like an ordinary sweep, so ~60x a single solve for Xiong's
+        design with wall-clock set by cluster width.
+      note: >
+        For the coupled variants, treat problem size as a formulation constraint rather
+        than a budget: reduce the tree aggressively (Welfonder: 1000 -> 5), segment time to
+        a few hundred representative steps via the nSEG token, keep
+        solving.options.linearized_unit_commitment true so the binaries relax, and cut the
+        cluster count — then check the deterministic single-scenario version solves
+        comfortably before multiplying it. Note the corpus's own answer to this cost: the
+        one paper that built a stochastic program did so on a SINGLE-NODE portfolio, not a
+        European network. For min-regret the usual sweep mitigations all apply and one more
+        matters most — run.shared_resources so upstream data is built once across the
+        matrix, and solve_operations_network for evaluation rather than a second expansion
+        solve.
+    verifies:
+      - variant: two-stage-stochastic-with-recourse
+        check: "all(v.groupby(level='scenario').nunique().max() == 1 for v in first_stage_vars)"
+        over: run
+        note: >
+          Every first-stage variable must take one value across all scenarios. If it does
+          not, the non-anticipativity constraints are missing or mis-scoped and the solver
+          returned the perfect-foresight wait-and-see solution — a decision that cannot be
+          implemented, reported as if it could. The run succeeds either way, which is why
+          this must be checked mechanically.
+      - variant: two-stage-stochastic-with-recourse
+        check: "n_stochastic.objective >= n_waitandsee.objective - 1e-6"
+        over: ensemble
+        note: >
+          The stochastic optimum must be no better than the wait-and-see (perfect
+          information) bound. A stochastic objective BELOW it means constraints were lost
+          in the replication — most often operational constraints written for one scenario
+          index only, so the other scenarios are unconstrained.
+      - variant: two-stage-stochastic-with-recourse
+        check: "abs(sum(probabilities) - 1.0) < 1e-9"
+        over: run
+        note: >
+          Scenario probabilities must sum to one. When they are carried as snapshot
+          weightings the model still solves with unnormalised weights and silently returns
+          a differently-weighted expectation — the objective is then not comparable to any
+          deterministic run.
+      - variant: min-regret-decision-rule
+        check: "len(ns) == n_plans * n_realisations"
+        over: ensemble
+        note: >
+          A short ensemble means cells were dropped by wildcard expansion rather than
+          solved. A missing cell biases the regret matrix in a specific direction: the
+          hardest (most constrained) cells fail most often, and those are exactly the
+          realisations that generate the largest regret, so the reported regret is too
+          small.
+      - variant: min-regret-decision-rule
+        check: "all(regret[j][j] == min(regret[i][j] for i in plans) for j in realisations)"
+        over: ensemble
+        note: >
+          Each realisation's own optimal plan must be its cheapest plan, i.e. the diagonal
+          of the regret matrix must be zero. A negative regret means the committed plan was
+          not actually committed — capacities were left extendable during evaluation, so the
+          run re-optimised instead of being tested.
+  - model: pypsa-earth
+    version_anchor:
+      ref: "8435f4c8cc05f30088933b37b7db497ff860dc53"
+      date: "2026-07-25"
+    functionality:
+      - id: mga-near-optimal
+        role: >
+          registry status `absent`, same as eur, and the nearest neighbour to a
+          nonexistent stochastic-programming entry. Prerequisite for
+          chebyshev-centre-robust-design.
+      - id: custom-constraint-hook
+        role: >
+          registry status `working`, but structurally weaker than eur's: there is NO
+          out-of-repo hook and no config key pointing at a user module. extra_functionality
+          is an in-repo dispatcher taking (n, snapshots), so a coupling constraint means
+          EDITING scripts/solve_network.py rather than adding a file beside it — L2 by
+          construction where eur is L1.
+      - id: monte-carlo-sampling
+        role: >
+          registry status `partial`, and earth's one advantage: a real many-solve harness
+          (chaospy/pyDOE2/scipy LHS over network attribute expressions, one solve per
+          sample under an `unc` wildcard). It is a SAMPLER, not a scenario tree — but for
+          scenario-generation it is the closest in-repo machinery, and for min-regret its
+          per-sample fan-out is the realisation axis. It cannot help the coupled variants
+          at all, because it varies inputs BETWEEN solves and a stochastic program needs
+          them WITHIN one.
+      - id: scenario-matrix
+        role: >
+          registry status `working`. Eight named dimensions expand combinatorially
+          (simpl, clusters, ll, opts, sopts, planning_horizons, demand, h2export) — more
+          named dimensions than eur — but there is no arbitrary-config-override scenario
+          FILE in the main workflow, so a plan x realisation matrix over non-listed keys
+          means one config diff file per cell driven by rule run_all_scenarios.
+      - id: myopic-foresight
+        role: >
+          registry status `partial` (eur's is `working`). Non-anticipativity across time
+          exists in principle but on a less battle-tested sector chain; and there is no
+          `perfect-foresight` id in earth's registry AT ALL, so the MultiIndex-snapshot
+          replication pattern this card recommends on the eur side has no in-repo
+          precedent here.
+      - id: unit-commitment
+        role: >
+          registry status `partial`, and weaker than eur's `linearized-unit-commitment`:
+          PyPSA supports committable generators but NO pypsa-earth code sets
+          committable=True or supplies ramp data, so the deterministic UC that Welfonder's
+          stochastic variant sits on top of must be built first, as data plus config work.
+      - id: operational-reserves
+        role: >
+          registry status `working` — the same deterministic GenX-style reserve margin as
+          eur, and the same distance from Welfonder's priced aFRR bids under uncertainty.
+      - id: operations-only-solve
+        role: >
+          registry status `absent` (eur's is `working`). The clean regret-evaluation step
+          — fix plan i's capacities, re-solve realisation j's dispatch — has no rule here;
+          the nearest route is setting extendable=false via config and re-solving. This is
+          the concrete reason min-regret costs more assembly on earth than on eur.
+      - id: summary-outputs
+        role: >
+          per-run collection exists, but there is no cross-run global summary and
+          input_make_summary does not carry the `unc` wildcard, so nothing assembles a
+          matrix — the regret table is entirely yours to build.
+      - id: time-segmentation-tsam
+        role: >
+          the affordability precondition for any coupled program, as in eur; earth's
+          default opts already carry a 3h token, which helps.
+    available:
+      verdict: absent
+      how: >
+        Nothing in pypsa-earth performs stochastic or robust optimisation, verified by the
+        same grep as on the eur side: `scenario_tree`, `non_anticipativ`, `recourse`,
+        `stochastic`, `first_stage`, `expectation`, `min_max`, `minimax`, `regret` and
+        `chebyshev` return ZERO hits across .py/.smk/.yaml and the Snakefile. pypsa 0.30.3
+        has no primitive either. Two adjacent surfaces exist and both are about running the
+        model MANY TIMES rather than putting uncertainty inside it: scripts/monte_carlo.py,
+        a genuine LHS sampler wired into the DAG by one boolean, which gives earth a
+        realisation axis and a per-sample result store that pypsa-eur has no equivalent of;
+        and extra_functionality, the in-repo constraint dispatcher where a coupling
+        equality or an epigraph objective would have to be written.
+      missing: >
+        Procedure steps 1-7 have no handle, as in eur, plus three earth-specific
+        subtractions that make every variant here more expensive than its eur counterpart.
+        First, there is no out-of-repo custom-constraint hook and no config key naming a
+        user module — solving.options.custom_extra_functionality does not exist in
+        config.default.yaml — so the constraint work is an edit to
+        scripts/solve_network.py::extra_functionality, not a new file. Second, there is no
+        perfect-foresight chain, hence no in-repo precedent for stacking a MultiIndex
+        snapshot axis with per-level weightings; the replication mechanism must be invented
+        rather than copied. Third, min-regret loses both of its cheap eur steps: there is
+        no operations-only rule to evaluate a committed plan against a new realisation, and
+        no cross-run global summary to assemble the matrix (input_make_summary does not
+        even carry the `unc` wildcard the sampler introduces). Earth's binding constraint
+        for the ensemble-based variants is also the usual one — data, not code: a
+        multi-realisation weather tree needs a cutout per year and `multi-weather-year` is
+        `absent` in this registry, where eur rates it `partial`.
+      provenance: "scripts/solve_network.py:extra_functionality; scripts/monte_carlo.py:monte_carlo_sampling_chaospy; Snakefile:input_make_summary"
+    levers:
+      - key: "monte_carlo.options.add_to_snakefile"
+        effect: >
+          Inserts rule monte_carlo and an `unc` wildcard on the electricity chain: one
+          perturbed network and one solve per sample. The nearest in-repo many-solve
+          harness, and the realisation axis for min-regret — but it samples INPUTS between
+          solves, so it is structurally incapable of building a coupled program.
+        default: "false"
+        provenance: "config.default.yaml:add_to_snakefile; scripts/monte_carlo.py:monte_carlo_sampling"
+      - key: "monte_carlo.options.samples"
+        effect: >
+          Number of solves in the fan-out; becomes the realisation count for a regret
+          matrix. Must be the square of a prime when sampling_strategy is scipy, which is a
+          real constraint on a matrix dimension.
+        default: "9"
+        provenance: "config.default.yaml:samples; scripts/monte_carlo.py:validate_parameters"
+      - key: "monte_carlo.uncertainties"
+        effect: >
+          Per-quantity distributions as PyPSA attribute expressions, mapped onto the unit
+          hypercube by rescale_distribution. The closest thing in either repo to a declared
+          uncertainty characterisation (procedure step 2) — but the factors MULTIPLY
+          attributes on the built network, so it cannot express a config-level or
+          upstream-data uncertainty, and it produces samples rather than a weighted tree.
+        default: >
+          three example entries — loads_t.p_set uniform[0.5,1], onwind p_max_pu
+          lognormal[1.5], solar p_max_pu beta[0.5,2]
+        provenance: "config.default.yaml:uncertainties; scripts/monte_carlo.py:rescale_distribution"
+      - key: "scenario.opts"
+        effect: >
+          Wildcard list expanded combinatorially — the plan axis of a regret matrix when
+          plans are expressible as tokens (Co2L, carrier+c/p/m, nH). Cheapest fan-out on
+          this side.
+        default: "['Co2L-3h']"
+        provenance: "config.default.yaml:opts; scripts/prepare_network.py:average_every_nhours"
+      - key: "scenario.planning_horizons"
+        effect: >
+          Horizon list; with foresight: myopic this gives non-anticipativity across time,
+          which is the structure Xiong's regret analysis rests on. Rated `partial` here, so
+          debug the base pathway before layering regret on it.
+        default: "[2030]"
+        provenance: "config.default.yaml:planning_horizons; scripts/add_brownfield.py:add_brownfield"
+      - key: "run.allow_scenario_failure"
+        effect: >
+          Whether one failing cell aborts a run_all_scenarios sweep. Set it for a wide
+          regret matrix, then COUNT the cells — a silently skipped cell is a hole in the
+          matrix, and with no schema validation on this side a mistyped plan override runs
+          the base plan and reports zero regret.
+        default: "false"
+        provenance: "config.default.yaml:allow_scenario_failure; Snakefile:run_all_scenarios"
+      - key: "solving.options.load_shedding"
+        effect: >
+          Load-shedding cost in EUR/MWh, on by default here (eur's is off). Matters for
+          this card because a min-regret or worst-case study drives the system into
+          infeasible corners: with shedding on, an infeasible realisation returns a finite
+          very large cost instead of failing, so a huge regret value can be unserved energy
+          rather than a real cost difference. Check for shedding before interpreting the
+          worst cell.
+        default: "100"
+        provenance: "config.default.yaml:load_shedding; scripts/solve_network.py:prepare_network"
+    assembly:
+      - step: >
+          Same first move as on the eur side: establish whether the user needs a coupled
+          program or min-regret over an ensemble. On earth the case for min-regret is even
+          stronger, because the coupled route lacks the perfect-foresight precedent eur
+          offers, while the many-solve harness here is better than eur's.
+        uses: [monte-carlo-sampling, scenario-matrix]
+        config: "monte_carlo.options.add_to_snakefile; scenario.opts"
+        code: null
+        provenance: "scripts/monte_carlo.py:monte_carlo_sampling; Snakefile:scenario"
+      - step: >
+          (min-regret) Build the plan x realisation matrix. Plans that are expressible as
+          scenario-list elements or opts tokens are free; anything else needs one
+          configs/scenarios/config.<name>.yaml diff per plan, globbed by rule
+          run_all_scenarios which shells out a full snakemake invocation each — no
+          cross-cell DAG deduplication. Realisations can instead ride the monte_carlo
+          `unc` axis if they are expressible as multiplicative factors on network
+          attributes.
+        uses: [scenario-matrix, monte-carlo-sampling]
+        config: "scenario.*; monte_carlo.uncertainties; run.allow_scenario_failure"
+        code: "configs/scenarios/config.<name>.yaml (one per plan)"
+        provenance: "Snakefile:run_all_scenarios; scripts/monte_carlo.py:rescale_distribution"
+      - step: >
+          (min-regret) Build the evaluation step, which eur gets for free and earth does
+          not: there is no operations-only rule, so commit plan i's capacities by writing
+          them onto the network with extendable=False before re-solving realisation j.
+          Alternatively impose them as lower bounds inside extra_functionality
+          (Schyska's construction). Either way this is new code.
+        uses: [operations-only-solve, custom-constraint-hook]
+        config: null
+        code: "scripts/solve_network.py:extra_functionality, or a new commit-and-redispatch script"
+        provenance: "scripts/solve_network.py:extra_functionality; scripts/solve_network.py:prepare_network"
+      - step: >
+          (min-regret) Assemble the matrix. Nothing collects across runs here and
+          input_make_summary does not carry `{unc}`, so either extend it and
+          make_summary's wildcards, or write a standalone post-processor over the
+          per-run/per-sample netCDFs — monte_carlo.py already records each sample's factors
+          in n.meta, so the realisation axis is self-describing.
+        uses: [summary-outputs, monte-carlo-sampling]
+        config: null
+        code: "Snakefile:input_make_summary + rule make_summary wildcards, or a new post-processor"
+        provenance: "Snakefile:input_make_summary; scripts/make_summary.py:make_summaries"
+      - step: >
+          (coupled program, L5) Generate and reduce the scenario tree as a preprocessing
+          script, then replicate the second stage. With no perfect-foresight chain to copy,
+          the MultiIndex-snapshot route must be written from scratch — set_snapshots to a
+          product index and snapshot_weightings to the probabilities before create_model
+          runs.
+        uses: []
+        config: null
+        code: "new scripts/ module + rule; there is no prepare_perfect_foresight.py equivalent here"
+        provenance: "scripts/prepare_network.py:average_every_nhours"
+      - step: >
+          (coupled program, L5) Add non-anticipativity equalities, and the epigraph
+          variable if the objective is min-max, by EDITING extra_functionality — adding an
+          add_*_constraints function and a call to it, since there is no out-of-repo hook.
+          Enable committable generators first if the first stage is a commitment decision:
+          no pypsa-earth code sets committable=True, so that is data plus config work
+          before the stochastic layer means anything.
+        uses: [custom-constraint-hook, unit-commitment]
+        config: "cluster_options.aggregation_strategies.generators.committable"
+        code: "scripts/solve_network.py:extra_functionality"
+        provenance: "scripts/solve_network.py:extra_functionality; scripts/cluster_network.py:busmap_for_n_clusters"
+    boundary:
+      - variant: two-stage-stochastic-with-recourse
+        rung: L5
+        note: >
+          Strictly harder than on eur, and worth saying so: same missing formulation, but
+          no out-of-repo constraint hook (edit extra_functionality in place) and no
+          perfect-foresight chain, so the MultiIndex replication pattern eur offers as a
+          template does not exist here. Also L3 — the scenario tree is a new data input.
+          If a user insists on a coupled program, pypsa-eur is the better host.
+      - variant: min-max-robust
+        rung: L5
+        note: >
+          As eur: the epigraph objective is a small addition on top of the whole
+          replication problem. Same in-repo penalty as above — the constraint goes inside
+          scripts/solve_network.py, not beside it.
+      - variant: min-regret-decision-rule
+        rung: L2
+        note: >
+          Still the entry point, but with more assembly than eur: the fan-out is L1
+          (scenario lists, opts tokens, or the monte_carlo `unc` axis — a real sampler eur
+          lacks), while BOTH cheap eur steps are missing. operations-only-solve is `absent`
+          so the commit-and-redispatch evaluation is new code, and there is no cross-run
+          global summary so the matrix assembly is new code too. No config-schema
+          validation either, so verify the cell count rather than assuming it.
+      - variant: chebyshev-centre-robust-design
+        rung: L3
+        note: >
+          The MGA harness plus intersection geometry is L5 work as in eur, but the binding
+          constraint on this side is DATA: `multi-weather-year` is `absent` in earth's
+          registry and cutouts are built per region, so a 41-year realisation ensemble means
+          building 41 cutouts before a single polytope exists. Settle the data question with
+          cookbooks/pypsa-earth/data_quality before quoting the geometry work.
+      - variant: scenario-generation
+        rung: L5
+        note: >
+          Absent as code, but this is the one variant where earth starts AHEAD: monte_carlo.py
+          already draws from six distribution families via three LHS backends and maps them
+          onto network quantities, which is the sampling half of a scenario tree. What is
+          missing is the time-series MODEL (ARIMAX or a copula), the reduction step
+          (K-means to a handful of weighted clusters), and — the structural gap — the fact
+          that the sampler writes one network per sample rather than one weighted scenario
+          set inside one network. Also L3: the reduced tree is a new input resource.
+    where:
+      - change: "non-anticipativity constraints and epigraph min-max objective"
+        anchor: "scripts/solve_network.py::extra_functionality — add an add_*_constraints function and a call to it; there is no out-of-repo hook and no config key naming a user module"
+        provenance: "scripts/solve_network.py:extra_functionality"
+      - change: "scenario replication onto the operational axis"
+        anchor: "a new preprocessing module before solve_network — set_snapshots to a scenario x snapshot product index, snapshot_weightings to the probabilities; no prepare_perfect_foresight.py exists here to copy"
+        provenance: "scripts/prepare_network.py:average_every_nhours"
+      - change: "realisation fan-out for min-regret"
+        anchor: "rule monte_carlo + the {unc} wildcard (monte_carlo.options.add_to_snakefile), or the scenario lists, or configs/scenarios/config.<name>.yaml + rule run_all_scenarios"
+        provenance: "scripts/monte_carlo.py:monte_carlo_sampling; Snakefile:run_all_scenarios"
+      - change: "commit plan i's capacities and re-solve realisation j (no operations-only rule exists)"
+        anchor: "scripts/solve_network.py::prepare_network, or lower bounds on investment variables inside extra_functionality"
+        provenance: "scripts/solve_network.py:prepare_network; scripts/solve_network.py:extra_functionality"
+      - change: "regret matrix assembly across cells and samples"
+        anchor: "Snakefile:input_make_summary — add {unc} to the expand and to rule make_summary's wildcards, or write a standalone post-processor"
+        provenance: "Snakefile:input_make_summary; scripts/make_summary.py:make_summaries"
+      - change: "enable the deterministic unit commitment a stochastic UC sits on"
+        anchor: "no code sets committable=True — the attribute is only preserved through clustering; UC data and the flag are both yours to add"
+        provenance: "scripts/cluster_network.py:busmap_for_n_clusters"
+    data_dependencies:
+      - input: "scenario-indexed time series plus probabilities"
+        required_for: two-stage-stochastic-with-recourse
+        availability: >
+          absent — no rule produces this. The monte_carlo sampler is the nearest machinery
+          and produces one network per sample, not one weighted scenario set within a
+          network
+      - input: "per-year cutouts covering the study region for a weather-based realisation ensemble"
+        required_for: chebyshev-centre-robust-design
+        availability: >
+          region-dependent and expensive — cutouts are built per region via
+          enable.build_cutout and `multi-weather-year` is `absent` in earth's registry, so a
+          multi-year ensemble means one cutout build per year. Check
+          cookbooks/pypsa-earth/data_quality first
+      - input: "historical price / demand series for the region, to fit the scenario models"
+        required_for: scenario-generation
+        availability: >
+          absent for most of earth's coverage and the single biggest obstacle on this side.
+          Market-price histories are outside the data pipeline entirely, and for many
+          countries in scope they are not published at all — which makes a price-uncertainty
+          study a data-availability conversation before it is a modelling one
+      - input: "unit-commitment parameters (min load, min up/down, start-up cost, ramp rates) per carrier"
+        required_for: two-stage-stochastic-with-recourse
+        availability: >
+          absent — pypsa-earth ships no unit_commitment.csv equivalent and no code sets
+          committable=True, so a stochastic UC needs the deterministic UC data built first
+          (eur at least ships data/unit_commitment.csv)
+    cost_profile:
+      solves: >
+        One program of size scenarios x snapshots for the coupled variants;
+        N_plans x M_realisations independent solves for min-regret (and
+        monte_carlo.options.samples is capped to squares of primes — 9, 25, 49, 121 — when
+        the scipy backend is used, which constrains the realisation axis);
+        N_realisations x ~150 for chebyshev-centre-robust-design.
+      relative: >
+        Superlinear in the scenario count for the coupled variants, as in eur. The
+        model-choice tradeoff otherwise runs earth's way for the ensemble variants: base
+        cases here are usually one or a few countries, electricity-only, at a small cluster
+        count, so a 60-cell regret matrix is often tractable where the same matrix on a
+        sector-coupled European eur run is not.
+      note: >
+        Earth has no shared-resources mechanism (run.shared_cutouts shares only the cutout),
+        so upstream resources are rebuilt per run name, and rule run_all_scenarios shells
+        out a SEPARATE snakemake invocation per cell with no cross-cell deduplication —
+        the largest avoidable cost on a wide regret matrix. Prefer the monte_carlo `unc`
+        axis for the realisation dimension where the perturbation is expressible as a
+        network-attribute factor, since that stays inside one DAG. For a coupled program,
+        earth's smaller base cases are the one genuine advantage: the honest recommendation
+        is to prototype the formulation on a small earth network and, if it must scale,
+        move to eur.
+    verifies:
+      - variant: two-stage-stochastic-with-recourse
+        check: "all(v.groupby(level='scenario').nunique().max() == 1 for v in first_stage_vars)"
+        over: run
+        note: >
+          As in eur: a first-stage variable differing across scenarios means the coupling
+          constraints are missing and the result is the unimplementable wait-and-see
+          solution. Doing this by hand inside extra_functionality (rather than in a separate
+          module) makes the mistake easier, because the constraint sits among two dozen
+          other add_*_constraints calls and a missed branch is invisible.
+      - variant: min-regret-decision-rule
+        check: "len(ns) == n_plans * n_realisations"
+        over: ensemble
+        note: >
+          Doing more work here than in eur: run.allow_scenario_failure lets cells fail
+          silently, there is no config-schema validation to catch a mistyped plan override,
+          and nothing collects the ensemble automatically. Count the cells before reading
+          any regret number.
+      - variant: min-regret-decision-rule
+        check: "all(any(k.endswith('_feature') for k in n.meta) for n in ns)"
+        over: ensemble
+        note: >
+          When the realisation axis rides the monte_carlo sampler, monte_carlo.py writes
+          each sample's factors into n.meta as *_feature columns. Their absence means the
+          network came from the plain chain, so every 'realisation' is the same run and the
+          regret matrix is identically zero — the exact silent failure that makes an
+          uncertainty study report no uncertainty.
+      - variant: min-regret-decision-rule
+        check: "all(not n.generators.p_nom_extendable.any() for n in evaluation_runs)"
+        over: ensemble
+        note: >
+          With no operations-only rule here, committing a plan is hand-written. If any
+          capacity is left extendable during evaluation, the run re-optimises instead of
+          being tested and regret collapses toward zero — which reads as "all plans are
+          equally good" rather than as a bug.

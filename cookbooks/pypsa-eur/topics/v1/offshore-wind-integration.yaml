@@ -1,0 +1,59 @@
+id: offshore-wind-integration
+title: Offshore wind integration
+rank: 53
+question: >
+  How much offshore wind should be built where, what does connecting it cost
+  (near-shore AC vs far-shore DC vs floating), and how does a large offshore
+  fleet reshape onshore grid needs, storage, and curtailment?
+when_to_use:
+  - "offshore wind buildout scenarios"
+  - "offwind-ac vs offwind-dc vs offwind-float split and connection costs"
+  - "offshore wind targets and their grid impact"
+  - "depth/distance/shipping-lane limits on offshore potential"
+  - "curtailment and reinforcement from offshore feed-in"
+recipes:
+  generation_conversion: [offshore-wind, floating-offshore-wind,
+                          hvdc-interconnectors, grid-scale-batteries,
+                          hv-transmission-lines]
+  demand: [electricity-load]
+functionality:
+  - id: renewable-potentials-land-eligibility
+    role: "core — GEBCO depth bands, shore-distance buffers, natura and shipping-lane exclusions, resource classes per offshore region"
+  - id: weather-year-selection
+    role: "offshore capacity factors from the chosen ERA5 cutout year (1940-2024 selectable)"
+  - id: spatial-clustering
+    role: "offshore Voronoi regions set where potential lands; clustering re-aggregates profiles consistently"
+  - id: country-carrier-capacity-limits
+    role: "CCL floors encode national offshore targets, with offwind subtypes aggregatable (agg_offwind)"
+  - id: transmission-expansion-limits
+    role: "onshore reinforcement triggered by offshore feed-in, co-optimized under the transmission limit"
+  - id: existing-baseyear-brownfield
+    role: "existing offshore fleet vintaged into myopic/perfect pathways (all existing capacity lands on offwind-ac)"
+  - id: carrier-attribute-scaling
+    role: "offwind cost and potential sweeps as adjustments/opts tokens"
+  - id: line-security-margin
+    role: "s_max_pu is the only reliability margin on the lines absorbing offshore power"
+  - id: summary-outputs
+    role: "curtailment and capacity by carrier for integration reporting"
+gap_assessment: >
+  Stronger than pypsa-earth: THREE default offshore carriers — offwind-ac
+  (within 30 km of shore), offwind-dc (beyond), and a first-class
+  offwind-float carrier for water deeper than 60 m, all default renewable AND
+  extendable — with depth-, distance-, natura- and shipping-lane-limited
+  potentials, binned resource classes, endogenous per-region connection-cost
+  adders (submarine + landfall segments plus station cost per carrier), an
+  existing fleet from powerplantmatching, and national targets via CCL with
+  offwind-subtype aggregation. The buildout-and-integration study, including
+  onshore reinforcement and pathway vintaging, runs out of the box. Remaining
+  honest limits: (1) connection cost is a capital-cost adder on the
+  generator, not a modelled line — no offshore hubs, no meshed offshore
+  grid, no radial-vs-hub comparison without custom components (offshore
+  interconnector-hub concepts like energy islands need bespoke buses/links);
+  (2) all existing offshore capacity is attached to the ac carrier
+  regardless of actual connection; (3) each carrier has one reference
+  turbine, so vintage or site-class turbine differentiation beyond resource
+  classes is cost-table work.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

@@ -1,0 +1,51 @@
+id: grid-interconnection-queues
+title: Grid interconnection queues
+rank: 2
+question: >
+  Which projects stuck in the connection queue should be prioritized, where
+  does the grid have headroom for new generation, and what upgrades unlock
+  the most queued capacity? The acute developer/regulator pain in the US
+  (2000+ GW queued), and increasingly UK, EU, and beyond.
+when_to_use:
+  - "which queued projects can actually connect"
+  - "where is there grid headroom for new generation"
+  - "connection cost / upgrade allocation for a project"
+  - "queue reform / cluster study analysis"
+  - "curtailment risk for a project at a specific node"
+recipes:
+  generation_conversion: [hv-transmission-lines, hvdc-interconnectors]
+  demand: [electricity-load, demand-spatial-disaggregation]
+functionality:
+  - id: interconnection-queues
+    role: "the core ask — project-level queue/pipeline machinery is absent"
+  - id: nodal-marginal-prices
+    role: "nodal duals proxy where connection is valuable vs congested"
+  - id: transmission-expansion-limits
+    role: "what upgrades relieve binding corridors, at zonal resolution"
+  - id: spatial-clustering
+    role: "clustering destroys the substation-level detail queues live at"
+  - id: line-security-margin
+    role: "headroom is s_max_pu-derated thermal capacity, not real N-1"
+  - id: augmented-line-connection
+    role: "generic candidate corridors, not project-specific upgrades"
+  - id: contingency-scopf
+    role: "real connection studies are contingency-based — not wired in"
+gap_assessment: >
+  This is not what pypsa-earth does. There is no project pipeline: no queue
+  positions, no cluster-study logic, no per-project connection-cost
+  allocation, and the interconnection-queues capability is absent from the
+  model outright. What the workflow CAN do is the system-level shadow of the
+  queue problem: solve at high spatial resolution (or unclustered) and read
+  nodal prices, congested lines, and curtailment by zone to say where new
+  capacity is valuable and which corridors bind — a headroom heat-map, not a
+  queue study. Known projects can be injected by hand via custom_powerplants
+  and candidate upgrades via augmented-line-connection, but that is manual
+  scenario assembly. Two hard blockers for real queue work: results below
+  ~substation resolution depend on OSM grid quality (check the data_quality
+  osm-grid grade first), and there is no N-1/SCOPF, which is the actual
+  methodology connection studies use. Treat pypsa-earth as context for queue
+  reform debates, not a tool that processes a queue.
+coverage: gap
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

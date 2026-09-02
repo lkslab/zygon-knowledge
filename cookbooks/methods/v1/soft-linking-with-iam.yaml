@@ -1,0 +1,1269 @@
+id: soft-linking-with-iam
+title: "Soft-linking to an external model (IAM, macro, demand or materials model)"
+summary: >
+  Run the energy-system model alongside a second, differently-scoped model and exchange
+  boundary quantities between them — demands, prices, capacities, budgets — repeating
+  the exchange until the two models agree, or once if the flow is one-way.
+question: >
+  My scenario / demand projection / carbon budget / cost pathway comes from another
+  model — how do I get it into the energy model, and how do I know the two are
+  consistent rather than merely both run?
+aliases:
+  - "soft-linking"
+  - "soft coupling"
+  - "model coupling"
+  - "bi-directional coupling"
+  - "bidirectional price-based coupling"
+  - "iterative coupling"
+  - "hard-linking"
+  - "integrated assessment model (IAM) coupling"
+  - "REMIND-PyPSA coupling"
+  - "model linkage"
+  - "downscaling an IAM scenario"
+  - "scenario harmonisation"
+  - "soft-linked hybrid modelling"
+when_to_use:
+  - "our scenario comes from an IAM / from REMIND / from the IEA / from a national plan"
+  - "I have a demand projection from a separate model — how do I feed it in"
+  - "can I use PyPSA to check whether my IAM's power sector is operationally feasible"
+  - "the two models disagree on electricity price / capacity factor — which is right"
+  - "I want the energy model to respect a CO2 budget produced somewhere else"
+  - "how do I send capacity factors and market values back to the macro model"
+  - "how many iterations before the coupling converges"
+  - "my colleague's materials model needs the capacity build-out from this run"
+  - "align the cost and demand assumptions between our two models"
+  - "downscale a global scenario to a national hourly power system"
+family: foresight-and-pathways
+prevalence:
+  papers: 3
+  tier1: 1
+  tier2: 2
+  sweep_hits: 25
+  basis: >
+    Hand-coded pass 1 found exactly ONE paper that defines and performs a coupling
+    protocol as its method (Odenweller, REMIND x PyPSA-Eur). Pass 1.5 absorbed two more
+    from `EVIDENCE.yaml:unmatched_methods` on the RECONCILE.md ruling that the method is
+    the coupling protocol, not the identity of the partner model: Burghardt's
+    `endogenous-material-factor-linking` (a material-demand model linked to the energy
+    model) and Duque-Perez's `bottom-up demand scenario construction (leap/hypat)` (an
+    external LEAP/HYPAT demand model feeding the energy model). Both were logged as
+    unmatched because pass 1 had no slug; both are couplings, at different rungs of
+    tightness, and both are counted here.
+    The regex screen returned 25, which massively OVER-counts: `sweep_regex` includes
+    `\biam\b` and `integrated assessment`, which fire on every literature review that
+    situates the paper against the IAM tradition, plus `\bremind\b`, which matches
+    citations of REMIND-derived cost assumptions. The 22 excess are mention-only and are
+    excluded per PASS2's rule. Two slices were checked directly on the orchestrator's
+    prompt — Zeyen 2023 (endogenous learning) and vanGreevenbroek 2024 (green hydrogen
+    strategy) — and NEITHER contains a coupling claim in its pass-1 record; the
+    soft-linking mentions logged against them are literature positioning, not method.
+    They are not in `literature`.
+    Read the low count as a statement about the corpus, not about practice: the
+    one-way-downscaling variant below is what most "scenario" studies silently do (a
+    demand or budget or cost trajectory arrives from outside the model and is consumed
+    without feedback), but papers rarely NAME that as a coupling, so it is not
+    hand-codeable from a methods section. Treat `prevalence` as a lower bound.
+procedure:
+  - step: >
+      Decide the direction and scope of the exchange BEFORE anything else: which
+      quantities cross the boundary, which way, and which model owns each. This is the
+      method's only real design decision. Odenweller's interface is the reference
+      inventory — from the IAM: sectoral electricity demands, installed capacities (as
+      free capacity), capital and marginal costs, CO2 prices, EV fleet size; back from
+      the energy model: annual capacity factors, peak residual load, per-technology
+      supply-side market values, demand-side sectoral electricity prices, hydrogen and
+      battery storage parameters, grid losses.
+    handle: null
+    provenance: null
+  - step: >
+      Harmonise the exogenous assumptions the two models share but do not exchange —
+      base year, currency and deflator, cost vintage, technology naming, region
+      definitions, weather year. Skipping this makes a later disagreement
+      uninterpretable: you cannot tell a genuine model difference from a units error.
+    handle: "costs.year / costs.technology_data_version and energy.energy_totals_year pin the shared vintages"
+    provenance: "config/config.default.yaml:energy_totals_year"
+  - step: >
+      Ingest the partner model's outputs into the energy model's config and data inputs.
+      This is where the coupling touches the workflow, and every quantity needs its own
+      ingestion surface: a demand goes in as a load timeseries or a scaling factor, a
+      carbon budget as a per-horizon fraction, a price as a cost overwrite, a capacity
+      decision as a floor or a custom powerplant row.
+    handle: "co2_budget; load.scaling_factor; costs.custom_cost_fn; electricity.custom_powerplants"
+    provenance: "config/config.default.yaml:co2_budget; scripts/add_electricity.py:scaling_factor; scripts/build_powerplants.py:add_custom_powerplants"
+  - step: >
+      Solve the energy model at the resolution the coupling needs. Odenweller solves 14
+      single-year networks in parallel, one per partner-model timestep (2030-2150), per
+      coupling iteration — so the unit of a coupling iteration is a whole scenario
+      matrix, not a single solve.
+    handle: "the standard workflow solve, fanned out over run.scenarios"
+    provenance: "scripts/solve_network.py:solve_network; scripts/_helpers.py:get_scenarios"
+  - step: >
+      Extract the return quantities from the solved networks into the exchange artefact.
+      The supply-side market values and capacity factors Odenweller returns to REMIND
+      are already computed by the summary stage; the peak-residual-load and grid-loss
+      quantities are not.
+    handle: "scripts/make_summary.py outputs (market_values, capacity_factors, weighted_prices, metrics)"
+    provenance: "scripts/make_summary.py:calculate_market_values; scripts/make_summary.py:calculate_capacity_factors"
+  - step: >
+      Hand the artefact back to the partner model, re-run it, and regenerate the energy
+      model's inputs from its new outputs. One pass of this is `one-way-downscaling` run
+      twice; a loop over it is the method proper.
+    handle: null
+    provenance: null
+  - step: >
+      Damp the oscillation. Naive fixed-point iteration on prices oscillates:
+      Odenweller applies heuristic ANTICIPATION FACTORS to the capacity factors and
+      market values passed back, precisely to stop the two models chasing each other.
+      Any coupling that reports a convergence failure should be suspected of missing
+      this step rather than of being infeasible.
+    handle: null
+    provenance: null
+  - step: >
+      Test convergence on the exchanged quantities, not on the objective. Odenweller's
+      criterion: less than 5% relative change in ALL imported parameters for FOUR
+      consecutive iterations — a window, not a single check, because a one-off small
+      change is what an oscillation looks like at its turning point.
+    handle: null
+    provenance: null
+  - step: >
+      Report the coupled result together with the uncoupled one. The finding of a
+      coupling study is the DIFFERENCE the feedback made; without the standalone run as
+      a reference there is no way to say the coupling did anything. Burghardt's
+      "100%, not linked" scenario is the clean instance of this control.
+    handle: null
+    provenance: null
+variants:
+  - id: iterative-bidirectional-coupling
+    what: >
+      Quantities flow both ways and the pair is iterated to a convergence criterion.
+      The only variant where "consistency" means anything formal, and the only one that
+      needs a damping scheme and a stopping rule. Costs the partner model's runtime
+      times the energy model's scenario matrix, times the iteration count.
+    papers:
+      - "2026_Odenweller_REMIND-PyPSA-Eur_ProgEnergy.pdf"
+  - id: one-way-downscaling
+    what: >
+      A partner model or published scenario supplies demands, prices, CO2 budgets or
+      capacity trajectories; the energy model consumes them and returns nothing. No
+      iteration, no convergence test, no damping — and by far the most common coupling
+      in practice, since it is what a "scenario" study is when the scenario came from
+      elsewhere. Cheap: exactly one energy-model run per scenario.
+    papers:
+      - "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+      - "2026_Odenweller_REMIND-PyPSA-Eur_ProgEnergy.pdf"
+  - id: post-hoc-indicator-linking
+    what: >
+      The energy model runs first and its output (capacities, generation, build rates)
+      feeds a downstream model — materials, emissions accounting, employment, land — with
+      no feedback into the energy model. The downstream model is a post-processor over
+      the solved network, so the energy model's cost is unchanged.
+    papers:
+      - "2025_Burghardt_material-needs-energy-technologies.pdf"
+  - id: internalised-linking
+    what: >
+      The limit case of tightening a coupling until iteration is unnecessary: the
+      partner model's relationship is rewritten as constraints inside the SAME
+      optimisation, so consistency holds by construction. Burghardt does this with
+      per-technology material-intensity coefficients (steel, cement, HVC per MW), which
+      make capacity expansion trigger industrial production endogenously. Often called
+      hard-linking. Buys exactness, costs generality: the partner model's logic must be
+      expressible as linear constraints on the energy model's variables.
+    papers:
+      - "2025_Burghardt_material-needs-energy-technologies.pdf"
+  - id: harmonisation-only
+    what: >
+      Align the two models' exogenous assumptions — cost vintage, base year, currency,
+      region definitions, weather year — and exchange no results at all. Not a coupling
+      in the iterative sense, but it is the prerequisite for every other variant and the
+      only defensible thing to do when the models' scopes do not overlap enough to make
+      an exchange meaningful.
+    papers:
+      - "2026_Odenweller_REMIND-PyPSA-Eur_ProgEnergy.pdf"
+      - "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+literature:
+  - paper: "2026_Odenweller_REMIND-PyPSA-Eur_ProgEnergy.pdf"
+    tier: 1
+    role: defines
+    note: >
+      The reference protocol for this book, and the only paper in the corpus whose
+      method IS the coupling. REMIND v3.5.1 (global IAM, perfect foresight 2030-2100
+      with buffer to 2150, 5-year steps to 2060 then 10-year) coupled bi-directionally
+      and price-based to PyPSA-Eur v2025.07.0 reduced to a 4-node Germany power-only
+      extraction, hourly, perfect foresight. Numbers to quote: 14 PyPSA networks solved
+      in parallel per REMIND iteration, one per REMIND timestep; convergence at <5%
+      relative change in every imported parameter for 4 consecutive iterations;
+      heuristic anticipation factors on capacity factors and market values to damp
+      oscillation. Its stated novelty over prior REMIND-PyPSA work is that the coupling
+      is price-based on BOTH sides — supply-side market values and demand-side sectoral
+      electricity prices — across all timesteps, with sector-specific demand profiles
+      and demand-side flexibility. Applied to German climate-neutrality-by-2045 with and
+      without demand-side flexibility.
+  - paper: "2025_Burghardt_material-needs-energy-technologies.pdf"
+    tier: 2
+    role: extends
+    note: >
+      Absorbed at pass 1.5 as `endogenous-material-factor-linking`. Takes the coupling
+      to its tight limit: instead of exchanging with a materials model, it introduces
+      per-technology annualised material-demand factors (steel, cement, HVC per MW of
+      installed capacity) as constraints INSIDE the sector-coupled optimisation, so
+      technology expansion directly triggers industrial production. PyPSA-Eur, Germany
+      plus direct-link neighbours, single target year 2045, greenfield overnight. Its
+      methodological gift to this card is the control scenario: six runs at 0/25/50/75/100%
+      domestic bulk-material production PLUS a "100%, not linked" run that isolates the
+      effect of the LINKAGE from the effect of the higher demand. That is the design
+      every coupling study should copy and most do not.
+  - paper: "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+    tier: 2
+    role: canonical-use
+    note: >
+      Absorbed at pass 1.5 as `bottom-up demand scenario construction (leap/hypat)`.
+      The clean instance of one-way-downscaling: a hybrid bottom-up demand model
+      implemented via LEAP's approach and the HYPAT Excel templates — activity drivers,
+      saturation rates, energy intensities, carrier shares across residential, transport
+      and industry — produces sectoral demand which PyPSA-Earth then consumes. No
+      feedback: the energy model never tells the demand model anything. PyPSA-Earth
+      sector-coupled, 14 GADM-L1 nodes, Morocco, hourly, target 2035, overnight. Useful
+      because it shows the partner model need not be a coupled code at all; a
+      spreadsheet methodology is a partner model, and the ingestion problem is identical.
+pitfalls:
+  - pitfall: >
+      An exchanged QUANTITY is not an exchanged MODEL. Passing REMIND's installed
+      capacities in as free capacity, or its CO2 price in as a cost adder, transfers a
+      number computed under the partner model's own constraints into a model that does
+      not have them. The energy model will happily satisfy the number while violating
+      the logic that produced it.
+    evidence: "2026_Odenweller_REMIND-PyPSA-Eur_ProgEnergy.pdf"
+    note: >
+      This is why the return direction exists: the energy model sends back capacity
+      factors and market values so the partner model can re-derive the capacities under
+      its own optimality. A one-way link has no such correction and should be presented
+      as "we imposed X", never as "the models agree".
+  - pitfall: >
+      Fixed-point iteration on prices oscillates. Odenweller needed HEURISTIC
+      anticipation factors on the returned capacity factors and market values to make
+      the loop settle — meaning the convergence you report depends on a damping
+      parameter that is not in either model and has no theory behind it.
+    evidence: "2026_Odenweller_REMIND-PyPSA-Eur_ProgEnergy.pdf"
+    note: >
+      Report the damping scheme as part of the method, and report the iterate
+      trajectory, not just the final values. A coupling that converged in two iterations
+      with heavy damping has told you less than one that took eight with none.
+  - pitfall: >
+      Convergence on exchanged parameters is not consistency of the systems. The <5%-for-
+      4-iterations criterion is a statement about the interface variables settling, not
+      about the two models representing the same world; two models with incompatible
+      structures can reach a stable exchange that neither would endorse.
+    evidence: "2026_Odenweller_REMIND-PyPSA-Eur_ProgEnergy.pdf"
+    note: >
+      Always report the standalone (uncoupled) run alongside the converged one. If the
+      coupling moved nothing, the interface was too narrow; if it moved everything, one
+      model was doing the other's job and the scope split needs rethinking.
+  - pitfall: >
+      Silent double-counting at the seam. Both models usually have SOME representation
+      of the same thing — the IAM has a stylised power sector, the energy model has a
+      stylised industry — and importing a demand or a capacity without switching off the
+      local version counts it twice. Odenweller's answer is to reduce PyPSA-Eur to a
+      power-only 4-node extraction so the scope split is unambiguous.
+    evidence: "2026_Odenweller_REMIND-PyPSA-Eur_ProgEnergy.pdf"
+    note: >
+      Write down the scope partition explicitly — which model owns which sector — and
+      disable the other's version of it (sector.* master switches in eur, sector config
+      in earth) rather than trusting the numbers to net out.
+  - pitfall: >
+      Without a not-linked control you cannot attribute anything to the coupling. A
+      linked run differs from a baseline for two reasons at once: the imported quantity
+      is different AND the feedback exists.
+    evidence: "2025_Burghardt_material-needs-energy-technologies.pdf"
+    note: >
+      Run Burghardt's third case: same imported quantity, linkage disabled. The
+      difference between that and the linked run is the coupling's effect; the
+      difference between it and the baseline is the input's effect.
+  - pitfall: >
+      A bottom-up demand model's projection is a set of assumptions with a wide range,
+      and downstream it looks like data. Duque-Perez's own sensitivity analysis found
+      WACC dominated both the CO2 constraint and weather variability — i.e. a financial
+      assumption travelling in with the scenario outweighed the physical drivers.
+    evidence: "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+    note: >
+      Sweep the imported quantity as an uncertain input, not as a boundary condition —
+      compose with `sensitivity-and-uncertainty-sweeps`, which owns the scenario
+      machinery this card borrows.
+requires_methods: []
+combines_with:
+  - sensitivity-and-uncertainty-sweeps
+  - foresight-and-planning-horizons
+  - carbon-constraints-and-pricing
+  - shadow-prices-and-marginal-values
+  - price-formation-and-scarcity-rents
+  - brownfield-and-capacity-vintaging
+  - discounting-and-cost-of-capital
+  - demand-side-flexibility-representation
+  - custom-constraints-with-linopy
+topics:
+  - net-zero-pathways
+  - demand-electrification-pathways
+  - model-reproducibility
+  - carbon-pricing-sensitivity
+  - capacity-expansion
+pypsa_primitive:
+  symbol: "pypsa/optimization/abstract.py:optimize_transmission_expansion_iteratively"
+  pypsa_version: "0.30.3"
+  exposed_by: "both, but for a different purpose — solving.options.{skip_iterations,min_iterations,max_iterations,track_iterations}"
+  reachable_via: >
+    Already reachable, and NOT a coupling primitive — it is included here because it is
+    the only iterate-to-a-threshold loop PyPSA ships, and its shape is exactly what a
+    coupling driver must reimplement. Signature at 0.30.3:
+    optimize_transmission_expansion_iteratively(n, snapshots=None, msq_threshold=0.05,
+    min_iterations=1, max_iterations=100, track_iterations=False, ...). Note the pattern:
+    a relative-difference threshold (msq_threshold, default 0.05 — the same 5% Odenweller
+    uses), a minimum iteration count, a maximum iteration count, and an option to record
+    the whole iterate trajectory. It re-solves, recomputes line impedance from the result,
+    compares to the previous iterate, and stops on the threshold.
+  note: >
+    There is NO model-coupling primitive in PyPSA. What exists is the loop skeleton:
+    solve -> derive quantities from the result -> feed them back into the network ->
+    compare to the previous iterate -> stop on a relative threshold. A coupling driver
+    replaces "line impedances" with "quantities from a partner model" and keeps
+    everything else, including the convergence-window idea (min_iterations is a crude
+    version of Odenweller's four-consecutive-iterations rule). Worth copying rather than
+    inventing. Soft anchor: pypsa is a conda dependency, not a submodule, so this claim
+    is pinned to a version string rather than a SHA.
+models:
+  - model: pypsa-eur
+    version_anchor:
+      ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d"
+      date: "2026-07-25"
+    functionality:
+      - id: co2-budget-pathway
+        role: >
+          the ingestion surface for an externally-supplied emissions trajectory:
+          `co2_budget` is a year -> fraction-of-base-year mapping, which is the natural
+          shape of an IAM's carbon-budget output. Registry status `working`.
+      - id: cost-data-pipeline
+        role: >
+          the ingestion surface for partner-model cost and price pathways. Two routes
+          with different reliability — see the pitfall in
+          `discounting-and-cost-of-capital`: `costs.overwrites` is typed and validates
+          but applies only to seven hard-coded attributes, while
+          `costs.custom_cost_fn` -> data/custom_costs.csv accepts arbitrary parameter
+          columns and can add new technology rows. Use the CSV.
+      - id: scenario-matrix
+        role: >
+          the machinery for driving one config per coupling iteration and per
+          partner-model timestep. Odenweller's 14-networks-per-iteration fan-out is
+          exactly this, and `run.prefix`/`run.name` keep each iteration's results in
+          its own tree.
+      - id: cf-config-injection
+        role: >
+          eur-only escape hatch: a `CF+<section>+<key>+<value>` sector_opts token writes
+          ANY config key from the wildcard, so a coupling driver can inject an imported
+          scalar without editing a config file. pypsa-earth has no registry entry for
+          this at all.
+      - id: bau-minimum-capacities
+        role: >
+          the ingestion surface for a partner model's build DECISIONS as system-wide
+          per-carrier floors. Registry status `partial` and the reason matters: the
+          `solving.constraints.BAU` switch exists in config.default.yaml but
+          `electricity.BAU_mincapacities` does NOT, so enabling it without adding the
+          dict KeyErrors.
+      - id: country-carrier-capacity-limits
+        role: >
+          the better capacity-ingestion route: per-country per-carrier min AND max via
+          data/agg_p_nom_minmax.csv with per-planning-horizon columns, gated by the CCL
+          token and `solving.agg_p_nom_limits`. Country x carrier x horizon is the shape
+          an IAM's regional capacity output actually has.
+      - id: existing-baseyear-brownfield
+        role: >
+          the route for importing a capacity trajectory as INHERITED rather than
+          constrained fleet — a partner model's near-term build becomes the energy
+          model's brownfield.
+      - id: summary-outputs
+        role: >
+          the return direction's artefact. make_summary already computes exactly two of
+          Odenweller's return quantities — per-technology market values and capacity
+          factors — plus weighted prices and the CO2 shadow price. The single most
+          load-bearing fact on this card.
+      - id: global-summary
+        role: >
+          concatenates per-run csvs across the whole scenario matrix, which is the shape
+          the exchange artefact needs when one iteration is 14 networks. Absent from
+          earth's registry entirely.
+      - id: perfect-foresight
+        role: >
+          matters for scope partition: eur can co-optimise all horizons in ONE model,
+          which is the capability an IAM is usually brought in to supply. If the reason
+          for coupling is pathway foresight, check whether `foresight: perfect` already
+          answers the question before building an interface.
+      - id: workflow-reproducibility
+        role: >
+          the audit trail a coupling needs: n.meta stores the full config in the solved
+          network, so each iteration's imported values are recoverable from its own
+          output — the only defence against losing track of which iterate produced which
+          number.
+      - id: iterative-impedance-expansion
+        role: >
+          the in-repo instance of the iterate-to-threshold pattern a coupling driver
+          must write, wired through solving.options.{min_iterations,max_iterations}.
+          Not the method, but the closest structural precedent inside the workflow.
+    available:
+      verdict: assemble
+      how: >
+        Every INGESTION surface a coupling needs exists and is config- or data-level. An
+        exogenous emissions trajectory goes in through `co2_budget` (a year -> fraction
+        map, read by build_carbon_budget). Exogenous demand goes in through
+        `load.{fixed_year,scaling_factor,manual_adjustments,supplement_synthetic}` on the
+        electricity side and the `energy.energy_totals_year` chain on the sector side.
+        Exogenous costs and prices go in through `costs.custom_cost_fn` ->
+        data/custom_costs.csv (arbitrary parameter columns, per-planning-horizon rows,
+        `technology: all` for uniform changes) or, less reliably, `costs.overwrites`.
+        A partner model's build decisions go in as capacity floors/ceilings through the
+        CCL route (`solving.agg_p_nom_limits` + data/agg_p_nom_minmax.csv), the BAU
+        route, `electricity.custom_powerplants`, or as inherited fleet through
+        `existing_capacities`. The RETURN direction is served by make_summary, which
+        already emits per-technology market values and capacity factors — two of
+        Odenweller's five return quantities — plus weighted prices and metrics. And
+        `run.scenarios` drives one config per coupling iteration, with `run.prefix`
+        isolating iterations' result trees. So `assemble`, not `absent`: this is a
+        wiring job over working surfaces, and `assembly` below is the recipe.
+      missing: >
+        Procedure steps 1, 6, 7, 8 and 9 have no handle anywhere. Concretely: nothing
+        writes the partner model's outputs into these surfaces (step 3's handles exist but
+        the translation into them does not), nothing hands the artefact back (step 6),
+        there is no damping scheme (step 7), and — the load-bearing gap — there is NO
+        ITERATION LOOP and NO CONVERGENCE TEST at the coupling level (step 8). snakemake
+        is a DAG: it cannot express "re-run the whole workflow until a quantity stops
+        changing". That loop is a driver script OUTSIDE the workflow which invokes
+        `snakemake` as a subprocess once per iteration. Two of Odenweller's five return
+        quantities also have no extractor: peak residual load for backup sizing, and grid
+        losses. Nothing labelled soft-linking exists in the repo at this ref, and no
+        registry id names the method.
+      provenance: "config/config.default.yaml:co2_budget; scripts/make_summary.py:calculate_market_values; scripts/_helpers.py:get_scenarios"
+    levers:
+      - key: "co2_budget"
+        effect: >
+          Per-horizon emission share of the base year — the natural landing shape for an
+          IAM's carbon-budget pathway. Accepts either the year -> fraction dict or a
+          total-GtCO2 float distributed over horizons via the cb<f>ex/be tokens.
+        default: "{2020: 0.72, 2025: 0.648, 2030: 0.45, 2035: 0.25, 2040: 0.1, 2045: 0.05, 2050: 0.0}"
+        provenance: "config/config.default.yaml:co2_budget; scripts/prepare_sector_network.py:build_carbon_budget"
+      - key: "load.scaling_factor"
+        effect: >
+          Multiplies the electricity load timeseries — the crudest demand-ingestion
+          route, and the right one only when the partner model supplies a single national
+          growth factor rather than a profile.
+        default: "1.0"
+        provenance: "config/config.default.yaml:scaling_factor; scripts/add_electricity.py:scaling_factor"
+      - key: "load.fixed_year"
+        effect: >
+          Pins the historical demand year the profile is drawn from, so the shape is held
+          constant while an imported total rescales it. Also the harmonisation lever when
+          the partner model states a base year.
+        default: "false"
+        provenance: "config/config.default.yaml:fixed_year; scripts/build_electricity_demand.py:fixed_year"
+      - key: "load.supplement_synthetic"
+        effect: >
+          Fills gaps in the OPSD load series with a synthetic model. Turn it OFF when the
+          demand is supposed to come from the partner model — otherwise the ingested
+          series is silently patched with the energy model's own guess.
+        default: "true"
+        provenance: "config/config.default.yaml:supplement_synthetic; scripts/build_electricity_demand.py:supplement_synthetic"
+      - key: "load.manual_adjustments"
+        effect: >
+          Applies hard-coded country-level corrections to the load series. Same warning:
+          an imported demand should not be silently adjusted.
+        default: "true"
+        provenance: "config/config.default.yaml:manual_adjustments; scripts/build_electricity_demand.py:manual_adjustments"
+      - key: "energy.energy_totals_year"
+        effect: >
+          The base year for sector-chain energy totals. A harmonisation lever, not an
+          ingestion one — it must match the partner model's base year or every sectoral
+          demand comparison is offset.
+        default: "2019"
+        provenance: "config/config.default.yaml:energy_totals_year; scripts/build_energy_totals.py:build_energy_totals"
+      - key: "costs.custom_cost_fn"
+        effect: >
+          Path to a CSV of (technology, parameter, planning_horizon, value) rows that
+          overwrite ANY cost parameter and can add new technology rows; `technology: all`
+          propagates a parameter to every technology. The working route for importing a
+          partner model's cost or WACC pathway. L3 (a data file), not L1.
+        default: "'data/custom_costs.csv'"
+        provenance: "config/config.default.yaml:custom_cost_fn; scripts/process_cost_data.py:overwrite_costs"
+      - key: "costs.overwrites"
+        effect: >
+          Config-level per-parameter override dict, DEPRECATED (warns on use) and applied
+          only to investment, lifetime, FOM, VOM, efficiency, fuel and standing losses.
+          A `discount rate` entry here validates against the schema and is then silently
+          ignored — see the pitfall in `discounting-and-cost-of-capital`. Use
+          custom_cost_fn.
+        default: "{}"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+      - key: "costs.emission_prices.co2"
+        effect: >
+          Adds an exogenous CO2 price to marginal costs by carrier emission factor — the
+          landing point for the IAM's CO2 price when the coupling passes a price rather
+          than a budget.
+        default: "0.0 (enable: false)"
+        provenance: "config/config.default.yaml:emission_prices; scripts/prepare_network.py:add_emission_prices"
+      - key: "electricity.custom_powerplants"
+        effect: >
+          Amends the powerplant database with rows from data/custom_powerplants.csv —
+          how a partner model's specific plant-level build decisions enter as existing
+          fleet. A pandas.query string or boolean.
+        default: "false"
+        provenance: "config/config.default.yaml:custom_powerplants; scripts/build_powerplants.py:add_custom_powerplants"
+      - key: "solving.agg_p_nom_limits.file"
+        effect: >
+          Per-country per-carrier capacity min/max table with per-planning-horizon
+          columns, applied by the CCL constraint. The best-shaped surface for an IAM's
+          regional capacity pathway — country x carrier x horizon is exactly what an IAM
+          reports.
+        default: "'data/agg_p_nom_minmax.csv'"
+        provenance: "config/config.default.yaml:agg_p_nom_limits; scripts/solve_network.py:add_CCL_constraints"
+      - key: "solving.agg_p_nom_limits.include_existing"
+        effect: >
+          Whether existing capacity counts toward the imported limits. Decides whether
+          the partner model's number means TOTAL or ADDITIONAL capacity — a silent
+          factor-of-two error if the two models disagree on the convention.
+        default: "false"
+        provenance: "config/config.default.yaml:include_existing; scripts/solve_network.py:add_CCL_constraints"
+      - key: "solving.constraints.BAU"
+        effect: >
+          Enables system-wide per-carrier capacity floors. NOTE: reads
+          `electricity.BAU_mincapacities`, which has no entry in config.default.yaml —
+          enabling this without adding the dict raises a KeyError in
+          add_BAU_constraints. Registry status `partial` for this reason.
+        default: "false"
+        provenance: "config/config.default.yaml:BAU; scripts/solve_network.py:add_BAU_constraints"
+      - key: "run.scenarios.enable"
+        effect: >
+          Turns on scenario-file expansion, making each coupling iteration (and each
+          partner-model timestep within it) a separate managed run rather than a
+          hand-rolled loop. The machinery Odenweller's 14-networks-per-iteration fan-out
+          needs.
+        default: "false"
+        provenance: "config/config.default.yaml:scenarios; scripts/_helpers.py:get_scenarios"
+      - key: "run.scenarios.file"
+        effect: >
+          Where the driver writes the per-iteration config overrides. This file IS the
+          coupling's input artefact in the eur design.
+        default: "'config/scenarios.yaml'"
+        provenance: "config/config.default.yaml:scenarios; rules/common.smk:scenario_config"
+      - key: "run.prefix"
+        effect: >
+          Isolates a result tree. Set it to the iteration number so each iterate's
+          networks and summaries survive rather than being overwritten — required to
+          report an iterate trajectory rather than just a converged value.
+        default: "'' (empty)"
+        provenance: "config/config.default.yaml:prefix; scripts/_helpers.py:get_run_path"
+      - key: "costs.year"
+        effect: >
+          Cost vintage. A harmonisation lever: the two models must annuitise from the
+          same technology-data release or their capital costs are not comparable, which
+          makes any price exchange meaningless.
+        default: "2050"
+        provenance: "config/config.default.yaml:year; rules/retrieve.smk:retrieve_cost_data"
+    assembly:
+      - step: >
+          Write down the scope partition first: which model owns which sector, which
+          horizon and which region. Then disable the energy model's version of whatever
+          the partner model owns, via the sector master switches. Odenweller reduces
+          PyPSA-Eur to a power-only 4-node Germany extraction for exactly this reason —
+          the partition, not the interface, is what makes a coupling interpretable.
+        uses: [sector-master-switches]
+        config: "sector.{transport,heating,industry,shipping,aviation,agriculture}; countries; clusters"
+        code: null
+        provenance: "scripts/prepare_sector_network.py:add_land_transport; scripts/prepare_sector_network.py:add_heat"
+      - step: >
+          Harmonise the shared exogenous assumptions before exchanging anything: cost
+          vintage (costs.year and the pinned technology-data version), base years
+          (energy.energy_totals_year, load.fixed_year), weather year, region definitions.
+          This is the `harmonisation-only` variant and it is a prerequisite, not an
+          alternative.
+        uses: [technology-cost-year, data-retrieval-versioning, weather-year-selection]
+        config: "costs.year; energy.energy_totals_year; load.fixed_year; snapshots"
+        code: null
+        provenance: "config/config.default.yaml:energy_totals_year; rules/common.smk:dataset_version"
+      - step: >
+          Map each imported quantity to its ingestion surface, and write the mapping down
+          as part of the method. Emissions trajectory -> co2_budget. CO2 price ->
+          costs.emission_prices.co2. Demand total -> load.scaling_factor (electricity) or
+          the energy-totals chain (sectors). Cost/WACC pathway -> a row per
+          (technology, parameter, planning_horizon) in data/custom_costs.csv. Capacity
+          pathway -> data/agg_p_nom_minmax.csv with the CCL token, or
+          data/custom_powerplants.csv, or existing_capacities as brownfield.
+        uses: [co2-budget-pathway, cost-data-pipeline, country-carrier-capacity-limits, existing-baseyear-brownfield, emission-pricing]
+        config: "co2_budget; costs.custom_cost_fn; costs.emission_prices.co2; load.scaling_factor; solving.agg_p_nom_limits.file; electricity.custom_powerplants"
+        code: "the driver writes these config values and CSV rows; no in-repo code does"
+        provenance: "scripts/prepare_sector_network.py:build_carbon_budget; scripts/process_cost_data.py:overwrite_costs; scripts/solve_network.py:add_CCL_constraints"
+      - step: >
+          Turn OFF the energy model's own gap-filling and adjustment of any series the
+          partner model now owns — `load.supplement_synthetic` and
+          `load.manual_adjustments` in particular. Left on, they silently patch the
+          imported demand with the energy model's own estimate, and the coupling is
+          then exchanging a hybrid nobody designed.
+        uses: []
+        config: "load.supplement_synthetic: false; load.manual_adjustments: false"
+        code: null
+        provenance: "scripts/build_electricity_demand.py:supplement_synthetic; scripts/build_electricity_demand.py:manual_adjustments"
+      - step: >
+          Generate one scenario entry per partner-model timestep (Odenweller: 14) and let
+          run.scenarios fan them into parallel managed runs, with run.prefix set to the
+          iteration index so nothing is overwritten. The scenarios file is the coupling's
+          input artefact; `CF+<section>+<key>+<value>` sector_opts tokens are the
+          alternative for injecting a scalar without writing a config file.
+        uses: [scenario-matrix, cf-config-injection]
+        config: "run.scenarios.enable: true; run.scenarios.file; run.prefix"
+        code: "config/create_scenarios.py is the in-repo precedent for generating the file"
+        provenance: "scripts/_helpers.py:get_scenarios; rules/common.smk:scenario_config; scripts/_helpers.py:update_config_from_wildcards"
+      - step: >
+          Extract the return quantities. make_summary already gives per-technology market
+          values (statistics.market_value on bus_carrier AC), capacity factors,
+          weighted prices and the CO2 shadow price; make_global_summary concatenates them
+          across the whole matrix. Peak residual load and grid losses are NOT extracted
+          and are new post-processing over the solved networks.
+        uses: [summary-outputs, global-summary, nodal-marginal-prices]
+        config: null
+        code: "scripts/make_summary.py (new calculators for peak residual load and losses)"
+        provenance: "scripts/make_summary.py:calculate_market_values; scripts/make_summary.py:calculate_capacity_factors; rules/postprocess.smk:make_global_summary"
+      - step: >
+          Write the iteration driver OUTSIDE snakemake. It: (a) runs the partner model,
+          (b) translates its outputs into the config/CSV surfaces above, (c) invokes
+          `snakemake` as a subprocess for the whole matrix, (d) reads the summary csvs,
+          (e) applies the anticipation/damping factors, (f) tests <5% relative change on
+          every exchanged parameter over a 4-iteration window, (g) loops. Snakemake
+          cannot express this — its DAG has no fixed-point construct — so no rule, no
+          wildcard and no config key can own it. This is the whole L5 of the method.
+          Copy the structure of optimize_transmission_expansion_iteratively: threshold,
+          min_iterations, max_iterations, track_iterations.
+        uses: [workflow-reproducibility]
+        config: null
+        code: "new driver script outside the workflow; no existing rule or script owns it"
+        provenance: "pypsa/optimization/abstract.py:optimize_transmission_expansion_iteratively"
+      - step: >
+          Run the not-linked control: identical imported quantities, feedback disabled.
+          Report it beside the converged run, and report the iterate trajectory. Without
+          this the coupling's effect is not separable from the input's effect.
+        uses: [scenario-matrix, workflow-reproducibility]
+        config: "a second scenario entry with the feedback quantities held at iteration 0"
+        code: null
+        provenance: "scripts/_helpers.py:get_scenarios"
+    boundary:
+      - variant: harmonisation-only
+        rung: L1
+        note: >
+          Pure config: set costs.year, energy.energy_totals_year, load.fixed_year,
+          snapshots and countries to match the partner model. Nothing is exchanged, so
+          nothing needs writing. The honest first deliverable of any coupling
+          conversation, and often enough on its own.
+      - variant: one-way-downscaling
+        rung: L3
+        note: >
+          L1 when the imported quantity is a scalar or a per-horizon mapping that lands
+          in an existing key: co2_budget, load.scaling_factor,
+          costs.emission_prices.co2 are all config flips. L3 as soon as the quantity is
+          a TABLE, which it usually is — data/custom_costs.csv for a cost pathway,
+          data/agg_p_nom_minmax.csv for a capacity pathway,
+          data/custom_powerplants.csv for plant-level builds. No new code, no new rule;
+          the files are already wired inputs. This is the variant most users actually
+          want and it is genuinely cheap.
+      - variant: post-hoc-indicator-linking
+        rung: L2
+        note: >
+          The energy model is unchanged; the downstream model reads the solved network.
+          make_summary already emits capacities, energy balances and costs per carrier,
+          so the usual shape is a small addition there or a standalone reader of the
+          .nc — a localised script edit. Cost over the base run is negligible.
+      - variant: internalised-linking
+        rung: L5
+        note: >
+          Burghardt's route: material-intensity coefficients linking investment
+          variables to material balance constraints. A new constraint on the
+          optimisation, which lands in solving.options.custom_extra_functionality (the
+          sanctioned hook, imported and called after the built-in constraints) or in
+          prepare_sector_network as new buses and links. Compose with
+          `custom-constraints-with-linopy`, which owns that surface. Exact by
+          construction, no iteration needed — and no generality: the partner model's
+          logic must be linear in the energy model's variables.
+      - variant: iterative-bidirectional-coupling
+        rung: L5
+        note: >
+          Every ingestion surface is L1/L3 and the return extraction is L2, but the LOOP
+          is bespoke Python outside snakemake: a driver that alternates the two models,
+          damps the exchange, and tests a windowed relative-change criterion. Snakemake's
+          DAG has no fixed-point construct, so this cannot be a rule. Budget for the
+          damping scheme rather than the plumbing — Odenweller needed heuristic
+          anticipation factors to make it settle at all, and that is the part with no
+          recipe.
+    where:
+      - change: "exogenous emissions trajectory from the partner model"
+        anchor: "co2_budget (config) -> build_carbon_budget in prepare_sector_network"
+        provenance: "scripts/prepare_sector_network.py:build_carbon_budget"
+      - change: "exogenous cost / price / WACC pathway"
+        anchor: "data/custom_costs.csv rows -> costs.custom_cost_fn -> overwrite_costs (NOT costs.overwrites)"
+        provenance: "scripts/process_cost_data.py:overwrite_costs"
+      - change: "exogenous demand total or profile"
+        anchor: "load.scaling_factor in add_electricity; the energy-totals chain for sector demands; supplement_synthetic/manual_adjustments must be disabled"
+        provenance: "scripts/add_electricity.py:scaling_factor; scripts/build_electricity_demand.py:supplement_synthetic"
+      - change: "partner model's capacity decisions as floors/ceilings"
+        anchor: "data/agg_p_nom_minmax.csv + CCL token -> add_CCL_constraints; or data/custom_powerplants.csv -> add_custom_powerplants"
+        provenance: "scripts/solve_network.py:add_CCL_constraints; scripts/build_powerplants.py:add_custom_powerplants"
+      - change: "one managed run per partner-model timestep per iteration"
+        anchor: "run.scenarios + the {run} wildcard; config/scenarios.yaml; run.prefix per iteration"
+        provenance: "scripts/_helpers.py:get_scenarios; rules/common.smk:scenario_config"
+      - change: "the exchange artefact sent back to the partner model"
+        anchor: "scripts/make_summary.py (rule make_summary) + rules/postprocess.smk make_global_summary"
+        provenance: "scripts/make_summary.py:calculate_market_values; rules/postprocess.smk:make_global_summary"
+      - change: "the iteration loop, damping and convergence test"
+        anchor: "a driver script OUTSIDE the workflow that invokes snakemake per iteration — no rule, wildcard or config key can own a fixed point"
+        provenance: "scripts/_helpers.py:get_scenarios"
+      - change: "internalised (hard) linking as new constraints"
+        anchor: "solving.options.custom_extra_functionality -> the user module's entry function"
+        provenance: "scripts/solve_network.py:custom_extra_functionality"
+    data_dependencies:
+      - input: "the partner model's output tables (demand, capacity, price, budget pathways) in the energy model's technology naming and units"
+        required_for: "one-way-downscaling, iterative-bidirectional-coupling"
+        availability: >
+          must be built — this is the translation layer, and it is where couplings
+          actually fail. The energy model's technology names come from the pinned
+          technology-data release; the partner model's do not. A hand-maintained
+          crosswalk is unavoidable.
+      - input: "data/custom_costs.csv rows keyed (technology, parameter, planning_horizon)"
+        required_for: one-way-downscaling
+        availability: "exists by default as a wired input path (costs.custom_cost_fn); you supply the rows"
+      - input: "data/agg_p_nom_minmax.csv with per-planning-horizon columns"
+        required_for: one-way-downscaling
+        availability: "exists by default in the repo; replace the contents with the partner model's capacity pathway"
+      - input: "electricity.BAU_mincapacities dict"
+        required_for: one-way-downscaling
+        availability: >
+          ABSENT from config.default.yaml despite solving.constraints.BAU being present —
+          you must add it or add_BAU_constraints raises KeyError. Prefer the CCL route.
+    cost_profile:
+      solves: >
+        harmonisation-only: 0 extra. one-way-downscaling: 1 per imported scenario.
+        post-hoc-indicator-linking: 0 extra (post-processing).
+        internalised-linking: 1, but a harder LP — Burghardt ran 6 scenarios.
+        iterative-bidirectional-coupling: (timesteps per iteration) x (iterations), plus
+        the partner model's own runtime per iteration. Odenweller: 14 networks per
+        iteration, and convergence requires at minimum 4 consecutive within-threshold
+        iterations, so >= 5 iterations, i.e. >= 70 solves before you can claim
+        convergence — and that is the floor, not the expectation.
+      relative: >
+        1x for the one-way and post-hoc variants — they are the cheapest methods in this
+        book. 70-200x a single solve for the iterative variant, on top of the partner
+        model's runtime, which is often the larger term.
+      note: >
+        The iterative variant is why Odenweller reduced PyPSA-Eur to 4 nodes,
+        power-only, single-year networks: the coupling multiplies the base case by the
+        timestep count AND the iteration count, so the base case must be small.
+        Budget the partner model too — an IAM re-solved per iteration can dominate. Both
+        directions of mitigation are L0/L1 here (clusters, temporal resolution_elec,
+        sector master switches), and the corpus's choice is to shrink SCOPE rather than
+        resolution, because the returned quantities are hourly market values and
+        capacity factors that coarse snapshots would distort.
+    verifies:
+      - variant: one-way-downscaling
+        check: "abs(n.global_constraints.at['CO2Limit', 'constant'] - imported_budget) < 1e-3 * imported_budget"
+        over: run
+        note: >
+          The imported carbon budget must appear as the actual constraint constant. If it
+          does not, the config write landed on a key the sector chain does not read for
+          this foresight mode, and the run succeeds at the DEFAULT budget — the classic
+          silent coupling failure.
+      - variant: one-way-downscaling
+        check: "abs(n.loads_t.p_set.sum().sum() - imported_annual_demand) < 0.01 * imported_annual_demand"
+        over: run
+        note: >
+          The imported demand must be the demand actually in the network. A mismatch
+          usually means load.supplement_synthetic or load.manual_adjustments patched the
+          series, or scaling_factor was applied on top of an already-scaled input.
+      - variant: iterative-bidirectional-coupling
+        check: "all(max(abs(it[k] - prev[k]) / abs(prev[k]) for k in exchanged) < 0.05 for it, prev in zip(iterates[-4:], iterates[-5:-1]))"
+        over: ensemble
+        note: >
+          Odenweller's criterion, mechanised: <5% relative change in EVERY exchanged
+          parameter across four consecutive iterations. A single within-threshold
+          iteration is not convergence — it is what an oscillation looks like at its
+          turning point.
+      - variant: iterative-bidirectional-coupling
+        check: "len(ns) == n_timesteps * n_iterations"
+        over: ensemble
+        note: >
+          Wrong ensemble size means timesteps or iterations were dropped by wildcard
+          expansion rather than solved, so the exchange artefact was assembled from a
+          partial matrix and the convergence test ran on stale values.
+      - variant: post-hoc-indicator-linking
+        check: "set(downstream_index) <= set(n.generators.carrier.unique()) | set(n.links.carrier.unique())"
+        over: run
+        note: >
+          Every carrier the downstream model expects must exist in the solved network. A
+          missing carrier means the indicator model silently attributes zero material,
+          emissions or land to a technology that was in fact built.
+  - model: pypsa-earth
+    version_anchor:
+      ref: "8435f4c8cc05f30088933b37b7db497ff860dc53"
+      date: "2026-07-25"
+    functionality:
+      - id: scenario-matrix
+        role: >
+          earth's fan-out machinery, and structurally BETTER shaped for a demand coupling
+          than eur's: `scenario.demand` is a first-class wildcard dimension alongside
+          clusters/opts/sopts/planning_horizons, so an imported demand scenario is a
+          wildcard value rather than a config override. Registry status `working`.
+      - id: custom-data-overrides
+        role: >
+          earth's sanctioned "impose it in data, optimise the response" channel:
+          `custom_data.{industry_demand,heat_demand,transport_demand,gas_network,add_existing,...}`
+          toggles reading user tables from data/custom/*. eur has NO registry entry for a
+          general custom-data channel — this is earth's clearest advantage for coupling.
+      - id: end-use-fuel-share-switches
+        role: >
+          the ingestion surface for a partner model's electrification pathway: shift
+          shares per demand scenario and horizon in data/demand/fuel_shares.csv, read by
+          prepare_energy_totals under the {demand} wildcard. Exactly the shape a
+          bottom-up demand model (Duque-Perez's LEAP/HYPAT) produces.
+      - id: co2-cap
+        role: >
+          the electricity-chain route for an imported emissions constraint (Co2L token
+          plus electricity.co2limit). Earth's sector-chain budget lives at
+          `co2_budget.year` and is gated by `co2_budget.enable`, which is FALSE by
+          default — unlike eur, where co2_budget is always populated.
+      - id: emission-pricing
+        role: "the landing point for a partner model's CO2 price (costs.emission_prices.co2)"
+      - id: country-carrier-capacity-limits
+        role: >
+          capacity ingestion via the CCL token, `electricity.agg_p_nom_limits` and
+          data/agg_p_nom_minmax.csv. Note the KEY DIFFERS from eur, where the same
+          surface lives under `solving.agg_p_nom_limits` — a coupling driver written for
+          one model writes the wrong key in the other.
+      - id: bau-minimum-capacities
+        role: >
+          system-wide per-carrier floors, and here the registry says `working` where eur
+          says `partial`: earth gates it on the BAU opts token rather than a
+          solving.constraints key. Still reads electricity.BAU_mincapacities, which is
+          also absent from earth's default config.
+      - id: technology-cost-year
+        role: >
+          the harmonisation lever, plus earth-only machinery eur lacks: `costs.output_currency`,
+          `default_exchange_rate` and `future_exchange_rate_strategy`. For a coupling
+          with a global IAM that reports in USD this is load-bearing, not cosmetic.
+      - id: summary-outputs
+        role: >
+          the return artefact — but a THINNER one than eur's. make_summaries emits costs,
+          capacity, supply, supply_energy, curtailment, metrics, prices and
+          weighted_prices; there is no market-value calculator, so Odenweller's central
+          supply-side return quantity has no extractor here.
+      - id: h2-export-chain
+        role: >
+          earth-only, and a genuine coupling surface: an exogenous export demand in
+          TWh/yr at chosen ports via the `scenario.h2export` wildcard, or endogenous
+          export against a supplied price. The most direct "a partner model told us the
+          demand" surface in either repo. eur's registry lists this as `absent`.
+      - id: workflow-reproducibility
+        role: >
+          the audit trail, and weaker than eur's: pixi.lock plus config, but no n.meta
+          config embedding and no schema validation — so a coupling driver writing a
+          malformed config key fails LATE or silently, where eur fails at workflow start.
+      - id: iterative-impedance-expansion
+        role: >
+          the same iterate-to-threshold precedent as eur, wired through
+          solving.options.{min_iterations,max_iterations}. Not the method.
+      - id: monte-carlo-sampling
+        role: >
+          earth's multi-solve harness (LHS via chaospy/pydoe/scipy, off by default),
+          which eur lacks. It enumerates samples, rewrites the network per sample and
+          collects results — reusable as the per-iteration fan-out, though it samples
+          inputs rather than iterating to a fixed point.
+    available:
+      verdict: assemble
+      how: >
+        Same verdict as eur, reached along a different route, and the asymmetry is worth
+        stating. Earth's demand-ingestion surface is STRONGER: `scenario.demand` is a
+        wildcard dimension, so an imported demand scenario is a first-class run axis
+        (prepare_energy_totals and build_industry_demand read `snakemake.wildcards.demand`),
+        and `custom_data.*` plus data/demand/fuel_shares.csv give a sanctioned channel for
+        externally-produced sectoral demand that eur has no registry entry for. Earth also
+        has `costs.country_specific_data` for a per-country cost directory and the
+        currency-conversion machinery a global-IAM coupling needs. `load_options.{source,
+        scale,prediction_year,weather_year}` is the electricity-side demand route, read by
+        build_demand_profiles. Capacity ingestion works through the same CCL/BAU/
+        custom_powerplants surfaces as eur, with the keys in different places. Emissions
+        come in via the Co2L token or `co2_budget.year`. The return direction is served by
+        make_summaries. So again: wiring over working surfaces.
+      missing: >
+        The same procedure steps as eur — 1, 6, 7, 8 and 9 have no handle, and the
+        ITERATION LOOP plus convergence test is a driver outside the workflow. Earth is
+        additionally WEAKER in four specific places: (1) no market-value calculator in
+        make_summary, so Odenweller's supply-side return quantity must be written from
+        n.statistics.market_value directly; (2) no cross-scenario global-summary rule, so
+        assembling one exchange artefact from a whole matrix is manual; (3) no config
+        schema validation, so a driver writing a misspelled key fails late instead of at
+        workflow start — the worst possible failure mode for an automated loop; (4) no
+        `cost-data-pipeline` registry entry and no custom_cost_fn equivalent, so an
+        imported cost pathway goes in through `costs.country_specific_data` directories or
+        the config's marginal_cost dict rather than a per-(technology, parameter, horizon)
+        table. `perfect-foresight` is also absent here, which is often the very capability
+        that motivated bringing an IAM in.
+      provenance: "Snakefile:scenario; scripts/prepare_energy_totals.py:demand_sc; scripts/make_summary.py:make_summaries"
+    levers:
+      - key: "co2_budget.enable"
+        effect: >
+          Master switch for the sector-chain carbon budget. FALSE by default, unlike eur
+          where co2_budget is always a populated mapping — so an imported budget needs
+          this flipped as well as written.
+        default: "false"
+        provenance: "config.default.yaml:co2_budget; scripts/prepare_sector_network.py:add_co2_budget"
+      - key: "co2_budget.year"
+        effect: >
+          Per-horizon emission share of the base year — the landing shape for an IAM's
+          budget pathway, same idea as eur's co2_budget but nested one level deeper and
+          with a different default trajectory.
+        default: "{2020: 1.0, 2025: 0.85, 2030: 0.7, 2035: 0.55, 2040: 0.4, 2045: 0.25, 2050: 0.1}"
+        provenance: "config.default.yaml:year; scripts/prepare_sector_network.py:add_co2_budget"
+      - key: "co2_budget.co2base_value"
+        effect: >
+          Which baseline the imported fractions are applied to ('co2limit' or an
+          automatic emission base year). If the partner model's fractions are relative to
+          a different baseline, this is where the mismatch enters silently.
+        default: "'co2limit'"
+        provenance: "config.default.yaml:co2base_value; scripts/prepare_sector_network.py:add_co2_budget"
+      - key: "load_options.source"
+        effect: >
+          Selects the electricity demand source ('gegis' by default). The switch to
+          change when the demand is supposed to come from outside; read by
+          build_demand_profiles.
+        default: "'gegis'"
+        provenance: "config.default.yaml:source; scripts/build_demand_profiles.py:load_source"
+      - key: "load_options.scale"
+        effect: >
+          Multiplies the load (1.3 = 30% more). Accepts a dict as well as a scalar, so a
+          per-country growth factor from a partner model lands here directly — more
+          expressive than eur's single-scalar load.scaling_factor.
+        default: "1"
+        provenance: "config.default.yaml:scale; scripts/build_demand_profiles.py:scale"
+      - key: "load_options.prediction_year"
+        effect: >
+          The projection year of the GEGIS demand dataset. A harmonisation lever: it must
+          match the partner model's demand year or the imported and native demands refer
+          to different futures.
+        default: "2030"
+        provenance: "config.default.yaml:prediction_year; scripts/build_demand_profiles.py:prediction_year"
+      - key: "load_options.weather_year"
+        effect: >
+          The weather year the demand profile shape is drawn from. Harmonisation lever —
+          the two models must agree on it or a returned capacity factor is not comparable
+          to the partner model's expectation.
+        default: "2013"
+        provenance: "config.default.yaml:weather_year; scripts/build_demand_profiles.py:weather_year"
+      - key: "demand_data.base_year"
+        effect: >
+          Base year for the sector-chain energy totals — earth's counterpart to eur's
+          energy.energy_totals_year, and the anchor an external demand model's projection
+          must be stated against.
+        default: "2019"
+        provenance: "config.default.yaml:base_year; Snakefile:prepare_energy_totals"
+      - key: "scenario.demand"
+        effect: >
+          A wildcard DIMENSION for the demand scenario, read as
+          snakemake.wildcards.demand by prepare_energy_totals, build_base_industry_totals
+          and build_industry_demand. Earth's structural advantage for a demand coupling:
+          the imported scenario is a run axis, not a config override, so several imported
+          scenarios coexist in one result tree.
+        default: "['AB']"
+        provenance: "config.default.yaml:demand; scripts/prepare_energy_totals.py:demand_sc"
+      - key: "custom_data.industry_demand"
+        effect: >
+          Reads industrial demand from user tables instead of deriving it — the
+          sanctioned channel for an externally-produced sectoral demand. eur has no
+          registry-level equivalent.
+        default: "false"
+        provenance: "config.default.yaml:industry_demand; scripts/prepare_sector_network.py:custom_data"
+      - key: "custom_data.transport_demand"
+        effect: >
+          Same channel for transport demand, read in prepare_transport_data. Part of the
+          custom_data family that makes earth the easier target for a demand-side
+          coupling.
+        default: "false"
+        provenance: "config.default.yaml:transport_demand; scripts/prepare_transport_data.py:transport_demand"
+      - key: "custom_data.add_existing"
+        effect: >
+          Adds externally-specified existing capacities at solve time — the route for a
+          partner model's already-decided build.
+        default: "false"
+        provenance: "config.default.yaml:add_existing; scripts/solve_network.py:add_existing"
+      - key: "costs.country_specific_data"
+        effect: >
+          Points the cost pipeline at a per-country cost directory. Earth's substitute for
+          eur's custom_cost_fn: a whole directory of tables rather than a row-level
+          override, so importing a partner model's cost pathway means maintaining a cost
+          directory. Consumed in the Snakefile, which errors if it disagrees with
+          `countries`.
+        default: "'' (empty)"
+        provenance: "config.default.yaml:country_specific_data; Snakefile:country_data"
+      - key: "costs.output_currency"
+        effect: >
+          Target currency for all cost outputs, with default_exchange_rate and
+          future_exchange_rate_strategy alongside. Earth-only, and load-bearing for a
+          coupling with a global model reporting in USD — eur has no currency machinery
+          at all.
+        default: "'EUR'"
+        provenance: "config.default.yaml:output_currency; scripts/process_cost_data.py:load_costs"
+      - key: "costs.emission_prices.co2"
+        effect: "The landing point for a partner model's CO2 price, added to marginal costs by emission factor."
+        default: "0.0"
+        provenance: "config.default.yaml:emission_prices; scripts/prepare_network.py:add_emission_prices"
+      - key: "electricity.agg_p_nom_limits.file"
+        effect: >
+          Per-country per-carrier capacity min/max table for the CCL constraint. Note the
+          key path: `electricity.agg_p_nom_limits` here versus
+          `solving.agg_p_nom_limits` in eur.
+        default: "'data/agg_p_nom_minmax.csv'"
+        provenance: "config.default.yaml:agg_p_nom_limits; scripts/solve_network.py:add_CCL_constraints"
+      - key: "electricity.custom_powerplants"
+        effect: >
+          Amends the powerplant database from data/custom_powerplants.csv — plant-level
+          build decisions from a partner model as existing fleet.
+        default: "false"
+        provenance: "config.default.yaml:custom_powerplants; scripts/build_powerplants.py:add_custom_powerplants"
+      - key: "run.name"
+        effect: >
+          Isolates a result tree per coupling iteration. Weaker than eur, which has both
+          run.prefix and run.name plus a scenarios file; earth has only the one string.
+        default: "'' (empty)"
+        provenance: "config.default.yaml:name; Snakefile:RDIR"
+      - key: "run.allow_scenario_failure"
+        effect: >
+          Whether one failed scenario aborts the matrix. For an automated coupling loop
+          this is the difference between a partial exchange artefact silently propagating
+          and the driver stopping — set it FALSE deliberately.
+        default: "false"
+        provenance: "config.default.yaml:allow_scenario_failure; Snakefile:allow_scenario_failure"
+    assembly:
+      - step: >
+          Partition scope and harmonise assumptions first, as on eur — but note earth's
+          extra harmonisation axis: currency. `costs.output_currency`,
+          `default_exchange_rate` and `future_exchange_rate_strategy` must be set
+          consistently with the partner model, and there is no eur counterpart to copy.
+          Also pin demand_data.base_year and load_options.{weather_year,prediction_year}.
+        uses: [technology-cost-year, weather-year-selection]
+        config: "costs.{year,output_currency,default_exchange_rate,future_exchange_rate_strategy}; demand_data.base_year; load_options.{weather_year,prediction_year}"
+        code: null
+        provenance: "scripts/process_cost_data.py:load_costs; scripts/build_demand_profiles.py:prediction_year"
+      - step: >
+          Ingest an external demand projection as a WILDCARD VALUE, not a config
+          override: add a `scenario.demand` entry and supply the matching rows in
+          data/demand/fuel_shares.csv and the energy-totals inputs. This is
+          Duque-Perez's route and it is earth's best-shaped coupling surface —
+          prepare_energy_totals reads snakemake.wildcards.demand, so several imported
+          demand scenarios coexist as parallel runs.
+        uses: [scenario-matrix, end-use-fuel-share-switches]
+        config: "scenario.demand; sector.land_transport_electric_share"
+        code: "data/demand/fuel_shares.csv rows per demand scenario"
+        provenance: "scripts/prepare_energy_totals.py:demand_sc; scripts/prepare_energy_totals.py:fuel_shares"
+      - step: >
+          For sectoral demand tables that do not fit the fuel-shares shape, use the
+          custom_data channel: flip custom_data.{industry_demand,transport_demand,
+          heat_demand} and supply the tables. This is the sanctioned override path and
+          has no eur equivalent.
+        uses: [custom-data-overrides]
+        config: "custom_data.{industry_demand,transport_demand,heat_demand}"
+        code: "data/custom/* tables"
+        provenance: "scripts/prepare_sector_network.py:custom_data; scripts/prepare_transport_data.py:transport_demand"
+      - step: >
+          Ingest the electricity-side demand through load_options: set `source` away from
+          gegis if the series is supplied, and use `scale` (which accepts a per-country
+          dict, unlike eur's scalar) for an imported growth factor.
+        uses: []
+        config: "load_options.{source,scale,prediction_year}"
+        code: null
+        provenance: "scripts/build_demand_profiles.py:load_source; scripts/build_demand_profiles.py:scale"
+      - step: >
+          Ingest the emissions constraint: flip `co2_budget.enable` (false by default,
+          unlike eur) and write the partner model's trajectory into `co2_budget.year`,
+          checking `co2base_value` matches the baseline the fractions are relative to.
+          For electricity-only couplings the Co2L opts token and electricity.co2limit
+          are the simpler route.
+        uses: [co2-cap, emission-pricing]
+        config: "co2_budget.{enable,year,co2base_value}; opts Co2L<f>; costs.emission_prices.co2"
+        code: null
+        provenance: "scripts/prepare_sector_network.py:add_co2_budget; scripts/prepare_network.py:add_co2limit"
+      - step: >
+          Ingest capacity decisions through the CCL route
+          (`electricity.agg_p_nom_limits` + data/agg_p_nom_minmax.csv + the CCL opts
+          token), data/custom_powerplants.csv, or custom_data.add_existing. Mind the key
+          path difference from eur.
+        uses: [country-carrier-capacity-limits, bau-minimum-capacities, existing-baseyear-brownfield]
+        config: "electricity.agg_p_nom_limits.file; electricity.custom_powerplants; custom_data.add_existing; opts CCL/BAU"
+        code: "data/agg_p_nom_minmax.csv; data/custom_powerplants.csv"
+        provenance: "scripts/solve_network.py:add_CCL_constraints; scripts/build_powerplants.py:add_custom_powerplants; scripts/solve_network.py:add_existing"
+      - step: >
+          Extract the return quantities. make_summaries gives costs, capacity, supply,
+          supply_energy, curtailment, metrics, prices and weighted_prices. There is no
+          market_value calculator here, so the supply-side market values Odenweller
+          returns must be computed directly from n.statistics.market_value in a new
+          calculator — a small but real addition eur does not need.
+        uses: [summary-outputs, nodal-marginal-prices]
+        config: null
+        code: "scripts/make_summary.py (add a market-value and capacity-factor calculator)"
+        provenance: "scripts/make_summary.py:make_summaries; scripts/make_summary.py:calculate_weighted_prices"
+      - step: >
+          Write the iteration driver outside snakemake — identical to eur, with two extra
+          precautions. Set run.allow_scenario_failure to false so a partial matrix cannot
+          silently feed the convergence test, and validate the config the driver writes
+          yourself: earth has no schema validation, so a misspelled key is accepted and
+          ignored rather than failing at workflow start.
+        uses: [workflow-reproducibility, monte-carlo-sampling]
+        config: "run.name per iteration; run.allow_scenario_failure: false"
+        code: "new driver script outside the workflow; monte_carlo.py is the nearest fan-out shape to adapt"
+        provenance: "pypsa/optimization/abstract.py:optimize_transmission_expansion_iteratively"
+      - step: >
+          Run the not-linked control and report the iterate trajectory, as on eur.
+        uses: [scenario-matrix]
+        config: "a second scenario.demand value with the feedback quantities frozen"
+        code: null
+        provenance: "Snakefile:scenario"
+    boundary:
+      - variant: harmonisation-only
+        rung: L1
+        note: >
+          Config only, but with MORE to align than eur: costs.output_currency,
+          default_exchange_rate and future_exchange_rate_strategy on top of the usual
+          vintages and base years. For a global-IAM coupling this is the difference
+          between comparable and incomparable costs, and eur has no equivalent knobs.
+      - variant: one-way-downscaling
+        rung: L3
+        note: >
+          The cheapest route in either model IF the imported quantity is a demand
+          scenario: `scenario.demand` is a wildcard dimension, so it is L1 for the config
+          and L3 only for the fuel_shares/energy-totals rows. The `custom_data.*` channel
+          and `h2export` (an exogenous export demand in TWh/yr at named ports) have no
+          eur counterparts. L3 rather than L1 because the tables must be authored; the
+          input paths are already wired.
+      - variant: post-hoc-indicator-linking
+        rung: L2
+        note: >
+          As eur, slightly more work: make_summaries is thinner (no market values, no
+          capacity factors, no cross-scenario global summary), so a downstream model
+          usually reads the solved .nc directly rather than the csvs.
+      - variant: internalised-linking
+        rung: L5
+        note: >
+          Same as eur in kind — new constraints via the single extra_functionality entry
+          point — but harder in practice: earth's sector chain is less battle-tested
+          (existing-baseyear-brownfield is `partial`, the heating brownfield call is
+          commented out), so expect to debug the base sector network before any new
+          material or macro constraint is meaningful. Compose with
+          `custom-constraints-with-linopy`.
+      - variant: iterative-bidirectional-coupling
+        rung: L5
+        note: >
+          Same bespoke driver as eur, with three earth-specific risks. No config schema
+          validation, so a driver writing a bad key fails late or silently — the worst
+          failure mode for an unattended loop. No global-summary rule, so the exchange
+          artefact is assembled by hand from per-run csvs. No market-value calculator, so
+          the central return quantity must be written. Offsetting all of that:
+          monte_carlo.py is a real many-solve harness to adapt, and earth's base cases
+          (single country, fewer nodes) make the timesteps x iterations product far more
+          affordable than a sector-coupled eur run.
+    where:
+      - change: "external demand scenario as a run axis"
+        anchor: "scenario.demand wildcard -> prepare_energy_totals / build_industry_demand reading snakemake.wildcards.demand; data/demand/fuel_shares.csv"
+        provenance: "scripts/prepare_energy_totals.py:demand_sc; scripts/build_industry_demand.py:demand"
+      - change: "externally-produced sectoral demand tables"
+        anchor: "custom_data.{industry_demand,transport_demand,heat_demand} -> data/custom/*"
+        provenance: "scripts/prepare_sector_network.py:custom_data; scripts/prepare_transport_data.py:transport_demand"
+      - change: "electricity-side imported demand"
+        anchor: "load_options.{source,scale,prediction_year} -> build_demand_profiles"
+        provenance: "scripts/build_demand_profiles.py:build_demand_profiles"
+      - change: "imported emissions trajectory"
+        anchor: "co2_budget.{enable,year,co2base_value} -> add_co2_budget in prepare_sector_network; or Co2L token -> add_co2limit"
+        provenance: "scripts/prepare_sector_network.py:add_co2_budget"
+      - change: "imported cost pathway / currency alignment"
+        anchor: "costs.country_specific_data cost directory (Snakefile) + costs.output_currency -> load_costs"
+        provenance: "Snakefile:country_data; scripts/process_cost_data.py:load_costs"
+      - change: "imported capacity decisions"
+        anchor: "electricity.agg_p_nom_limits + data/agg_p_nom_minmax.csv -> add_CCL_constraints; data/custom_powerplants.csv -> add_custom_powerplants"
+        provenance: "scripts/solve_network.py:add_CCL_constraints; scripts/build_powerplants.py:add_custom_powerplants"
+      - change: "market values for the return artefact (not present)"
+        anchor: "scripts/make_summary.py — add a calculator alongside calculate_weighted_prices"
+        provenance: "scripts/make_summary.py:calculate_weighted_prices"
+      - change: "the iteration loop, damping and convergence test"
+        anchor: "a driver script outside the workflow; monte_carlo.py is the nearest in-repo many-solve shape"
+        provenance: "scripts/monte_carlo.py:monte_carlo_sampling_chaospy"
+    data_dependencies:
+      - input: "data/demand/fuel_shares.csv rows for each imported demand scenario"
+        required_for: one-way-downscaling
+        availability: >
+          exists by default with rows for the shipped demand scenarios; you add a row set
+          per imported scenario. Read by prepare_energy_totals under the {demand} wildcard.
+      - input: "data/custom/* sectoral demand tables"
+        required_for: one-way-downscaling
+        availability: "must be built — the custom_data switches are false by default and the tables are user-supplied"
+      - input: "a per-country cost directory for costs.country_specific_data"
+        required_for: one-way-downscaling
+        availability: >
+          must be built, and the Snakefile errors if the directory name disagrees with
+          `countries`. Earth has no row-level custom_costs.csv equivalent, so importing a
+          cost pathway is a directory of tables, not a few rows.
+      - input: "data/agg_p_nom_minmax.csv with the partner model's capacity pathway"
+        required_for: one-way-downscaling
+        availability: "exists by default in the repo; replace the contents"
+      - input: "regional cost, demand and technology data of adequate grade for the study country"
+        required_for: "iterative-bidirectional-coupling, one-way-downscaling"
+        availability: >
+          region-dependent and the usual earth blocker — a coupling can only be as
+          credible as the weaker side of the boundary. Check
+          cookbooks/pypsa-earth/data_quality before promising a coupled result for a
+          C/D-grade country: a converged exchange over poor data is a precise number
+          about nothing.
+    cost_profile:
+      solves: >
+        Same formulas as eur. one-way-downscaling: 1 per imported scenario, and cheaper
+        to ORGANISE here because scenario.demand makes several scenarios one matrix.
+        iterative-bidirectional-coupling: (timesteps per iteration) x (iterations) plus
+        the partner model's runtime, >= 5 iterations before convergence can be claimed
+        under Odenweller's 4-consecutive-window criterion.
+      relative: >
+        1x for one-way and post-hoc. 70-200x for the iterative variant, but on a smaller
+        base case — earth's typical single-country 10-14-node runs make the iteration
+        product far more affordable than eur's continental sector-coupled networks.
+      note: >
+        The model-choice tradeoff runs TOWARD earth for the iterative variant: base
+        cases are cheap, monte_carlo.py supplies a many-solve harness, and
+        scenario.demand is the right shape for demand exchange. It runs AWAY from earth
+        on everything else — no perfect foresight (often the reason an IAM was brought in
+        at all), no schema validation to catch a driver's bad config write, no
+        global-summary rule, no market-value extractor, and data quality as the binding
+        constraint on whether the exchange means anything.
+    verifies:
+      - variant: one-way-downscaling
+        check: "abs(n.loads_t.p_set.sum().sum() * n.snapshot_weightings.objective.mean() - imported_annual_demand) < 0.01 * imported_annual_demand"
+        over: run
+        note: >
+          The imported demand must be the demand in the network, weighted by the snapshot
+          weightings (earth's default sopts is 144h, so unweighted sums are wrong by two
+          orders of magnitude). A mismatch means load_options.scale was applied on top of
+          an already-scaled series, or the {demand} wildcard did not reach
+          prepare_energy_totals.
+      - variant: one-way-downscaling
+        check: "'CO2Limit' in n.global_constraints.index"
+        over: run
+        note: >
+          Earth's co2_budget.enable is FALSE by default, so writing co2_budget.year
+          without flipping enable produces a run with NO emissions constraint at all —
+          which succeeds, looks plausible, and answers a different question. The single
+          most likely silent failure of a coupling into earth.
+      - variant: iterative-bidirectional-coupling
+        check: "all(max(abs(it[k] - prev[k]) / abs(prev[k]) for k in exchanged) < 0.05 for it, prev in zip(iterates[-4:], iterates[-5:-1]))"
+        over: ensemble
+        note: >
+          Odenweller's criterion, as on eur. With no schema validation here, ALSO assert
+          that each iteration's written config keys were actually read — a silently
+          ignored key produces a perfectly converged loop around an unchanging model.
+      - variant: harmonisation-only
+        check: "costs_table.attrs.get('currency') == partner_model_currency"
+        over: run
+        note: >
+          Earth converts costs into costs.output_currency; the partner model may not.
+          An unnoticed currency mismatch is a uniform multiplicative error on every
+          capital cost, which looks like a modelling disagreement rather than a bug.

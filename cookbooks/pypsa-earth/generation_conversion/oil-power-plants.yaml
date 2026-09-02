@@ -1,0 +1,243 @@
+id: oil-power-plants
+title: Oil-fired power plants (HFO/diesel steam and gensets)
+summary: >
+  Generation from petroleum fuels — heavy fuel oil (HFO) steam plants, diesel
+  power stations and gensets — modelled as a single dispatchable "oil" carrier;
+  disproportionately important in island systems and weak-grid Global-South
+  contexts where diesel/HFO is the incumbent baseload and backup technology.
+when_to_use:
+  - "diesel generators / diesel power plants"
+  - "HFO plants / heavy fuel oil power stations"
+  - "oil-fired power plants"
+  - "phase out oil generation / retire diesel plants"
+  - "island grid running on diesel"
+  - "backup gensets / emergency generators"
+  - "fuel oil electricity generation"
+  - "replace diesel with solar and storage"
+  - "petroleum products in the power mix"
+  - "expensive thermal generation in small grids"
+  - "known in pypsa-eur as: oil"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        The existing utility-scale oil fleet is modelled by default: "oil" is in
+        electricity.conventional_carriers, plants come from the
+        powerplantmatching database (rule build_powerplants; sources GEO, GPD,
+        GEM; Fueltype "Oil" collects oil/diesel/gasoline/petrol synonyms,
+        fuel_to_lifetime Oil 40 years in configs/powerplantmatching_config.yaml),
+        the Fueltype is lowercased to carrier "oil" in load_powerplants, and
+        attach_conventional_generators adds the plants as non-extendable
+        Generators aggregated by (bus, carrier, grouping_year) with
+        marginal/capital cost, efficiency and lifetime from the "oil" row of the
+        technology-data costs file (marginal_cost = VOM + fuel/efficiency in
+        load_costs, so oil sits at the expensive end of the merit order and is
+        dispatched as peaker/last resort). CO2 emissions of the oil carrier come
+        from the costs "CO2 intensity" and bind under Co2L/Ep opts. In sector
+        runs, convert_conventional_generators_to_links turns every oil generator
+        into a Link drawing from an explicit oil fuel bus (nodal by default via
+        sector.oil.spatial_oil) with emissions accounted on the link
+        (sector.conventional_generation maps oil -> oil by default).
+      mechanism: >
+        Snakefile rule build_powerplants -> resources/<run>/powerplants.csv;
+        rule add_electricity runs scripts/add_electricity.py which calls
+        load_powerplants (Fueltype -> carrier, vintage grouping via
+        existing_capacities.grouping_years_power) and
+        attach_conventional_generators. Costs come from rule retrieve_cost_data
+        / process_cost_data.py::load_costs. Sector workflow:
+        prepare_sector_network.py::convert_conventional_generators_to_links
+        removes the oil generators and re-adds them as Links (bus0 = oil fuel
+        bus from add_carrier_buses, bus2 = co2 atmosphere); the oil bus gets an
+        extendable fuel Generator at marginal_cost = costs.at["oil","fuel"] and
+        a Store seeded with fossil_reserves.oil.
+      not_covered: >
+        Small distributed and behind-the-meter backup gensets are essentially
+        invisible: GEO/GPD/GEM catalogue utility-scale stations, and the
+        OSM-generator route into powerplantmatching (EXTERNAL_DATABASE via
+        convert_osm_to_pm, which maps diesel/gasoline tags to Oil) is commented
+        out of matching_sources by default — so self-generation during outages
+        and captive gensets are not represented. A single "oil" carrier lumps
+        HFO steam, diesel engines and gasoline gensets together with one cost/
+        efficiency row — no HFO-vs-diesel distinction. Oil is not extendable by
+        default (not in electricity.extendable_carriers.Generator), and when
+        made extendable candidates are only placed at buses already hosting oil
+        plants (carrier_buses in attach_conventional_generators). No
+        unit-commitment, min-load, start-up or ramping detail for gensets. No
+        fuel supply chain (import logistics, country-specific fuel prices,
+        subsidies) in the electricity-only workflow — fuel enters as one flat
+        EUR/MWhth price in the costs file; sector runs add only a single fuel
+        price at the oil bus plus an optional finite reserve.
+      provenance: "scripts/add_electricity.py:attach_conventional_generators; configs/powerplantmatching_config.yaml:fuel_to_lifetime"
+    levers:
+      - key: electricity.conventional_carriers
+        effect: "Include/exclude the existing oil fleet (remove 'oil' for an immediate phase-out of existing HFO/diesel plants)."
+        default: "[nuclear, oil, OCGT, CCGT, coal, lignite, geothermal, biomass]"
+        provenance: "config.default.yaml:conventional_carriers; scripts/add_electricity.py:attach_conventional_generators"
+      - key: electricity.extendable_carriers.Generator
+        effect: >
+          Add "oil" to allow capacity expansion — extendable oil generators are
+          created only at buses that already host oil plants.
+        default: "[solar, onwind, offwind-ac, offwind-dc, OCGT]"
+        provenance: "config.default.yaml:extendable_carriers; scripts/add_electricity.py:carrier_buses"
+      - key: electricity.powerplants_filter
+        effect: "Pandas query on the fleet (DateIn/DateOut) — tightening it retires or excludes oil units by commissioning/retirement year (a dated phase-out of old diesel plants)."
+        default: "(DateOut >= 2022 or DateOut != DateOut) and (DateIn <= 2023 or DateIn != DateIn)"
+        provenance: "config.default.yaml:powerplants_filter; scripts/build_powerplants.py:main_query"
+      - key: electricity.custom_powerplants
+        effect: "'merge'/'replace' injects user rows from data/custom_powerplants.csv (Fueltype Oil) — the route for HFO/diesel stations missing from the global databases, common in small Global-South grids."
+        default: "false"
+        provenance: "scripts/build_powerplants.py:add_custom_powerplants"
+      - key: electricity.agg_p_nom_limits
+        effect: >
+          Country-wise min/max capacity limits per carrier (CSV at
+          data/agg_p_nom_minmax.csv), enforced by add_CCL_constraints when "CCL"
+          is in the opts wildcard — the hook for national oil build caps or
+          keeping a mandated diesel reserve margin.
+        default: "file: data/agg_p_nom_minmax.csv, include_existing: false"
+        provenance: "scripts/solve_network.py:add_CCL_constraints"
+      - key: costs.year
+        effect: "Selects the technology-data cost year (costs_<year>.csv) from which the 'oil' row (investment, VOM, fuel, efficiency, lifetime, CO2 intensity) is taken."
+        default: "2030"
+        provenance: "config.default.yaml:technology_data_version; scripts/process_cost_data.py:load_costs"
+      - key: electricity.co2limit
+        effect: "Annual CO2 cap applied when 'Co2L' (without a numeric suffix) is in opts — the main pressure squeezing oil out of the dispatch."
+        default: "7.75e+7 (European default; adjust for the target region)"
+        provenance: "config.default.yaml:co2limit; scripts/prepare_network.py:add_co2limit"
+      - key: electricity.automatic_emission
+        effect: "true: derive the Co2L base from historical national emissions of the modelled countries (automatic_emission_base_year) instead of co2base/co2limit — useful where no bespoke cap exists for a Global-South region."
+        default: "false"
+        provenance: "config.default.yaml:automatic_emission; scripts/prepare_network.py:emission_extractor"
+      - key: sector.conventional_generation
+        effect: "Generator->fuel-carrier map for sector runs; the 'oil: oil' entry makes convert_conventional_generators_to_links rebuild oil power plants as Links from the oil fuel bus (remove the entry to leave them as plain generators)."
+        default: "OCGT: gas, CCGT: gas, oil: oil, coal: coal, lignite: lignite, biomass: biomass"
+        provenance: "config.default.yaml:conventional_generation; scripts/prepare_sector_network.py:convert_conventional_generators_to_links"
+      - key: sector.oil.spatial_oil
+        effect: "true: one oil fuel bus per node ('<node> oil'); false: a single global 'Earth oil' bus — controls whether oil-fired links draw from nodal or pooled fuel supply in sector runs."
+        default: "true"
+        provenance: "config.default.yaml:spatial_oil; scripts/prepare_sector_network.py:spatial.oil.nodes"
+      - key: fossil_reserves.oil
+        effect: "Initial energy (TWh) in the oil-bus Store created by add_carrier_buses in sector runs — a finite (non-cyclic) national oil reserve instead of unlimited fuel."
+        default: "100"
+        provenance: "config.default.yaml:fossil_reserves; scripts/prepare_sector_network.py:add_carrier_buses"
+    boundary:
+      - variant: "run without oil / phase out the existing HFO-diesel fleet"
+        rung: L0
+        note: "remove 'oil' from electricity.conventional_carriers (or tighten electricity.powerplants_filter for a dated retirement)"
+      - variant: "allow new oil/diesel build at existing sites (island expansion)"
+        rung: L1
+        note: >
+          add 'oil' to electricity.extendable_carriers.Generator; candidates
+          appear only at buses already hosting oil plants
+      - variant: "cap or force national oil capacity (e.g. mandated diesel reserve)"
+        rung: L1
+        note: >
+          electricity.agg_p_nom_limits + 'CCL' in scenario.opts; author rows for
+          carrier oil in data/agg_p_nom_minmax.csv
+      - variant: "squeeze oil out via emissions cap or carbon price"
+        rung: L1
+        note: >
+          'Co2L' in opts (electricity.co2limit / co2base scaling /
+          electricity.automatic_emission) or 'Ep' with costs.emission_prices;
+          oil carrier emissions come from the costs CO2 intensity
+      - variant: "local fuel price for HFO/diesel (imported fuel premium)"
+        rung: L1
+        note: >
+          load_costs in process_cost_data.py reads per-attribute overwrites from
+          the costs config (the fuel/investment/VOM/efficiency blocks are present
+          but commented out in config.default.yaml); add costs.fuel: {oil: <EUR/MWhth>}
+          — marginal_cost is recomputed as VOM + fuel/efficiency
+      - variant: "add a specific HFO/diesel plant missing from the global databases"
+        rung: L3
+        note: "row in data/custom_powerplants.csv with Fueltype Oil + electricity.custom_powerplants: merge — frequently needed in Global-South grids where GEO/GPD/GEM coverage is thin"
+      - variant: "pick up OSM-mapped diesel/oil plants"
+        rung: L2
+        note: >
+          uncomment EXTERNAL_DATABASE under matching_sources and
+          fully_included_sources in configs/powerplantmatching_config.yaml; the
+          workflow already builds resources/<run>/powerplants_osm2pm.csv via
+          convert_osm_to_pm (diesel/gasoline tags -> Fueltype Oil)
+      - variant: "country-specific static derating / p_max_pu for oil plants"
+        rung: L1
+        note: >
+          no entry in config.default.yaml, but rule add_electricity reads a
+          top-level conventional: block (config.get) and
+          attach_conventional_generators applies per-carrier attributes, either
+          a scalar or a per-country CSV via conventional_inputs — add
+          conventional: {oil: {p_max_pu: ...}}; config-only, no code edit
+      - variant: "behind-the-meter backup gensets during outages (proxy)"
+        rung: L3
+        note: >
+          honest gap — not modelled and invisible to powerplantmatching; a cheap
+          proxy is aggregated per-region rows in data/custom_powerplants.csv
+          (Fueltype Oil, Set PP) sized to the estimated genset stock, optionally
+          derated via the conventional: block; there is no outage/reliability
+          machinery to trigger them endogenously
+      - variant: "split HFO steam vs diesel genset into separate carriers"
+        rung: L3
+        note: >
+          powerplantmatching lumps everything into Fueltype Oil; needs new
+          costs rows (technology-data has one 'oil' row) plus localised edits to
+          the Fueltype/carrier mapping (convert_osm_to_pm in
+          build_powerplants.py, carrier_dict in load_powerplants) and to
+          electricity.conventional_carriers
+      - variant: "greenfield oil at arbitrary buses (not just existing sites)"
+        rung: L2
+        note: >
+          the extendable block in attach_conventional_generators derives
+          carrier_buses from the existing fleet; small localised edit to offer
+          candidates at all buses (or seed sites via custom_powerplants, L3)
+      - variant: "oil plants drawing from an explicit fuel bus in sector runs"
+        rung: L0
+        note: >
+          default: sector.conventional_generation maps oil -> oil and
+          convert_conventional_generators_to_links rebuilds them as Links;
+          sector.oil.spatial_oil toggles nodal vs single global oil bus,
+          fossil_reserves.oil seeds a finite reserve
+      - variant: "genset unit commitment / min-load / start-up costs"
+        rung: L5
+        note: "no committable/ramping machinery is applied to conventional generators in add_electricity; bespoke component settings and solve-time logic would be needed"
+    where:
+      - change: "fleet attachment + extendable conventional generators + per-carrier attribute overrides"
+        anchor: "scripts/add_electricity.py::attach_conventional_generators (conventional_config/conventional_inputs args; extendable candidates from carrier_buses)"
+        provenance: "scripts/add_electricity.py:attach_conventional_generators; scripts/add_electricity.py:conventional_inputs"
+      - change: "Fueltype -> carrier mapping and vintage grouping"
+        anchor: "scripts/add_electricity.py::load_powerplants (carrier_dict, grouping via existing_capacities.grouping_years_power)"
+        provenance: "scripts/add_electricity.py:load_powerplants; scripts/add_electricity.py:carrier_dict"
+      - change: "fleet construction and matching config (Oil synonyms, lifetime, OSM external database)"
+        anchor: "Snakefile rule build_powerplants; configs/powerplantmatching_config.yaml (matching_sources, fuel_to_lifetime Oil); scripts/build_powerplants.py::convert_osm_to_pm"
+        provenance: "configs/powerplantmatching_config.yaml:matching_sources; scripts/build_powerplants.py:convert_osm_to_pm"
+      - change: "top-level conventional: block plumbing (scalar or per-country CSV attributes)"
+        anchor: "Snakefile rule add_electricity (params conventional + conventional_* inputs)"
+        provenance: "Snakefile:conventional=config.get"
+      - change: "cost assumptions / fuel-price overwrites"
+        anchor: "scripts/process_cost_data.py::load_costs; rule retrieve_cost_data (fallback data/costs.csv row 'oil')"
+        provenance: "scripts/process_cost_data.py:load_costs; data/costs.csv:oil,2030,fuel"
+      - change: "country-wise capacity limits"
+        anchor: "scripts/solve_network.py::add_CCL_constraints (activated by 'CCL' in opts)"
+        provenance: "scripts/solve_network.py:add_CCL_constraints"
+      - change: "emissions cap / carbon price on oil dispatch"
+        anchor: "scripts/prepare_network.py::add_co2limit / add_emission_prices ('Co2L' / 'Ep' in opts)"
+        provenance: "scripts/prepare_network.py:add_co2limit; scripts/prepare_network.py:add_emission_prices"
+      - change: "sector-run conversion to fuel-bus links"
+        anchor: "scripts/prepare_sector_network.py::convert_conventional_generators_to_links; ::add_carrier_buses (oil bus, fuel generator, reserve store)"
+        provenance: "scripts/prepare_sector_network.py:convert_conventional_generators_to_links; scripts/prepare_sector_network.py:add_carrier_buses"
+    data_dependencies:
+      - input: "powerplantmatching database (GEO, GPD, GEM; Fueltype Oil)"
+        required_for: "existing fleet and the buses where extendable oil can be placed"
+        availability: "region-dependent — utility-scale HFO/diesel stations only; small-grid and island plants are often missing, verify resources/<run>/powerplants.csv for the target countries"
+      - input: "resources/<run>/osm/clean/all_clean_generators.csv -> powerplants_osm2pm.csv"
+        required_for: "OSM-tagged diesel/oil plants via EXTERNAL_DATABASE"
+        availability: "built by the workflow from OSM, but excluded from matching by default (EXTERNAL_DATABASE commented out); quality depends on local OSM tagging"
+      - input: "data/custom_powerplants.csv"
+        required_for: "plants missing from the databases; genset-stock proxies"
+        availability: "template exists by default; rows user-authored"
+      - input: "costs row 'oil' in retrieved technology-data (costs.technology_data_version)"
+        required_for: "capital/marginal cost, fuel price, efficiency, lifetime, CO2 intensity"
+        availability: "exists by default via rule retrieve_cost_data (fallback row in data/costs.csv)"
+      - input: "data/agg_p_nom_minmax.csv"
+        required_for: "country capacity caps/floors (CCL)"
+        availability: "template exists by default; rows must be authored for oil"
+      - input: "per-country attribute CSV for the conventional: block (e.g. oil p_max_pu)"
+        required_for: "country-specific availability derating"
+        availability: "absent — user-authored, wired in via conventional: {oil: {p_max_pu: <csv path>}}"

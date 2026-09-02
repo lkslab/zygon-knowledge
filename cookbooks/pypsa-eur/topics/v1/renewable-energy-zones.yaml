@@ -1,0 +1,59 @@
+id: renewable-energy-zones
+title: Renewable energy zones
+rank: 52
+question: >
+  Where should renewable buildout be concentrated into designated zones —
+  Australia's REZs being the template — and how much transmission does each
+  zone need to deliver its output? Zone selection, zone capacity targets, and
+  zone-to-load network reinforcement in one study.
+when_to_use:
+  - "renewable energy zone (REZ) planning"
+  - "AEMO ISP-style zonal buildout"
+  - "which zones to develop first and how big"
+  - "transmission capacity per renewable zone"
+  - "concentrate VRE buildout into designated areas"
+recipes:
+  generation_conversion: [onshore-wind, utility-scale-solar-pv, offshore-wind,
+                          hv-transmission-lines, grid-scale-batteries,
+                          transmission-expansion-projects]
+  demand: [electricity-load, demand-spatial-disaggregation]
+functionality:
+  - id: custom-busmap
+    role: "core — arbitrary bus->zone assignment by csv or polygon file makes model regions coincide with REZ boundaries"
+  - id: administrative-clustering
+    role: "NUTS1/2/3 or bidding-zone clustering when zones track administrative lines"
+  - id: focus-weights
+    role: "reserve cluster budget for the REZ country — high resolution where the zones are, coarse elsewhere"
+  - id: renewable-potentials-land-eligibility
+    role: "per-zone potentials and profiles with land exclusions and binned resource classes re-aggregate over any busmap"
+  - id: country-carrier-capacity-limits
+    role: "CCL caps/floors bind at COUNTRY x carrier level — the only built-in capacity target, one level too coarse for zones"
+  - id: transmission-expansion-limits
+    role: "zone-to-load reinforcement co-optimized under the volume/cost transmission limit"
+  - id: transmission-projects
+    role: "named reinforcement corridors (TYNDP/NEP/manual) as candidate zone connections — a project list earth lacks"
+  - id: custom-constraint-hook
+    role: "per-zone GW targets as bespoke linear constraints via custom_extra_functionality"
+  - id: myopic-foresight
+    role: "staging (which zone first) only as sequential-horizon brownfield runs"
+gap_assessment: >
+  The ingredients are all present but there is no REZ-specific machinery.
+  What works: land-eligibility potentials with resource classes per region,
+  arbitrary zone definitions via custom busmaps/busshapes (or NUTS and
+  bidding-zone clustering plus focus_weights for asymmetric resolution), and
+  co-optimized transmission to each zone — including named candidate
+  corridors from the TYNDP/NEP/manual transmission-project pipeline, which is
+  closer to an ISP-style project list than anything pypsa-earth offers. The
+  gaps mirror earth's: (1) no per-zone capacity targets — CCL binds at
+  country x carrier level, so "zone X hosts N GW" needs p_nom_max surgery on
+  the zone's generators or a custom constraint through the (shipped)
+  custom_extra_functionality hook; (2) no zone-level hosting-capacity or
+  connection-cost construct — network cost to a zone emerges from generic
+  line/link expansion; (3) staging logic only via myopic multi-horizon runs.
+  Being a European model, applying the Australian REZ archetype directly is
+  out of scope, but the same zonal-buildout study for European regions runs
+  today.
+coverage: partial
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

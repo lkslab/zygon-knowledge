@@ -1,0 +1,56 @@
+id: water-energy-land-nexus
+title: Water-energy-land nexus
+rank: 96
+question: >
+  How do water availability and land competition constrain the energy
+  system — hydro under drought, land limits on VRE, water for cooling and
+  desalination, energy for agriculture? Emerging, specialist, growing in
+  water-stressed regions (Iberia, Mediterranean, Alpine hydro).
+when_to_use:
+  - "land constraints on renewables buildout"
+  - "hydro under drought / water-year scenarios"
+  - "water use of the power system"
+  - "desalination in the energy system"
+  - "agriculture-energy-water interactions"
+recipes:
+  generation_conversion: [conventional-hydropower, run-of-river-hydro,
+                          utility-scale-solar-pv, onshore-wind,
+                          desalination-flexible-load, biomass-bioenergy]
+  demand: [agriculture-energy-demand]
+functionality:
+  - id: renewable-potentials-land-eligibility
+    role: "the core land slice — CORINE/LUISA landcover, Natura, bathymetry and ship-density exclusions with per-node resource classes; land-availability scenarios are config work"
+  - id: solar-potential-constraint
+    role: "a real land-competition constraint: fixed and tracking PV compete for the same eligible area"
+  - id: land-use-constraint
+    role: "cross-horizon land accounting — earlier VRE vintages occupy potential in pathway runs"
+  - id: hydro-inflow-normalization
+    role: "water-year scenarios — EIA norm-year and capacity-corrected inflow rescaling for drought runs"
+  - id: weather-year-selection
+    role: "any ERA5 year 1940-2024 — pick dry/wet years consistently across hydro, VRE, and demand"
+  - id: multi-weather-year
+    role: "multi-year hydrology in one solve is only half-supported — inter-annual drought risk still runs as per-year sweeps"
+  - id: carrier-attribute-scaling
+    role: "tighten VRE potentials (solar+p0.5) as a land-competition sensitivity"
+  - id: scenario-matrix
+    role: "cross water years with land assumptions in one sweep"
+gap_assessment: >
+  Land is genuinely in the model, with a richer stack than pypsa-earth: VRE
+  potentials come from per-technology exclusion rasters (CORINE or LUISA
+  landcover, Natura protected areas, GEBCO bathymetry, ship density) with
+  configurable eligibility and density, per-node resource-quality classes,
+  an explicit shared-land constraint between fixed and tracking solar, and
+  cross-horizon land-use accounting in pathway runs. Water is half-in:
+  hydro inflows are ERA5-runoff series rescaled to reported statistics,
+  with norm-year and weather-year (1940-2024) levers giving clean drought
+  scenarios — one weather year per standard solve, so inter-annual risk
+  needs sweeps; desalination is representable as a flexible load.
+  Missing entirely is water accounting: no cooling-water demand or
+  temperature-based derating of thermal plants, no basin water balances,
+  no water footprint of any technology, and no irrigation-energy coupling
+  beyond aggregate agriculture demand. Water-side constraints beyond hydro
+  inflows are external analysis.
+coverage: partial
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

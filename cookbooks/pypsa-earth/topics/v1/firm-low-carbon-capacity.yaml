@@ -1,0 +1,53 @@
+id: firm-low-carbon-capacity
+title: Firm low-carbon capacity
+rank: 27
+question: >
+  How much firm (dispatchable, weather-independent) low-carbon capacity does a
+  high-VRE system need, and which technology supplies it — nuclear/SMR, hydro,
+  geothermal, gas+CCS, long-duration storage? The question behind coal-exit
+  firming (Australia), nuclear resurgence, and clean-firm procurement.
+when_to_use:
+  - "how much firm capacity does the system need"
+  - "nuclear vs storage vs gas-CCS as firm supply"
+  - "clean firm power / 24-7 style portfolio"
+  - "firming a wind-solar system as coal exits"
+  - "value of dispatchable low-carbon generation"
+recipes:
+  generation_conversion: [conventional-nuclear, small-modular-reactors, geothermal-conventional, conventional-hydropower, long-duration-storage, gas-power-plants]
+  demand: [electricity-load, demand-temporal-profiles]
+functionality:
+  - id: co2-cap
+    role: "core — tightening Co2L is what makes firm LOW-CARBON capacity bind"
+  - id: safe-reserve-margin
+    role: "SAFE defines 'firm' mechanically: conventional capacity vs peak"
+  - id: bau-minimum-capacities
+    role: "force minimum nuclear/hydro fleets to test policy portfolios"
+  - id: country-carrier-capacity-limits
+    role: "CCL caps/floors firm carriers per country (nuclear bans, hydro limits)"
+  - id: carrier-attribute-scaling
+    role: "one-token cost sweeps: at what nuclear/SMR capex does it enter?"
+  - id: operational-reserves
+    role: "reserve requirement adds a second, hourly firmness demand"
+  - id: probabilistic-adequacy
+    role: "no forced outages — a 1 GW reactor is perfectly reliable in the LP; absent"
+  - id: unit-commitment
+    role: "LP relaxation: no min-load/ramp on nuclear, so its inflexibility cost is unpriced"
+gap_assessment: >
+  Strong core: this is the canonical capacity-expansion question and the model
+  answers it directly — sweep Co2L toward zero and watch which firm carriers
+  the optimizer buys against storage and transmission, with SAFE/reserve
+  constraints defining firmness and CCL/BAU encoding policy fleets. Nuclear,
+  geothermal, hydro (inflow-calibrated), gas (cappable via CH4L), and
+  multi-day storage are all first-class citizens; the "storage + overbuild vs
+  firm generation" frontier falls out of cost sweeps. Two systematic biases to
+  flag in results: (1) no forced-outage sampling or LOLE means firm capacity
+  is overvalued (never breaks) exactly where adequacy studies scrutinize it;
+  (2) everything is an LP — no unit commitment, so nuclear's minimum-load and
+  cycling costs are invisible, flattering baseload. CCS-based firm power
+  exists in the sector chain (cc/co2 machinery), not the power-only chain.
+  Results hinge on one weather year — pair with multi-year-weather-variability
+  sweeps for Dunkelflaute robustness.
+coverage: ready
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

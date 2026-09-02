@@ -1,0 +1,169 @@
+id: cooking-energy-demand
+title: Cooking energy demand
+summary: Household and commercial energy used for cooking — a distinct end-use in energy balances, prominent in clean-cooking transitions.
+
+when_to_use:
+  - "cooking energy"
+  - "clean cooking transition"
+  - "cookstoves"
+  - "LPG / biomass / electric cooking"
+  - "traditional fuel use in households"
+  - "shift cooking from firewood to electricity"
+  - "catering energy demand"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        Cooking is NOT a distinct end-use — grounded fold-in. build_base_energy_totals slices
+        the UNSD balances by the 'consumption by households' transaction and aggregates ALL
+        household commodity use by fuel group: electricity -> 'electricity residential',
+        oil fuels -> 'residential oil', biomass fuels -> 'residential biomass', gas fuels ->
+        'residential gas'; only explicit heat commodities are split off into space/water via
+        sector.space_heat_share. Cooking fuel (LPG, kerosene, firewood, charcoal, gas,
+        electricity) therefore sits inside those four residential columns. The same applies to
+        the 'services' slice (catering inside 'services oil/gas/biomass/electricity').
+        Downstream these become the 'residential oil/gas/biomass' and 'services *' loads and
+        the residential/services electricity levels. The closest functional lever to a
+        clean-cooking shift is the non-heat fuel-to-electricity share in
+        data/demand/fuel_shares.csv ('oil to elec share', 'biomass to elec share',
+        'gas to elec share'), which prepare_energy_totals uses to move non-heat residential
+        fuel use (i.e. largely cooking) into 'electricity residential' per country.
+      mechanism: >
+        rule build_base_energy_totals (fold into residential/services fuel columns) ->
+        prepare_energy_totals (fuel_shares electrification of the non-heat remainder) ->
+        add_residential / add_services fuel and electricity loads.
+      not_covered: >
+        No cooking column, carrier, load or efficiency anywhere (grep 'cook' finds nothing in
+        scripts or config); no stove-stock modelling; no distinction between cooking and other
+        non-heat fuel uses when applying the electrification shares; no LPG-specific carrier
+        (LPG is inside oil fuels).
+      provenance: "scripts/build_base_energy_totals.py:consumption by households; scripts/prepare_energy_totals.py:oil to elec share; scripts/prepare_sector_network.py:add_residential; data/demand/fuel_shares.csv:biomass to elec share"
+
+    levers:
+      - key: sector.coal.shift_to_elec
+        effect: "Moves household/services coal (incl. coal cooking) into the electricity totals."
+        default: "true"
+        provenance: "config.default.yaml:shift_to_elec; scripts/build_base_energy_totals.py:shift_coal_to_elec"
+      - key: sector.efficiency_heat_oil_to_elec
+        effect: "Conversion efficiency applied when heat-share fuel use is electrified (analogous factors exist for biomass/gas); NOTE: applies to the heat share, not the cooking remainder."
+        default: "0.9"
+        provenance: "config.default.yaml:efficiency_heat_oil_to_elec; scripts/prepare_energy_totals.py:efficiency_heat_oil_to_elec"
+      - key: demand_data.base_year
+        effect: "UNSD balance year in which today's cooking fuel mix is frozen."
+        default: "2019"
+        provenance: "config.default.yaml:base_year; Snakefile:build_base_energy_totals"
+
+    boundary:
+      - variant: "Clean-cooking transition (fuel -> electricity) per country"
+        rung: L3
+        note: "Edit per-country rows of data/demand/fuel_shares.csv ('oil to elec share', 'biomass to elec share', 'gas to elec share') — this moves the non-heat residential fuel remainder, which contains cooking, into electricity. No efficiency uplift is applied to that non-heat shift (the 1-to-1 energy transfer is a modelling caveat)."
+      - variant: "Carve cooking out as an explicit end-use / carrier"
+        rung: L3
+        note: "UNSD data does not label cooking; user must supply cooking shares of residential fuel columns (external data, e.g. WHO/IEA clean-cooking stats), then subtract in build_base_energy_totals or prepare_energy_totals (an L2 edit on top of the data)."
+      - variant: "Cooking as its own load with stove efficiencies"
+        rung: L5
+        note: "New carrier/load construction in prepare_sector_network (pattern: add_residential fuel loads) plus stove-efficiency assumptions; nothing exists."
+      - variant: "LPG-specific cooking carrier"
+        rung: L5
+        note: "LPG is aggregated inside oil fuels (aggregate_fuels in _helpers); separating it changes the fuel aggregation and requires a new bus/carrier."
+
+    where:
+      - change: "Where cooking is folded into totals"
+        anchor: "scripts/build_base_energy_totals.py:calc_sector ('consumption by households' and 'services' branches, fuel-group sums)"
+        provenance: "scripts/build_base_energy_totals.py:calc_sector"
+      - change: "Where the fuel->electricity shift is applied"
+        anchor: "scripts/prepare_energy_totals.py ('oil to elec share' / 'biomass to elec share' / 'gas to elec share' terms)"
+        provenance: "scripts/prepare_energy_totals.py:biomass to elec share"
+      - change: "Where the folded demand becomes loads"
+        anchor: "scripts/prepare_sector_network.py:add_residential and add_services (residential/services oil, gas, biomass, electricity)"
+        provenance: "scripts/prepare_sector_network.py:add_residential; scripts/prepare_sector_network.py:add_services"
+      - change: "Fuel grouping (which commodities count as oil/biomass/gas)"
+        anchor: "scripts/_helpers.py:aggregate_fuels"
+        provenance: "scripts/_helpers.py:aggregate_fuels"
+
+    data_dependencies:
+      - input: "UNSD household/services consumption by commodity"
+        required_for: "The folded cooking energy"
+        availability: "must be built (build_base_energy_totals); region-dependent"
+      - input: "data/demand/fuel_shares.csv"
+        required_for: "Clean-cooking electrification scenarios"
+        availability: "exists by default (DEFAULT row; per-country rows must be added by the user)"
+      - input: "Cooking share of residential fuel use"
+        required_for: "Explicit cooking carve-out"
+        availability: "absent (not in UNSD extraction)"
+
+    demand_dimensions:
+      driver: "Implicit: UNSD household fuel consumption by commodity group (cooking indistinguishable from other non-heat uses)"
+      spatial: "Population-weighted country totals to nodes (via nodal energy totals / base-load shape)"
+      temporal: "Fuel loads are flat annual/8760 allocations; electrified cooking inherits the base electricity profile"
+      scenario: "fuel_shares.csv electrification shares + CAGR growth files per scenario.demand wildcard"
+
+  - model: pypsa-eur
+    version_anchor: {ref: "3e32e3c619f6ab79ada87759d6b915e9d5f3ff56", date: "2026-06-16"}
+
+    out_of_box:
+      covers: >
+        Cooking is EXTRACTED but not modelled as a load — grounded fold-in with named columns.
+        build_energy_totals reads JRC-IDEES residential sheet RES_hh_fec row 'Cooking' into
+        'total residential cooking' / 'electricity residential cooking' and tertiary sheet
+        SER_hh_fec row 'Catering' into 'total services cooking' / 'electricity services
+        cooking'; Eurostat codes FC_OTH_HH_E_CK fill non-IDEES countries, and the Swiss
+        balances provide 'electricity residential cooking' (Kochherde). These columns are used
+        internally (e.g. EU28-average splits of Eurostat residuals across
+        space/cooking/water), but grep shows NO use in prepare_sector_network: no cooking
+        load, carrier or subtraction. Electric cooking is implicitly inside the historical
+        base electricity load; NON-electric cooking fuel (gas/LPG) is not represented as any
+        network demand at all — there are no residential gas/oil loads in the eur sector
+        network (fossil demand arises only endogenously via boilers/CHP serving heat).
+      mechanism: >
+        rule build_energy_totals (JRC 'Cooking'/'Catering' rows, Eurostat FC_OTH_HH_E_CK) ->
+        energy_totals.csv columns; no network consumer reads them.
+      not_covered: >
+        Cooking load/carrier, stove efficiencies, cooking electrification scenarios; the fate
+        of non-electric cooking energy (dropped from the network demand).
+      provenance: "scripts/build_energy_totals.py:total residential cooking; scripts/build_energy_totals.py:Catering; scripts/build_energy_totals.py:FC_OTH_HH_E_CK; scripts/build_swiss_energy_balances.py:electricity residential cooking"
+
+    levers:
+      - key: energy.energy_totals_year
+        effect: "Year of the JRC/Eurostat totals containing the cooking columns."
+        default: "2023"
+        provenance: "config/config.default.yaml:energy_totals_year; rules/build_sector.smk:energy_totals_year"
+
+    boundary:
+      - variant: "Today's electric cooking in the load"
+        rung: L0
+        note: "Implicit in the historical base electricity load; nothing to configure."
+      - variant: "Explicit cooking load (electric and/or gas)"
+        rung: L3
+        note: "The totals already exist ('total residential cooking', 'electricity residential cooking' per country/year) — the work is wiring them into pop-weighted totals consumed by prepare_sector_network and coding a load + base-load subtraction (L2 code on top of existing data; a cooking profile would be new data)."
+      - variant: "Cooking electrification scenario"
+        rung: L5
+        note: "No share/scenario mechanism exists; needs new config keys and demand-shifting logic (the earth fuel_shares pattern is a template)."
+
+    where:
+      - change: "Where the cooking columns are built"
+        anchor: "scripts/build_energy_totals.py:idees_per_country ('Cooking' / 'Catering' rows) and update_residential_from_eurostat (FC_OTH_HH_E_CK)"
+        provenance: "scripts/build_energy_totals.py:idees_per_country; scripts/build_energy_totals.py:update_residential_from_eurostat"
+      - change: "Where the EU-average cooking split fills Eurostat-only countries"
+        anchor: "scripts/build_energy_totals.py:build_energy_totals (uses = ['space', 'cooking', 'water'] block)"
+        provenance: "scripts/build_energy_totals.py:build_energy_totals"
+      - change: "Where a cooking load would be added"
+        anchor: "scripts/prepare_sector_network.py (pattern: agriculture electricity load; subtraction pattern: build_heat_demand)"
+        provenance: "scripts/prepare_sector_network.py:agriculture electricity"
+
+    data_dependencies:
+      - input: "JRC-IDEES RES_hh_fec 'Cooking' / SER_hh_fec 'Catering' + Eurostat FC_OTH_HH_E_CK"
+        required_for: "Cooking totals per country"
+        availability: "exists by default (in energy_totals.csv), Europe only"
+      - input: "Cooking intraday profile"
+        required_for: "An hourly cooking load"
+        availability: "absent"
+
+    demand_dimensions:
+      driver: "JRC/Eurostat cooking final energy per country and year (columns exist; unused for loads)"
+      spatial: "Would follow population weighting (build_population_weighted_energy_totals) if wired in"
+      temporal: "None modelled; electric cooking implicitly follows the measured base load"
+      scenario: "None; only energy_totals_year selection"

@@ -1,0 +1,54 @@
+id: district-heating-optimization
+title: District heating optimization
+rank: 46
+question: >
+  Where does district heating beat individual heating, what supply mix (large
+  heat pumps, CHP, boilers, storage) should feed the networks, and how fast
+  should DH expand? Cities and DH operators ask this; TYNDP-class studies now
+  model heat explicitly.
+when_to_use:
+  - "district heating expansion scenario"
+  - "central heat pumps vs CHP vs boilers in heat networks"
+  - "DH share rollout by 2030/2050"
+  - "centralised vs decentralised heating for a city"
+  - "heat network supply optimization"
+recipes:
+  generation_conversion: [district-heating, combined-heat-and-power, air-source-heat-pumps, thermal-storage, aquifer-thermal-storage, solar-thermal]
+  demand: [district-heating-demand-share, residential-space-heating-demand, services-heat-demand]
+functionality:
+  - id: district-heating-suite
+    role: "core — GIS DH areas, JRC-IDEES historical shares, per-country potential + progress rollout, dynamic supply/return temperatures, PTES, heat-source utilisation"
+  - id: tes-constraints
+    role: "couples central water-tank/pit store size to charger power in every heating run"
+  - id: chp-operation-constraints
+    role: "dead-key — add_chp_constraints is never called, so CHPs run on fixed link efficiencies with no back-pressure envelope"
+  - id: ates-potentials
+    role: "dead-key — aquifer storage rule crashes on missing config keys when enabled; add the temperature keys to use it"
+  - id: residential-heat-dsm
+    role: "building thermal-mass flexibility on urban central loads — a demand-side lever inside the network"
+  - id: myopic-foresight
+    role: "per-horizon district_heating.progress gives the rollout path across planning years"
+  - id: spatial-clustering
+    role: "a 'network' is one cluster's urban central bus — resolution defines what a DH system means"
+gap_assessment: >
+  The strongest district-heating layer in the PyPSA family. Demand side is
+  data-driven, not empty like earth's: historical country DH shares from
+  JRC-IDEES (conservatively min'd against a fallback csv), made nodal by
+  urban population, expanded toward urban_fraction x potential (0.6 default,
+  per-country dict supported) by a per-horizon progress factor; GIS-derived
+  future DH areas (Manz et al.) gate heat sources and ATES/PTES potentials.
+  Supply side is genuinely co-optimized on each urban central bus: large heat
+  pumps with per-horizon COPs from dynamic forward/return temperature
+  approximations, gas/biomass CHP (+CC), boilers, resistive heaters, solar
+  thermal, water tanks and temperature-limited pit storage with supplemental
+  heating, plus configurable limited/direct-utilisation heat sources. Remaining
+  honest gaps: DH-vs-individual is still decided by the exogenous share path
+  (config data + rollout), not an endogenous connection investment; there is
+  no inter-node heat transport or pipe-network investment cost (a network is
+  a nodal bus with a 15% loss markup); CHP has no operating envelope
+  (add_chp_constraints dead); and ATES is dead-key at this ref. For supply-mix
+  and rollout-scenario questions the standard workflow answers out of the box.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

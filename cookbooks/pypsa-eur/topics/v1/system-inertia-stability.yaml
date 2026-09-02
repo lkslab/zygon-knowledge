@@ -1,0 +1,54 @@
+id: system-inertia-stability
+title: "System inertia / stability"
+rank: 73
+question: >
+  Is there enough inertia and system strength as synchronous plant retires —
+  frequency nadir, RoCoF limits, minimum synchronous generation — and what
+  does keeping the system stable cost? The operational-security twin of the
+  renewable-integration question (AEMO, EirGrid, National Grid ESO,
+  Continental Europe after the Iberian event).
+when_to_use:
+  - "system inertia with high renewables"
+  - "RoCoF / frequency nadir constraint"
+  - "minimum synchronous generation requirement"
+  - "system strength / short-circuit levels"
+  - "stability cost of coal or gas retirement"
+recipes:
+  generation_conversion: [synchronous-condensers, grid-forming-inverters,
+                          grid-scale-batteries, gas-power-plants]
+  demand: [electricity-load, demand-temporal-profiles]
+functionality:
+  - id: inertia-stability
+    role: "absent — the topic's core physics is not in the model at all"
+  - id: operational-reserves
+    role: "contingency MW in the reserve formula is the only stability-adjacent knob"
+  - id: linearized-unit-commitment
+    role: "unlike earth, committable units with min-load/up/down times exist (LP-relaxed, off by default) — must-run synchronous plant is representable"
+  - id: contingency-scopf
+    role: "no N-1 / security-constrained dispatch to anchor stability studies"
+  - id: line-security-margin
+    role: "static s_max_pu derating — a network margin, not a stability constraint"
+  - id: safe-reserve-margin
+    role: "capacity floor above peak as a crude exogenous stability mandate (user must add the margin key)"
+  - id: custom-constraint-hook
+    role: "shipped hook for a bespoke snapshot-wise minimum-synchronous-share constraint"
+gap_assessment: >
+  Absent by construction: a snapshot-resolution LP has no frequency or
+  voltage dynamics, no inertia constant anywhere in the data model, and no
+  short-circuit analysis; devices whose entire value is inertial or reactive
+  support — synchronous condensers, grid-forming batteries — have nothing to
+  be paid for (their recipes document this). pypsa-eur is one notch less
+  bare than pypsa-earth: linearized unit commitment (conventional
+  .unit_commitment + unit_commitment.csv) can hold synchronous plant online
+  as must-run with start-up costs, and the config-wired
+  custom_extra_functionality hook makes a minimum-synchronous-share or
+  inertia-floor constraint a user module rather than a fork — but both
+  assume, rather than compute, the stability need, and the LP-relaxed UC
+  never captures discrete online/offline inertia steps. Honest uses today:
+  fixed contingency MW via operational reserves, SAFE/CCL capacity floors
+  whose cost the LP prices, UC-constrained dispatch as input to a dedicated
+  frequency-domain stability tool. Verdict: gap.
+coverage: gap
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

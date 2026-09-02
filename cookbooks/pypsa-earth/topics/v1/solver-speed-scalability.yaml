@@ -1,0 +1,51 @@
+id: solver-speed-scalability
+title: Solver speed / scalability
+rank: 88
+question: >
+  How do you make a sector-coupled, hourly, spatially-resolved optimization
+  actually solve — and what resolution can you afford before the solver or
+  RAM gives out? The number-one methodological pain the modelling community
+  reports: everyone wants faster.
+when_to_use:
+  - "run is too slow / solver runs out of memory"
+  - "trade off resolution against solve time"
+  - "which solver and options for a big model"
+  - "make a country-scale sector run tractable"
+  - "speed up a scenario sweep"
+recipes:
+  generation_conversion: []
+  demand: []
+functionality:
+  - id: temporal-resolution-nh
+    role: "core lever — nH averaging cuts snapshots linearly; the first knob to turn"
+  - id: time-segmentation-tsam
+    role: "smarter than averaging: adaptive segments keep extremes at the same size"
+  - id: spatial-clustering
+    role: "the other axis — zones from thousands of OSM buses down to a handful"
+  - id: solver-choice
+    role: "HiGHS free and capable; barrier settings (crossover off) dominate at scale"
+  - id: iterative-impedance-expansion
+    role: "skip_iterations avoids 2-5x resolves when impedance feedback is secondary"
+  - id: numeric-stability-options
+    role: "noisy costs + profile clipping keep barrier iterations from stalling"
+  - id: operations-only-solve
+    role: "no cheap dispatch-only rerun mode — fixing capacities is manual config work"
+gap_assessment: >
+  The tractability toolbox is complete and orthogonal: temporal (nH averaging
+  or tsam segmentation), spatial (cluster count), solve-path (skip the
+  iterative impedance loop), and solver tuning all compose, so almost any
+  study has a resolution point where it solves — a 10-zone 3-hourly country
+  run is minutes on open-source HiGHS, and the scenario matrix parallelizes
+  sweeps across cores trivially. The honest limits: everything is one
+  monolithic LP per run, so cost scales super-linearly with size — continental
+  sector-coupled hourly models climb into hundreds of GB of RAM and days of
+  barrier time, and there is no decomposition (no Benders, no rolling horizon,
+  no temporal splitting) to break that wall; memory, not CPU, usually dies
+  first. There is also no dispatch-only shortcut for re-simulating a solved
+  design cheaply (operations-only-solve absent). Ready as a toolbox — but the
+  answer to "faster" above a certain size is "coarser", and the card-carrying
+  fix is choosing resolution deliberately, not tuning the solver harder.
+coverage: ready
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

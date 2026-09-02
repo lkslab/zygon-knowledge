@@ -1,0 +1,112 @@
+id: blue-hydrogen
+title: Blue hydrogen
+summary: Fossil-based hydrogen with carbon capture (SMR CC and other CC reforming/gasification routes), versus unabated grey routes.
+when_to_use:
+  - "blue hydrogen / SMR with CCS"
+  - "steam methane reforming (SMR) — NOTE naming: in this model SMR means steam methane reforming, NOT small modular reactor"
+  - "grey vs blue hydrogen mix"
+  - "gas-to-hydrogen with carbon capture"
+  - "coal gasification hydrogen with CC"
+  - "enforce a blue hydrogen share"
+  - "known in pypsa-eur as: SMR, SMR CC"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        "SMR" (grey, gas -> H2 + CO2 to atmosphere) and "SMR CC" (blue, gas -> H2 with
+        sector.cc_fraction of CO2 to the co2 stored bus, remainder to atmosphere) are in the
+        DEFAULT sector.hydrogen.production_technologies list, so blue hydrogen is an investable
+        option out of the box. Additional non-default list options: "Natural gas steam reforming
+        (CC)", "Coal gasification (CC)", "Heavy oil partial oxidation" (grey only), and biomass
+        routes. With sector.hydrogen.hydrogen_colors, CC routes feed per-node "blue H2" buses and
+        unabated routes "grey H2" buses; sector.hydrogen.set_color_shares then lets the solver
+        enforce blue_share / pink_share of total H2 load as equality constraints. Captured CO2
+        enters the model's co2 stored buses (add_co2, co2_network / sequestration options).
+        CAUTION: the carrier name "SMR" here is steam methane reforming — do not confuse with
+        small modular (nuclear) reactors; nuclear-derived H2 is the separate "pink H2"
+        high-temp electrolysis chain.
+      mechanism: >
+        scripts/prepare_sector_network.py:add_hydrogen tech_params entries "SMR" and "SMR CC":
+        bus0 = spatial.gas.nodes, bus1 = node H2 (or grey/blue colour bus), bus2 = "co2
+        atmosphere", and for CC bus3 = spatial.co2.nodes with efficiency split by
+        options["cc_fraction"]. Share enforcement in scripts/solve_network.py:set_h2_colors
+        (constraints total_blue == load_h2 * blue_share, total_pink == load_h2 * pink_share).
+      not_covered: >
+        No upstream methane supply-chain (fugitive) emissions; capture rate is the single global
+        sector.cc_fraction shared by ALL CC technologies (also biomass CC, industry CC) — no
+        per-technology capture rate key; no retrofit of existing SMR plants (greenfield extendable
+        links only); no green_share/grey_share keys (only blue and pink shares are enforceable).
+      provenance: "scripts/prepare_sector_network.py:add_hydrogen"
+    levers:
+      - key: sector.hydrogen.production_technologies
+        effect: Include/exclude "SMR", "SMR CC", "Natural gas steam reforming CC", "Coal gasification CC", etc.
+        default: '["H2 Electrolysis", "SMR", "SMR CC"]'
+        provenance: "config.default.yaml:production_technologies; scripts/prepare_sector_network.py:add_hydrogen"
+      - key: sector.cc_fraction
+        effect: Captured share of CO2 for every CC technology (rest vented to co2 atmosphere).
+        default: "0.9"
+        provenance: "config.default.yaml:cc_fraction; scripts/prepare_sector_network.py:add_hydrogen"
+      - key: sector.hydrogen.hydrogen_colors
+        effect: Adds grey/blue (and green/pink) intermediate buses so blue output is distinguishable and constrainable.
+        default: "false"
+        provenance: "config.default.yaml:hydrogen_colors; scripts/prepare_sector_network.py:add_hydrogen"
+      - key: sector.hydrogen.set_color_shares
+        effect: Activates equality constraints on blue and pink shares of total H2 load at solve time (requires hydrogen_colors).
+        default: "false"
+        provenance: "config.default.yaml:set_color_shares; scripts/solve_network.py:set_h2_colors"
+      - key: sector.hydrogen.blue_share
+        effect: Enforced blue-H2 fraction of hydrogen load when set_color_shares is true.
+        default: "0.40"
+        provenance: "config.default.yaml:blue_share; scripts/solve_network.py:set_h2_colors"
+      - key: sector.hydrogen.pink_share
+        effect: Enforced pink (nuclear) H2 fraction under the same constraint set.
+        default: "0.05"
+        provenance: "config.default.yaml:pink_share; scripts/solve_network.py:set_h2_colors"
+      - key: sector.co2_network
+        effect: Spatially resolved co2 stored buses (per node) vs a single global store — determines where captured CO2 from SMR CC lands.
+        default: "true"
+        provenance: "config.default.yaml:co2_network; scripts/prepare_sector_network.py:define_spatial"
+      - key: sector.co2_sequestration_cost
+        effect: EUR/tCO2 cost applied to sequestration of the captured CO2 stream.
+        default: "10"
+        provenance: "config.default.yaml:co2_sequestration_cost; scripts/prepare_sector_network.py:add_co2"
+    boundary:
+      - variant: "Blue hydrogen as an investment option"
+        rung: L0
+        note: Default — "SMR CC" is already in production_technologies.
+      - variant: "Grey-only or blue-only supply mix"
+        rung: L1
+        note: Edit the production_technologies list (e.g. drop "SMR" to remove grey).
+      - variant: "Enforce a fixed blue share of hydrogen"
+        rung: L1
+        note: hydrogen_colors + set_color_shares + blue_share.
+      - variant: "Different capture rate for SMR CC only"
+        rung: L2
+        note: cc_fraction is global; override efficiency2/efficiency3 of the "SMR CC" entry in the tech_params dict in add_hydrogen.
+      - variant: "Coal- or oil-based blue/grey routes"
+        rung: L1
+        note: Add "Coal gasification CC" / "Heavy oil partial oxidation" to the list.
+      - variant: "Upstream methane leakage accounting"
+        rung: L5
+        note: No representation; needs new emission flows on the gas supply chain.
+      - variant: "Existing SMR fleet as brownfield capacity"
+        rung: L5
+        note: No existing-capacity path for H2 production links.
+    where:
+      - change: "SMR / SMR CC link parameters, capture split, colour routing"
+        anchor: "scripts/prepare_sector_network.py:add_hydrogen (tech_params 'SMR'/'SMR CC' entries)"
+        provenance: "scripts/prepare_sector_network.py:add_hydrogen"
+      - change: "Blue/pink share constraints"
+        anchor: "scripts/solve_network.py:set_h2_colors (activated in extra_functionality)"
+        provenance: "scripts/solve_network.py:set_h2_colors"
+      - change: "Captured-CO2 sink (network, sequestration limit)"
+        anchor: "scripts/prepare_sector_network.py:add_co2; scripts/solve_network.py:add_co2_sequestration_limit"
+        provenance: "scripts/prepare_sector_network.py:add_co2"
+    data_dependencies:
+      - input: "technology-data costs csv rows: SMR, SMR CC, H2 production natural gas steam reforming (CC), H2 production coal gasification (CC), gas/coal/oil CO2 intensity"
+        required_for: "all grey/blue routes"
+        availability: "must be built (rule retrieve_cost_data); SMR and SMR CC rows confirmed in built costs file"
+      - input: "gas supply on spatial.gas.nodes (fossil gas generation/carrier buses in the sector network)"
+        required_for: "feedstock for SMR / SMR CC"
+        availability: "exists by default in the sector workflow (spatial gas buses, sector.gas.spatial_gas)"

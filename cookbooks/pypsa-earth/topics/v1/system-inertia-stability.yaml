@@ -1,0 +1,49 @@
+id: system-inertia-stability
+title: "System inertia / stability"
+rank: 73
+question: >
+  Is there enough inertia and system strength as synchronous plant retires —
+  frequency nadir, RoCoF limits, minimum synchronous generation — and what
+  does keeping the system stable cost? The operational-security twin of the
+  renewable-integration question (AEMO, EirGrid, National Grid ESO).
+when_to_use:
+  - "system inertia with high renewables"
+  - "RoCoF / frequency nadir constraint"
+  - "minimum synchronous generation requirement"
+  - "system strength / short-circuit levels"
+  - "stability cost of coal or gas retirement"
+recipes:
+  generation_conversion: [synchronous-condensers, grid-forming-inverters,
+                          grid-scale-batteries, gas-power-plants]
+  demand: [electricity-load, demand-temporal-profiles]
+functionality:
+  - id: inertia-stability
+    role: "absent — the topic's core physics is not in the model at all"
+  - id: operational-reserves
+    role: "contingency MW in the reserve formula is the only stability-adjacent knob"
+  - id: contingency-scopf
+    role: "no N-1 / security-constrained dispatch to anchor stability studies"
+  - id: unit-commitment
+    role: "no committable units, so must-run synchronous plant cannot be represented"
+  - id: line-security-margin
+    role: "static s_max_pu derating — a network margin, not a stability constraint"
+  - id: bau-minimum-capacities
+    role: "capacity floors as a crude exogenous minimum-synchronous mandate"
+gap_assessment: >
+  Absent by construction: a snapshot-resolution LP has no frequency or
+  voltage dynamics, no inertia constant anywhere in the data model, no
+  short-circuit analysis, and no unit commitment to keep synchronous
+  machines online as must-run (committable=True is never set; everything is
+  LP-relaxed). Devices whose entire value is inertial or reactive support —
+  synchronous condensers, grid-forming batteries — have nothing to be paid
+  for (their recipes document this). The honest uses today are indirect:
+  fixed contingency MW via operational reserves, capacity floors (BAU/CCL)
+  as an exogenous stability mandate whose cost the LP prices, or an L5
+  custom snapshot-wise minimum-synchronous-share constraint in
+  extra_functionality — all proxies that assume, rather than compute, the
+  stability need. Frequency-domain questions belong in a dedicated
+  stability tool using the LP's dispatch as input. Verdict: gap.
+coverage: gap
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

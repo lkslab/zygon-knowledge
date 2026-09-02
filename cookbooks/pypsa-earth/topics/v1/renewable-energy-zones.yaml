@@ -1,0 +1,52 @@
+id: renewable-energy-zones
+title: Renewable energy zones
+rank: 52
+question: >
+  Where should renewable buildout be concentrated into designated zones —
+  Australia's REZs being the template — and how much transmission does each
+  zone need to deliver its output? Zone selection, zone capacity targets, and
+  zone-to-load network reinforcement in one study.
+when_to_use:
+  - "renewable energy zone (REZ) planning"
+  - "AEMO ISP-style zonal buildout"
+  - "which zones to develop first and how big"
+  - "transmission capacity per renewable zone"
+  - "concentrate VRE buildout into designated areas"
+recipes:
+  generation_conversion: [onshore-wind, utility-scale-solar-pv, offshore-wind,
+                          hv-transmission-lines, grid-scale-batteries]
+  demand: [electricity-load, demand-spatial-disaggregation]
+functionality:
+  - id: custom-busmap
+    role: "core — draw the zones yourself: arbitrary bus->zone assignment makes model regions coincide with REZ boundaries"
+  - id: gadm-admin-clustering
+    role: "alternative zoning along admin units when REZs track state/provincial lines"
+  - id: spatial-clustering
+    role: "per-zone VRE potentials and profiles re-aggregate automatically over whatever busmap is chosen"
+  - id: country-carrier-capacity-limits
+    role: "CCL caps/floors are per COUNTRY per carrier — the only built-in capacity target, one level too coarse for zones"
+  - id: transmission-expansion-limits
+    role: "zone-to-load reinforcement co-optimized under lv/lc bounds"
+  - id: augmented-line-connection
+    role: "candidate connections to zones off the existing topology (k-edge, off by default)"
+  - id: carrier-attribute-scaling
+    role: "sweep zone attractiveness via carrier p_nom_max / cost scaling"
+gap_assessment: >
+  The ingredients exist but there is no REZ-specific machinery. What works:
+  land-eligibility-based potentials and profiles per region, arbitrary zone
+  definitions via custom-busmap (or GADM units), and co-optimized
+  transmission to each zone — so "let the model pick where capacity lands
+  and what network it needs" runs today with zones as model regions. The
+  gaps: (1) no per-zone capacity targets or limits — CCL constraints bind at
+  country x carrier level, so enforcing "zone X hosts N GW" needs either
+  p_nom_max surgery on the zone's generators or a custom constraint in
+  solve_network extra_functionality; (2) no zone-level connection-cost or
+  hosting-capacity construct — network cost to a zone emerges from line
+  expansion, not from a REZ transmission-project list; (3) no staging logic
+  (which zone first) beyond myopic multi-horizon runs. Zone-quality inputs
+  are only as good as the eligibility rasters — check the data_quality
+  scorecard (global-gis-layers) for the study region.
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

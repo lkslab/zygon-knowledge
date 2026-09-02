@@ -1,0 +1,145 @@
+id: smart-meters
+title: Smart meters
+summary: Metering-enabled demand-side capability — time-of-use response, load shifting, and visibility of consumption at the customer level.
+when_to_use:
+  - "smart meter rollout"
+  - "demand response / load shifting from customers"
+  - "time-of-use tariffs"
+  - "flexible demand in the model"
+  - "AMI / advanced metering infrastructure"
+  - "can consumers react to prices"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Not covered. Metering infrastructure has no representation, and
+        electricity demand is an exogenous inelastic time series: measured
+        ENTSO-E/OPSD-style country load (rule build_electricity_demand with
+        gap-filling per load.fill_gaps), spatially disaggregated via a
+        GDP/population distribution key (load.distribution_key) and scaled by
+        the scalar load.scaling_factor, attached as fixed p_set in
+        attach_load. Demand never sees prices. What the model DOES have —
+        and more of it than pypsa-earth — is technology-specific endogenous
+        demand flexibility in the sector chain, which serves as the honest
+        proxy for "smart-metered and controlled" customers: (1) BEV smart
+        charging: sector.bev_dsm (default true) gives the
+        sector.bev_dsm_availability share (0.5) of the EV fleet a battery
+        Store that shifts charging within an availability profile, with a
+        morning state-of-charge restriction (bev_dsm_restriction_value 0.8
+        at hour bev_dsm_restriction_time 7, profile built in
+        build_transport_demand's bev_dsm_profile), plus V2G feed-in
+        (sector.v2g, add_EVs); (2) residential heat DSM:
+        sector.residential_heat.dsm (default false) adds a
+        "heat dsm" Store on residential/urban-central heat buses letting
+        buildings overheat/undercool within a restriction_value envelope
+        that RAMPS PER HORIZON (0.06 in 2020 to 0.4 in 2050 — an explicit
+        smart-thermostat-rollout trajectory, smartEn/DNV methodology, profile
+        from build_hourly_heat_demand's heat_dsm_profile with
+        restriction_time [10, 22]); (3) heat-side storage (TES) and the
+        battery/home-battery fleet provide price-driven shifting around the
+        fixed load.
+      mechanism: >
+        Inelastic baseline: rule build_electricity_demand ->
+        build_electricity_demand_base -> attach_load (add_electricity.py)
+        with load.scaling_factor. Flexibility proxies: add_EVs and the heat
+        dsm Store block in add_heat (prepare_sector_network.py), consuming
+        profiles from scripts/build_transport_demand.py (bev_dsm_profile)
+        and scripts/build_hourly_heat_demand.py (heat_dsm_profile).
+      not_covered: >
+        Generic price-responsive or shiftable electricity demand (no
+        component moves the "electricity" load between hours), metering
+        rollout costs or coverage, tariff design, consumer behaviour. Note
+        pypsa-eur DOES ship optional load shedding
+        (solving.options.load_shedding) — involuntary curtailment at a
+        penalty price, not demand response.
+      provenance: "scripts/add_electricity.py:attach_load; scripts/prepare_sector_network.py:add_EVs; scripts/build_transport_demand.py:bev_dsm_profile; scripts/build_hourly_heat_demand.py:heat_dsm_profile; scripts/prepare_sector_network.py:heat dsm"
+    levers:
+      - key: load.scaling_factor
+        effect: "Scales all electricity load time series — blunt exogenous stand-in for metering-driven efficiency/conservation."
+        default: "1.0"
+        provenance: "config/config.default.yaml:scaling_factor; scripts/add_electricity.py:attach_load"
+      - key: sector.bev_dsm
+        effect: "Sector chain: turns on the EV battery Store enabling charge shifting — the model's largest controllable-customer proxy."
+        default: "true"
+        provenance: "config/config.default.yaml:bev_dsm; scripts/prepare_sector_network.py:add_EVs"
+      - key: sector.bev_dsm_availability
+        effect: "Share of the EV fleet doing smart charging (scales the DSM store energy and the V2G power) — effectively the 'metered and controlled' fraction."
+        default: "0.5"
+        provenance: "config/config.default.yaml:bev_dsm_availability; scripts/prepare_sector_network.py:add_EVs"
+      - key: sector.bev_dsm_restriction_value
+        effect: "Minimum EV state of charge required at the restriction hour (0 = unconstrained shifting)."
+        default: "0.8"
+        provenance: "config/config.default.yaml:bev_dsm_restriction_value; scripts/build_transport_demand.py:bev_dsm_profile"
+      - key: sector.bev_dsm_restriction_time
+        effect: "Hour of day at which the SOC restriction binds (default 7am, 'enough charge to drive to work')."
+        default: "7"
+        provenance: "config/config.default.yaml:bev_dsm_restriction_time; scripts/build_transport_demand.py:bev_dsm_profile"
+      - key: sector.v2g
+        effect: "Feed-in from EV batteries back to the grid (V2G links sized by the DSM availability share)."
+        default: "true"
+        provenance: "config/config.default.yaml:v2g; scripts/prepare_sector_network.py:add_EVs"
+      - key: sector.residential_heat.dsm.enable
+        effect: "Adds the residential/urban-central heat dsm Stores (thermal-inertia load shifting via overheat/undercool)."
+        default: "false"
+        provenance: "config/config.default.yaml:residential_heat; scripts/prepare_sector_network.py:add_heat"
+      - key: sector.residential_heat.dsm.restriction_value
+        effect: "Per-horizon envelope of shiftable heat demand (2020: 0.06 ... 2050: 0.4) — reads as a smart-thermostat rollout trajectory."
+        default: "{2020: 0.06, 2025: 0.16, 2030: 0.27, 2035: 0.36, 2040: 0.38, 2045: 0.39, 2050: 0.4}"
+        provenance: "config/config.default.yaml:restriction_value; scripts/prepare_sector_network.py:heat_dsm_restriction_value"
+      - key: sector.residential_heat.dsm.direction
+        effect: "Whether the heat DSM store may 'overheat' (pre-heat), 'undercool' (defer), or both."
+        default: "[overheat, undercool]"
+        provenance: "config/config.default.yaml:direction; scripts/prepare_sector_network.py:add_heat"
+      - key: solving.options.load_shedding
+        effect: "enable: true adds involuntary load curtailment at default_cost — NOT demand response, but the only mechanism by which served demand can deviate from p_set."
+        default: "{enable: false, default_cost: 100000, all_carriers: true}"
+        provenance: "config/config.default.yaml:load_shedding; scripts/solve_network.py:add_load_balance_components"
+    boundary:
+      - variant: "assume metering-driven conservation as a demand haircut"
+        rung: L0
+        note: "load.scaling_factor — exogenous, no temporal response"
+      - variant: "EV smart charging share / V2G"
+        rung: L0
+        note: "on by default in sector runs; tune sector.bev_dsm_availability and the SOC restriction keys"
+      - variant: "residential heat demand response (smart thermostats)"
+        rung: L0
+        note: "flip sector.residential_heat.dsm.enable: true; the per-horizon restriction_value is the rollout dial (L1)"
+      - variant: "reshaped electricity profile reflecting time-of-use response"
+        rung: L3
+        note: "supply an alternative demand time series (replace the electricity_demand resource / attach_load input); no endogenous reshaping exists"
+      - variant: "generic shiftable share of electricity demand (load moved within a window)"
+        rung: L5
+        note: "no component or config; needs bespoke store/link constructions per load or constraints via solving.options.custom_extra_functionality"
+      - variant: "price-elastic demand"
+        rung: L5
+        note: "the LP minimises cost against fixed p_set; elasticity requires piecewise demand bids — bespoke reformulation"
+      - variant: "metering rollout costs/coverage as a scenario dimension"
+        rung: L5
+        note: "no representation; expressible only indirectly through the levers above plus exogenous cost accounting"
+    where:
+      - change: "electricity demand construction and scaling"
+        anchor: "rule build_electricity_demand -> rule build_electricity_demand_base -> scripts/add_electricity.py::attach_load (load config chapter)"
+        provenance: "scripts/add_electricity.py:attach_load; config/config.default.yaml:distribution_key"
+      - change: "EV DSM / V2G machinery"
+        anchor: "scripts/prepare_sector_network.py::add_EVs + scripts/build_transport_demand.py::bev_dsm_profile"
+        provenance: "scripts/prepare_sector_network.py:add_EVs; scripts/build_transport_demand.py:bev_dsm_profile"
+      - change: "residential heat DSM store"
+        anchor: "scripts/prepare_sector_network.py::add_heat (heat dsm block) + scripts/build_hourly_heat_demand.py::heat_dsm_profile"
+        provenance: "scripts/prepare_sector_network.py:add_heat; scripts/build_hourly_heat_demand.py:heat_dsm_profile"
+      - change: "custom flexible-demand constraints"
+        anchor: "solving.options.custom_extra_functionality module (executed in scripts/solve_network.py::extra_functionality)"
+        provenance: "scripts/solve_network.py:extra_functionality; config/config.default.yaml:custom_extra_functionality"
+    data_dependencies:
+      - input: "measured country load time series (electricity_demand.csv, gap-filled per load.fill_gaps)"
+        required_for: "baseline inelastic demand"
+        availability: "retrieved by the workflow"
+      - input: "transport data (car counts, availability/DSM profiles from rule build_transport_demand)"
+        required_for: "BEV DSM / V2G"
+        availability: "must be built (standard sector workflow)"
+      - input: "residential_heat_dsm_profile CSV (rule build_hourly_heat_demand output heat_dsm_profile)"
+        required_for: "heat DSM envelope"
+        availability: "must be built (standard sector workflow)"
+      - input: "empirical time-of-use response profiles"
+        required_for: "reshaped-demand variant"
+        availability: "absent — user-provided"

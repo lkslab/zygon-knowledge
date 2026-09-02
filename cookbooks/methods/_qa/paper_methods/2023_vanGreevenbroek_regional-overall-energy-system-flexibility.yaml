@@ -1,0 +1,251 @@
+paper: "2023_vanGreevenbroek_regional-overall-energy-system-flexibility.pdf"
+tier: 2
+model_used: >
+  PyPSA-Eur-Sec 0.6.0 (sector-coupled, 60 nodes for 33 European countries, 1500
+  time segments via sequential segmentation, partial greenfield, 2050 target year).
+  Seven separately focused model instances with non-uniform clustering (more nodes
+  in each focus region).
+scope: >
+  Maps near-optimal design spaces for seven European focus regions (Poland+Baltics,
+  Nordics, Adriatic, Germany, France, British Isles, Iberia) in a sector-coupled
+  2050 net-zero model, intersecting spaces across 12 scenarios (3 weather years x
+  4 cost/land-use variants) to identify robust investment trade-offs between regional
+  and continental planning flexibility.
+methods:
+  - slug: mga-near-optimal-space
+    role: extends
+    evidence: >
+      "We use near-optimal methods to conduct a rigorous study of the effects of
+      regional decision-making on the future European energy system" (Abstract/Intro).
+      The near-optimal feasible space is defined as F_eps = {x | Ax <= b and cx <=
+      (1+eps)*c*}; the paper extends prior work by (a) computing near-optimal spaces
+      for 8 dimensions representing inside+outside regional investment, (b)
+      intersecting spaces across 12 scenarios (not just weather years), and (c)
+      introducing a system-wide flexibility indicator based on mean width of the
+      robust design space (Methods: "Near-optimal spaces", "The flexibility
+      indicator", Eqs. 4-6).
+    procedure_notes: >
+      450 optimisations per focus region and scenario to approximate each
+      near-optimal space; 7 focus regions x 12 scenarios = 84 near-optimal spaces
+      computed. Reduced to k=8 key dimensions (solar, onshore wind, offshore wind,
+      hydrogen infrastructure, each inside and outside the focus region) via linear
+      map sigma. Robust design space defined as intersection of all 12 reduced
+      near-optimal spaces (Eq. intersection). Sensitivity analysis at eps=2%, 10%,
+      20% conducted for Germany as a focus region (SI Note S1, Table S1, Figure S1).
+      The paper introduces the mean-width flexibility indicator (Eqs. 5-6) as a new
+      post-processing metric.
+    variant: regional-intersection-robust
+    parameters:
+      slack: "5% (sensitivity: 2%, 10%, 20%)"
+      dimensions: 8
+      optimisations_per_space: 450
+      scenarios: 12
+      focus_regions: 7
+
+  - slug: weather-year-ensembles
+    role: routine-use
+    evidence: >
+      "Following Grochowicz et al. [11], we select three difficult weather years
+      (1985, 1987, 2010) and thus are particularly well-suited for resilience
+      considerations." (Methods: "Scenario selection"). These three weather years are
+      crossed with cost and land-use scenarios to produce the 12-scenario set.
+    procedure_notes: >
+      ERA5 reanalysis data used. Three years chosen for difficulty (low-renewable
+      stress). Weather year is varied as a dimension of the scenario set; each
+      weather year is run with each of the four cost/land-use variants (3x4=12
+      scenarios). ERA5 data downloaded from Copernicus C3S.
+    variant: difficult-years
+    parameters:
+      years: "[1985, 1987, 2010]"
+      reanalysis: "ERA5"
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: routine-use
+    evidence: >
+      "We define three cost scenarios, one 'baseline' scenario with standard cost
+      assumptions, and two scenarios with higher capital expenditure costs for solar
+      PV (39% more expensive) and wind power (24% more expensive) respectively"
+      (Methods: "Scenario selection"). Land-use restriction scenarios also varied:
+      utility solar density reduced from 5.1 MW/km2 to 1.7 MW/km2.
+    procedure_notes: >
+      Cost ranges taken from Danish Energy Agency projections. Land-use restriction
+      scenarios restrict available land for utility solar to one-third of default.
+      Three cost variants x one land-use restriction = 4 scenario types, each crossed
+      with 3 weather years = 12 total scenarios. SI explores wind land-use restriction
+      scenarios additionally. Sensitivity to transmission expansion cap (125%) also
+      tested (SI Note S6, Table S2, Figure S29).
+    variant: cost-and-land-use
+    parameters:
+      solar_cost_uplift: "39%"
+      wind_cost_uplift: "24%"
+      solar_density_restricted: "1.7 MW/km2"
+      solar_density_default: "5.1 MW/km2"
+      transmission_cap: "125% of current levels"
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "The model is run with a partial greenfield approach" and "our analysis is
+      restricted to overnight investments" (Methods: "Modelling framework";
+      Discussion: "Possible limitations"). The planning horizon is a single 2050
+      target year.
+    procedure_notes: >
+      Overnight/single-period investment optimisation for 2050. Existing
+      transmission and gas networks (2019), nuclear, biomass and hydropower (2022)
+      included at today's capacities (brownfield for these assets); all renewable
+      generation, storage and conversion technologies optimised from scratch.
+      Multi-horizon modelling identified as a future research direction.
+    variant: overnight
+    parameters:
+      target_year: 2050
+
+  - slug: brownfield-and-capacity-vintaging
+    role: routine-use
+    evidence: >
+      "The model is run with a partial greenfield approach, where existing
+      transmission and gas networks (2019) as well as nuclear, biomass, and
+      hydropower generation (2022) are included at today's capacities."
+      (Methods: "Modelling framework").
+    procedure_notes: >
+      Nuclear, biomass and hydropower fixed at today's capacities (not subject to
+      optimisation). Transmission and gas networks included at 2019 levels and may
+      be reinforced. Germany excludes recently decommissioned nuclear; Belgium,
+      Spain and Switzerland future decommissioning plans not incorporated.
+    variant: partial-greenfield
+    parameters: {}
+
+  - slug: sector-coupled-network-assembly
+    role: routine-use
+    evidence: >
+      "We use the open-source energy system model PyPSA-Eur-Sec 0.6.0 which
+      represents the European energy system including the power, heating, industry,
+      transport and agricultural sectors." (Methods: "Modelling framework").
+    procedure_notes: >
+      Electricity, heating, transportation and industry sectors included. CO2
+      modelled endogenously with atmosphere, temporary storage and underground
+      sequestration buses. Technologies include electrolysis, SMR, methanation,
+      Fischer-Tropsch, DAC, various CHP and boiler types, battery and heat storage.
+      A single link per node represents the distribution grid connecting HV
+      transmission to LV demand. Net-zero CO2 emissions enforced with 200 Mt/a CCS
+      limit (following Neumann et al. [18]).
+    variant: null
+    parameters:
+      co2_sequestration_cap: "200 Mt/a"
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      "We choose a spatial resolution of 60 nodes for 33 European countries, however,
+      the exact allocation of nodes varies between the differently focused models"
+      (Methods: "Modelling framework"). Non-uniform clustering used to allocate more
+      nodes to each focus region and neighbours.
+    procedure_notes: >
+      60 total nodes split non-uniformly across focus region, neighbouring countries,
+      and remaining countries (e.g. Poland+Baltics focused model: 20+25+15 nodes).
+      SI Figures S31-S32 show impact of focussed vs uniform clustering on near-optimal
+      space intersection; impact found to be relatively minor.
+    variant: focussed-non-uniform
+    parameters:
+      total_nodes: 60
+      countries: 33
+
+  - slug: temporal-aggregation-and-segmentation
+    role: routine-use
+    evidence: >
+      "we use a non-uniform, sequential time step aggregation [58,59] setting in
+      PyPSA-Eur with 1500 time segments (which we have tested to be more accurate
+      than a comparable 6-hourly time resolution)." (Methods: "Modelling framework").
+    procedure_notes: >
+      Sequential (chronological) time-period clustering used rather than typical-day
+      approach. 1500 segments chosen based on accuracy comparison with 6-hourly
+      resolution. References Pineda & Morales (2018) and Kotzur et al. (2018) for
+      the methodology.
+    variant: sequential-segmentation
+    parameters:
+      segments: 1500
+
+  - slug: transmission-expansion-cooptimisation
+    role: routine-use
+    evidence: >
+      "The gas and transmission networks may additionally be reinforced beyond
+      today's capacities in the model; for transmission this is limited to 125% of
+      current levels" (Methods: "Modelling framework"). Sensitivity of this cap
+      explored in SI Note S6.
+    procedure_notes: >
+      Transmission expansion co-optimised with generation and storage, capped at
+      125% of current capacity at system-wide level; individual connections may be
+      reinforced more. The model consistently finds approximately 4x expansion of
+      Ireland-UK interconnection. Sensitivity to the 125% cap reported in SI Table
+      S2 and Figure S29.
+    variant: capped-expansion
+    parameters:
+      expansion_cap: "125% of current levels (system-wide)"
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "we restrict the available land area for utility solar PV in comparison to
+      the standard assumptions in PyPSA-Eur-Sec to one third: from a maximum
+      average density of 5.1 MW/km2 (the default) to 1.7 MW/km2 within available
+      land after excluding unsuitable areas" (Methods: "Scenario selection").
+      Wind power land-use also constrained via exclusion zones and density limits.
+    procedure_notes: >
+      Initial exclusion areas applied for both solar and wind using standard
+      PyPSA-Eur procedures; 43.6% of total land area remains after exclusions.
+      Solar restricted to 30% of remaining available area at 60 MW/km2 density in
+      default; wind restricted to 30% of remaining at 10 MW/km2. Offshore wind
+      excludes shipping corridors with maximum 2 MW/km2 density (20% land use).
+      Restrictive land-use scenarios explored in SI Figures S4-S5, S9-S10, S23-S28.
+    variant: null
+    parameters:
+      solar_density_default: "5.1 MW/km2"
+      solar_density_restricted: "1.7 MW/km2"
+      wind_density: "10 MW/km2"
+      offshore_density: "2 MW/km2"
+
+  - slug: discounting-and-cost-of-capital
+    role: routine-use
+    evidence: >
+      "All capital costs are annualised with a discount rate of 7%; this discount
+      rate is chosen because it is the default in PyPSA-Eur, hence making the
+      results more directly comparable across studies." (Methods: "Modelling
+      framework").
+    procedure_notes: >
+      Cost data from technology-data repository (PyPSA/technology-data), originally
+      in 2015 EUR, converted to 2023 EUR using Eurostat HICP inflation (24.5%
+      increase). Single uniform 7% discount rate applied; no country- or
+      technology-specific WACC.
+    variant: uniform-rate
+    parameters:
+      discount_rate: "7%"
+      cost_year: "2023 EUR"
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "We model for net zero CO2 emissions and limit CO2 sequestration to 200 Mt/a
+      (following Neumann et al. [18])" (Results). "With the aim of a 100% CO2
+      emission reduction in the European power, heating, transportation and
+      industrial sectors" (Methods: "Modelling framework").
+    procedure_notes: >
+      Hard annual emissions cap (net zero) enforced. CCS limited to 200 Mt/a
+      system-wide. CO2 tracked endogenously across atmosphere, temporary storage,
+      and underground sequestration. Fossil oil found non-competitive in all robust
+      solutions; natural gas use reduced to ~7% of 2021 levels.
+    variant: hard-cap
+    parameters:
+      co2_target: "net zero"
+      ccs_limit: "200 Mt/a"
+
+unmatched_methods:
+  - name: "self-sufficiency constraint (custom linear constraint)"
+    evidence: >
+      "For all countries represented, we impose a 75% net self-sufficiency
+      constraint for annual energy demand" (Methods: "Modelling framework", Eqs. 1-3).
+      The paper derives and implements a novel linear constraint bounding the ratio
+      of total annual local energy production to total annual energy imports for each
+      country, generalised to multi-bus links via efficiency weighting. Stated as
+      "a novelty in the context of sector-coupled energy system models for Europe".
+      This is a bespoke custom constraint, not a named method in SLUGS.yaml;
+      closest slug would be custom-constraints-with-linopy but the paper does not
+      describe the implementation tool — it derives the mathematical formulation only.

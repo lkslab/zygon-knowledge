@@ -1,0 +1,197 @@
+paper: "2018_Schlachtberger_Cost-optimal-scenarios-weather_Energy.pdf"
+tier: 1
+model_used: >
+  A bespoke PyPSA model (electricity-only, 30-node one-node-per-country, hourly
+  resolution, linear LOPF). Identical model to Schlachtberger et al. 2017 [11];
+  implemented in PyPSA [16].
+scope: >
+  Sensitivity study of cost-optimal European electricity system scenarios to:
+  (1) weather-year and temporal-resolution choices (single vs multi-year, 1h vs 3h),
+  (2) capital-cost assumptions for solar, wind and storage, and
+  (3) policy constraints (onshore wind potentials, CO2 emission caps and their shadow prices).
+methods:
+  - slug: weather-year-ensembles
+    role: canonical-use
+    evidence: >
+      "First, the single year optimisations of the base scenarios (2011) are repeated
+      for the weather and load data for the years 2012 to 2014." (Sec. 3). Also
+      multi-year joint optimisation over 1–4 continuous years (2011–2014) to test
+      whether a single weather year suffices for capacity design.
+    procedure_notes: >
+      Four single-year runs (2011–2014) plus multi-year joint optimisations over
+      1, 2, 3, 4 consecutive years starting 2011. Limited to four years by
+      data availability (consistent load + hydro inflow). Fixed capacity layout
+      (Gmax_n,s) used to compute average capacity factors before running the
+      full optimisation; system re-optimised for each year/period independently.
+    variant: single-and-multi-year-sweep
+    parameters: {years: "2011–2014", periods: "1–4 years", resolution: "1h"}
+
+  - slug: temporal-aggregation-and-segmentation
+    role: canonical-use
+    evidence: >
+      "In the following a reduced time resolution by taking 3-hour means of the
+      hourly values of the demand and potential renewable generation time series is
+      considered." (Sec. 3). Four combinations of (1y/3y) × (1h/3h) compared.
+    procedure_notes: >
+      3h means computed from hourly demand and renewable capacity-factor series.
+      Model optimised at 1h and 3h for both 1-year and 3-year periods (four
+      combinations). Finds solar share increases and battery capacity decreases
+      at 3h because hourly fluctuations in solar are smoothed, effectively
+      simulating short-term storage. Conclusion: 3h sampling "seems reasonable
+      for long-term planning studies, particularly if it enables more weather years
+      to be considered."
+    variant: n-hourly-means
+    parameters: {resolutions: "1h, 3h", periods: "1y, 3y"}
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: canonical-use
+    evidence: >
+      "The influence of these policy constraints on the system optimisation results
+      are examined" (Sec. 5); Sec. 4 varies capital costs for solar, onshore wind,
+      offshore wind, battery, and H2 storage "over a large range while keeping all
+      others at their base scenario value." (Sec. 4, intro paragraph).
+    procedure_notes: >
+      One-at-a-time parameter sweeps: solar PV capital cost from ~10% to 120% of
+      base (600 EUR/kW); onshore wind from ~10% to 120% (base 1182 EUR/kW);
+      offshore wind from ~10% to 120% (base 2506 EUR/kW); both wind types jointly;
+      battery capital cost 25%–200% (base 310 EUR/kW + 145 EUR/kWh);
+      H2 storage capital cost 25%–200%. Policy: onshore wind potential 0%–100%
+      of geographic potential; CO2 cap 0%–60% of 1990 levels. Results reported
+      as system cost, installed capacity, and curtailed energy as function of
+      the swept parameter. Acknowledges that multi-parameter interactions require
+      linear superposition assumption for small changes.
+    variant: one-at-a-time-large-range
+    parameters:
+      solar_cost_range: "10%–120% of base (600 EUR/kW)"
+      onshore_wind_cost_range: "10%–120% of base (1182 EUR/kW)"
+      offshore_wind_cost_range: "10%–120% of base (2506 EUR/kW)"
+      battery_cost_range: "25%–200% of base"
+      h2_storage_cost_range: "25%–200% of base"
+      co2_cap_range: "0%–60% of 1990 levels"
+
+  - slug: carbon-constraints-and-pricing
+    role: canonical-use
+    evidence: >
+      "A cap CAPCO2 on the total emissions" (Sec. 2.1, Eq. 7). Sec. 5.2 sweeps
+      CAPCO2 from 0% to 60% of 1990 levels across three transmission scenarios.
+      Shadow price of the CO2 constraint is plotted vs CAPCO2 in Fig. 22.
+    procedure_notes: >
+      CO2 emission cap implemented as an annual global constraint on all OCGT
+      generation (the only emitting technology, at 0.19 tonne-CO2/MWh_th,
+      ~490 g-CO2/kWh_el). Base scenario: 5% of 1990 European electricity-sector
+      emissions (77.5 Mt-CO2/yr). Sweep: 0%–60% of 1990 levels. A second run
+      removes battery and H2 storage to isolate the role of storage for
+      decarbonisation. Shadow price (dual variable of the CO2 constraint) reported
+      as EUR/tonne-CO2 vs CAPCO2 for each transmission scenario.
+    variant: annual-cap-sweep-with-shadow-price
+    parameters:
+      base_cap: "5% of 1990 levels (77.5 Mt-CO2/yr)"
+      sweep_range: "0%–60% of 1990 levels"
+      emission_intensity_ocgt: "0.19 tonne-CO2/MWh_th (~490 g-CO2/kWh_el)"
+
+  - slug: shadow-prices-and-marginal-values
+    role: routine-use
+    evidence: >
+      "Fig. 22 plots the shadow price µ_CO2 of the global CO2 emission constraint
+      in equation (7) against CAPCO2. Here, µ_CO2 can be interpreted as the CO2
+      price that would be required for the market to achieve a certain emission
+      level under the given assumptions." (Sec. 5.2).
+    procedure_notes: >
+      Dual variable of the annual CO2 cap constraint extracted from the LP solution
+      and reported in EUR/tonne-CO2 as a function of the cap level for all three
+      transmission scenarios. At 5% cap: ~180 EUR/tonne-CO2 (compromise and
+      optimal grid); at 5% cap without transmission: 319 EUR/tonne-CO2. Shadow
+      price diverges to ~20,000 EUR/tonne-CO2 at exactly zero emissions.
+    variant: co2-constraint-dual
+    parameters: {}
+
+  - slug: transmission-expansion-cooptimisation
+    role: routine-use
+    evidence: >
+      "the system model determining the line capacities F_l in its optimisation
+      of total system costs in Eq. (1)" (Sec. 2.1); three transmission scenarios:
+      zero (LV=0), compromise (LV=125 TWkm), optimal (LV unconstrained) taken
+      from [11] as base cases for all sensitivity sweeps.
+    procedure_notes: >
+      Transmission capacity co-optimised with generation and storage via a total
+      line-volume cap (Eq. 4: sum of l_l * F_l <= CAPLV). Transport model
+      (not power-flow). Point-to-point HVDC or phase-shifting-transformer HVAC
+      for international links. Three scenarios bracket the sensitivity space:
+      zero transmission, 4× today's NTC (125 TWkm), and unconstrained optimal.
+      All sensitivity runs use these three fixed transmission scenarios.
+    variant: volume-capped
+    parameters:
+      zero: "0 TWkm"
+      compromise: "125 TWkm (~4× today's NTC of 31 TWkm)"
+      optimal: "285.7 TWkm (unconstrained optimum)"
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      The model is an overnight capacity optimisation for a single target year
+      (or multi-year period). "For each scenario the model is run over a time
+      series comprising one or multiple years with hourly resolution." (Sec. 2.2).
+      Cost parameters are 2030 value estimates (Table 1).
+    procedure_notes: >
+      Greenfield overnight optimisation: all generation, storage and transmission
+      capacity is simultaneously chosen to minimise total annualised costs for a
+      fixed demand profile. No existing capacity (except hydro, assumed fixed at
+      current installed levels and amortised). Discount rate 7% used to convert
+      overnight capital costs to annuities. No transition path or myopic steps.
+    variant: overnight-greenfield
+    parameters: {discount_rate: "7%", target_year: "2030 cost assumptions"}
+
+  - slug: storage-sizing-and-duration
+    role: routine-use
+    evidence: >
+      "the storage capacities are assumed to be proportional to the power
+      capacities, with the ratio h_s,max representing the time in which a storage
+      unit can be fully charged or discharged at maximum power (h_s,max = 6h for
+      batteries and pumped hydro storage as short-term storage options, and
+      h_s,max = 168h for hydrogen as long-term storage)." (Sec. 2.1).
+    procedure_notes: >
+      Energy and power capacity are coupled at a fixed E/P ratio per technology:
+      batteries and PHS at 6h, hydrogen at 168h. Only power capacity is a
+      decision variable; energy capacity follows deterministically. Standing losses
+      neglected. Cyclic state-of-charge assumed (annual boundary condition).
+      Sensitivity runs sweep battery and H2 capital costs uniformly across both
+      power and energy components.
+    variant: fixed-duration
+    parameters:
+      battery_max_hours: "6h"
+      phs_max_hours: "6h"
+      h2_max_hours: "168h"
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "the geographical potentials considering the land use type, nature reserves,
+      restricted areas, and likely public acceptance (data sources include the
+      CORINE land cover [24] and Natura 2000 [25] databases)" (Sec. 2.2); capacity
+      is capped at Gmax_n,s per country-technology pair.
+    procedure_notes: >
+      Per-country maximum installable capacities (Gmax_n,s) derived from CORINE
+      land cover 2006 and Natura 2000 protected-area exclusions, plus judgements
+      on likely public acceptance. These caps enter as upper bounds in the
+      optimisation (Eq. 6). Policy sensitivity in Sec. 5.1 then reduces onshore
+      wind Gmax_n,s to 0%–100% of this geographic potential to model social
+      acceptance constraints. Offshore wind potential fixed at geographic limit.
+    variant: country-level-caps
+    parameters:
+      data_sources: "CORINE land cover 2006, Natura 2000"
+      onshore_potential_sweep: "0%–100% of geographic potential"
+
+  - slug: discounting-and-cost-of-capital
+    role: routine-use
+    evidence: >
+      "A discount rate of 7% is assumed in order to convert overnight capital costs
+      into net present costs." (Sec. 2.2, just before Sec. 2.3).
+    procedure_notes: >
+      Single uniform discount rate of 7% applied to all technologies to convert
+      capital costs and lifetimes into annual cost components (c_n,s). Not varied
+      in any sensitivity run. Technology lifetimes from Table 1: wind 25y, solar
+      25y, OCGT 30y, hydro 80y, transmission 40y, batteries/H2 storage 20y.
+    variant: null
+    parameters: {discount_rate: "7%"}
+
+unmatched_methods: []

@@ -1,0 +1,1149 @@
+id: cost-allocation-and-equity-metrics
+title: "Cost allocation, burden sharing and distributional (equity) metrics"
+summary: >
+  Splitting total system cost, benefit and burden across regions, countries or
+  consumers, and either measuring the resulting distribution as a metric or imposing
+  a target distribution as a constraint and pricing what it costs.
+question: >
+  Who pays for this system and who gains from it — and what does making the split
+  more even cost?
+aliases:
+  - "cost allocation"
+  - "burden sharing"
+  - "distributional effects"
+  - "distributional impact"
+  - "spatial equity"
+  - "regional equity"
+  - "Gini coefficient"
+  - "Lorenz curve"
+  - "equity metric"
+  - "benefits of cooperation"
+  - "flow tracing"
+  - "generalised flow tracing"
+  - "proportional sharing / perfect mixing"
+  - "self-sufficiency constraint"
+  - "autarky"
+  - "decentralisation constraint"
+  - "grandfathering"
+  - "producer surplus / consumer surplus split"
+  - "congestion rent allocation"
+  - "financial transmission rights"
+when_to_use:
+  - "who pays and who benefits from this build-out"
+  - "which countries gain from cooperating and which lose"
+  - "is this plan fair across regions"
+  - "how much more expensive is a more evenly distributed system"
+  - "what if every country had to supply most of its own electricity"
+  - "what if we cut the interconnectors — what does isolation cost each country"
+  - "split the total system cost by country / by region"
+  - "who uses the transmission line and should pay for it"
+  - "how much do consumers save and how much do generators lose under this reform"
+  - "compensate the losers from this policy change"
+  - "will this reform hit poorer households harder"
+  - "measure how concentrated the renewable build-out is"
+family: markets-and-prices
+prevalence:
+  papers: 6
+  tier1: 4
+  tier2: 2
+  sweep_hits: 22
+  basis: >
+    Hand-coded pass 1 attributed 4 papers directly (Liu 2019, Neumann 2020, Franken
+    2025, Aden 2026). Two more are added here from `EVIDENCE.yaml:unmatched_methods`,
+    where pass 1 recorded a full methodological description under a technique name it
+    had no slug for: Tranberg 2018 ("flow-tracing for storage attribution") and
+    vanGreevenbroek 2023 ("self-sufficiency constraint (custom linear constraint)").
+    Both are attribution/equity machinery and both are cited only for that content.
+    The regex screen returned 22 and OVER-counts badly — the pattern includes bare
+    `equity` and `affordability`, which appear in framing and motivation sentences of
+    papers that never split a cost (Weber 2018 at 8 hits, Riepin 2024 at 4, Parzen
+    2021 at 3, Grochowicz 2025 at 3, Barnes 2026 at 3 are all mention-only on the
+    evidence pass 1 recorded). Note the role split: 1 `defines`, 3 `extends`,
+    2 `routine-use`, and NO `critiques` — the corpus does the method and does not
+    examine it, which is why `pitfalls` below is derived from the arithmetic and from
+    papers' own caveats rather than from a critique paper.
+procedure:
+  - step: >
+      Decide which of the two halves you are doing, because they answer different
+      questions and share almost no machinery. EX-POST ATTRIBUTION takes one solved
+      system and divides its cost/benefit among actors. EX-ANTE CONSTRAINT imposes a
+      distributional target on the optimisation and reads the cost premium. Only the
+      ex-ante half changes the system; only the ex-post half needs an allocation rule.
+    handle: null
+    provenance: null
+  - step: >
+      (ex-post, 1) Fix the accounting boundary: the set of actors (nodes, countries,
+      zones, generator units, consumer classes) and the set of cost terms
+      (annualised capex, opex, transmission, congestion rent, policy transfers). Both
+      are choices, not model outputs, and both must be stated with the result.
+    handle: null
+    provenance: null
+  - step: >
+      (ex-post, 2) Pull the per-actor quantities the allocation rule needs. The
+      standard denominators are per-location annualised capex + opex, per-location
+      energy balance (supply and withdrawal), nodal marginal prices, and line/link
+      flows and their duals.
+    handle: "n.statistics.capex(groupby=['location','carrier']) / .opex(...) / .energy_balance(...) / .revenue(...)"
+    provenance: "scripts/make_summary.py:calculate_nodal_costs"
+  - step: >
+      (ex-post, 3) Apply an allocation RULE to turn those quantities into a per-actor
+      share. The corpus uses, in increasing sophistication: (a) locate the asset —
+      cost sits where the plant sits; (b) load-proportional — divide the system total
+      by each actor's demand share; (c) price-based — each actor pays its consumption
+      times its own nodal price, so the residual (congestion rent + scarcity rent) is
+      a separate pot to allocate; (d) flow-tracing — attribute network usage and
+      storage throughput to the generation that caused it under a proportional-sharing
+      ("perfect mixing") assumption at each bus. NONE of these is derivable from the
+      model; the rule is an assumption, and different defensible rules give different
+      answers for the same network (see pitfalls).
+    handle: null
+    provenance: null
+  - step: >
+      (ex-post, 4) Reduce the resulting distribution to a reportable metric. The
+      corpus's choices: a map or bar chart of per-region shares (the honest minimum),
+      a Lorenz curve of cumulative generation share against cumulative demand share
+      with its Gini coefficient, or a standard deviation of a per-load-normalised
+      quantity. Report the metric alongside the distribution, never instead of it.
+    handle: null
+    provenance: null
+  - step: >
+      (ex-post, 5) Interpret against an explicit counterfactual. An attribution alone
+      says nothing about fairness; "benefit" and "burden" are differences between two
+      runs (cooperation vs autarky, zonal vs national pricing, K vs K=infinity). Run
+      the counterfactual with everything else held fixed.
+    handle: "electricity.autarky.{enable,by_country} for the isolation counterfactual"
+    provenance: "scripts/prepare_network.py:enforce_autarky"
+  - step: >
+      (ex-ante, 1) Express the distributional target as a linear constraint over
+      optimisation variables. The three forms in the corpus: a per-country/per-node
+      self-sufficiency floor (annual local production >= share x annual local
+      consumption); a hard topological cut (delete cross-border lines/links, i.e.
+      autarky as a limit case of the floor); and a two-sided load-weighted capacity
+      band around each node's proportional share of the system total.
+    handle: "solving.constraints.EQ (eur) / opts token EQ<f>[c] (earth)"
+    provenance: "scripts/solve_network.py:add_EQ_constraints"
+  - step: >
+      (ex-ante, 2) Sweep the constraint's tightness and re-solve at each level. This
+      is the whole point: one run tells you nothing, the sequence gives you the
+      cost-of-equity curve. The corpus sweeps 8 decentralisation levels and, crossed
+      with a decarbonisation axis, 105 scenarios.
+    handle: "run.scenarios / the {opts} wildcard as the sweep axis"
+    provenance: "scripts/_helpers.py:get_scenarios"
+  - step: >
+      (ex-ante, 3) Report the cost premium relative to the unconstrained optimum
+      against the equity metric from step (ex-post, 4) — the trade-off curve. Scale
+      the constraint so it does not implicitly tighten the other targets: Aden's
+      K-constraint is written as a fraction of TOTAL deployed renewable capacity
+      precisely so that tightening K does not smuggle in a lower renewable share.
+    handle: null
+    provenance: null
+  - step: >
+      (either half, extension) Push the actor granularity below the model's spatial
+      resolution — to households, income deciles or vehicle owners. The models have no
+      such representation, so this step is always an external model fed by model
+      outputs (prices, fuel costs, capital cost per unit); see `combines_with`.
+    handle: null
+    provenance: null
+variants:
+  - id: ex-post-cost-attribution
+    what: >
+      Split a solved system's annualised cost among nodes/countries/units by asset
+      location, by load share, or by price times consumption, and map or tabulate the
+      result. The cheapest variant — pure post-processing on one existing solve, no
+      re-optimisation — and the most sensitive to the allocation rule. Franken's
+      unit-level producer-surplus decomposition (wholesale + certificates + CfD
+      top-ups + balancing, over 437 assets) and Liu's per-province generation /
+      storage / transmission cost breakdown are the two ends of the granularity range.
+    papers:
+      - "2019_Liu_Hydro-power-storage-transmission-China_ApplEnergy.pdf"
+      - "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+  - id: flow-tracing-network-usage
+    what: >
+      Attribute network (and storage) usage to the generation that caused it, by
+      assuming proportional sharing / perfect mixing at every bus and propagating
+      nodal mixes through the flows. Turns "who should pay for this line" from an
+      argument into an arithmetic — at the price of one strong, unverifiable mixing
+      assumption. Tranberg's contribution is extending the tracing through storage
+      charge/discharge so that a stored MWh keeps its origin, separating local from
+      non-local storage usage.
+    papers:
+      - "2018_Tranberg_Flow-based-storage-usage_EEM.pdf"
+  - id: self-sufficiency-or-autarky-constraint
+    what: >
+      Impose a floor on each country's or node's own annual production as a share of
+      its own consumption, and re-solve. Autarky (all cross-border capacity removed)
+      is the 100% limit case implemented topologically rather than as a constraint.
+      This is the variant with real config surface in both models, and it doubles as
+      the counterfactual that turns an attribution into a "benefit of cooperation".
+    papers:
+      - "2023_vanGreevenbroek_regional-overall-energy-system-flexibility.pdf"
+  - id: decentralisation-share-constraint
+    what: >
+      Aden's K-parameter: a two-sided load-weighted band on each node's renewable
+      capacity, (1/K)·w_n·R_total <= R_n <= K·w_n·R_total, where w_n is the node's
+      load share and R_total is total deployed renewable capacity. K = infinity is
+      unconstrained, K = 1 forces exactly load-proportional deployment. Because the
+      bound scales with R_total rather than with a fixed number, tightening K does not
+      implicitly weaken the decarbonisation target — the design detail that makes the
+      sweep interpretable. Distinct from the self-sufficiency floor: it constrains
+      CAPACITY SITING, not annual energy balance, and it is two-sided.
+    papers:
+      - "2026_Aden_spatial-equity-decentralization-decarbonization.pdf"
+  - id: distributional-metric-reporting
+    what: >
+      Reduce a per-actor distribution to a scalar and track it across scenarios:
+      Lorenz curve + Gini coefficient over regional generation against regional
+      demand (Neumann, tracked against transmission volume across four MGA search
+      directions), or the standard deviation of nodal renewable capacity per load
+      (Aden's SDRCL). Post-processing only, so it composes with any other variant —
+      and both corpus uses compute it as an OBSERVED side-effect of solutions found
+      for other reasons, never as an objective.
+    papers:
+      - "2020_Neumann_Near-Optimal-Feasible-Space_EPSR.pdf"
+      - "2026_Aden_spatial-equity-decentralization-decarbonization.pdf"
+  - id: household-or-consumer-class-incidence
+    what: >
+      Carry the split below the model's spatial resolution to households, income
+      groups or consumer classes. Neither model has any household representation, so
+      this is always an external incidence model consuming model outputs. Listed as a
+      variant because users ask for it constantly and the card must be able to say
+      "not in this model" with a reason.
+    papers: []
+literature:
+  - paper: "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+    tier: 1
+    role: defines
+    note: >
+      The corpus's most complete distributional analysis and the one that treats
+      allocation as a policy design problem rather than an accounting exercise.
+      Computes producer surplus unit-by-unit for 437 BMUs across wholesale, RO
+      certificates, CfD top-ups and balancing revenue under both national and six-zone
+      market designs, then analyses three grandfathering policies that redistribute the
+      resulting winners' gains to the losers: CfD strike-price grandfathering,
+      production-based FTRs allocating intra-GB congestion rent in proportion to actual
+      dispatch (removes price risk), and a grandfathered merit order that splits
+      dispatch from revenue so curtailed units are covered too (removes volume risk).
+      Total payout is constrained to the available congestion rent, with 0-100%
+      allocation to generators as the sweep. The lesson to relay: the aggregate welfare
+      number and the distributional number are different results, and the second one is
+      what decides whether the reform happens.
+  - paper: "2023_vanGreevenbroek_regional-overall-energy-system-flexibility.pdf"
+    tier: 2
+    role: extends
+    note: >
+      Source of the self-sufficiency constraint as a formulation: a 75% net
+      self-sufficiency floor on annual energy demand for every represented country,
+      derived as a linear bound on the ratio of total annual local production to total
+      annual imports, and generalised to multi-bus links by efficiency weighting —
+      which is the non-obvious part, since a sector-coupled link's "production" depends
+      on which port you read. The paper calls this a novelty for sector-coupled
+      European models. It states the mathematics only, not the implementation, which is
+      exactly why the eur/earth `add_EQ_constraints` (electricity-only, generators and
+      storage spill only) is not a drop-in substitute.
+  - paper: "2026_Aden_spatial-equity-decentralization-decarbonization.pdf"
+    tier: 2
+    role: extends
+    note: >
+      The ex-ante half done properly: PyPSA-Eur at 37 nodes, electricity-only, hourly,
+      2013 weather, 2050 loads and costs, with the load-weighted K-constraint (Eq. 7)
+      swept over K in {inf,7,6,5,4,3,2,1} crossed with 14 decarbonisation levels =
+      105 solved networks. Introduces SDRCL (standard deviation of nodal renewable
+      capacity per load, Eq. 9) as the equity metric, computed post-optimisation on
+      each network, and reports equity benefit against cost premium relative to
+      K=infinity. Two design choices to copy: scale the bound by total deployed
+      renewable capacity so the equity axis is orthogonal to the decarbonisation axis,
+      and make the band two-sided so you constrain concentration and under-deployment
+      at once.
+  - paper: "2020_Neumann_Near-Optimal-Feasible-Space_EPSR.pdf"
+    tier: 1
+    role: extends
+    note: >
+      Contributes the metric half and the composition with MGA: Lorenz curves relating
+      cumulative regional electricity generation to cumulative regional demand across
+      the 100 model regions, with the Gini coefficient as twice the area between the
+      curve and the identity line, computed for every near-optimal solution and plotted
+      against transmission network volume (TWkm) for four MGA search directions
+      (min/max transmission, min/max storage). Equity is an OBSERVED property of
+      solutions found for other reasons, not an objective — which is what makes it a
+      cheap addition to any existing ensemble. Also the corpus's pointer to the
+      external equity literature (Sasse, Drechsler) that the models do not contain.
+  - paper: "2018_Tranberg_Flow-based-storage-usage_EEM.pdf"
+    tier: 1
+    role: extends
+    note: >
+      Extends generalised flow tracing (proportional sharing under a perfect-mixing
+      assumption at each bus) to storage charging and discharging, so that stored
+      energy retains the identity of the generation that produced it. Derives nodal
+      mixes q_n,m and internal mixes r_n,alpha and propagates them through the network
+      to separate local from non-local storage usage. Post-processing on a solved
+      network, entirely outside the optimisation. This is the corpus's machinery for
+      attributing NETWORK AND STORAGE USAGE rather than asset cost, and the only
+      variant on this card with no implementation in either model or in pypsa itself.
+  - paper: "2019_Liu_Hydro-power-storage-transmission-China_ApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Descriptive nodal cost mapping as routine reporting, in a section literally
+      titled "Cost allocation": component-wise generation, storage and transmission
+      cost broken out across 31 Chinese provinces and compared between two grid
+      topologies (RGDC and FCG), plus levelised transmission cost in EUR/MWh averaged
+      over scenarios. No formal equity metric — no Gini, no constraint. Included
+      because it is the honest baseline this card should recommend first: map the
+      per-region cost before reaching for a coefficient, since the map shows the
+      northwest-province concentration that a scalar would hide.
+pitfalls:
+  - pitfall: >
+      Cost attribution is NOT UNIQUE. Asset location, load-proportional, price-times-
+      consumption and flow-tracing are all defensible rules, and they give materially
+      different per-actor numbers for the same solved network. There is no
+      model-internal fact that selects one; the LP's objective is a system total and
+      the split is an assumption layered on top of it.
+    evidence: "2018_Tranberg_Flow-based-storage-usage_EEM.pdf"
+    note: >
+      This is the card's central honesty point. Always state the rule with the number,
+      and where the decision is contested, report at least two rules and show the
+      spread. A single allocation presented without its rule is a negotiating position
+      dressed as a result. Flow tracing does not escape this — it replaces the
+      arbitrariness of the split with one strong assumption (perfect mixing at every
+      bus), which is a different arbitrariness, not the absence of one.
+  - pitfall: >
+      A scalar equity metric destroys the information the user actually needs. A Gini
+      coefficient (or SDRCL) is invariant to WHICH regions are disadvantaged, and two
+      systems with identical Gini can be politically opposite. The metrics also depend
+      on the model's spatial clustering: the same physical system reported at 37 and
+      100 nodes gives different Ginis because the regions being compared are different
+      objects.
+    evidence: "2020_Neumann_Near-Optimal-Feasible-Space_EPSR.pdf"
+    note: >
+      Report the distribution (map or Lorenz curve) alongside any scalar, and never
+      compare a metric across runs at different cluster counts. Fix the clustering
+      before sweeping the equity axis.
+  - pitfall: >
+      Equity and self-sufficiency constraints are not the same thing, and the models'
+      surfaces encourage conflating them. `add_EQ_constraints` in BOTH repos is a floor
+      on total generation (all carriers, plus hydro spillage bookkeeping) as a share of
+      local load — it is a SELF-SUFFICIENCY constraint, not a renewable-share floor and
+      not a fairness constraint. Aden's K-constraint bounds renewable CAPACITY SITING
+      two-sidedly. A user asking for "a fairer build-out" who is given EQ0.7 gets a
+      different study.
+    evidence: "2026_Aden_spatial-equity-decentralization-decarbonization.pdf"
+    note: >
+      Read the docstring of `add_EQ_constraints` before promising semantics, and
+      confirm with the user which of the three they mean: energy self-sufficiency,
+      capacity siting proportionality, or cost/benefit incidence. Note also that
+      pypsa-earth's registry note claims EQ's trailing `c` means "carbon-free sources
+      only"; the code shows `c` switches the grouper from bus to country. The registry
+      note is wrong and the code is the authority.
+  - pitfall: >
+      A distributional result with no counterfactual is not a result. "Country X bears
+      12% of system cost" is meaningless without "…versus 19% under autarky". Autarky
+      is a violent counterfactual: eur's `enforce_autarky` DELETES every line and every
+      DC link (or the cross-border subset), which can render a region infeasible rather
+      than merely expensive, and silently changes the network topology the summary
+      tables are computed over.
+    evidence: "2023_vanGreevenbroek_regional-overall-energy-system-flexibility.pdf"
+    note: >
+      Prefer a graded self-sufficiency floor (EQ0.5, EQ0.75, EQ0.9) over the binary
+      autarky switch, so the counterfactual is a curve rather than a cliff, and so
+      infeasibility is diagnosable as "the floor bites here" rather than "the solver
+      failed". Check the line/link counts before and after.
+  - pitfall: >
+      Tightening an equity constraint can silently tighten an unrelated target.
+      A fixed per-node capacity bound written as an absolute number, or a
+      self-sufficiency floor applied while a renewable-share constraint is also active,
+      makes the "cost of equity" you measure a mixture of two effects.
+    evidence: "2026_Aden_spatial-equity-decentralization-decarbonization.pdf"
+    note: >
+      Write the equity bound relative to the endogenous total (Aden's R_total scaling),
+      and verify orthogonality by checking that the constrained runs hit the same
+      emissions/renewable-share value as the unconstrained one before attributing any
+      cost difference to equity.
+  - pitfall: >
+      Redistribution schemes are budget-constrained, and the budget is itself a model
+      output whose size depends on the market design being evaluated. Allocating 100%
+      of congestion rent to generators is an extreme case, not a neutral default, and
+      the rent available shrinks as the reform succeeds in relieving congestion.
+    evidence: "2025_Franken_Risk-Reward-National-to-Zonal-Electricity-Market-GB.pdf"
+    note: >
+      Report the payout as a fraction of the available rent and sweep it (Franken
+      sweeps 0-100%), and state whether the rent is computed in the reformed or the
+      counterfactual world — they differ, and the difference is the whole compensation
+      argument.
+requires_methods:
+  - shadow-prices-and-marginal-values
+combines_with:
+  - custom-constraints-with-linopy
+  - zonal-nodal-and-redispatch
+  - transmission-expansion-cooptimisation
+  - mga-near-optimal-space
+  - sensitivity-and-uncertainty-sweeps
+  - spatial-clustering-and-resolution
+  - soft-linking-with-iam
+  - linearised-optimal-power-flow
+topics:
+  - energy-affordability-equity
+  - just-transition-impacts
+  - asset-cost-benefit
+  - cross-border-interconnection
+  - regional-power-pool-modelling
+  - locational-electricity-markets
+  - security-of-supply-imports
+  - transmission-expansion-planning
+pypsa_primitive:
+  symbol: "pypsa/statistics.py:get_country_and_carrier"
+  pypsa_version: "0.30.3"
+  exposed_by: >
+    partially — pypsa-eur's make_summary uses the statistics accessor with a
+    ['location','carrier'] grouper for nodal_costs / nodal_capacities /
+    nodal_energy_balance; pypsa-earth uses none of it
+  reachable_via: >
+    The statistics accessor supplies the ATTRIBUTION DENOMINATORS as a library
+    primitive: capex(), opex(), energy_balance(), supply(), withdrawal(),
+    market_value() and revenue() all accept `groupby=` (a list of column names or a
+    callable) plus `bus_carrier=`, and `pypsa/statistics.py:get_country_and_carrier`
+    is a ready-made grouper that maps each component's bus to `n.buses.country`. So
+    "cost and revenue per country per carrier" is one call, on any solved network,
+    with no workflow change. `revenue()` is the price-based rule's numerator (net of
+    input cost, with `kind='input'|'output'` to split the sides).
+  note: >
+    What is NOT here: flow tracing. pypsa 0.30.3 ships no flow-allocation module at
+    all (no `average_participation`, no `marginal_participation`, no
+    `flow_allocation`) — that machinery lives in the separate `pypsa-allocation`
+    package, which is not a dependency of either model. So
+    `flow-tracing-network-usage` is L5-from-scratch or an external package, while
+    `ex-post-cost-attribution` is L5-with-a-handle at worst and often just a call.
+    Nothing in pypsa formulates an equity constraint; that half is `linopy` plus the
+    models' own `add_EQ_constraints`. Soft anchor: pypsa is a conda dependency, not a
+    submodule, so this claim is pinned to a version string rather than a SHA.
+models:
+  - model: pypsa-eur
+    version_anchor:
+      ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d"
+      date: "2026-07-25"
+    functionality:
+      - id: equity-self-sufficiency
+        role: >
+          the ex-ante half's main surface — registry status `partial`; a per-country
+          (`c` suffix) or per-node annual production floor as a share of local load
+      - id: autarky
+        role: >
+          the counterfactual for any "benefit of cooperation" framing — registry
+          status `partial`: the config path works, the opts token is broken
+      - id: country-carrier-capacity-limits
+        role: >
+          the closest existing surface to Aden's K-constraint: per-country per-carrier
+          capacity min/max read from a csv. Registry status `working`, but it is
+          ONE-SIDED per row and ABSOLUTE, not load-weighted or scaled to the
+          endogenous total — which is precisely the property Aden designed for
+      - id: summary-outputs
+        role: >
+          the attribution denominator, and eur's decisive advantage: make_summary
+          emits nodal_costs, nodal_capacities and nodal_energy_balance, i.e. capex and
+          opex already split per location per carrier
+      - id: nodal-marginal-prices
+        role: >
+          the price-based allocation rule's input (consumption x own nodal price), and
+          the source of the congestion-rent residual that a redistribution scheme
+          allocates
+      - id: custom-constraint-hook
+        role: >
+          the sanctioned landing point for the K-constraint or a sector-coupled
+          self-sufficiency floor, neither of which any built-in constraint expresses
+      - id: scenario-matrix
+        role: >
+          the sweep axis: one managed run per equity level, so the cost-of-equity
+          curve is snakemake's fan-out rather than a hand loop
+      - id: global-summary
+        role: >
+          cross-scenario collection — where the per-level costs and metrics are joined
+          into the trade-off curve. Registry status `working` here and absent in earth
+    available:
+      verdict: assemble
+      how: >
+        Both halves have real surface, and neither is turnkey. Ex-ante: two built-in
+        constraints exist and are config-reachable — `solving.constraints.EQ` calls
+        `add_EQ_constraints` (a per-country or per-node floor on weighted generator
+        dispatch minus storage spillage, versus level x weighted local load) and
+        `solving.constraints.CCL` calls `add_CCL_constraints` (per-country per-carrier
+        capacity bands from data/agg_p_nom_minmax.csv). `electricity.autarky.enable`
+        gives the topological limit case by deleting lines and DC links in
+        prepare_network. Ex-post: make_summary already computes per-location capex and
+        opex (`calculate_nodal_costs` via the statistics accessor with a
+        ['location','carrier'] grouper), per-location energy balance, prices, weighted
+        prices and market values — so the DENOMINATORS of every allocation rule are
+        produced by the default workflow and land in
+        results/.../csvs/individual/nodal_costs.csv.
+      missing: >
+        Procedure steps (ex-post 1), (ex-post 3), (ex-post 4), (ex-ante 3) and the
+        household extension have no handle. Concretely: no allocation rule is
+        implemented anywhere — nothing divides a system total among actors, nothing
+        traces flows, nothing computes a Lorenz curve, a Gini coefficient or an SDRCL,
+        and nothing pairs a cost premium against an equity metric. Nor is there any
+        two-sided load-weighted capacity band (Aden's K), any sector-coupled
+        self-sufficiency floor (vanGreevenbroek's efficiency-weighted multi-bus link
+        form), or any consumer/producer-surplus decomposition. The 14 summary tables
+        are inputs to this method, not the method.
+      provenance: "scripts/solve_network.py:add_EQ_constraints; scripts/make_summary.py:calculate_nodal_costs"
+    levers:
+      - key: "solving.constraints.EQ"
+        effect: >
+          Set to a string like 'EQ0.7c' to require each COUNTRY to produce on average
+          at least 70% of its own consumption; 'EQ0.7' applies the floor per NODE. The
+          trailing `c` switches the grouper from bus to `n.buses.country` — it does NOT
+          mean carbon-free. All generators count, so this is self-sufficiency, not a
+          renewable target.
+        default: "false"
+        provenance: "config/config.default.yaml:constraints; scripts/solve_network.py:add_EQ_constraints"
+      - key: "electricity.autarky.enable"
+        effect: >
+          The 100% limit case, implemented topologically: prepare_network REMOVES all
+          Lines and all DC Links from the network before solving. Changes the topology
+          the summary tables are computed over, so before/after line counts are worth
+          asserting.
+        default: "false"
+        provenance: "config/config.default.yaml:autarky; scripts/prepare_network.py:enforce_autarky"
+      - key: "electricity.autarky.by_country"
+        effect: >
+          Restricts the deletion to CROSS-BORDER lines and links only (bus0/bus1 map to
+          different `n.buses.country`), leaving domestic transmission intact — the
+          usable form of the interconnection counterfactual. Requires
+          electricity.autarky.enable.
+        default: "false"
+        provenance: "config/config.default.yaml:autarky; scripts/prepare_network.py:enforce_autarky"
+      - key: "solving.constraints.CCL"
+        effect: >
+          Activates per-country per-carrier capacity min/max bands, the nearest
+          built-in to a siting-equity constraint. Absolute MW bounds, not proportional
+          to load or to the endogenous system total.
+        default: "false"
+        provenance: "config/config.default.yaml:constraints; scripts/solve_network.py:add_CCL_constraints"
+      - key: "solving.agg_p_nom_limits.file"
+        effect: >
+          Path to the csv holding the CCL bands, indexed by (country, carrier) with
+          min/max columns per planning horizon. Generating this file from each node's
+          load share is the cheapest approximation of Aden's K-constraint that needs no
+          new code — see assembly.
+        default: "'data/agg_p_nom_minmax.csv'"
+        provenance: "config/config.default.yaml:agg_p_nom_limits; scripts/solve_network.py:add_CCL_constraints"
+      - key: "solving.agg_p_nom_limits.agg_solar"
+        effect: >
+          Aggregates solar subtypes (rooftop/utility) into one group before applying
+          the band; `agg_offwind` does the same for offshore variants. Matters for a
+          load-weighted band, where you want total renewable capacity per node rather
+          than per technology subtype.
+        default: "false"
+        provenance: "config/config.default.yaml:agg_p_nom_limits; scripts/solve_network.py:add_CCL_constraints"
+      - key: "solving.options.model_kwargs"
+        effect: >
+          Passed through to the linopy model at solve time — the documented escape
+          hatch for solve-level options this method needs. The one it needs most is NOT
+          documented: `solving.options.assign_all_duals` is ABSENT from
+          config.default.yaml yet IS read at solve time via
+          `cf_solving.get("assign_all_duals", False)` and forwarded as an n.optimize
+          kwarg. Setting it true is what retains line/link mu_upper, i.e. congestion
+          rent and every dual-based allocation rule. Being schema-less it is a live key
+          with no validation, so set it explicitly under solving.options and then
+          ASSERT the duals landed rather than assuming.
+        default: "model_kwargs: {} ; assign_all_duals: false (implicit — the key is absent from config.default.yaml entirely)"
+        provenance: "config/config.default.yaml:model_kwargs; scripts/solve_network.py:solve_network"
+      - key: "solving.options.custom_extra_functionality"
+        effect: >
+          Path to a user module imported and called after the built-in constraints —
+          where the K-constraint or a sector-coupled self-sufficiency floor lands.
+        default: "'../data/custom_extra_functionality.py' (present but a no-op stub)"
+        provenance: "config/config.default.yaml:custom_extra_functionality; scripts/solve_network.py:custom_extra_functionality"
+      - key: "run.scenarios.enable"
+        effect: >
+          Turns on scenario expansion so each equity level (each K, each EQ share) is a
+          separate managed run and the cost-of-equity curve comes from the run matrix.
+        default: "false"
+        provenance: "config/config.default.yaml:scenarios; scripts/_helpers.py:get_scenarios"
+    assembly:
+      - step: >
+          Solve the unconstrained reference case at the clustering you intend to report
+          at, with assign_all_duals on if any price- or dual-based rule is in scope.
+          Everything on this card is a comparison against this run, and the equity
+          metrics are not comparable across cluster counts.
+        uses: [nodal-marginal-prices]
+        config: "solving.options.assign_all_duals: true (undocumented key; read via cf_solving.get at solve time)"
+        code: null
+        provenance: "scripts/solve_network.py:solve_network"
+      - step: >
+          For the EX-POST half, take nodal_costs.csv, nodal_energy_balance.csv and
+          prices/weighted_prices from make_summary. These are the denominators;
+          `calculate_nodal_costs` already splits capital and marginal cost by
+          ['location','carrier'] via the statistics accessor. If you need per-country
+          rather than per-location, `pypsa/statistics.py:get_country_and_carrier` is
+          the ready grouper and needs no workflow change.
+        uses: [summary-outputs]
+        config: null
+        code: "scripts/make_summary.py"
+        provenance: "scripts/make_summary.py:calculate_nodal_costs; scripts/make_summary.py:calculate_nodal_energy_balance"
+      - step: >
+          Write the allocation rule. This is new code with no home in the repo: read
+          the nodal tables, apply one of location / load-share / price-times-
+          consumption, and emit a per-actor share table. Keep the rule as a named,
+          swappable function so two rules can be reported side by side, which the
+          non-uniqueness pitfall demands.
+        uses: []
+        config: null
+        code: "new post-processing script under scripts/ — no existing rule owns this"
+        provenance: "scripts/make_summary.py:calculate_nodal_costs"
+      - step: >
+          Write the metric. Lorenz curve (sort actors by per-load generation, cumulate
+          against cumulative demand), Gini as twice the area to the identity line, or
+          SDRCL as the standard deviation of nodal renewable capacity divided by nodal
+          load. All three are a few lines over nodal_capacities and
+          nodal_energy_balance; none exists in the repo.
+        uses: [summary-outputs]
+        config: null
+        code: "the same new post-processing script"
+        provenance: "scripts/make_summary.py:calculate_nodal_capacities"
+      - step: >
+          For the EX-ANTE half, decide which constraint form you need. Annual
+          self-sufficiency floor -> set solving.constraints.EQ to 'EQ0.75c' and you are
+          done, no code (but note the electricity-only limitation in its docstring).
+          Isolation counterfactual -> electricity.autarky.{enable,by_country}. Absolute
+          per-country capacity bands -> solving.constraints.CCL plus the csv.
+        uses: [equity-self-sufficiency, autarky, country-carrier-capacity-limits]
+        config: "solving.constraints.EQ; electricity.autarky.enable; electricity.autarky.by_country; solving.constraints.CCL"
+        code: null
+        provenance: "scripts/solve_network.py:add_EQ_constraints; scripts/prepare_network.py:enforce_autarky; scripts/solve_network.py:add_CCL_constraints"
+      - step: >
+          For a load-weighted band (Aden's K) there are two routes. CHEAP: generate
+          data/agg_p_nom_minmax.csv programmatically, setting each (country, carrier)
+          min/max to (1/K) and K times that country's load share of an ASSUMED total
+          renewable capacity, and drive it through CCL. This is L3 (a computed data
+          input) and it approximates K with an exogenous R_total, losing the
+          orthogonality property. EXACT: add the two-sided constraint in
+          custom_extra_functionality with R_total as a linear expression over the
+          renewable p_nom variables, which is what makes the bound scale with the
+          endogenous total.
+        uses: [country-carrier-capacity-limits, custom-constraint-hook]
+        config: "solving.agg_p_nom_limits.file; solving.constraints.CCL; solving.options.custom_extra_functionality"
+        code: "scripts/solve_network.py:custom_extra_functionality"
+        provenance: "scripts/solve_network.py:add_CCL_constraints; scripts/solve_network.py:custom_extra_functionality"
+      - step: >
+          Sweep the equity level as a scenario axis and collect. run.scenarios turns
+          each K or EQ share into a managed run; make_global_summary joins the costs
+          across them, and the trade-off curve is cost premium (from the collected
+          costs) against your metric.
+        uses: [scenario-matrix, global-summary]
+        config: "run.scenarios.enable; run.scenarios.file"
+        code: "rule make_global_summary"
+        provenance: "scripts/_helpers.py:get_scenarios; rules/postprocess.smk:make_global_summary"
+      - step: >
+          For flow tracing there is no route inside the repo. Write it as an external
+          post-processor over n.lines_t.p0 / n.links_t.p0 and the nodal injections, or
+          adopt the external pypsa-allocation package — pypsa 0.30.3 itself has no
+          flow-allocation module.
+        uses: []
+        config: null
+        code: "external post-processor; nothing in models/pypsa-eur reads flows for attribution"
+        provenance: "scripts/make_summary.py:calculate_nodal_energy_balance"
+    boundary:
+      - variant: ex-post-cost-attribution
+        rung: L2
+        note: >
+          The hardest input is already produced: nodal_costs.csv splits capex and opex
+          per location per carrier in the default workflow. What is missing is the
+          allocation rule itself — a post-processing script over existing csvs, no rule
+          change, no re-solve. L2 rather than L0 because no script applies a rule and
+          no output holds a per-actor share. Franken's unit-level surplus
+          decomposition is the top of this rung: same machinery, applied per generator
+          instead of per location, and it needs assign_all_duals for the revenue side.
+      - variant: flow-tracing-network-usage
+        rung: L5
+        note: >
+          The only variant with nothing anywhere: no config, no script, and no pypsa
+          primitive (0.30.3 ships no flow-allocation module). Requires implementing
+          proportional sharing at every bus and, for Tranberg's contribution,
+          propagating mixes through storage charge/discharge across snapshots. Inputs
+          exist (n.lines_t.p0, n.links_t.p0, nodal injections); the algorithm does not.
+          Consider the external pypsa-allocation package before writing it.
+      - variant: self-sufficiency-or-autarky-constraint
+        rung: L0
+        note: >
+          Genuinely a config flip, with two caveats the registry records. Set
+          solving.constraints.EQ to a VALUED token like 'EQ0.75c' — a bare `EQ` stores
+          True and then crashes on `EQ_o.replace`, so there is no working "on" value.
+          And use electricity.autarky.{enable,by_country} for the isolation case, NOT
+          the ATK/ATKc opts token: `update_config_from_wildcards` writes top-level
+          config['autarky'], which does not exist in config.default.yaml, so the token
+          raises KeyError at this ref. Both hazards are silent-ish failures of the kind
+          the interview should pre-empt.
+      - variant: decentralisation-share-constraint
+        rung: L3
+        note: >
+          L3 for the cheap route: CCL already applies per-country per-carrier capacity
+          bands, so the work is generating agg_p_nom_minmax.csv from load shares — a
+          computed data input, no code. The approximation is real, though: CCL's bounds
+          are absolute MW, so R_total must be assumed exogenously and the constraint
+          stops being orthogonal to the decarbonisation target. The EXACT K-constraint
+          (bound proportional to an endogenous total capacity expression) is L5 in
+          custom_extra_functionality.
+      - variant: distributional-metric-reporting
+        rung: L2
+        note: >
+          Pure post-processing over nodal_capacities.csv and nodal_energy_balance.csv,
+          both emitted by default. Lorenz/Gini/SDRCL are each a handful of lines. L2
+          because they must be written, not because anything is hard — this is the
+          cheapest useful thing on the card and the first thing to offer a user who
+          asks whether a build-out is evenly spread.
+      - variant: household-or-consumer-class-incidence
+        rung: L5
+        note: >
+          Out of scope for the model rather than expensive within it. pypsa-eur has no
+          household, income-decile or consumer-class representation at any resolution;
+          loads are aggregated per bus per carrier. Any incidence analysis is an
+          EXTERNAL model consuming eur's prices and costs — see `soft-linking-with-iam`
+          in combines_with. Do not promise this from the model.
+      - variant: ex-post-cost-attribution
+        rung: L5
+        note: >
+          The one sub-case that escapes L2: attribution of the CONGESTION RENT and
+          other dual-derived residuals, and any grandfathering/FTR redistribution built
+          on it. Nothing in the repo reads line/link mu_upper (see
+          `shadow-prices-and-marginal-values`), so the rent pot itself must be
+          computed, and then the redistribution rule and its budget constraint written
+          from scratch.
+    where:
+      - change: "allocation rule and equity metric as post-processing"
+        anchor: "a new script downstream of rule make_summary, consuming csvs/individual/nodal_costs.csv"
+        provenance: "scripts/make_summary.py:calculate_nodal_costs"
+      - change: "load-weighted capacity band, cheap route (computed data input)"
+        anchor: "solving.agg_p_nom_limits.file -> data/agg_p_nom_minmax.csv, read by add_CCL_constraints"
+        provenance: "scripts/solve_network.py:add_CCL_constraints"
+      - change: "load-weighted capacity band, exact route (endogenous total)"
+        anchor: "solving.options.custom_extra_functionality -> the user module's entry function"
+        provenance: "scripts/solve_network.py:custom_extra_functionality"
+      - change: "sector-coupled self-sufficiency floor (efficiency-weighted multi-bus links)"
+        anchor: "solving.options.custom_extra_functionality; add_EQ_constraints is electricity-only per its docstring"
+        provenance: "scripts/solve_network.py:add_EQ_constraints"
+      - change: "flow tracing / storage attribution"
+        anchor: "external post-processor over n.lines_t.p0 and n.links_t.p0; no in-repo anchor exists"
+        provenance: "scripts/make_summary.py:calculate_nodal_energy_balance"
+      - change: "congestion-rent pot for redistribution schemes"
+        anchor: "solving.options.assign_all_duals (undocumented, absent from config.default.yaml) then line/link mu_upper on the solved network"
+        provenance: "scripts/solve_network.py:solve_network"
+      - change: "equity level as a sweep axis"
+        anchor: "run.scenarios + the {run} wildcard; config/scenarios.yaml"
+        provenance: "scripts/_helpers.py:get_scenarios"
+    data_dependencies:
+      - input: "data/agg_p_nom_minmax.csv with per-(country,carrier) min/max per planning horizon"
+        required_for: decentralisation-share-constraint
+        availability: >
+          a stub ships in-repo (solving.agg_p_nom_limits.file default) but must be
+          REGENERATED from nodal load shares for this method — the shipped values are
+          not load-weighted. Computable from n.loads_t.p_set with no external download
+      - input: "per-node or per-country load shares to weight the bands with"
+        required_for: decentralisation-share-constraint
+        availability: >
+          exists by default — derived from the model's own load time series, so no new
+          input, but it must be computed AT the clustering being reported and
+          regenerated whenever the cluster count changes
+      - input: "household / income-decile expenditure and asset-ownership data"
+        required_for: household-or-consumer-class-incidence
+        availability: >
+          absent — nothing in pypsa-eur represents households, and no such dataset is
+          fetched by any rule. External model territory
+    cost_profile:
+      solves: >
+        Ex-post variants: ZERO additional solves — they post-process a run you already
+        have. Ex-ante variants: one solve per equity level, so 8 levels is 8 solves;
+        crossed with a second axis it multiplies (Aden's 8 x 14 = 105).
+      relative: >
+        Ex-post: free (minutes of pandas). Ex-ante: 1x per level, and the constrained
+        solves are typically SLOWER than the reference, not equal — a tight
+        self-sufficiency floor or a two-sided capacity band removes the cheap corner
+        solutions and can push a run from easy to numerically awkward. Autarky is the
+        exception and is usually faster, because deleting the transmission network
+        decouples the LP into independent blocks.
+      note: >
+        This is the rare card where the honest first answer is "you may not need to
+        re-solve at all". Offer the ex-post half first. If the ex-ante half is needed,
+        the sweep is embarrassingly parallel over scenarios, so the mitigations are the
+        usual L0/L1 ones (coarser clustering, nH resolution, TSAM segmentation) — but
+        note that coarsening the clustering CHANGES the equity metric, so pick the
+        resolution once and do not compare across it. `add_EQ_constraints` uses a
+        scaling factor of 1e-1 on both sides for numerical conditioning; if you
+        reimplement it, keep an equivalent scaling.
+    verifies:
+      - variant: self-sufficiency-or-autarky-constraint
+        check: "'equity_min' in n.model.constraints"
+        over: run
+        note: >
+          The constraint was never added. The classic cause is a bare `EQ` token
+          instead of a valued one, or setting solving.constraints.EQ on a
+          perfect-foresight/sector run the function does not cover — the solve
+          succeeds, the answer silently ignores the equity requirement.
+      - variant: self-sufficiency-or-autarky-constraint
+        check: "len(n.lines[n.lines.bus0.map(n.buses.country) != n.lines.bus1.map(n.buses.country)]) == 0"
+        over: run
+        note: >
+          Cross-border lines survived an autarky run. Almost always the ATK/ATKc opts
+          token being used instead of electricity.autarky — the token path raises
+          KeyError at this ref, and a wrapper that swallows it leaves the network
+          fully connected while the run is labelled autarkic.
+      - variant: decentralisation-share-constraint
+        check: "'agg_p_nom_min' in n.model.constraints or 'agg_p_nom_max' in n.model.constraints"
+        over: run
+        note: >
+          The CCL bands were not applied — usually the csv's (country, carrier) index
+          not intersecting the network's actual carriers after clustering, which
+          `add_CCL_constraints` handles by silently taking the index intersection. No
+          error, no constraint, no effect.
+      - variant: ex-post-cost-attribution
+        check: "abs(nodal_costs.sum() - costs.sum()) / costs.sum() < 1e-6"
+        over: run
+        note: >
+          The per-actor shares do not sum to the system total, so the allocation is
+          leaking or double-counting cost. Any allocation rule must be exhaustive and
+          non-overlapping; this is the one mechanical check that catches a wrong rule
+          rather than a wrong number.
+      - variant: distributional-metric-reporting
+        check: "0.0 <= gini <= 1.0"
+        over: run
+        note: >
+          A Gini outside [0,1] means the Lorenz curve was built on unsorted actors or
+          on a quantity with negative entries (net energy balance rather than
+          generation). Both produce a plausible-looking number.
+      - variant: decentralisation-share-constraint
+        check: "abs(constrained.statistics.optimal_capacity().sum() - reference_total) > 0 and constrained_co2 == reference_co2"
+        over: ensemble
+        note: >
+          The equity axis is not orthogonal to the emissions axis: the constrained run
+          hit a different CO2 outcome, so the measured cost premium is a mixture of
+          equity cost and decarbonisation cost. Re-scale the bound to the endogenous
+          total before reporting a cost-of-equity number.
+  - model: pypsa-earth
+    version_anchor:
+      ref: "8435f4c8cc05f30088933b37b7db497ff860dc53"
+      date: "2026-07-25"
+    functionality:
+      - id: equity-self-sufficiency
+        role: >
+          the ex-ante half's main surface, and registry status `working` here versus
+          `partial` in eur — but reached only through the `opts` wildcard token, not a
+          config boolean
+      - id: autarky
+        role: >
+          the isolation counterfactual, `working` here versus `partial` in eur: the
+          ATK/ATKc opts tokens are correctly wired, which is exactly the path that is
+          broken in eur
+      - id: country-carrier-capacity-limits
+        role: >
+          per-country per-carrier capacity bands via the CCL token and
+          electricity.agg_p_nom_limits — note the DIFFERENT config path from eur's
+          solving.agg_p_nom_limits
+      - id: summary-outputs
+        role: >
+          the attribution denominator, and earth's decisive weakness: the summary emits
+          system-level costs/capacity/supply_energy only. There is NO nodal_costs and
+          NO nodal_energy_balance
+      - id: nodal-marginal-prices
+        role: >
+          available on any solved network (n.buses_t.marginal_price), the input to a
+          price-based allocation rule
+      - id: custom-constraint-hook
+        role: >
+          the single extra_functionality entry point where a K-constraint or a
+          load-weighted band would land; here every opts-token constraint routes
+          through it, so it is a busier function than eur's dedicated hook
+      - id: scenario-matrix
+        role: "combinatorial run expansion — the sweep axis for the equity level"
+      - id: solve-statistics
+        role: >
+          earth-only run/network statistics, the nearest thing to a per-run reporting
+          hook for a bespoke attribution output
+    available:
+      verdict: assemble
+      how: >
+        The EX-ANTE half is in better shape than eur's. `add_EQ_constraints` is present
+        with the same semantics (per-country when the token ends in `c`, per-node
+        otherwise) and is triggered by an `opts` token via a loop over opts in
+        extra_functionality — a path that works, unlike eur's ATK token.
+        `enforce_autarky` is likewise reached from opts: `ATK` removes all lines and DC
+        links, `ATKc` removes only cross-border ones. `add_CCL_constraints` reads
+        electricity.agg_p_nom_limits.file for per-country per-carrier bands. And earth
+        has one surface eur lacks entirely: make_summary carries a `{country}` WILDCARD,
+        so `make_summaries(..., country=XX)` subsets the network to `n.buses.country ==
+        XX` and produces a whole summary directory for that country alone — a built-in
+        per-country reporting axis.
+      missing: >
+        The EX-POST half is materially worse than eur's. earth's make_summary computes
+        nine system-level tables (costs, curtailment, energy, capacity, supply,
+        supply_energy, prices, weighted_prices, metrics) and NOT ONE of them is spatially
+        resolved — there is no `calculate_nodal_costs`, no `nodal_energy_balance`, no
+        `assign_locations`, and no use of the pypsa statistics accessor's groupby at all.
+        So the attribution DENOMINATOR does not exist and must be built: either by
+        calling n.statistics.capex(groupby=['bus','carrier']) yourself, or by running
+        make_summary once per country through the {country} wildcard, which gives
+        per-country totals at the cost of one summary pass per country and no
+        within-country resolution. On top of that, the same steps as eur are missing:
+        no allocation rule, no Lorenz/Gini/SDRCL, no load-weighted band, no
+        surplus decomposition, no flow tracing, and no household representation.
+      provenance: "scripts/solve_network.py:add_EQ_constraints; scripts/prepare_network.py:enforce_autarky; scripts/make_summary.py:make_summaries"
+    levers:
+      - key: "scenario.opts"
+        effect: >
+          The carrier for every ex-ante constraint here. Append 'EQ0.75c' for a
+          per-country self-sufficiency floor (drop the `c` for per-node), 'ATK' for full
+          islanding, 'ATKc' for cross-border-only removal, or 'CCL' for the capacity
+          bands — combined with hyphens, e.g. 'Co2L-EQ0.75c-3h'. Unlike eur there is no
+          config boolean; the token IS the switch, and it also becomes part of the
+          output filename, which makes the sweep self-labelling.
+        default: "['Co2L-3h']"
+        provenance: "config.default.yaml:opts; scripts/solve_network.py:extra_functionality"
+      - key: "electricity.agg_p_nom_limits.file"
+        effect: >
+          Path to the per-(country, carrier) min/max csv used by CCL — the cheap route
+          to a load-weighted band, same trick as eur. NOTE the config path differs from
+          eur's `solving.agg_p_nom_limits`; a bundle written for one model will
+          silently do nothing on the other.
+        default: "'data/agg_p_nom_minmax.csv'"
+        provenance: "config.default.yaml:agg_p_nom_limits; scripts/solve_network.py:add_CCL_constraints"
+      - key: "electricity.agg_p_nom_limits.include_existing"
+        effect: >
+          Counts already-installed capacity toward the band. For an equity study this
+          is a substantive choice: including existing capacity makes the constraint about
+          the END STATE distribution, excluding it makes it about the NEW BUILD
+          distribution, and those are different fairness claims.
+        default: "false"
+        provenance: "config.default.yaml:agg_p_nom_limits; scripts/solve_network.py:add_CCL_constraints"
+    assembly:
+      - step: >
+          Solve the unconstrained reference case. Everything on this card is measured
+          against it, and the equity metric is not comparable across cluster counts.
+        uses: [nodal-marginal-prices]
+        config: null
+        code: null
+        provenance: "scripts/solve_network.py:solve_network"
+      - step: >
+          BUILD the attribution denominator, because earth does not ship one. Cheapest
+          honest route: on the solved network call
+          n.statistics.capex(groupby=['bus','carrier']) and .opex(...) — or use
+          pypsa/statistics.py:get_country_and_carrier for per-country — in a small
+          post-processor. Alternative with no new code: expand the make_summary
+          {country} wildcard over your country list, which gives one summary directory
+          per country via the `n[n.buses.country == country]` subset, at one summary
+          pass per country and with no sub-national resolution.
+        uses: [summary-outputs]
+        config: null
+        code: "scripts/make_summary.py:make_summaries (the {country} wildcard), or a new post-processor"
+        provenance: "scripts/make_summary.py:make_summaries"
+      - step: >
+          Write the allocation rule and the metric, exactly as in eur — this half of
+          the work is identical and equally absent in both models. Keep the rule
+          swappable so two rules can be reported side by side.
+        uses: []
+        config: null
+        code: "new post-processing script under scripts/"
+        provenance: "scripts/make_summary.py:calculate_costs"
+      - step: >
+          For the EX-ANTE half, put the token in scenario.opts: 'EQ0.75c' for the
+          self-sufficiency floor, 'ATK'/'ATKc' for isolation, 'CCL' for capacity bands.
+          No code, and the token lands in the output path so runs are self-labelling.
+        uses: [equity-self-sufficiency, autarky, country-carrier-capacity-limits]
+        config: "scenario.opts"
+        code: null
+        provenance: "scripts/solve_network.py:extra_functionality; scripts/prepare_network.py:enforce_autarky"
+      - step: >
+          For a load-weighted band, generate electricity.agg_p_nom_limits.file from
+          per-country load shares and add the CCL token (L3), or add the two-sided
+          endogenous-total constraint inside extra_functionality (L5). Same two routes
+          as eur, different config path.
+        uses: [country-carrier-capacity-limits, custom-constraint-hook]
+        config: "electricity.agg_p_nom_limits.file; scenario.opts (CCL)"
+        code: "scripts/solve_network.py:extra_functionality"
+        provenance: "scripts/solve_network.py:add_CCL_constraints; scripts/solve_network.py:extra_functionality"
+      - step: >
+          Sweep the equity level across the opts wildcard: each token value is a
+          separate run and a separate output path, so the fan-out needs no scenario
+          file. Collect the per-level system costs from the summaries into the
+          trade-off curve yourself — earth has no cross-scenario collector
+          (`global-summary` has no earth registry entry).
+        uses: [scenario-matrix, solve-statistics]
+        config: "scenario.opts"
+        code: null
+        provenance: "scripts/make_summary.py:to_csv"
+      - step: >
+          Flow tracing: same verdict as eur, external. Nothing in earth reads flows for
+          attribution and pypsa 0.30.3 has no allocation module.
+        uses: []
+        config: null
+        code: "external post-processor over n.lines_t.p0 / n.links_t.p0"
+        provenance: "scripts/make_summary.py:calculate_supply_energy"
+    boundary:
+      - variant: ex-post-cost-attribution
+        rung: L5
+        note: >
+          Two rungs worse than eur, and this is the sharpest asymmetry on the card.
+          earth's nine summary tables are all system-level: no nodal_costs, no
+          assign_locations, no statistics groupby anywhere in the script. The
+          spatially-resolved cost split that eur produces by default has to be written
+          here. Two mitigations bring it down: the make_summary {country} wildcard is a
+          genuine per-country axis (L0, but coarse and one pass per country), and
+          n.statistics.capex(groupby=...) makes the per-bus version a short script
+          rather than a real build.
+      - variant: flow-tracing-network-usage
+        rung: L5
+        note: >
+          Identical to eur — nothing in either layer. Worth a data caveat earth-side
+          though: flow tracing is only as meaningful as the network topology, and
+          earth's lines come from OSM extraction with region-dependent completeness, so
+          check the data-quality grade before attributing line usage to anyone.
+      - variant: self-sufficiency-or-autarky-constraint
+        rung: L0
+        note: >
+          The one place earth is unambiguously ahead. Add 'EQ0.75c' or 'ATK'/'ATKc' to
+          scenario.opts and it works — the opts path is correctly wired here, whereas
+          eur's ATK token raises KeyError and its EQ needs a config boolean. Caveat:
+          `add_EQ_constraints` here is electricity-only in the same way as eur's, and
+          the earth registry's note that the trailing `c` means "carbon-free sources
+          only" is WRONG — the code switches the grouper to n.buses.country.
+      - variant: decentralisation-share-constraint
+        rung: L3
+        note: >
+          Same shape as eur: generate the per-(country, carrier) csv from load shares
+          and add the CCL token. The config path is electricity.agg_p_nom_limits, NOT
+          eur's solving.agg_p_nom_limits, and earth's version lacks eur's agg_solar /
+          agg_offwind subtype aggregation, so a "total renewable capacity per country"
+          band must be expressed carrier-by-carrier or written properly in
+          extra_functionality (L5). Also earth's read is per-planning-horizon
+          wildcard-indexed, so the csv needs that column.
+      - variant: distributional-metric-reporting
+        rung: L3
+        note: >
+          L3 rather than eur's L2, because the metric's INPUT does not exist: there is
+          no nodal capacity or nodal energy table to compute a Lorenz curve or an SDRCL
+          over. Build the per-node quantity first (statistics groupby, or the {country}
+          wildcard for a country-level Gini), then the metric is the same handful of
+          lines.
+      - variant: household-or-consumer-class-incidence
+        rung: L5
+        note: >
+          Absent for the same reason as eur — no household representation at any
+          resolution. Worth flagging that this is asked for MORE often in earth's
+          typical use cases (energy access, affordability, tariff design in developing
+          systems) than in eur's, and the answer is still an external model. See
+          `soft-linking-with-iam`.
+      - variant: ex-post-cost-attribution
+        rung: L5
+        note: >
+          Dual-derived attribution (congestion rent, FTR-style redistribution) is L5
+          here as in eur, and slightly worse: earth has no `assign_all_duals` analogue
+          in the registry, so confirm which duals survive the solve before designing a
+          rule that needs them.
+    where:
+      - change: "spatially-resolved cost denominator (does not exist here)"
+        anchor: "n.statistics.capex(groupby=['bus','carrier']) in a new post-processor, or make_summary's {country} wildcard"
+        provenance: "scripts/make_summary.py:make_summaries"
+      - change: "allocation rule and equity metric"
+        anchor: "a new script downstream of rule make_summary"
+        provenance: "scripts/make_summary.py:calculate_costs"
+      - change: "ex-ante equity/autarky constraint"
+        anchor: "scenario.opts token -> scripts/solve_network.py::extra_functionality (EQ, CCL) / prepare_network (ATK)"
+        provenance: "scripts/solve_network.py:extra_functionality; scripts/prepare_network.py:enforce_autarky"
+      - change: "load-weighted capacity band, cheap route"
+        anchor: "electricity.agg_p_nom_limits.file -> data/agg_p_nom_minmax.csv, read by add_CCL_constraints"
+        provenance: "scripts/solve_network.py:add_CCL_constraints"
+      - change: "load-weighted capacity band, exact route (endogenous total)"
+        anchor: "scripts/solve_network.py::extra_functionality"
+        provenance: "scripts/solve_network.py:extra_functionality"
+      - change: "flow tracing"
+        anchor: "external post-processor; no in-repo anchor"
+        provenance: "scripts/make_summary.py:calculate_supply_energy"
+    data_dependencies:
+      - input: "data/agg_p_nom_minmax.csv with per-(country,carrier) min/max, planning-horizon-indexed"
+        required_for: decentralisation-share-constraint
+        availability: >
+          a stub ships in-repo but must be regenerated from load shares for this method,
+          and must carry the planning-horizon column the reader indexes with
+      - input: "per-node or per-country load shares to weight the bands with"
+        required_for: decentralisation-share-constraint
+        availability: >
+          region-dependent — derived from earth's demand projection chain, whose quality
+          varies by country. A load-weighted equity constraint inherits the load data's
+          grade directly, so check cookbooks/pypsa-earth/data_quality before promising
+          that the weights mean anything
+      - input: "a spatially-resolved cost/capacity table to compute a metric over"
+        required_for: distributional-metric-reporting
+        availability: >
+          must be built — make_summary produces none. Computable from the solved network
+          with no external data
+      - input: "OSM-derived transmission topology of adequate completeness"
+        required_for: flow-tracing-network-usage
+        availability: >
+          region-dependent — attributing line usage presumes the lines are real and
+          complete; earth's grid extraction quality varies sharply by country
+      - input: "household / income-decile expenditure data"
+        required_for: household-or-consumer-class-incidence
+        availability: "absent — no household representation and no such dataset in any rule"
+    cost_profile:
+      solves: >
+        Ex-post: zero additional solves (but see the caveat below). Ex-ante: one solve
+        per opts token value, so an 8-level sweep is 8 solves.
+      relative: >
+        Ex-post is nominally free, with one earth-specific wrinkle: the {country}
+        wildcard route re-runs make_summary once per country, and each pass re-reads
+        every network in the scenario matrix and re-computes all nine tables, so a
+        20-country attribution is 20 full summary passes. Writing the statistics-groupby
+        post-processor instead is one pass. Ex-ante is 1x per level, with autarky
+        typically FASTER (the LP decouples once cross-border capacity is deleted) and
+        self-sufficiency floors typically slower.
+      note: >
+        Earth base cases are often cheaper than eur's (smaller regions,
+        electricity-only), so the ex-ante sweep is more affordable here — which
+        partially offsets the ex-post disadvantage. The real earth-side cost is not
+        compute: it is that the equity CONCLUSION rests on per-node load and cost data
+        whose grade varies by country, so budget time for the data-quality check rather
+        than for solves. Reported equity differences smaller than the load data's own
+        uncertainty are not findings.
+    verifies:
+      - variant: self-sufficiency-or-autarky-constraint
+        check: "'equity_min' in n.model.constraints"
+        over: run
+        note: >
+          The EQ token was not picked up. Here the likely cause is token spelling —
+          the trigger is a substring test `if 'EQ' in o` over the hyphen-split opts, so
+          a malformed token is skipped in silence and the run completes without the
+          constraint.
+      - variant: self-sufficiency-or-autarky-constraint
+        check: "len(n.lines) == 0 if 'ATK' in opts and 'ATKc' not in opts else True"
+        over: run
+        note: >
+          A bare ATK run should have no Lines at all (full islanding removes every line
+          and every DC link). Surviving lines mean the token never reached
+          prepare_network, and the run is labelled autarkic while remaining connected.
+      - variant: decentralisation-share-constraint
+        check: "'agg_p_nom_min' in n.model.constraints or 'agg_p_nom_max' in n.model.constraints"
+        over: run
+        note: >
+          The bands were not applied. Earth's reader catches IOError on the csv and
+          only LOGS it, so a missing or wrongly-pathed file lets the solve proceed
+          unconstrained — a genuinely silent failure of exactly the kind this book
+          exists to catch.
+      - variant: ex-post-cost-attribution
+        check: "abs(sum(per_country_costs.values()) - system_costs_total) / system_costs_total < 1e-6"
+        over: ensemble
+        note: >
+          Per-country summaries do not sum to the system total. On earth this is
+          EXPECTED and diagnostic, not a bug in the arithmetic: the {country} wildcard
+          subsets buses by country, which drops cross-border assets, so the country
+          summaries genuinely under-count. If exhaustiveness matters, do not use the
+          wildcard route — allocate the cross-border assets explicitly.
+      - variant: distributional-metric-reporting
+        check: "0.0 <= gini <= 1.0"
+        over: run
+        note: >
+          Same failure modes as eur (unsorted actors, or a signed quantity), with the
+          extra earth-side hazard that the per-node quantity had to be constructed by
+          hand and may double-count multi-port links.
+      - variant: flow-tracing-network-usage
+        check: "n.lines_t.p0.shape[1] == len(n.lines) and not n.lines_t.p0.empty"
+        over: run
+        note: >
+          No flow time series to trace. Attribution of network usage is impossible
+          without per-line flows on every snapshot, and an operations-only or
+          heavily-aggregated run may not have retained them.

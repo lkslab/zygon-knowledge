@@ -1,0 +1,238 @@
+id: co2-transport-and-sequestration
+title: CO2 transport, storage and sequestration (carbon management layer)
+summary: >
+  The model-wide carbon accounting and carbon-management infrastructure —
+  atmospheric CO2 tracking, captured-CO2 buffering, a CO2 pipeline network,
+  geological sequestration with regional potentials and an annual injection
+  cap, and the competition between storing CO2 underground and using it as
+  feedstock for synthetic fuels.
+when_to_use:
+  - "CO2 transport / CO2 pipeline network"
+  - "carbon sequestration / geological CO2 storage / CCS"
+  - "sequestration potential or injection limit"
+  - "carbon accounting / CO2 atmosphere balance / net emissions"
+  - "negative emissions / carbon dioxide removal (DAC, BECCS)"
+  - "CO2 utilisation vs storage (CCU vs CCS)"
+  - "venting captured CO2"
+  - "CO2 storage cost or storage siting"
+  - "pypsa-eur carrier names: co2, co2 stored, co2 sequestered, co2 vent, CO2 pipeline, DAC"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Fully active by default; add_co2_tracking runs UNCONDITIONALLY in every
+        sector network. It creates (1) carrier "co2" with co2_emissions = -1
+        and the EU-wide "co2 atmosphere" bus + Store (e_nom inf, e_min_pu = -1
+        so net REMOVAL is representable; marginal_cost = -co2_price when
+        costs.emission_prices is enabled, i.e. a CO2 price paid for emitting
+        and earned for removing); every combusting/capturing link books its
+        flows here. (2) "co2 stored" buses — per node, since sector.co2_spatial
+        is true — each with an extendable CYCLIC tank Store ("CO2 storage tank"
+        row, 2584 EUR/tCO2 investment: intra-year buffering only, no net annual
+        accumulation). (3) "co2 sequestered" buses behind one-way extendable
+        links from co2 stored, holding NON-cyclic Stores that accumulate over
+        the year: capital_cost = sector.co2_sequestration_cost (30 EUR/tCO2),
+        marginal_cost = -0.1 (small reward), lifetime =
+        sector.co2_sequestration_lifetime (50 a). With
+        sector.regional_co2_sequestration_potential.enable (default true) each
+        store's e_nom_max comes from the CO2Stop geodatabase: rule
+        retrieve_co2stop -> build_co2_sequestration_potentials (geojson of
+        storage units/traps) -> build_clustered_co2_sequestration_potentials
+        (allocates the configured conservative-estimate attributes to OFFSHORE
+        regions by default, drops regions under min_size 3 Mt), then
+        add_co2_tracking clips at max_size * 1e3 Mt (default 25 -> 25 Gt per
+        region) and divides by years_of_storage (25) to annualise Mt of
+        geological capacity into t per planning horizon. (4) Optional "co2
+        vent" links (sector.co2_vent, default FALSE — captured CO2 cannot be
+        released, which can make capture-heavy configurations infeasible
+        without a sink). Transport: sector.co2_network (default true) makes
+        add_co2_network build bidirectional extendable "CO2 pipeline" links
+        along the electricity-grid topology (create_network_topology), capital
+        cost blended per link from "CO2 pipeline" (2116 EUR/(tCO2/h)/km
+        onshore) and "CO2 submarine pipeline" (4233) by underwater_fraction,
+        scaled by sector.co2_network_cost_factor. Solve side: whenever any
+        "co2 sequestered" store exists, add_co2_sequestration_limit adds a
+        PyPSA-native GlobalConstraint (type "operational_limit", carrier
+        attribute "co2 sequestered") capping ANNUAL sequestration at
+        sector.co2_sequestration_potential for the planning horizon (year dict,
+        e.g. 40 Mt/a in 2030 -> 250 Mt/a from 2045); a "seq<number>" token in
+        the sector_opts wildcard overrides that value
+        (update_config_from_wildcards). The emissions cap itself is the
+        "CO2Limit" GlobalConstraint (type "co2_atmosphere") from add_co2limit
+        (co2_budget as fraction of 1990 levels or a "cb" carbon-budget path),
+        enforced in solve_network as a limit on the final energy of non-cyclic
+        stores on "co2"-carrier buses (add_co2_atmosphere_constraint; per-period
+        variants add_carbon_constraint / add_carbon_budget_constraint under
+        multi-investment). Suppliers to co2 stored: all CC links (SMR CC, CHP
+        CC, gas/biomass for industry CC at sector.cc_fraction, BioSNG CC,
+        biomass-to-methanol CC, Fischer-Tropsch/BtL capture, allam, process
+        emissions CC) plus DAC (sector.dac, default true: 4-bus link buying
+        electricity and urban-central/services heat to pull CO2 from the
+        atmosphere into co2 stored). Consumers: sequestration, and UTILISATION
+        — methanolisation and Fischer-Tropsch draw CO2 from the co2 stored
+        buses as synthesis feedstock, so every captured tonne is endogenously
+        arbitraged between burial (costs money, bounded by the injection
+        limit) and fuel synthesis (earns fuel value).
+      mechanism: >
+        rule prepare_sector_network runs scripts/prepare_sector_network.py:
+        add_co2_tracking (always; sequestration_potential input only wired when
+        regional_co2_sequestration_potential.enable), then add_dac and
+        add_co2_network on their switches; rule solve_sector_network_* applies
+        add_co2_sequestration_limit inside prepare_network/solve and the
+        co2_atmosphere constraints in extra_functionality. The potentials chain
+        is rules retrieve_co2stop -> build_co2_sequestration_potentials ->
+        build_clustered_co2_sequestration_potentials in rules/build_sector.smk
+        and rules/retrieve.smk.
+      not_covered: >
+        No CO2 shipping, trucking or rail — pipelines only, and only along the
+        electricity-network topology between model nodes (no dedicated CCS
+        corridors to specific offshore fields; sequestration sits at the same
+        node as the regional potential). No existing/planned CO2 pipeline or
+        storage projects (greenfield only; contrast the gas network, which
+        starts from SciGRID data). Sequestration cost is one flat EUR/tCO2
+        config scalar — no site-specific injection cost, no distinction
+        aquifer vs depleted field beyond the choice of CO2Stop attribute
+        columns. The injection limit is EUROPE-WIDE and annual
+        (co2_sequestration_potential), not per-country. Leakage from storage is
+        not modelled. Beware two config-combination traps verified in code:
+        co2_network true with co2_spatial false is inconsistent (add_co2_network
+        names its pipeline endpoints "{node} co2 stored", buses that only exist
+        when co2_spatial is true); and co2_network false WITH co2_spatial true
+        leaves NO CO2 transport at all — capture, utilisation and sequestration
+        must then balance node-locally (co2_spatial false is the way to get
+        free copperplate CO2 transport).
+      provenance: "scripts/prepare_sector_network.py:add_co2_tracking; scripts/prepare_sector_network.py:add_co2_network; scripts/prepare_sector_network.py:add_dac; scripts/solve_network.py:add_co2_sequestration_limit; scripts/solve_network.py:add_co2_atmosphere_constraint; scripts/build_clustered_co2_sequestration_potentials.py:allocate_sequestration_potential"
+    levers:
+      - key: sector.co2_spatial
+        effect: "true (default): per-node co2 stored buses (capture location matters, transport is explicit); false: single EU co2 stored bus — free unlimited CO2 transport."
+        default: "true"
+        provenance: "config/config.default.yaml:co2_spatial; scripts/prepare_sector_network.py:define_spatial"
+      - key: sector.co2_network
+        effect: "true adds extendable bidirectional CO2 pipelines between nodes; false removes inter-node CO2 transport entirely (when co2_spatial is true)."
+        default: "true"
+        provenance: "config/config.default.yaml:co2_network; scripts/prepare_sector_network.py:add_co2_network"
+      - key: sector.co2_network_cost_factor
+        effect: "Scales pipeline capital cost (onshore + submarine blend) — cheap knob for CO2-transport sensitivity studies."
+        default: "1"
+        provenance: "config/config.default.yaml:co2_network_cost_factor; scripts/prepare_sector_network.py:add_co2_network"
+      - key: sector.co2_sequestration_potential
+        effect: "Europe-wide ANNUAL injection cap in Mt/a per planning horizon (GlobalConstraint at solve time); overridable per run with a 'seq<Mt>' token in sector_opts."
+        default: "{2020: 0, 2025: 0, 2030: 40, 2035: 100, 2040: 180, 2045: 250, 2050: 250}"
+        provenance: "config/config.default.yaml:co2_sequestration_potential; scripts/solve_network.py:add_co2_sequestration_limit"
+      - key: sector.regional_co2_sequestration_potential.enable
+        effect: "true caps each region's sequestered store e_nom_max with CO2Stop geological potentials; false makes regional capacity unlimited (only the global annual cap binds)."
+        default: "true"
+        provenance: "config/config.default.yaml:regional_co2_sequestration_potential; scripts/prepare_sector_network.py:add_co2_tracking"
+      - key: sector.regional_co2_sequestration_potential.attribute
+        effect: "Which CO2Stop estimate columns to sum (default the four 'conservative estimate ... Mt' columns; 'neutral estimate Mt' / 'optimistic estimate Mt' variants exist in the built geojson)."
+        default: "[conservative estimate Mt, conservative estimate GAS Mt, conservative estimate OIL Mt, conservative estimate aquifer Mt]"
+        provenance: "config/config.default.yaml:regional_co2_sequestration_potential; scripts/build_clustered_co2_sequestration_potentials.py:allocate_sequestration_potential"
+      - key: sector.regional_co2_sequestration_potential.include_onshore
+        effect: "true adds onshore regions to the (default offshore-only) allocation of storage potentials."
+        default: "false"
+        provenance: "config/config.default.yaml:include_onshore; scripts/build_clustered_co2_sequestration_potentials.py:allocate_sequestration_potential"
+      - key: sector.regional_co2_sequestration_potential.years_of_storage
+        effect: "Annualiser: regional Mt capacity is divided by this to give t per run — lower it to allow faster exploitation of the same geological volume."
+        default: "25"
+        provenance: "config/config.default.yaml:years_of_storage; scripts/prepare_sector_network.py:add_co2_tracking"
+      - key: sector.regional_co2_sequestration_potential.max_size
+        effect: "Per-region clip applied as max_size * 1e3 Mt before annualising (default 25 -> 25 Gt, effectively loose)."
+        default: "25"
+        provenance: "config/config.default.yaml:max_size; scripts/prepare_sector_network.py:add_co2_tracking"
+      - key: sector.co2_sequestration_cost
+        effect: "EUR/tCO2 capital cost on sequestered-store capacity — the price of burial that utilisation routes compete against."
+        default: "30"
+        provenance: "config/config.default.yaml:co2_sequestration_cost; scripts/prepare_sector_network.py:add_co2_tracking"
+      - key: sector.co2_sequestration_lifetime
+        effect: "Lifetime (years) of sequestration assets for annuitisation in myopic/perfect accounting."
+        default: "50"
+        provenance: "config/config.default.yaml:co2_sequestration_lifetime; scripts/prepare_sector_network.py:add_co2_tracking"
+      - key: sector.co2_vent
+        effect: "true adds vent links co2 stored -> atmosphere (relief valve for surplus captured CO2); false (default) forces every captured tonne to be stored, used or sequestered."
+        default: "false"
+        provenance: "config/config.default.yaml:co2_vent; scripts/prepare_sector_network.py:add_co2_tracking"
+      - key: sector.dac
+        effect: "true (default) adds direct air capture links at urban-central and services-urban-decentral heat buses, moving CO2 from atmosphere to co2 stored using electricity and heat."
+        default: "true"
+        provenance: "config/config.default.yaml:dac; scripts/prepare_sector_network.py:add_dac"
+      - key: co2_budget
+        effect: "Top-level emissions cap per horizon as fraction of 1990 levels (or 'cbXX' carbon-budget string) -> 'CO2Limit' GlobalConstraint on the atmosphere store."
+        default: "{2020: 0.72, 2025: 0.648, 2030: 0.45, 2035: 0.25, 2040: 0.1, 2045: 0.05, 2050: 0.0}"
+        provenance: "config/config.default.yaml:co2_budget; scripts/prepare_sector_network.py:add_co2limit"
+      - key: costs.emission_prices
+        effect: "enable: true prices the atmosphere store (marginal_cost = -co2 price): emitting pays, removing earns — an alternative/complement to the hard cap."
+        default: "{enable: false, co2: 0.0, ...}"
+        provenance: "config/config.default.yaml:emission_prices; scripts/prepare_sector_network.py:add_co2_tracking"
+    boundary:
+      - variant: "run with CO2 pipelines, regional potentials and sequestration"
+        rung: L0
+        note: "all default: co2_spatial + co2_network + regional potentials + 250 Mt/a cap by 2050"
+      - variant: "tighten/relax the annual sequestration limit"
+        rung: L1
+        note: "sector.co2_sequestration_potential year-dict, or 'seq<Mt>' in the sector_opts wildcard for scenario sweeps"
+      - variant: "no CCS at all"
+        rung: L1
+        note: "set co2_sequestration_potential to 0 for all years — capture techs then only feed utilisation; (removing the co2 stored layer itself is not switchable)"
+      - variant: "free (copperplate) CO2 transport"
+        rung: L1
+        note: "co2_spatial: false AND co2_network: false — one EU co2 stored bus; do NOT leave co2_network true, its pipelines reference per-node bus names"
+      - variant: "no inter-regional CO2 transport (local balancing only)"
+        rung: L1
+        note: "co2_spatial: true, co2_network: false — captured CO2 must be used or sequestered at its own node"
+      - variant: "onshore storage / optimistic potentials"
+        rung: L1
+        note: "regional_co2_sequestration_potential.include_onshore: true and/or swap the attribute list to neutral/optimistic estimate columns (rebuilds the clustered potentials CSV)"
+      - variant: "allow venting captured CO2"
+        rung: L0
+        note: "sector.co2_vent: true"
+      - variant: "CO2 price instead of / on top of the cap"
+        rung: L1
+        note: "costs.emission_prices.enable + co2 (applied as marginal_cost on the atmosphere store in sector runs)"
+      - variant: "per-country or per-site sequestration limits"
+        rung: L2
+        note: "regional e_nom_max already exists; a country-level ANNUAL cap needs a bespoke constraint patterned on add_co2_sequestration_limit (or e_nom_max edits per store)"
+      - variant: "site-specific storage costs (aquifer vs depleted field)"
+        rung: L3
+        note: "replace the scalar co2_sequestration_cost with per-store capital_cost — needs authored cost data per region plus a small edit in add_co2_tracking"
+      - variant: "CO2 shipping / import-export of CO2 outside the pipeline topology"
+        rung: L5
+        note: "not modelled; needs new links/components (create_network_topology only follows the electricity grid)"
+      - variant: "dedicated storage-site nodes (offshore injection hubs)"
+        rung: L4
+        note: "sequestration lives on model nodes; separate injection-site buses need new buses/links and potential re-allocation — rule + script changes"
+    where:
+      - change: "buses, stores, sequestration links, vents, regional e_nom_max"
+        anchor: "scripts/prepare_sector_network.py::add_co2_tracking (+ define_spatial for the co2 namespace)"
+        provenance: "scripts/prepare_sector_network.py:add_co2_tracking; scripts/prepare_sector_network.py:define_spatial"
+      - change: "pipeline topology and costs"
+        anchor: "scripts/prepare_sector_network.py::add_co2_network / create_network_topology"
+        provenance: "scripts/prepare_sector_network.py:add_co2_network; scripts/prepare_sector_network.py:create_network_topology"
+      - change: "geological potentials input"
+        anchor: "rules build_co2_sequestration_potentials + build_clustered_co2_sequestration_potentials (CO2Stop via rule retrieve_co2stop)"
+        provenance: "rules/build_sector.smk:build_clustered_co2_sequestration_potentials; rules/retrieve.smk:retrieve_co2stop"
+      - change: "annual injection cap at solve time"
+        anchor: "scripts/solve_network.py::add_co2_sequestration_limit (params co2_sequestration_potential in the solve rules; 'seq' opts token via update_config_from_wildcards)"
+        provenance: "scripts/solve_network.py:add_co2_sequestration_limit; rules/solve_overnight.smk:co2_sequestration_potential; scripts/_helpers.py:update_config_from_wildcards"
+      - change: "atmosphere emissions constraint"
+        anchor: "scripts/prepare_sector_network.py::add_co2limit -> scripts/solve_network.py::add_co2_atmosphere_constraint (multi-invest: add_carbon_constraint)"
+        provenance: "scripts/prepare_sector_network.py:add_co2limit; scripts/solve_network.py:add_carbon_constraint"
+      - change: "utilisation-side competition (CO2 as feedstock)"
+        anchor: "scripts/prepare_sector_network.py::add_industry (methanolisation and Fischer-Tropsch links draw from spatial.co2.nodes)"
+        provenance: "scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:methanolisation"
+    data_dependencies:
+      - input: "CO2Stop database (storage units + hydrocarbon traps tables/KML)"
+        required_for: "regional sequestration potentials"
+        availability: "retrieved by the workflow (rule retrieve_co2stop); European coverage only"
+      - input: "co2_sequestration_potential_base_s_{clusters}.csv"
+        required_for: "per-region e_nom_max when regional_co2_sequestration_potential.enable"
+        availability: "must be built (rules build_co2_sequestration_potentials -> build_clustered_co2_sequestration_potentials); automatic in the sector workflow"
+      - input: "cost rows 'CO2 pipeline', 'CO2 submarine pipeline' (DEA energy-transport data) and 'CO2 storage tank'"
+        required_for: "pipeline and buffer-tank capital costs"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "regions_onshore/regions_offshore geojsons per cluster"
+        required_for: "allocating CO2Stop polygons to model regions"
+        availability: "exists by default (base workflow outputs)"
+      - input: "co2_totals.csv (historical emissions) + eurostat balances"
+        required_for: "translating the co2_budget fraction into the CO2Limit constant"
+        availability: "must be built (build_co2_totals chain); automatic in the sector workflow"

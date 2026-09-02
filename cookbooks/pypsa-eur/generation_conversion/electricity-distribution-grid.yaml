@@ -1,0 +1,162 @@
+id: electricity-distribution-grid
+title: Electricity distribution grid (low-voltage layer)
+summary: The stylized LV distribution layer — one aggregate low-voltage bus per node behind an extendable distribution link, which behind-the-meter technologies and electrified demand attach to.
+when_to_use:
+  - "model the distribution grid / low voltage network"
+  - "distribution grid reinforcement costs"
+  - "which technologies sit behind the distribution transformer"
+  - "distribution losses"
+  - "grid connection cost for renewables"
+  - "rooftop PV and home batteries on the LV side"
+  - "heat pumps / EV charging load on the distribution grid"
+  - "pypsa-eur carrier names: low voltage, electricity distribution grid, electricity grid connection"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Sector runs model a stylized LV layer by default
+        (sector.electricity_distribution_grid: true). For every AC node,
+        insert_electricity_distribution_grid adds a "low voltage" bus and an
+        extendable bidirectional Link "electricity distribution grid" (bus0 =
+        HV node, bus1 = LV, p_min_pu = -1, capital cost and lifetime from the
+        "electricity distribution grid" cost row) — i.e. distribution
+        transformer capacity is a costed optimisation variable. It then
+        re-points components to the LV side: ALL loads whose carrier contains
+        "electric" (regular electricity, industry electricity, agriculture
+        machinery electric), BEV chargers (bus0) and V2G (bus1),
+        non-industrial heat pumps (bus1), industrial heat pumps (bus0),
+        resistive heaters (bus0) and micro gas CHP (bus1). It re-prices
+        existing utility solar to the "solar-utility" cost row and adds
+        "solar rooftop" generators on LV buses (potentials from rule
+        build_clustered_solar_rooftop_potentials) plus a "home battery"
+        bus/store/charger/discharger per node (see solar-home-systems
+        recipe). Distribution losses are handled twice, consistently: the
+        static efficiency 0.97 from
+        sector.transmission_efficiency["electricity distribution grid"] is
+        first DEDUCTED from measured electricity demand (loads_t.p_set *=
+        efficiency, since load statistics include losses), and the
+        distribution link itself is then split into a lossy unidirectional
+        pair by the lossy_bidirectional_links loop (same 0.97), with forward
+        and reversed p_nom synchronised at solve time
+        (add_lossy_bidirectional_link_constraints). Separately,
+        sector.electricity_grid_connection: true adds the
+        "electricity grid connection" capital-cost row onto onwind, solar and
+        solar-hsat generators (add_electricity_grid_connection) — the HV
+        connection cost for utility RES. Gas distribution is a cost markup
+        only: insert_gas_distribution_costs adds
+        gas_distribution_grid_cost_factor times the electricity-distribution
+        cost row onto decentral gas boilers and micro gas CHP.
+      mechanism: >
+        rule prepare_sector_network runs insert_electricity_distribution_grid
+        (gated by options["electricity_distribution_grid"]) after all
+        loads/links exist, then insert_gas_distribution_costs and
+        add_electricity_grid_connection, then the transmission_efficiency loop
+        calls lossy_bidirectional_links per enabled carrier including
+        "electricity distribution grid". The sector_opts wildcard token
+        "dist" + factor also flips the option on via
+        update_config_from_wildcards.
+      not_covered: >
+        No real feeder topology, no per-feeder power flow, no hosting-capacity
+        or voltage constraints — the LV layer is ONE aggregate bus per
+        clustered region behind a transport link. Notably,
+        sector.electricity_distribution_grid_cost_factor is a DEAD config key
+        at this ref: it exists in config and validation and is set by the
+        "dist<factor>" wildcard in _helpers.py, but NO script reads it — the
+        distribution link cost comes straight from the cost row, so the
+        factor silently does nothing (scale the cost row instead). The
+        electricity-only workflow has no LV layer at all (demand sits on HV
+        buses). Grid connection cost applies only to onwind/solar/solar-hsat
+        (offshore has its own landfall/connection costing in
+        attach_wind_and_solar) and is a flat adder, not distance-based. No
+        distribution reliability, no phase/unbalance detail.
+      provenance: "scripts/prepare_sector_network.py:insert_electricity_distribution_grid; scripts/prepare_sector_network.py:add_electricity_grid_connection; scripts/prepare_sector_network.py:insert_gas_distribution_costs; scripts/prepare_sector_network.py:lossy_bidirectional_links; scripts/_helpers.py:electricity_distribution_grid_cost_factor"
+    levers:
+      - key: sector.electricity_distribution_grid
+        effect: "Master switch for the LV layer; false keeps all loads and DERs on the HV bus (also settable via the 'dist' sector_opts token)."
+        default: "true"
+        provenance: "config/config.default.yaml:electricity_distribution_grid; scripts/prepare_sector_network.py:insert_electricity_distribution_grid"
+      - key: sector.electricity_distribution_grid_cost_factor
+        effect: "INTENDED multiplier on distribution grid cost — currently dead: set by the 'dist<f>' wildcard in update_config_from_wildcards but consumed nowhere; use costs.overwrites on the 'electricity distribution grid' row for a working equivalent."
+        default: "1.0"
+        provenance: "config/config.default.yaml:electricity_distribution_grid_cost_factor; scripts/_helpers.py:electricity_distribution_grid_cost_factor"
+      - key: sector.electricity_grid_connection
+        effect: "true adds the 'electricity grid connection' cost row to onwind/solar/solar-hsat capital costs."
+        default: "true"
+        provenance: "config/config.default.yaml:electricity_grid_connection; scripts/prepare_sector_network.py:add_electricity_grid_connection"
+      - key: sector.transmission_efficiency
+        effect: "The 'electricity distribution grid' entry (efficiency_static 0.97) sets both the demand-side loss deduction and the lossy split of the distribution link; remove it from transmission_efficiency.enable for a lossless distribution link."
+        default: "electricity distribution grid: {efficiency_static: 0.97}; listed in enable"
+        provenance: "config/config.default.yaml:transmission_efficiency; scripts/prepare_sector_network.py:insert_electricity_distribution_grid"
+      - key: sector.gas_distribution_grid
+        effect: "true adds gas distribution cost markup (cost row 'electricity distribution grid' x gas_distribution_grid_cost_factor) to decentral gas boilers and micro gas CHP."
+        default: "true"
+        provenance: "config/config.default.yaml:gas_distribution_grid; scripts/prepare_sector_network.py:insert_gas_distribution_costs"
+      - key: sector.gas_distribution_grid_cost_factor
+        effect: "Multiplier for the gas distribution markup (this one IS consumed, unlike its electricity sibling)."
+        default: "1.0"
+        provenance: "config/config.default.yaml:gas_distribution_grid_cost_factor; scripts/prepare_sector_network.py:insert_gas_distribution_costs"
+      - key: costs.overwrites
+        effect: "Working path to change the distribution grid investment cost: overwrite the 'electricity distribution grid' row in prepare_costs."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+    boundary:
+      - variant: "LV layer with costed distribution reinforcement"
+        rung: L0
+        note: "default on in sector runs (sector.electricity_distribution_grid: true)"
+      - variant: "run without a distribution layer"
+        rung: L0
+        note: "sector.electricity_distribution_grid: false"
+      - variant: "scale distribution grid cost (e.g. sensitivity study)"
+        rung: L1
+        note: "NOT via electricity_distribution_grid_cost_factor (dead key) — use costs.overwrites {investment: {electricity distribution grid: ...}} or a data/custom_costs.csv row"
+      - variant: "change distribution losses"
+        rung: L1
+        note: "sector.transmission_efficiency['electricity distribution grid'].efficiency_static (affects both the demand deduction and the link efficiency)"
+      - variant: "drop the RES grid-connection cost adder"
+        rung: L0
+        note: "sector.electricity_grid_connection: false"
+      - variant: "re-point an additional technology to the LV bus (or keep one on HV)"
+        rung: L2
+        note: "the re-pointing is a hardcoded list of carrier-string matches in insert_electricity_distribution_grid — add/remove the relevant bus-suffix block there"
+      - variant: "distribution capacity floor reflecting today's transformers"
+        rung: L2
+        note: "the distribution Link is greenfield-extendable with no p_nom_min; set p_nom/p_nom_min in the n.add call in insert_electricity_distribution_grid (no data source shipped)"
+      - variant: "LV layer in the electricity-only workflow"
+        rung: L2
+        note: "no hook exists; port a reduced insert_electricity_distribution_grid into add_electricity — localised but real code"
+      - variant: "real feeder topology / hosting capacity / LV power flow"
+        rung: L5
+        note: "structurally out of scope — one aggregate LV bus per region, transport-link coupling, no feeder data in the workflow"
+    where:
+      - change: "LV buses, distribution link, re-pointing, rooftop PV, home battery"
+        anchor: "scripts/prepare_sector_network.py::insert_electricity_distribution_grid (gated by sector.electricity_distribution_grid)"
+        provenance: "scripts/prepare_sector_network.py:insert_electricity_distribution_grid"
+      - change: "lossy split of the distribution link"
+        anchor: "scripts/prepare_sector_network.py::lossy_bidirectional_links (transmission_efficiency loop) + scripts/solve_network.py::add_lossy_bidirectional_link_constraints"
+        provenance: "scripts/prepare_sector_network.py:lossy_bidirectional_links; scripts/solve_network.py:add_lossy_bidirectional_link_constraints"
+      - change: "RES grid connection cost"
+        anchor: "scripts/prepare_sector_network.py::add_electricity_grid_connection"
+        provenance: "scripts/prepare_sector_network.py:add_electricity_grid_connection"
+      - change: "gas distribution markup"
+        anchor: "scripts/prepare_sector_network.py::insert_gas_distribution_costs"
+        provenance: "scripts/prepare_sector_network.py:insert_gas_distribution_costs"
+      - change: "the dead cost-factor plumbing (wildcard setter)"
+        anchor: "scripts/_helpers.py::update_config_from_wildcards ('dist' token)"
+        provenance: "scripts/_helpers.py:update_config_from_wildcards"
+      - change: "distribution/grid-connection cost values"
+        anchor: "scripts/process_cost_data.py::prepare_costs / ::overwrite_costs (rows 'electricity distribution grid', 'electricity grid connection')"
+        provenance: "scripts/process_cost_data.py:prepare_costs; scripts/process_cost_data.py:overwrite_costs"
+    data_dependencies:
+      - input: "cost rows 'electricity distribution grid' and 'electricity grid connection' in the processed technology-data file"
+        required_for: "distribution link cost and RES connection adder"
+        availability: "exists by default (rule process_cost_data)"
+      - input: "solar_rooftop_potentials_s_{clusters}.csv (rule build_clustered_solar_rooftop_potentials)"
+        required_for: "rooftop PV on the LV buses"
+        availability: "must be built (standard sector workflow, requires solar in renewable_carriers)"
+      - input: "clustered population layout (pop_layout)"
+        required_for: "insert_electricity_distribution_grid inputs and rooftop potential"
+        availability: "must be built (rule build_clustered_population_layouts)"
+      - input: "existing distribution transformer capacities per region"
+        required_for: "brownfield distribution capacity floor variant"
+        availability: "absent — user-provided"

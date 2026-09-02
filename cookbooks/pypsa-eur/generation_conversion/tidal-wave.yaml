@@ -1,0 +1,123 @@
+id: tidal-wave
+title: Tidal / wave (emerging)
+summary: >
+  Marine renewables — tidal stream/range and wave energy converters — as
+  variable-profile electricity generators.
+when_to_use:
+  - "tidal energy / tidal stream / tidal range"
+  - "wave power / wave energy converters"
+  - "marine renewables"
+  - "ocean energy generation"
+  - "add a new renewable technology with a custom profile"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Nothing — grounded absence: no tidal, wave or marine-energy carrier,
+        resource method, or cost row exists (the only marine hits are WDPA
+        marine protected areas, seawater temperature for district heating, and
+        "submarine" cable/pipeline cost rows). The machinery it is absent from
+        is the generic renewable chain, technology-parametrised end to end:
+        config renewable.<tech> sections exist for onwind, offwind-ac,
+        offwind-dc, offwind-float, solar, solar-hsat and hydro; rule
+        build_renewable_profiles runs once per {technology} wildcard
+        (wildcard_constraints excludes hydro), computing land/sea eligibility
+        (natura, LUISA/Copernicus, GEBCO depth, ship density) and then the
+        per-cell capacity factor via func = getattr(cutout,
+        resource.pop("method")) — a direct atlite Cutout method lookup, so only
+        atlite conversion methods (wind, pv, ...) can ever be configured; it
+        writes profile_{clusters}_{technology}.nc (with a resource-class "bin"
+        dimension) plus regions_by_class_{clusters}_{technology}.geojson. rule
+        add_electricity requests profile_{tech} and class_regions_{tech} for
+        every member of electricity.renewable_carriers (input_profile_tech /
+        input_class_regions), and attach_wind_and_solar turns each profile
+        into Generators per (bus, bin), extendable if listed in
+        electricity.extendable_carriers.Generator; for offwind-like carriers
+        it adds distance-based "-connection-submarine" and landfall
+        "-connection-underground" grid connection costs — machinery directly
+        reusable for marine devices.
+      mechanism: >
+        None for tidal/wave specifically. The binding gap is upstream physics:
+        atlite has no tidal or wave conversion method, so a new
+        renewable.<tech> entry cannot be satisfied by config alone — the
+        profile must come from a new producer. The repo contains the exact
+        precedent for that: hydro is a renewable carrier whose profile is
+        excluded from build_renewable_profiles by wildcard_constraints and
+        produced by its own dedicated rule build_hydro_profile instead. A
+        tidal implementation mirrors this shape. New cost rows need no code:
+        data/custom_costs.csv rows with unknown technologies are CONCATENATED
+        into the cost table by overwrite_costs (costs.custom_cost_fn).
+      not_covered: >
+        Tidal current/range and wave climate resources (no cutout variable
+        covers them), marine-energy cost rows, device technology detail, and
+        marine-specific eligibility layers beyond what natura/GEBCO/ship
+        density already give.
+      provenance: "scripts/build_renewable_profiles.py:resource.pop; rules/build_electricity.smk:input_profile_tech; scripts/add_electricity.py:attach_wind_and_solar; rules/build_electricity.smk:build_hydro_profile; scripts/process_cost_data.py:overwrite_costs"
+    levers:
+      - key: electricity.renewable_carriers
+        effect: "A new technology name must be listed here (and have a renewable.<tech> config section) for its profile and class-regions inputs to be requested and its generators attached."
+        default: "[solar, solar-hsat, onwind, offwind-ac, offwind-dc, offwind-float, hydro]"
+        provenance: "config/config.default.yaml:renewable_carriers; rules/build_electricity.smk:input_profile_tech"
+      - key: electricity.extendable_carriers.Generator
+        effect: "Add the new carrier here to let the optimiser build capacity (attach_wind_and_solar sets p_nom_extendable from membership)."
+        default: "[solar, solar-hsat, onwind, offwind-ac, offwind-dc, offwind-float, OCGT, CCGT]"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_wind_and_solar"
+      - key: costs.custom_cost_fn
+        effect: "data/custom_costs.csv can introduce a brand-new 'tidal'/'wave' cost row (investment, FOM, lifetime, efficiency) — overwrite_costs appends technologies missing from the cost index, so no code edit for costs."
+        default: "data/custom_costs.csv"
+        provenance: "config/config.default.yaml:custom_cost_fn; scripts/process_cost_data.py:overwrite_costs"
+      - key: electricity.custom_powerplants
+        effect: "Pandas query (or true) injecting user rows from data/custom_powerplants.csv — the crude site-specific stand-in route for known tidal plants as fixed capacity."
+        default: "false"
+        provenance: "config/config.default.yaml:custom_powerplants; scripts/build_powerplants.py:add_custom_powerplants"
+    boundary:
+      - variant: "tidal/wave as extendable generators with an externally computed profile"
+        rung: L4
+        note: >-
+          rule plumbing, not just data: add renewable.tidal + the carrier to
+          renewable_carriers/extendable_carriers and a cost row (custom_costs
+          route), then produce profile_{clusters}_tidal.nc AND
+          regions_by_class_{clusters}_tidal.geojson in the exact formats
+          (profile/p_nom_max per (bus, bin)) — build_renewable_profiles will
+          claim the wildcard and fail on the missing atlite method, so exclude
+          'tidal' in its wildcard_constraints and add a dedicated producer
+          rule, exactly as rule build_hydro_profile does for hydro
+      - variant: "crude stand-in: site-specific tidal plants as custom powerplants"
+        rung: L3
+        note: "rows in data/custom_powerplants.csv + electricity.custom_powerplants; a time-varying p_max_pu cannot come from config (the conventional.<carrier> attribute route only takes static per-country values), so a resource profile still needs post-processing or the L4 path"
+      - variant: "native resource assessment (tidal currents / wave climate)"
+        rung: L5
+        note: "new conversion logic — the getattr(cutout, method) call only dispatches to atlite methods, none of which cover tidal/wave; a new method or a from-scratch profile computation plus marine eligibility handling"
+      - variant: "reuse offshore grid-connection costing for marine devices"
+        rung: L3
+        note: "name the carrier 'offwind-<x>'-style or add '-connection-submarine'/'-connection-underground'/' -station' cost rows and an average_distance field in the profile — attach_wind_and_solar's offwind branch computes distance-based connection cost from exactly these"
+    where:
+      - change: "new technology config section + carrier lists"
+        anchor: "config/config.default.yaml renewable: section (offwind-dc is the closest marine-sited template) and electricity.renewable_carriers"
+        provenance: "config/config.default.yaml:renewable_carriers; config/config.default.yaml:offwind-dc"
+      - change: "profile production for the new wildcard"
+        anchor: "rules/build_electricity.smk rule build_renewable_profiles (wildcard_constraints technology, currently '(?!hydro).*') and the dedicated-rule precedent rule build_hydro_profile"
+        provenance: "rules/build_electricity.smk:build_renewable_profiles; rules/build_electricity.smk:wildcard_constraints"
+      - change: "per-cell capacity factor computation (atlite method dispatch)"
+        anchor: "scripts/build_renewable_profiles.py (func = getattr on the cutout with resource.method)"
+        provenance: "scripts/build_renewable_profiles.py:resource.pop"
+      - change: "attaching the profile as Generators (incl. offshore connection costs)"
+        anchor: "scripts/add_electricity.py::attach_wind_and_solar (consumes input_profile_tech / input_class_regions of rule add_electricity)"
+        provenance: "scripts/add_electricity.py:attach_wind_and_solar; rules/build_electricity.smk:input_class_regions"
+      - change: "marine-energy cost rows"
+        anchor: "data/custom_costs.csv (costs.custom_cost_fn) via scripts/process_cost_data.py::overwrite_costs"
+        provenance: "scripts/process_cost_data.py:overwrite_costs"
+    data_dependencies:
+      - input: "tidal/wave resource time series or hydrodynamic model output for the target coast"
+        required_for: "any profile above the crude stand-in"
+        availability: "absent — no cutout variable covers it; must be supplied"
+      - input: "marine-energy cost row (CAPEX/FOM/lifetime)"
+        required_for: "all variants"
+        availability: "absent from technology-data — addable via data/custom_costs.csv without code"
+      - input: "offshore region shapes, GEBCO bathymetry, ship density raster, natura/WDPA layers"
+        required_for: "siting/eligibility of marine technologies"
+        availability: "exists by default (retrieved/built by the workflow)"
+      - input: "profile_{clusters}_{technology}.nc + regions_by_class_{clusters}_{technology}.geojson in the shipped format"
+        required_for: "the L4 external-profile variant"
+        availability: "must be built by the user's new rule (format defined by build_renewable_profiles outputs)"

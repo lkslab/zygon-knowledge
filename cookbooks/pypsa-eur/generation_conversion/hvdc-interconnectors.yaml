@@ -1,0 +1,176 @@
+id: hvdc-interconnectors
+title: HVDC interconnectors
+summary: High-voltage direct-current links — existing HVDC lines/converters, their representation as PyPSA Links, converter losses, and adding new DC interconnectors.
+when_to_use:
+  - "add an HVDC interconnector between two countries"
+  - "model a subsea cable / submarine power link"
+  - "existing DC lines in the grid"
+  - "back-to-back converter stations"
+  - "expand cross-border transmission with DC"
+  - "cost of HVDC overhead vs submarine cable"
+  - "HVDC losses / converter efficiency"
+  - "planned interconnector projects (TYNDP, NEP)"
+  - "pypsa-eur carrier names: DC, links"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Fully covered on the existing-asset side and — unlike pypsa-earth —
+        with a real candidate-project pipeline for new interconnectors. In rule
+        base_network, DC assets from the chosen dataset become Link components
+        with carrier "DC" and dc=True; their p_nom comes DIRECTLY from the
+        dataset's p_nom column (_load_links_from_raw reads voltage and p_nom as
+        floats — no line-type/voltage-class derivation as for AC lines). Flow
+        bounds are links.p_max_pu = 1.0 / p_min_pu = -1.0 (bidirectional
+        transport, _set_electrical_parameters_links_raw). Converters are
+        imported as Links (carrier "" in the osm/tyndp path) with default
+        p_nom 2000 (_set_electrical_parameters_converters); in
+        simplify_network, remove_converters folds each converter away by
+        remapping its DC bus onto the AC bus, and simplify_links folds
+        multi-segment DC corridors into single point-to-point links (capacity =
+        min over segments, length-weighted underwater_fraction). Underwater
+        fraction is computed against the offshore shapes
+        (_set_links_underwater_fraction) and drives the capital-cost split in
+        set_transmission_costs: length * ((1-uw)*'HVDC overhead' +
+        uw*'HVDC submarine') + 'HVDC inverter pair'. Existing DC links are made
+        extendable together with AC lines by electricity.transmission_limit
+        (default vopt: p_nom_min = p_nom, p_nom_extendable, joint
+        GlobalConstraint over carrier_attribute "AC, DC"), with per-link growth
+        capped by links.max_extension (30000 MW, set_line_nom_max). Candidate
+        NEW interconnectors come from transmission_projects (TYNDP2020, German
+        NEP, manual list — see transmission-expansion-projects recipe), entering
+        as DC Links with p_nom 0 by default (new_link_capacity: zero). In
+        sector runs, DC links additionally become LOSSY: the
+        sector.transmission_efficiency entry for DC (efficiency_static 0.98,
+        efficiency_per_1000km 0.977) makes lossy_bidirectional_links split each
+        DC link into a forward/"-reversed" unidirectional pair, whose p_nom are
+        synchronised at solve time by add_lossy_bidirectional_link_constraints.
+      mechanism: >
+        rule base_network (DC Links, converters) -> rule
+        add_transmission_projects_and_dlr (project links appended) -> rule
+        simplify_network (remove_converters, simplify_links) -> rule
+        cluster_network -> rule add_electricity / rule prepare_network
+        (set_transmission_costs, set_transmission_limit, set_line_nom_max) ->
+        rule solve_network. Sector chain: rule prepare_sector_network runs
+        lossy_bidirectional_links for every carrier listed in
+        sector.transmission_efficiency.enable (includes "DC").
+      not_covered: >
+        In the electricity-only workflow DC links are lossless transport
+        (efficiency stays 1; solving.options.transmission_losses applies to
+        Lines only) — converter/cable losses only appear in sector runs via the
+        transmission_efficiency split. No hvdc_as_lines representation switch
+        (pypsa-earth has one; eur always uses Links). No discrete cable sizing
+        except the post_discretization heuristic (link_unit_size DC: 2000 MW,
+        iterative mode only). B2B converter replacement at country borders
+        (_replace_b2b_converter_at_country_border_by_link) only matches carrier
+        "B2B", which is set in the deprecated entsoegridkit loader — in the
+        default osm path converters carry "" and are handled by
+        remove_converters instead. No user-facing config for per-link p_nom
+        overrides; wrong DC capacities must be fixed in the source data or via
+        an adjust_links transmission-project CSV.
+      provenance: "scripts/base_network.py:_load_links_from_raw; scripts/base_network.py:_set_electrical_parameters_links_raw; scripts/base_network.py:_set_links_underwater_fraction; scripts/simplify_network.py:remove_converters; scripts/add_electricity.py:set_transmission_costs; scripts/prepare_sector_network.py:lossy_bidirectional_links; scripts/solve_network.py:add_lossy_bidirectional_link_constraints"
+    levers:
+      - key: electricity.transmission_limit
+        effect: "Expansion control shared with AC: 'vopt' (default) makes existing DC links extendable (p_nom_min = p_nom); 'v1.0' freezes AC+DC jointly; non-opt factors bound the joint volume/cost growth."
+        default: "vopt"
+        provenance: "config/config.default.yaml:transmission_limit; scripts/prepare_network.py:set_transmission_limit"
+      - key: links.p_max_pu
+        effect: "Per-unit flow bound on DC links and converters; p_min_pu defaults to its negative, making links bidirectional."
+        default: "1.0"
+        provenance: "config/config.default.yaml:p_max_pu; scripts/base_network.py:_set_electrical_parameters_links_raw"
+      - key: links.p_min_pu
+        effect: "Lower per-unit flow bound (asymmetric ratings possible by setting it differently from -p_max_pu)."
+        default: "-1.0"
+        provenance: "config/config.default.yaml:p_min_pu; scripts/base_network.py:_set_electrical_parameters_links_raw"
+      - key: links.max_extension
+        effect: "Per-link cap on capacity growth: p_nom_max = p_nom + max_extension for carrier-DC links (set_line_nom_max; limit_individual_line_extension in sector runs)."
+        default: "30000 (MW)"
+        provenance: "config/config.default.yaml:max_extension; scripts/prepare_network.py:set_line_nom_max"
+      - key: links.p_nom_max
+        effect: "Absolute upper clip on link capacity after extension headroom."
+        default: ".inf"
+        provenance: "config/config.default.yaml:p_nom_max; scripts/prepare_network.py:set_line_nom_max"
+      - key: links.under_construction
+        effect: "Handling of DC assets flagged under construction in the base data: 'keep' (default, full capacity), 'zero', 'remove'."
+        default: "keep"
+        provenance: "config/config.default.yaml:under_construction; scripts/base_network.py:_adjust_capacities_of_under_construction_branches"
+      - key: transmission_projects.enable
+        effect: "Master switch for attaching candidate interconnector projects (TYNDP2020/NEP/manual new_links) to the base network."
+        default: "true"
+        provenance: "config/config.default.yaml:transmission_projects; scripts/add_transmission_projects_and_dlr.py:attach_transmission_projects"
+      - key: transmission_projects.new_link_capacity
+        effect: "'zero' (default): new project links start at p_nom 0 and are built only if worthwhile; 'keep': they enter at the capacity given in the project file."
+        default: "zero"
+        provenance: "config/config.default.yaml:new_link_capacity; scripts/build_transmission_projects.py:new_link_capacity"
+      - key: sector.transmission_efficiency
+        effect: "Sector runs: the DC entry (efficiency_static 0.98, efficiency_per_1000km 0.977) turns DC links into lossy unidirectional pairs; drop 'DC' from transmission_efficiency.enable to keep them lossless."
+        default: "DC: {efficiency_static: 0.98, efficiency_per_1000km: 0.977}; enable includes DC"
+        provenance: "config/config.default.yaml:transmission_efficiency; scripts/prepare_sector_network.py:lossy_bidirectional_links"
+      - key: electricity.autarky
+        effect: "enable: true with by_country: true removes cross-border DC links (and lines); by_country: false removes all DC links."
+        default: "{enable: false, by_country: false}"
+        provenance: "config/config.default.yaml:autarky; scripts/prepare_network.py:enforce_autarky"
+    boundary:
+      - variant: "let existing HVDC links expand cost-optimally"
+        rung: L0
+        note: "default — transmission_limit vopt includes carrier-DC links; per-link headroom capped at links.max_extension"
+      - variant: "candidate pipeline of planned interconnectors (TYNDP2020 / German NEP)"
+        rung: L0
+        note: "default on — transmission_projects.enable with include.tyndp2020/nep true, status filter [under_construction, in_permitting, confirmed]"
+      - variant: "a specific user-defined interconnector between chosen endpoints"
+        rung: L3
+        note: "add a row to data/transmission_projects/manual/new_links.csv (endpoint coordinates x0/y0/x1/y1, p_nom, build_year, project_status matching transmission_projects.status); endpoints snap to nearest buses in connect_new_lines"
+      - variant: "force a planned interconnector to exist at its rated capacity"
+        rung: L1
+        note: "transmission_projects.new_link_capacity: keep (applies to ALL included project links; selective forcing needs an adjust_links CSV or L2)"
+      - variant: "DC transmission losses"
+        rung: L1
+        note: "sector runs: on by default via sector.transmission_efficiency (DC 0.98 static + 0.977/1000km); electricity-only runs: no config hook — set link efficiency in _set_electrical_parameters_links_raw (L2), noting bidirectional efficiency needs the lossy split"
+      - variant: "freeze only DC while allowing AC expansion (or vice versa)"
+        rung: L2
+        note: "transmission_limit acts on AC+DC jointly; a DC-only freeze needs a localised edit in set_transmission_limit (links_dc_b block) or fixing p_nom_max = p_nom for DC after set_line_nom_max"
+      - variant: "correct a wrong existing DC capacity"
+        rung: L3
+        note: "no config override; fix the source dataset (data.osm.source: build) or author an adjust_links transmission-project CSV row (n.links.update in attach_transmission_projects)"
+      - variant: "discrete cable/bipole sizing"
+        rung: L1
+        note: "solving.options.skip_iterations: false + post_discretization.enable: true (link_unit_size DC: 2000 MW, link_threshold DC: 0.3) — a rounding heuristic, not integer optimisation"
+      - variant: "asymmetric or time-varying interconnector availability (NTC profiles)"
+        rung: L2
+        note: "links.p_max_pu/p_min_pu are static scalars; per-link time series must be written into n.links_t.p_max_pu programmatically (no rule does this)"
+    where:
+      - change: "DC asset import and electrical parameters"
+        anchor: "scripts/base_network.py::_load_links_from_raw / _set_electrical_parameters_links_raw / _set_electrical_parameters_converters (rule base_network)"
+        provenance: "scripts/base_network.py:_load_links_from_raw; scripts/base_network.py:_set_electrical_parameters_converters"
+      - change: "converter removal and DC corridor folding"
+        anchor: "scripts/simplify_network.py::remove_converters / simplify_links (rule simplify_network)"
+        provenance: "scripts/simplify_network.py:remove_converters; scripts/simplify_network.py:simplify_links"
+      - change: "HVDC costing incl. underwater split and inverter pair"
+        anchor: "scripts/add_electricity.py::set_transmission_costs (rows 'HVDC overhead' / 'HVDC submarine' / 'HVDC inverter pair')"
+        provenance: "scripts/add_electricity.py:set_transmission_costs; scripts/base_network.py:_set_links_underwater_fraction"
+      - change: "DC expansion bounds in the LP"
+        anchor: "scripts/prepare_network.py::set_transmission_limit (links_dc_b selection) and ::set_line_nom_max"
+        provenance: "scripts/prepare_network.py:set_transmission_limit; scripts/prepare_network.py:set_line_nom_max"
+      - change: "candidate interconnector projects"
+        anchor: "rule build_transmission_projects -> scripts/build_transmission_projects.py::add_projects; attached by scripts/add_transmission_projects_and_dlr.py::attach_transmission_projects"
+        provenance: "scripts/build_transmission_projects.py:add_projects; scripts/add_transmission_projects_and_dlr.py:attach_transmission_projects"
+      - change: "lossy DC representation in sector runs"
+        anchor: "scripts/prepare_sector_network.py::lossy_bidirectional_links + scripts/solve_network.py::add_lossy_bidirectional_link_constraints"
+        provenance: "scripts/prepare_sector_network.py:lossy_bidirectional_links; scripts/solve_network.py:add_lossy_bidirectional_link_constraints"
+    data_dependencies:
+      - input: "prebuilt OSM grid links/converters CSVs (columns voltage, p_nom)"
+        required_for: "existing HVDC representation with data-driven capacities"
+        availability: "retrieved by the workflow (data.osm.source: archive)"
+      - input: "offshore_shapes.geojson (rule build_shapes)"
+        required_for: "underwater_fraction and hence submarine-vs-overhead costing"
+        availability: "must be built (standard workflow)"
+      - input: "cost rows 'HVDC overhead', 'HVDC submarine', 'HVDC inverter pair'"
+        required_for: "expansion costing of DC links"
+        availability: "exists by default (technology-data via rule retrieve_cost_data)"
+      - input: "data/transmission_projects/{tyndp2020,nep,manual}/new_links.csv"
+        required_for: "candidate interconnector projects"
+        availability: "exists by default in the repo; manual rows user-extendable"
+      - input: "data/links_p_nom.csv (Wikipedia HVDC list)"
+        required_for: "link capacities in the deprecated entsoegridkit path only"
+        availability: "exists by default in the repo"

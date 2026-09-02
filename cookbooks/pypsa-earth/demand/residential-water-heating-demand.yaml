@@ -1,0 +1,185 @@
+id: residential-water-heating-demand
+title: Residential water heating demand
+summary: Household energy demand for domestic hot water — weather-independent level with an intraday usage profile.
+
+when_to_use:
+  - "domestic hot water"
+  - "residential water heating"
+  - "hot water demand"
+  - "sanitary hot water"
+  - "water heater load"
+  - "shower/bath energy use"
+  - "split space vs water heating"
+  - "solar water heaters for households"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        Residential water heating is part of the heat loads on the residential heat-system
+        buses. In prepare_heat_data the 'residential water' demand uses ONLY the intraday
+        profile (heat_demand_shape = intraday_year_profile, no degree-day weighting — the
+        BDEW water columns are constant 1.0, so the water load is effectively flat), normalised
+        and scaled to the annual total 'total residential water'. That total is the UNSD
+        household heat-commodity consumption times (1 - sector.space_heat_share) in
+        build_base_energy_totals, then scenario-adjusted in prepare_energy_totals (including
+        electrified shares of oil/gas/biomass heat split by 'space to water heat share' from
+        data/demand/fuel_shares.csv). add_heat sums '<sector> water' and '<sector> space'
+        columns into one load per heat system, so water heating is served by the same
+        technologies (heat pumps, boilers, solar thermal, TES) as space heating.
+      mechanism: >
+        rule build_base_energy_totals (UNSD heat commodities x (1 - space_heat_share)) ->
+        rule prepare_energy_totals (scenario shares) -> rule prepare_heat_data ('residential
+        water' column) -> add_heat in prepare_sector_network (summed with space into the heat
+        load per heat system).
+      not_covered: >
+        No separate water-heat bus or carrier — water and space heat are indistinguishable in
+        the network; no weather- or occupancy-driven variation in water demand (flat profile);
+        the exogenous space-heat reduction does NOT touch water heating; no dedicated
+        hot-water storage distinct from the generic water-tank TES.
+      provenance: "scripts/prepare_heat_data.py:prepare_heat_data; scripts/build_base_energy_totals.py:total residential water; scripts/prepare_sector_network.py:add_heat; scripts/prepare_energy_totals.py:total residential water"
+
+    levers:
+      - key: sector.space_heat_share
+        effect: "Water heating gets (1 - this value) of the UNSD household heat-commodity total."
+        default: "0.6"
+        provenance: "config.default.yaml:space_heat_share; scripts/build_base_energy_totals.py:space_heat_share"
+      - key: demand_data.base_year
+        effect: "UNSD balance year for the base totals."
+        default: "2019"
+        provenance: "config.default.yaml:base_year; Snakefile:build_base_energy_totals"
+      - key: sector.solar_thermal
+        effect: "Adds solar thermal collectors on the heat buses (typical hot-water supply option)."
+        default: "true"
+        provenance: "config.default.yaml:solar_thermal; scripts/prepare_sector_network.py:solar_thermal"
+      - key: sector.tes
+        effect: "Adds water-tank thermal storage on the heat buses."
+        default: "true"
+        provenance: "config.default.yaml:tes; scripts/prepare_sector_network.py:tes"
+      - key: sector.enable.heat
+        effect: "Master switch — water heating disappears with the heat sector."
+        default: "true"
+        provenance: "config.default.yaml:enable; scripts/prepare_sector_network.py:add_heat"
+
+    boundary:
+      - variant: "Change the size of the water-heating total"
+        rung: L0
+        note: "Lower sector.space_heat_share (raises the water share) — one scalar for all countries."
+      - variant: "Country-specific water-heating shares"
+        rung: L3
+        note: "space_heat_share is global; the only per-country handle is 'space to water heat share' in data/demand/fuel_shares.csv, which governs how electrified fossil heat splits — a genuinely per-country base split needs edited totals data or an L2 change in build_base_energy_totals."
+      - variant: "Non-flat hot water profile (morning/evening peaks)"
+        rung: L3
+        note: "Replace the 'residential water weekday/weekend' columns of data/heat_load_profile_BDEW.csv (currently all 1.0) with a peaked profile — no code change."
+      - variant: "Scale water heating only (space untouched)"
+        rung: L2
+        note: "reduce_space_heat_exogenously only scales '<sector> space'; a symmetric edit in add_heat can scale '<sector> water' columns of the heat_demand csv."
+      - variant: "Separate hot-water bus with dedicated storage/technologies"
+        rung: L5
+        note: "add_heat sums water+space into one load per heat system; splitting requires new buses/carriers and reassigning supply technologies."
+
+    where:
+      - change: "Water total and space/water split"
+        anchor: "scripts/build_base_energy_totals.py:calc_sector ('consumption by households') and scripts/prepare_energy_totals.py ('electricity residential water', 'total residential water')"
+        provenance: "scripts/build_base_energy_totals.py:total residential water; scripts/prepare_energy_totals.py:electricity residential water"
+      - change: "Flat intraday profile"
+        anchor: "scripts/prepare_heat_data.py:prepare_heat_data (use == 'space' branch decides degree-day vs flat) + data/heat_load_profile_BDEW.csv 'residential water' columns"
+        provenance: "scripts/prepare_heat_data.py:intraday_year_profile; data/heat_load_profile_BDEW.csv:residential water weekday"
+      - change: "Merging water into the heat-system load"
+        anchor: "scripts/prepare_sector_network.py:add_heat (heat_demand[[sector + ' water', sector + ' space']] groupby-sum)"
+        provenance: "scripts/prepare_sector_network.py:add_heat"
+
+    data_dependencies:
+      - input: "UNSD household heat-commodity consumption"
+        required_for: "Annual water heating level"
+        availability: "must be built (build_base_energy_totals; NaN where the country has no data)"
+      - input: "data/heat_load_profile_BDEW.csv (water columns)"
+        required_for: "Intraday shape (flat by default)"
+        availability: "exists by default"
+      - input: "data/demand/fuel_shares.csv ('space to water heat share')"
+        required_for: "Split of electrified fossil-heat between space and water"
+        availability: "exists by default (DEFAULT row fallback)"
+
+    demand_dimensions:
+      driver: "UNSD household heat-commodity total x (1 - sector.space_heat_share), scenario-grown via CAGR files"
+      spatial: "Population-weighted country totals to clustered regions; same heat-system split as space heating"
+      temporal: "Flat (BDEW water columns are constant 1.0) — no weather dependence"
+      scenario: "scenario.demand wildcard via growth/efficiency CAGRs and fuel_shares electrification"
+
+  - model: pypsa-eur
+    version_anchor: {ref: "3e32e3c619f6ab79ada87759d6b915e9d5f3ff56", date: "2026-06-16"}
+
+    out_of_box:
+      covers: >
+        Residential hot water is a distinct column of the heat demand ('residential water')
+        built in build_hourly_heat_demand: for use == 'water' the demand is the BDEW intraday
+        profile only (no degree-day factor). In prepare_sector_network's build_heat_demand it
+        is normalised and scaled to the population-weighted annual total
+        'total residential water' (JRC-IDEES 'Water heating' row of RES_hh_fec, Eurostat
+        FC_OTH_HH_E_WH for filling) times the country water-heating efficiency; electric water
+        heating is subtracted from the base electricity load. add_heat sums water and space
+        into one load per HeatSystem bus, supplied by the shared heating technologies.
+      mechanism: >
+        rule build_hourly_heat_demand (water = intraday profile) -> prepare_sector_network:
+        build_heat_demand (scale to 'total residential water' x efficiency, subtract electric
+        share from elec load) -> add_heat (summed into the HeatSystem heat loads).
+      not_covered: >
+        No separate hot-water bus/carrier; flat weekly profile with no seasonality or
+        occupancy modelling; water heating is untouched by reduce_space_heat_exogenously,
+        endogenous retrofit and residential heat DSM (all space-only).
+      provenance: "scripts/build_hourly_heat_demand.py:intraday_profiles; scripts/prepare_sector_network.py:build_heat_demand; scripts/build_energy_totals.py:total residential water"
+
+    levers:
+      - key: energy.energy_totals_year
+        effect: "Year of the JRC-IDEES/Eurostat totals that set the hot-water level."
+        default: "2023"
+        provenance: "config/config.default.yaml:energy_totals_year; rules/build_sector.smk:energy_totals_year"
+      - key: sector.tes
+        effect: "Water-tank storage on heat buses (shared with space heating)."
+        default: "true"
+        provenance: "config/config.default.yaml:tes; scripts/prepare_sector_network.py:tes"
+      - key: sector.solar_thermal
+        effect: "Solar thermal collectors on heat buses."
+        default: "true"
+        provenance: "config/config.default.yaml:solar_thermal; scripts/prepare_sector_network.py:solar_thermal"
+
+    boundary:
+      - variant: "Change hot-water demand level"
+        rung: L3
+        note: "No dedicated config scalar; the level comes from JRC-IDEES 'Water heating' — override energy_totals/pop_weighted_energy_totals data."
+      - variant: "Peaked hot-water intraday profile"
+        rung: L3
+        note: "Edit 'residential water weekday/weekend' columns of data/heat_load_profile_BDEW.csv."
+      - variant: "Scale water heating exogenously (like space heat)"
+        rung: L2
+        note: "Mirror the reduce_space_heat_exogenously block in prepare_sector_network for '<sector> water' columns."
+      - variant: "Separate hot-water carrier with dedicated technologies"
+        rung: L5
+        note: "add_heat merges water+space per HeatSystem; splitting needs new buses, loads and technology reassignment."
+
+    where:
+      - change: "Water profile construction"
+        anchor: "scripts/build_hourly_heat_demand.py (use == 'water' branch)"
+        provenance: "scripts/build_hourly_heat_demand.py:intraday_year_profile"
+      - change: "Annual level and efficiency"
+        anchor: "scripts/build_energy_totals.py:idees_per_country ('Water heating') + build_heating_efficiencies; scaling in prepare_sector_network.py:build_heat_demand"
+        provenance: "scripts/build_energy_totals.py:Water heating; scripts/build_energy_totals.py:build_heating_efficiencies; scripts/prepare_sector_network.py:build_heat_demand"
+      - change: "Merging into HeatSystem loads"
+        anchor: "scripts/prepare_sector_network.py:add_heat"
+        provenance: "scripts/prepare_sector_network.py:add_heat"
+
+    data_dependencies:
+      - input: "JRC-IDEES RES_hh_fec ('Water heating') / Eurostat FC_OTH_HH_E_WH"
+        required_for: "Annual hot-water totals"
+        availability: "exists by default (retrieved), Europe only"
+      - input: "data/heat_load_profile_BDEW.csv (water columns)"
+        required_for: "Intraday shape"
+        availability: "exists by default"
+
+    demand_dimensions:
+      driver: "JRC-IDEES 'Water heating' final energy per country x water-heating efficiency"
+      spatial: "Population-weighted to clustered regions; HeatSystem split by urban/district-heat fractions"
+      temporal: "BDEW intraday weekday/weekend profile only — no degree-day dependence"
+      scenario: "Follows energy_totals_year; no per-year water-specific scaling out of the box"

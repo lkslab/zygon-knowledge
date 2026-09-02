@@ -1,0 +1,248 @@
+id: industrial-material-production-drivers
+title: Industrial material production drivers (tonnes, routes, recycling)
+summary: >
+  Driving industrial energy demand from physical production (tonnes of steel,
+  cement, chemicals, paper...) with explicit production-route and recycling
+  shares — the activity variable FORECAST-style models scale from, as opposed
+  to extrapolating final-energy totals.
+
+when_to_use:
+  - "steel / cement / chemicals production tonnages"
+  - "drive industry demand by production output"
+  - "recycling rates and secondary production shares"
+  - "primary vs secondary steel or aluminium"
+  - "industrial production scenarios"
+  - "material demand scenarios / material efficiency"
+  - "grow industry demand for a country"
+  - "reindustrialisation or deindustrialisation scenario"
+
+reference_taxonomy:
+  framework: "FORECAST (Fraunhofer ISI)"
+  concepts:
+    - "FORECAST's activity drivers are physical production tonnages per product from PRODCOM/UN statistics — energy demand is derived, never extrapolated directly."
+    - "60+ products/processes are resolved (clinker, flat & container glass, primary & secondary aluminium, oxygen & electric steel, coke, sinter, paper, ceramics, ammonia, adipic acid, chlorine), letting route and recycling shares be first-class scenario variables."
+    - "Route shifts interact with efficiency-measure diffusion and stock turnover, so tonnage scenarios and technology scenarios compose."
+  sources:
+    - "https://www.forecast-model.eu/forecast-en/content/methodology.php"
+    - "https://www.sciencedirect.com/science/article/pii/S2211467X18300890"
+    - "https://irees.de/wp-content/uploads/2020/06/1-031-16_Rehfeldt.pdf"
+    - "https://github.com/fraunhofer-isi/forecast-sites"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        NOT tonnage-driven. Industrial demand is final energy per (country,
+        carrier, industry) from UNSD balances, scaled to the planning horizon
+        by compound growth rates: growth_factors = (1 + cagr)^no_years using
+        data/demand/industry_growth_cagr.csv (per-country per-industry, DEFAULT
+        row fallback). Physical production enters only twice, at the margins:
+        ammonia (USGS kt/a x MWh/t when sector.ammonia.enable) and aluminium
+        tonnes (AL_production.csv, for process emissions only). Plant
+        capacities (GEM steel/cement, refineries) are used to place demand,
+        not to size it.
+      mechanism: >
+        build_base_industry_totals (UNSD baseline) -> build_industry_demand
+        (calculate_end_values on CAGRs, country_to_nodal with distribution
+        keys) -> add_industry loads. No production route, no recycling share,
+        no tonnes anywhere in the energy sizing except ammonia.
+      not_covered: >
+        No production tonnages, no MWh/t intensities, no route/recycling
+        fractions, no material-efficiency levers. The FORECAST-style upgrade
+        path is to compute production x intensity externally and inject it via
+        custom_data.industry_demand.
+      provenance: "scripts/build_industry_demand.py:calculate_end_values; scripts/build_industry_demand.py:industry_growth_cagr; scripts/build_base_industry_totals.py:create_industry_base_totals"
+
+    levers:
+      - key: custom_data.industry_demand
+        effect: >
+          THE upgrade lever: bypass UNSD+CAGR and read
+          data/custom/industry_demand_{demand}_{planning_horizons}.csv — build
+          it externally as tonnes x MWh/t per industry to make earth
+          production-driven.
+        default: "false"
+        provenance: "config.default.yaml:industry_demand; scripts/build_industry_demand.py:country_to_nodal"
+      - key: demand_data.base_year
+        effect: "UNSD baseline year the CAGRs compound from."
+        default: "2019"
+        provenance: "config.default.yaml:base_year; Snakefile:rule build_base_industry_totals"
+      - key: sector.ammonia.production_year
+        effect: "The one genuinely tonnage-driven industry: USGS ammonia production year."
+        default: "2019"
+        provenance: "config.default.yaml:production_year; scripts/build_industry_demand.py:ammonia_prod"
+      - key: demand_data.aluminium_year
+        effect: "Aluminium production year (tonnage used for process emissions only)."
+        default: "2019"
+        provenance: "config.default.yaml:aluminium_year; scripts/build_industry_demand.py:aluminium_year"
+      - key: demand_data.other_industries
+        effect: "Include/exclude the unspecified 'other' UNSD industries in the baseline."
+        default: "false"
+        provenance: "config.default.yaml:other_industries; Snakefile:other_industries=config[\"demand_data\"][\"other_industries\"]"
+
+    boundary:
+      - variant: "grow/shrink a country's industry activity"
+        rung: L3
+        note: "edit per-industry CAGRs in data/demand/industry_growth_cagr.csv (DEFAULT fallback covers missing countries)."
+      - variant: "production-tonnage-driven demand (FORECAST-style)"
+        rung: L3
+        note: >
+          Externally combine production statistics (UN/PRODCOM-like) with
+          MWh/t intensities (e.g. pypsa-eur's industry_sector_ratios) into the
+          custom industry_demand csv; set custom_data.industry_demand: true.
+          No code change needed — the csv format is (country x carrier) x
+          industry.
+      - variant: "route/recycling shares (EAF share, secondary aluminium)"
+        rung: L3
+        note: "only expressible through the carrier mix of the custom csv (e.g. more electricity, less coal for steel); no native route objects."
+      - variant: "endogenous production (model chooses where/how much to produce)"
+        rung: L5
+        note: "demand is fixed energy; production components, material buses and demand re-expressed in tonnes are all new code."
+      - variant: "new industry category in the pipeline"
+        rung: L2
+        note: "extend clean_industry_list / emission_factors in build_industry_demand and the UNSD transaction mapping csv."
+
+    where:
+      - change: "CAGR growth application"
+        anchor: "calculate_end_values + growth_factors in build_industry_demand"
+        provenance: "scripts/build_industry_demand.py:calculate_end_values"
+      - change: "activity data file"
+        anchor: "data/demand/industry_growth_cagr.csv"
+        provenance: "data/demand/industry_growth_cagr.csv:DEFAULT"
+      - change: "custom production-driven injection"
+        anchor: "custom_data.industry_demand branch of build_industry_demand"
+        provenance: "scripts/build_industry_demand.py:country_to_nodal"
+      - change: "industry list / categories"
+        anchor: "clean_industry_list in build_industry_demand; data/unsd_transactions.csv mapping in build_base_industry_totals"
+        provenance: "scripts/build_industry_demand.py:clean_industry_list; scripts/build_base_industry_totals.py:create_industry_base_totals"
+      - change: "where activity lands spatially"
+        anchor: "rule build_industrial_distribution_key, build_nodal_distribution_key"
+        provenance: "scripts/build_industrial_distribution_key.py:build_nodal_distribution_key"
+
+    data_dependencies:
+      - input: "data/demand/industry_growth_cagr.csv"
+        required_for: "default activity scaling"
+        availability: "exists by default (DEFAULT row fallback)"
+      - input: "national production statistics (steel/cement/chemicals tonnes)"
+        required_for: "production-driven custom csv"
+        availability: "absent from repo — external (worldsteel, USGS, UN)"
+      - input: "MWh/t intensities per industry"
+        required_for: "production-driven custom csv"
+        availability: "absent from earth — can be borrowed from pypsa-eur industry_sector_ratios"
+      - input: "data/custom/industry_demand_{demand}_{planning_horizons}.csv"
+        required_for: "the injection itself"
+        availability: "absent — user-supplied"
+
+    demand_dimensions:
+      driver: "final-energy TWh per industry x (1+CAGR)^years — energy-extrapolated, not tonnage-driven (except ammonia tonnes)"
+      spatial: "plant-capacity distribution keys per industry (GEM/refineries/Haber-Bosch), GDP fallback"
+      temporal: "flat annual/8760 loads"
+      scenario: "{demand} wildcard selects custom csv variants; planning_horizons sets the compounding period"
+
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+
+    out_of_box:
+      covers: >
+        Covered — the demand chain is tonnage-driven end to end. Today's kt/a
+        production per country and sector comes from JRC-IDEES physical output
+        (Eurostat energy-ratio fallback for non-EU28, BFE for CH), with basic
+        chemicals separated into ammonia (USGS), chlorine, methanol, HVC.
+        build_industrial_production_per_country_tomorrow reshapes it with
+        route/recycling fractions: St_primary_fraction + DRI_fraction split
+        steel into Integrated steelworks / DRI + Electric arc / Electric arc;
+        Al_primary_fraction splits aluminium; HVC splits into primary /
+        mechanical recycling / chemical recycling.
+        build_industrial_production_per_node distributes tonnes via per-sector
+        site keys; energy = tonnes x MWh/t sector ratios.
+      mechanism: >
+        rule chain build_industrial_production_per_country ->
+        _per_country_tomorrow -> _per_node ->
+        build_industrial_energy_demand_per_node (x ratios) -> add_industry
+        loads. Route fractions are per-year config dicts resolved by
+        planning_horizons.
+      not_covered: >
+        Production volumes are exogenous (no endogenous relocation or
+        elasticity to energy prices); material efficiency/substitution (less
+        steel per car) has no lever — it must be edited into the production
+        csv; sectors beyond the listed ones (e.g. new products) need new
+        columns and ratios.
+      provenance: "scripts/build_industrial_production_per_country.py:industry_production_per_country; scripts/build_industrial_production_per_country_tomorrow.py:St_primary_fraction; scripts/build_industrial_production_per_node.py:build_nodal_industrial_production; scripts/build_industrial_energy_demand_per_node.py:nodal_production"
+
+    levers:
+      - key: industry.St_primary_fraction
+        effect: "Per-year share of steel from primary production (rest = scrap EAF)."
+        default: "0.6 (2020) falling to 0.3 (2050)"
+        provenance: "config/config.default.yaml:St_primary_fraction; scripts/build_industrial_production_per_country_tomorrow.py:st_primary_fraction"
+      - key: industry.DRI_fraction
+        effect: "Per-year share of primary steel via (hydrogen-ready) DRI + Electric arc, using industry.H2_DRI and industry.elec_DRI intensities."
+        default: "0 (2020) rising to 1 (2050)"
+        provenance: "config/config.default.yaml:DRI_fraction; scripts/build_industrial_production_per_country_tomorrow.py:dri_fraction"
+      - key: industry.Al_primary_fraction
+        effect: "Per-year share of aluminium from primary smelting (rest secondary/recycled)."
+        default: "0.4 (2020) falling to 0.2 (2050)"
+        provenance: "config/config.default.yaml:Al_primary_fraction; scripts/build_industrial_production_per_country_tomorrow.py:al_primary_fraction"
+      - key: industry.HVC_primary_fraction
+        effect: "HVC route share for primary (naphtha) production; with HVC_mechanical_recycling_fraction and HVC_chemical_recycling_fraction."
+        default: "0.88 (2020) falling to 0.4 (2050)"
+        provenance: "config/config.default.yaml:HVC_primary_fraction; scripts/build_industrial_production_per_country_tomorrow.py:HVC_primary_fraction"
+      - key: industry.reference_year
+        effect: "Historical year the production baseline is taken for."
+        default: "2023"
+        provenance: "config/config.default.yaml:reference_year; scripts/build_industrial_production_per_country.py:reference_year"
+      - key: industry.hotmaps_locate_missing
+        effect: "Geocode Hotmaps sites lacking coordinates instead of dropping them — affects where tonnage lands."
+        default: "false"
+        provenance: "config/config.default.yaml:hotmaps_locate_missing; scripts/build_industrial_distribution_key.py:hotmaps_locate_missing"
+
+    boundary:
+      - variant: "route/recycling scenario (more EAF, more plastics recycling)"
+        rung: L1
+        note: "the per-year fraction dicts."
+      - variant: "scale a sector's production for a scenario"
+        rung: L3
+        note: "no per-sector production scaler in config (only HVC_demand_factor at the load); edit the produced industrial_production_per_country csv or override it."
+      - variant: "material efficiency (fewer tonnes per service)"
+        rung: L3
+        note: "same as above — production csv is the entry point."
+      - variant: "new production route for an existing sector"
+        rung: L4
+        note: "new column through _tomorrow + a ratios column in build_industry_sector_ratios + distribution-key sector mapping."
+      - variant: "endogenous production siting / trade"
+        rung: L5
+        note: "requires production capacity components and material flows — none exist."
+
+    where:
+      - change: "today's tonnage baseline"
+        anchor: "rule build_industrial_production_per_country (industry_production_per_country, separate_basic_chemicals)"
+        provenance: "rules/build_sector.smk:rule build_industrial_production_per_country; scripts/build_industrial_production_per_country.py:separate_basic_chemicals"
+      - change: "route/recycling reshaping"
+        anchor: "rule build_industrial_production_per_country_tomorrow"
+        provenance: "rules/build_sector.smk:rule build_industrial_production_per_country_tomorrow"
+      - change: "tonnage-to-node allocation"
+        anchor: "rule build_industrial_distribution_key (prepare_hotmaps_database, prepare_gem_steel_database, prepare_ammonia_database); rule build_industrial_production_per_node"
+        provenance: "scripts/build_industrial_distribution_key.py:prepare_hotmaps_database; scripts/build_industrial_production_per_node.py:build_nodal_industrial_production"
+      - change: "tonnes -> energy conversion"
+        anchor: "rule build_industrial_energy_demand_per_node (ratios x production)"
+        provenance: "rules/build_sector.smk:rule build_industrial_energy_demand_per_node"
+
+    data_dependencies:
+      - input: "JRC-IDEES physical output sheets + Eurostat energy balances"
+        required_for: "production per country"
+        availability: "must be built (retrieved); EU-focused with non-EU28 fallbacks"
+      - input: "USGS ammonia production"
+        required_for: "ammonia tonnage"
+        availability: "must be built (retrieved)"
+      - input: "Hotmaps industrial sites database + GEM steel/cement trackers + data/ammonia_plants.csv"
+        required_for: "distribution keys per sector"
+        availability: "retrieved/exists by default; EU coverage"
+      - input: "industry sector ratios (MWh/t)"
+        required_for: "energy conversion"
+        availability: "must be built (build_industry_sector_ratios chain)"
+
+    demand_dimensions:
+      driver: "kt/a production per sector and country, reshaped by route/recycling fraction dicts"
+      spatial: "per-sector site keys (Hotmaps/GEM/ammonia plants), population fallback logic in the key builder"
+      temporal: "flat annual/nhours loads derived from annual tonnage"
+      scenario: "per-year route dicts keyed by planning_horizons; production baseline per industry.reference_year"

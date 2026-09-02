@@ -1,0 +1,53 @@
+id: offshore-wind-integration
+title: Offshore wind integration
+rank: 53
+question: >
+  How much offshore wind should be built where, what does connecting it cost
+  (near-shore AC vs far-shore DC), and how does a large offshore fleet reshape
+  onshore grid needs, storage, and curtailment?
+when_to_use:
+  - "offshore wind buildout scenarios"
+  - "offwind-ac vs offwind-dc split and connection costs"
+  - "offshore wind targets and their grid impact"
+  - "depth/distance limits on offshore potential"
+  - "curtailment and reinforcement from offshore feed-in"
+recipes:
+  generation_conversion: [offshore-wind, floating-offshore-wind,
+                          hvdc-interconnectors, grid-scale-batteries,
+                          hv-transmission-lines]
+  demand: [electricity-load]
+functionality:
+  - id: spatial-clustering
+    role: "offshore Voronoi regions per bus set where potential lands; clustering re-aggregates profiles consistently"
+  - id: weather-year-selection
+    role: "offshore capacity factors from the atlite cutout year — pick it deliberately"
+  - id: transmission-expansion-limits
+    role: "onshore reinforcement triggered by offshore feed-in, co-optimized under lv/lc"
+  - id: country-carrier-capacity-limits
+    role: "CCL floors encode national offshore targets (e.g. mandated GW by 2030)"
+  - id: carrier-attribute-scaling
+    role: "offwind-ac/dc cost and potential sweeps as opts tokens"
+  - id: line-security-margin
+    role: "s_max_pu is the only reliability margin on the lines absorbing offshore power"
+  - id: summary-outputs
+    role: "curtailment and capacity by carrier for integration reporting"
+gap_assessment: >
+  Strong core: two default carriers (offwind-ac within 30 km of shore,
+  offwind-dc beyond) with depth-limited (GEBCO, 50 m), protected-area-excluded
+  potentials, and endogenous per-bus connection costs from shore distance and
+  underwater fraction — the standard buildout-and-integration study runs out
+  of the box, and onshore reinforcement is co-optimized. Three honest limits:
+  (1) connection cost is a capital-cost adder on the generator, not a modelled
+  line — no offshore hubs, no meshed offshore grid, no radial-vs-hub
+  comparison without custom components; (2) no floating foundations — all
+  water deeper than max_depth is simply excluded, and the
+  floating-offshore-wind recipe documents the proxy route (raise max_depth +
+  override costs) and its limits; (3) both carriers share one reference
+  turbine and one base capex row, so vintage or site-class differentiation is
+  cost-table work. Offshore shapes and bathymetry are global datasets;
+  potential quality is generally good, but validate against national seabed
+  leasing maps where corridor-level answers matter.
+coverage: ready
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

@@ -1,0 +1,53 @@
+id: data-center-load-growth
+title: Data-center load growth
+rank: 3
+question: >
+  How does AI/data-center demand growth reshape the power system — how much
+  new capacity and grid, where should hyperscale load sit, and can it be
+  served clean and firm? The defining new demand driver in the US, and
+  spreading to every grid courting hyperscalers.
+when_to_use:
+  - "impact of data-center growth on the power system"
+  - "where should a hyperscale campus connect"
+  - "24/7 clean supply for a large flat load"
+  - "capacity and grid needs under AI demand scenarios"
+  - "large point-load addition at a specific bus"
+recipes:
+  generation_conversion: [grid-scale-batteries, gas-power-plants, small-modular-reactors]
+  demand: [electricity-load, demand-scenarios-and-growth, demand-spatial-disaggregation,
+           demand-temporal-profiles, services-electricity-demand]
+functionality:
+  - id: scenario-matrix
+    role: "sweep load-growth scenarios as parallel runs"
+  - id: transmission-expansion-limits
+    role: "grid buildout triggered by concentrated new load"
+  - id: safe-reserve-margin
+    role: "adequacy impact of a large flat load on peak"
+  - id: nodal-marginal-prices
+    role: "price impact of siting the load at different nodes"
+  - id: spatial-clustering
+    role: "keep the host bus resolved — clustering smears point loads"
+  - id: demand-elasticity
+    role: "loads are fixed profiles; no flexible/curtailable data-center load"
+  - id: equity-self-sufficiency
+    role: "EQ/opts machinery hints at 24/7-style sourcing constraints — not matching"
+gap_assessment: >
+  There is no data-center load category anywhere in the model: demand is
+  built top-down from national statistics disaggregated by population/GDP
+  (see the demand book), so a hyperscale campus — large, flat, point-sited —
+  has no native representation. The honest workaround is manual: scale
+  national demand via load_options for the aggregate effect, or add a
+  constant Load at a chosen bus by editing the network, then let the
+  standard workflow answer the system questions (capacity, grid, prices,
+  adequacy) — which it does well once the load exists. What you cannot get
+  without real code: data-center-specific profiles and flexibility
+  (curtailable training load), 24/7 carbon-free-energy matching constraints
+  (h2-color-accounting is the nearest analogue, for H2 only), and any
+  siting logic that trades land/fiber/water against grid headroom. Demand
+  baselines in candidate host countries are often the weakest input — check
+  the data_quality electricity-demand and demand-growth-cagr grades before
+  trusting growth scenarios built on them.
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

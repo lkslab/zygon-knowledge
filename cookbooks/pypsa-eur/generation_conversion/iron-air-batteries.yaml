@@ -1,0 +1,105 @@
+id: iron-air-batteries
+title: Iron-air / metal-air batteries
+summary: Metal-air batteries (iron-air) — very cheap energy capacity with low round-trip efficiency, aimed at multi-day storage.
+when_to_use:
+  - "iron-air battery / Form Energy style storage"
+  - "metal-air / zinc-air battery"
+  - "100-hour battery"
+  - "ultra-cheap multi-day storage"
+  - "rust battery"
+  - "pypsa-eur config token: iron-air"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Wired but dormant — unlike pypsa-earth, pypsa-eur ships a first-class
+        "iron-air" storage token: STORE_LOOKUP in scripts/add_electricity.py
+        maps it to the "iron-air battery" (store), "iron-air battery charge"
+        and "iron-air battery discharge" cost rows — an asymmetric
+        charger/discharger pair matching the technology's different charge and
+        discharge efficiencies (0.74 / 0.63 in the current costs file, i.e.
+        roughly 47% round trip) — and electricity.max_hours ships iron-air:
+        100 (the Form-Energy-style 100-hour duration). It is NOT in either
+        default extendable-carriers list, so no iron-air storage appears in a
+        default run: adding "iron-air" to
+        electricity.extendable_carriers.StorageUnit yields a fixed-100h unit
+        at every bus (combined capital cost = 100 * store row, since the
+        charge/discharge rows carry zero capital cost in the current data);
+        adding it to .Store yields Bus + Store + separate "iron-air
+        charger"/"iron-air discharger" Links with endogenous duration.
+      mechanism: >
+        rule add_electricity runs scripts/add_electricity.py:
+        attach_storageunits / attach_stores loop over the configured carrier
+        lists filtered through get_available_storage_carriers (intersection
+        with STORE_LOOKUP); because iron-air uses separate charger/discharger
+        entries (not a bicharger), attach_stores prices both links from their
+        own rows. rule process_cost_data
+        (scripts/process_cost_data.py::prepare_costs, helper costs_for_storage)
+        builds the combined "iron-air" row from the electricity.max_hours loop.
+      not_covered: >
+        Not present in any default run (must be switched on, L1). No presence
+        in sector-coupled runs: patch_electricity_network strips all
+        elec-network Stores (pypsa_eur keep-list Store: []) and
+        prepare_sector_network re-adds no chemistry storage. No coupling
+        constraint ties iron-air charger and discharger sizing
+        (add_battery_constraints only matches "battery charger"/"battery
+        discharger" names) — harmless here since both links carry their own
+        (currently zero) costs, but sizing is fully independent. No zinc-air
+        carrier ("Ni-Zn-store"/"Ni-Zn-bicharger" rows exist in the costs file
+        but no STORE_LOOKUP entry consumes them). No rate limits,
+        state-of-charge windows, or degradation.
+      provenance: "scripts/add_electricity.py:STORE_LOOKUP; scripts/add_electricity.py:iron-air battery; scripts/add_electricity.py:attach_stores; scripts/process_cost_data.py:costs_for_storage; scripts/solve_network.py:add_battery_constraints; scripts/prepare_sector_network.py:remove_elec_base_techs"
+    levers:
+      - key: electricity.extendable_carriers.StorageUnit
+        effect: "Add 'iron-air' for a fixed-duration (max_hours.iron-air = 100 h) StorageUnit at every bus."
+        default: "[] (empty)"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_storageunits"
+      - key: electricity.extendable_carriers.Store
+        effect: "Add 'iron-air' for the Store+Links representation with endogenous duration and separately sized charge/discharge plants."
+        default: "[battery, H2]"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_stores"
+      - key: electricity.max_hours.iron-air
+        effect: "Duration (h) of the iron-air StorageUnit and of its synthesised combined cost row."
+        default: "100"
+        provenance: "config/config.default.yaml:max_hours; scripts/process_cost_data.py:costs_for_storage"
+      - key: costs.overwrites
+        effect: "Override the iron-air rows' investment/efficiency/lifetime (or rows in data/custom_costs.csv via costs.custom_cost_fn)."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+    boundary:
+      - variant: "iron-air as a 100h StorageUnit at every bus"
+        rung: L1
+        note: "add 'iron-air' to electricity.extendable_carriers.StorageUnit — max_hours and cost rows already wired"
+      - variant: "iron-air with endogenous duration (Store+Links)"
+        rung: L1
+        note: "add 'iron-air' to extendable_carriers.Store"
+      - variant: "change duration or cost/efficiency assumptions"
+        rung: L1
+        note: "electricity.max_hours.iron-air + costs.overwrites / data/custom_costs.csv (efficiencies live on the charge/discharge rows)"
+      - variant: "zinc-air (or other metal-air) as its own carrier"
+        rung: L2
+        note: "add a STORE_LOOKUP entry pointing at the existing 'Ni-Zn-store'/'Ni-Zn-bicharger' rows (nickel-zinc) or user-supplied rows, plus an electricity.max_hours key"
+      - variant: "iron-air in sector-coupled runs"
+        rung: L2
+        note: "no chemistry storage survives into or is added by prepare_sector_network; add a Bus/Store/charger/discharger block there (home battery block is the template)"
+      - variant: "charge/discharge rate limits or SOC-window behaviour"
+        rung: L5
+        note: "no hook; custom constraints at solve time"
+    where:
+      - change: "carrier activation and component creation"
+        anchor: "scripts/add_electricity.py::attach_storageunits / ::attach_stores + STORE_LOOKUP 'iron-air' entry (rule add_electricity)"
+        provenance: "scripts/add_electricity.py:attach_stores; scripts/add_electricity.py:STORE_LOOKUP"
+      - change: "combined cost row synthesis"
+        anchor: "scripts/process_cost_data.py::prepare_costs (costs_for_storage loop over electricity.max_hours)"
+        provenance: "scripts/process_cost_data.py:costs_for_storage"
+      - change: "sector-run storage additions"
+        anchor: "scripts/prepare_sector_network.py (insert_electricity_distribution_grid home battery block as template)"
+        provenance: "scripts/prepare_sector_network.py:insert_electricity_distribution_grid"
+    data_dependencies:
+      - input: "cost rows 'iron-air battery', 'iron-air battery charge', 'iron-air battery discharge' in the technology-data costs file"
+        required_for: "both iron-air representations"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data (verified in a locally built processed costs file)"
+      - input: "cost rows 'Ni-Zn-store' / 'Ni-Zn-bicharger'"
+        required_for: "the L2 nickel-zinc variant"
+        availability: "exists by default in the technology-data costs file; unconsumed by code at this ref"

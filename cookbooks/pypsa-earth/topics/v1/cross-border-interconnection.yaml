@@ -1,0 +1,54 @@
+id: cross-border-interconnection
+title: Cross-border interconnection
+rank: 7
+question: >
+  What is cross-border transmission worth — which interconnectors pay off,
+  how much does trade cut system cost, and how do power pools (Africa,
+  ASEAN, Central Asia) or new HVDC links change each country's mix and
+  import dependence?
+when_to_use:
+  - "value of an interconnector between two countries"
+  - "power pool study (EAPP, WAPP, SAPP, ASEAN grid)"
+  - "autarky vs trade counterfactual"
+  - "import dependence / self-sufficiency targets"
+  - "where to add cross-border capacity first"
+recipes:
+  generation_conversion: [hvdc-interconnectors, hv-transmission-lines, uhv-dc,
+                          green-energy-imports]
+  demand: [electricity-load, demand-spatial-disaggregation]
+functionality:
+  - id: autarky
+    role: "core counterfactual — ATK/ATKc removes cross-border flows"
+  - id: transmission-expansion-limits
+    role: "interconnector capacity co-optimized under lv/lc bounds"
+  - id: equity-self-sufficiency
+    role: "EQ constraint caps import dependence per country"
+  - id: hvdc-as-lines
+    role: "HVDC as controllable links (default) or as lines"
+  - id: augmented-line-connection
+    role: "candidate cross-border corridors beyond existing topology"
+  - id: nodal-marginal-prices
+    role: "price convergence and congestion rent quantify link value"
+  - id: gadm-admin-clustering
+    role: "country/admin zoning keeps borders meaningful after clustering"
+  - id: scenario-matrix
+    role: "with/without-link and pool-membership sweeps"
+gap_assessment: >
+  A genuine strength: pypsa-earth is natively multi-country — list the
+  countries, and the OSM grid, cross-border lines, and per-country demand
+  come assembled; power-pool studies over a dozen countries are a standard
+  use. The core valuation loop is first-class: solve with trade, re-solve
+  under autarky (ATK) or a self-sufficiency floor (EQ), and read the system
+  -cost delta, price convergence, and congestion rents — with interconnector
+  expansion co-optimized rather than assumed. Honest limits: this is a
+  single social planner, so trade is optimal dispatch, not strategic
+  behaviour — no market coupling frictions, wheeling charges, or political
+  reliability of imports (an EQ sensitivity is the crude proxy); candidate
+  links beyond existing topology need augmented-line-connection switched
+  on; and there is no per-country WACC to reflect who finances the link.
+  Cross-border OSM data quality is uneven — check the data_quality osm-grid
+  grade on BOTH sides of each border before quoting corridor capacities.
+coverage: ready
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

@@ -1,0 +1,6 @@
+[submodule "models/pypsa-eur"]
+	path = models/pypsa-eur
+	url = https://github.com/PyPSA/pypsa-eur.git
+[submodule "models/pypsa-earth"]
+	path = models/pypsa-earth
+	url = https://github.com/pypsa-meets-earth/pypsa-earth.git

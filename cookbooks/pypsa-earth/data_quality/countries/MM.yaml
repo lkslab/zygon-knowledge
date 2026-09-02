@@ -1,0 +1,119 @@
+country: MM
+name: myanmar
+continent: Asia
+build_evidence: null
+fleet_evidence: null
+families:
+  shapes:
+    grade: B
+    detail:
+      gadm-boundaries: B
+      worldpop-population: B
+      gdp-raster: B
+  grid:
+    grade: B
+    detail:
+      osm-grid: B
+  climate:
+    grade: B
+    detail:
+      era5-cutout: A
+      global-gis-layers: B
+  power-fleet:
+    grade: C
+    detail:
+      powerplant-fleet: B
+      hydro-capacities: C
+      eia-hydro-generation: A
+  electricity-demand:
+    grade: B
+    detail:
+      electricity-demand-forecast: B
+  sector-demand:
+    grade: C
+    detail:
+      unsd-energy-balances: B
+      demand-growth-cagr: C
+      demand-efficiency-cagr: C
+      fuel-shares: C
+      district-heating-share: C
+      german-traffic-proxy: C
+      bdew-heat-proxy: C
+  industry:
+    grade: D
+    detail:
+      industry-growth-cagr: C
+      industrial-plant-database: A
+      ammonia-plants: D
+      al-production: D
+  hydrogen:
+    grade: D
+    detail:
+      salt-cavern-potentials: D
+datasets:
+  demand-growth-cagr:
+    grade: C
+    detail: DEFAULT row fallback
+  demand-efficiency-cagr:
+    grade: C
+    detail: DEFAULT row fallback
+  industry-growth-cagr:
+    grade: C
+    detail: DEFAULT row fallback
+  fuel-shares:
+    grade: C
+    detail: DEFAULT row fallback
+  district-heating-share:
+    grade: C
+    detail: DEFAULT row fallback
+  salt-cavern-potentials:
+    grade: D
+    detail: "no row \u2014 feature silently absent/zero"
+  al-production:
+    grade: D
+    detail: "no row \u2014 feature silently absent/zero"
+  unsd-energy-balances:
+    grade: B
+    detail: in cached UNSD extract
+  electricity-demand-forecast:
+    grade: B
+    detail: GEGIS ssp2 continent file
+  gadm-boundaries:
+    grade: B
+    detail: derivable from global gadm_410.gpkg
+  osm-grid:
+    grade: B
+    detail: downloadable from geofabrik
+  worldpop-population:
+    grade: B
+    detail: retrieved per-country at build time
+  gdp-raster:
+    grade: B
+    detail: global raster
+  era5-cutout:
+    grade: A
+    detail: cutout-2013-era5-asia.nc on disk
+  powerplant-fleet:
+    grade: B
+    detail: powerplantmatching global DB (unverified)
+  hydro-capacities:
+    grade: C
+    detail: reservoir max_hours falls back to 6h default; capacity and inflow unaffected
+  eia-hydro-generation:
+    grade: A
+    detail: country row
+  industrial-plant-database:
+    grade: A
+    detail: country row(s)
+  ammonia-plants:
+    grade: D
+    detail: "no row \u2014 feature silently absent/zero"
+  german-traffic-proxy:
+    grade: C
+    detail: German weekly traffic counts applied globally
+  bdew-heat-proxy:
+    grade: C
+    detail: German BDEW heat profile applied globally
+  global-gis-layers:
+    grade: B
+    detail: global layers on disk

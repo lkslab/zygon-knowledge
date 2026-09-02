@@ -1,0 +1,89 @@
+id: stationary-fuel-cells
+title: Stationary fuel cells
+summary: Hydrogen-to-electricity reconversion via stationary fuel cells (grid balancing / H2 storage discharge).
+when_to_use:
+  - "fuel cells for power generation"
+  - "hydrogen reconversion to electricity"
+  - "H2 as long-duration storage discharge"
+  - "fuel cell CHP (combined heat and power)"
+  - "backup power from hydrogen"
+  - "known in pypsa-eur as: H2 Fuel Cell, H2 fuel cell, H2 turbine"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        Sector chain: add_hydrogen ALWAYS adds one extendable "H2 Fuel Cell" Link per node
+        (bus0 = node H2 bus, bus1 = AC bus, efficiency and per-MWel costs from the technology-data
+        "fuel cell" row) — no config switch, present in every sector run. Electricity-only chain:
+        with "H2" in electricity.extendable_carriers.Store (default), attach_stores adds an
+        "H2 fuel cell" discharge Link per bus alongside the electrolysis charge link and H2 Store;
+        with "H2" in extendable_carriers.StorageUnit, attach_storageunits instead embeds the fuel
+        cell as the StorageUnit's dispatch efficiency. (Transport fuel cells — "land transport
+        fuel cell" demand links and shipping's fuel-cell efficiency assumption — are separate
+        demand-side constructs, not stationary generation.)
+      mechanism: >
+        scripts/prepare_sector_network.py:add_hydrogen (n.madd Link "... H2 Fuel Cell",
+        capital_cost = fuel cell fixed x efficiency, i.e. costed per MW electric);
+        scripts/add_extra_components.py:attach_stores / attach_storageunits for the
+        electricity-only workflow.
+      not_covered: >
+        No fuel-cell CHP: a search for "fuel cell" in prepare_sector_network.py shows no heat
+        output (no bus2 to heat buses) — stationary fuel cells deliver electricity only; CHP in
+        the heat sector is gas/biomass-based (sector.chp / sector.micro_chp), not hydrogen. No
+        distinction of fuel-cell technologies (PEMFC/SOFC — single "fuel cell" cost row); no
+        existing fleet.
+      provenance: "scripts/prepare_sector_network.py:add_hydrogen"
+    levers:
+      - key: electricity.extendable_carriers.Store
+        effect: '"H2" enables the Bus-Store-Link chain incl. the "H2 fuel cell" discharge link in electricity-only runs.'
+        default: "[battery, H2]"
+        provenance: "config.default.yaml:extendable_carriers; scripts/add_extra_components.py:attach_stores"
+      - key: electricity.extendable_carriers.StorageUnit
+        effect: '"H2" gives the single-StorageUnit alternative with fuel-cell dispatch efficiency.'
+        default: "[]"
+        provenance: "config.default.yaml:extendable_carriers; scripts/add_extra_components.py:attach_storageunits"
+      - key: electricity.max_hours.H2
+        effect: Energy/power ratio of the H2 StorageUnit variant.
+        default: "168"
+        provenance: "config.default.yaml:max_hours; scripts/add_extra_components.py:attach_storageunits"
+      - key: costs.year
+        effect: Cost vintage for the "fuel cell" technology-data row.
+        default: "2030"
+        provenance: "config.default.yaml:technology_data_version; Snakefile:retrieve_cost_data"
+    boundary:
+      - variant: "Fuel cells as reconversion option (sector run)"
+        rung: L0
+        note: Always present — no switch needed (and none exists to turn it off).
+      - variant: "Fuel cells in electricity-only run"
+        rung: L0
+        note: Default via extendable_carriers.Store H2.
+      - variant: "Remove fuel cells / forbid reconversion"
+        rung: L2
+        note: 'No config key in the sector chain; delete/guard the "H2 Fuel Cell" madd in add_hydrogen (electricity-only chain: drop "H2" from extendable_carriers).'
+      - variant: "Fuel-cell CHP with useful heat output"
+        rung: L2
+        note: Add bus2 = heat bus + efficiency2 to the "H2 Fuel Cell" link in add_hydrogen (heat buses exist from add_heat); needs heat-output data on the cost row (L3 if absent).
+      - variant: "Technology-specific fuel cells (SOFC vs PEMFC)"
+        rung: L3
+        note: 'Additional cost rows + duplicated link entries (pattern: tech_params dict for production side).'
+      - variant: "Capacity bounds on fuel cells"
+        rung: L2
+        note: Add p_nom_max in the madd call.
+    where:
+      - change: "Sector-run fuel cell link (efficiency, CHP extension, bounds, removal)"
+        anchor: "scripts/prepare_sector_network.py:add_hydrogen ('H2 Fuel Cell' madd)"
+        provenance: "scripts/prepare_sector_network.py:add_hydrogen"
+      - change: "Electricity-only discharge link"
+        anchor: "scripts/add_extra_components.py:attach_stores"
+        provenance: "scripts/add_extra_components.py:attach_stores"
+      - change: "Heat-bus targets for a CHP variant"
+        anchor: "scripts/prepare_sector_network.py:add_heat (heat bus naming/structure)"
+        provenance: "scripts/prepare_sector_network.py:add_heat"
+    data_dependencies:
+      - input: "technology-data costs csv row: fuel cell (efficiency, fixed, lifetime; capital_cost/marginal_cost columns in the elec-workflow costs file)"
+        required_for: "all variants"
+        availability: "must be built (rule retrieve_cost_data); row confirmed in built costs file"
+      - input: "H2 supply and storage (electrolysers, H2 Store Tank / UHS)"
+        required_for: "anything for the fuel cell to discharge"
+        availability: "exists by default"

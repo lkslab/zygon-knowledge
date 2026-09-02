@@ -1,0 +1,65 @@
+id: seasonal-storage-gap
+title: Seasonal storage gap
+rank: 40
+question: >
+  How big is the seasonal (weeks-to-months) energy gap once daily storage is
+  saturated — and what fills it: hydrogen in caverns, thermal storage,
+  reservoir hydro, overbuild-and-curtail, or residual fuels?
+when_to_use:
+  - "seasonal storage need in a high-VRE system"
+  - "hydrogen caverns vs overbuild vs backup fuels"
+  - "summer-to-winter energy shifting"
+  - "how much storage energy capacity (TWh) does the system need"
+  - "role of thermal storage in the seasonal balance"
+recipes:
+  generation_conversion: [hydrogen-storage-salt-caverns, long-duration-storage,
+                          thermal-storage, aquifer-thermal-storage,
+                          pumped-hydro-storage, conventional-hydropower,
+                          electrolysers]
+  demand: [electricity-load, residential-space-heating-demand,
+           district-heating-demand-share]
+functionality:
+  - id: sector-master-switches
+    role: "core — the H2 cycle, heat-demand seasonality, and thermal stores need the sector chain"
+  - id: h2-network-retrofit
+    role: "salt-cavern storage potentials (real European geology) plus the H2 network that feeds them"
+  - id: district-heating-suite
+    role: "temperature-limited pit storage (PTES) and DH areas — the thermal leg of the seasonal balance, far beyond earth's static shares"
+  - id: tes-constraints
+    role: "energy-to-power and charger-ratio coupling keeps thermal-store sizing physical"
+  - id: temporal-resolution-nh
+    role: "full-year chronology preserved under nH averaging — seasonal cycling emerges naturally"
+  - id: time-segmentation-tsam
+    role: "segmentation keeps extremes at lower cost than uniform averaging for year-long solves"
+  - id: co2-budget-pathway
+    role: "seasonal storage only becomes binding under tight carbon budgets — sweep the budget"
+  - id: weather-year-selection
+    role: "the gap is weather-year-dependent; the 1940-2024 ERA5 cutout makes deliberate year choice cheap"
+  - id: multi-weather-year
+    role: "partial — cutouts concatenate along time for multi-year solves, but the standard workflow runs one year and there are no adequacy statistics"
+  - id: hydro-inflow-normalization
+    role: "get reservoir hydro's seasonal contribution calibrated (EIA normalization) before crediting it"
+gap_assessment: >
+  Ready in its core, and better-provisioned than pypsa-earth: the model
+  solves a full chronological year, so state of charge in H2 caverns,
+  thermal stores, and reservoirs cycles seasonally by construction, and
+  under tight CO2 budgets the optimizer trades seasonal storage against
+  overbuild, transmission, and residual fuels — the central question falls
+  out of a standard sector-coupled run with a carbon-budget sweep. The two
+  data caveats that dog earth are largely solved here: salt-cavern
+  potentials come from actual European geology (hydrogen_underground_storage
+  per region), and the district-heating suite adds temperature-resolved pit
+  storage as a genuine seasonal option (ATES exists too but its config is a
+  dead key at this ref — two temperature keys must be added by hand before
+  enabling it). The main remaining qualification is weather: seasonal
+  storage is sized by the worst year in decades, not an average one.
+  Multi-weather-year solves are partially supported (cutouts spanning
+  1940-2024 can be concatenated), but the standard workflow is single-year
+  and there is no probabilistic sizing — sweep weather years and take the
+  envelope. Watch temporal compression: aggressive averaging (24h+)
+  flattens exactly the deficits seasonal storage exists for; prefer TSAM
+  segmentation for long runs.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

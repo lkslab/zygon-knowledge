@@ -1,0 +1,52 @@
+id: minimum-operational-demand
+title: Minimum operational demand
+rank: 35
+question: >
+  What happens when distributed PV pushes midday operational (grid-served)
+  demand toward or below zero — can the system stay secure, what must-run /
+  backstop capability is needed, and which remedies (storage, load shifting,
+  curtailment of rooftop PV) are cheapest? Australia's signature problem.
+when_to_use:
+  - "minimum operational demand / minimum system load study"
+  - "too much rooftop solar — system security at midday"
+  - "must-run requirements when net load goes negative"
+  - "emergency backstop / distributed PV curtailment value"
+  - "AEMO-style low-demand security assessment"
+recipes:
+  generation_conversion: [rooftop-distributed-solar, behind-the-meter-der,
+                          grid-scale-batteries, synchronous-condensers,
+                          grid-forming-inverters]
+  demand: [residential-electricity-demand, demand-temporal-profiles,
+           electricity-load]
+functionality:
+  - id: distribution-grid-lv
+    role: "rooftop PV behind LV buses — the mechanism that hollows out grid demand (sector runs, cost proxy only)"
+  - id: inertia-stability
+    role: "absent — the security core of the topic (inertia, system strength, voltage) is unmodellable"
+  - id: unit-commitment
+    role: "no min-load must-run units, so the binding conflict at low demand never binds"
+  - id: operational-reserves
+    role: "nearest security proxy: fixed contingency MW + %VRE reserve each hour"
+  - id: demand-elasticity
+    role: "absent — no tariff response of behind-the-meter PV/battery operation"
+  - id: sector-coupled-workflow
+    role: "required to get rooftop PV, home batteries, and EVs behind the meter at all"
+gap_assessment: >
+  The energy-balance half is representable: sector runs place rooftop PV,
+  home batteries, and EV charging behind stylized LV buses, so midday
+  grid-demand hollowing, storage soak-up, and even economic curtailment of
+  distributed PV appear in the dispatch. The security half — which is what
+  minimum operational demand is actually about — is absent: no inertia or
+  system-strength constraints, no frequency dynamics, no minimum synchronous
+  unit-commitment (the LP happily runs on 100% inverter-based supply), and
+  distributed PV has no ride-through or backstop-curtailment behaviour
+  distinct from any other generator. Synchronous condensers and grid-forming
+  inverters exist as technologies but nothing forces or rewards their
+  stability contribution. You can compute when and how deep operational
+  demand goes negative and what storage/shifting costs to manage the energy,
+  but "is the system secure at 2 GW operational demand" cannot be answered
+  here — that needs a dynamics/stability toolchain.
+coverage: gap
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

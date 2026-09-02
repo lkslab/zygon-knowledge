@@ -1,0 +1,48 @@
+id: cement-decarbonization
+title: Cement decarbonization
+rank: 44
+question: >
+  How does cement cut its process CO2 — carbon capture, clinker substitution,
+  kiln fuel switching — and what does each route cost the energy system?
+  Cement's calcination CO2 is irreducible by fuel choice alone, which makes it
+  the canonical CCS-vs-material-change trade-off.
+when_to_use:
+  - "cement / clinker decarbonization pathway"
+  - "carbon capture at cement plants"
+  - "low-clinker or SCM cement scenario"
+  - "cement kiln electrification or fuel switching"
+  - "process emissions abatement in minerals"
+recipes:
+  generation_conversion: [low-clinker-cement, industrial-ccs, electric-process-heat, direct-air-capture]
+  demand: [cement-minerals-demand, industrial-process-emissions]
+functionality:
+  - id: co2-network-sequestration
+    role: "core endogenous route — process emissions CC link, CO2 pipelines, sequestration budget"
+  - id: sector-coupled-workflow
+    role: "carries the minerals fuel loads and per-node process-emission buses"
+  - id: co2-cap
+    role: "the binding budget that forces capture vs venting"
+  - id: emission-pricing
+    role: "carbon-price sensitivity on the capture decision"
+  - id: scenario-matrix
+    role: "sweep clinker/utilisation assumptions across parallel runs"
+gap_assessment: >
+  One endogenous lever, the rest exogenous. Cement lives inside the UNSD
+  "non-metallic minerals" aggregate: fuel/electricity loads per carrier plus a
+  process-emissions row computed as SFI cement-plant capacity x 0.542 tCO2/t x
+  sector.industry_util_factor, sited by the SFI Global Cement Database. The
+  process-emission load can be vented or captured via "process emissions CC"
+  (cement capture costs, sector.cc default true) feeding the CO2
+  transport/sequestration network — so the CCS route is genuinely optimized.
+  Everything else is not: no clinker ratio or clinker/cement distinction, no
+  SCM/alternative-binder options, no cement/glass/ceramics split, no kiln
+  electrification lever. Low-clinker cement is an L2 edit of the hardcoded
+  0.542 factor (emission_factors in build_industry_demand); kiln fuel
+  switching is an L3 custom industry_demand csv. Beware the blunt instrument:
+  industry_util_factor also scales steel and refinery process emissions.
+  Plant-database coverage varies by region — countries without listed plants
+  fall back to GDP-share siting.
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

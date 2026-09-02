@@ -1,0 +1,174 @@
+paper: "2020_Victoria_Early-decarbonisation-pays-off_NatComms.pdf"
+tier: 1
+model_used: >
+  Bespoke PyPSA model (sector-coupled, 30-node one-node-per-country, hourly, 5-year
+  myopic steps 2020–2050; electricity + heating + transport).
+scope: >
+  Compares two CO2-budget-equivalent transition paths for the European energy system
+  (Early & Steady vs Late & Rapid) to show that front-loaded decarbonisation reduces
+  cumulative system cost by ~350 billion euros.
+methods:
+  - slug: foresight-and-planning-horizons
+    role: canonical-use
+    evidence: >
+      "The system configuration is optimised by minimising annualised system cost in
+      every time step (one every 5 years), under the global CO2 emissions cap imposed
+      by the transition path under analysis. This can be considered a myopic approach
+      since the optimisation has no information about the future." (Sec. 4 Methods)
+    procedure_notes: >
+      Seven 5-year snapshots from 2020 to 2050; within each step perfect competition
+      and foresight are assumed (i.e., a single-year overnight LP per step). Existing
+      capacities from prior steps with unexpired lifetimes are passed forward
+      exogenously. Contrast with perfect-foresight pathways is discussed in the
+      introduction citing Gerbaulet et al. [28].
+    variant: myopic-5yr-steps
+    parameters: {steps: "2020, 2025, 2030, 2035, 2040, 2045, 2050", step_size_yrs: 5}
+
+  - slug: carbon-constraints-and-pricing
+    role: canonical-use
+    evidence: >
+      "The system configuration is optimised by minimising annualised system cost in
+      every time step, under the global CO2 emissions cap imposed by the transition
+      path... The CO2 price is not an input to the model, but a result that is obtained
+      via the Lagrange/Karush-Kuhn-Tucker multiplier associated with the global CO2
+      constraint." (Sec. 4 Methods; Fig. 5 shows the resulting CO2 price trajectory)
+    procedure_notes: >
+      Two distinct CO2 reduction paths with the same cumulative budget (21 GtCO2
+      electricity+heating, 33 GtCO2 including transport) are compared. At every 5-year
+      step an annual cap is imposed; the shadow price of that cap is reported as the
+      required CO2 price. The cap may be non-binding (zero CO2 price) in early steps
+      when renewables are already cost-competitive.
+    variant: annual-cap-per-step
+    parameters: {budget_elec_heat_GtCO2: 21, budget_incl_transport_GtCO2: 33,
+                 horizon: "2020-2050"}
+
+  - slug: sector-coupled-network-assembly
+    role: canonical-use
+    evidence: >
+      "We use an hourly-resolved sector-coupled networked model of the European energy
+      system... Heating demand is split into urban heating demand, corresponding to
+      regions whose population density allows district heating, and rural heating demand
+      where only individual solutions are allowed... When the transport sector is
+      included, half of the battery electric vehicles allow smart charging and a quarter
+      provide vehicle-to-grid services." (Sec. 4 Methods; Fig. 8 model diagram)
+    procedure_notes: >
+      Carriers: electricity, heat (urban/rural split), hydrogen, synthetic methane,
+      transport. Key conversion links: electrolysers, fuel cells, Sabatier/DAC
+      methanation, heat pumps, CHP (gas/coal/biomass), boilers. Thermal storage in
+      district heating pits and individual tanks. Hydrogen storage. Electric batteries.
+      PHS. Transport modelled as lumped demand per country with exogenous BEV
+      penetration following CO2 path. Details in Supplementary Note 3.
+    variant: electricity-heat-transport
+    parameters: {countries: 30, time_resolution_h: 1}
+
+  - slug: brownfield-and-capacity-vintaging
+    role: canonical-use
+    evidence: >
+      "The already installed capacities, i.e., existing capacities in 2020 or
+      capacities installed in a previous year whose lifetime has not concluded, are
+      exogenously included in the model. For every time step, the total system cost
+      includes annualised and running cost for newly installed assets and for
+      exogenously fixed capacities. For those fossil fuel generators that were installed
+      in a previous year and are not used due to the stringent CO2 emissions constraint,
+      their annualised costs are included in the total system cost as long as the end of
+      their assumed technical lifetime is not reached." (Sec. 4 Methods)
+    procedure_notes: >
+      Existing fleet in 2020 sourced from Gotzens et al. [40] (power plant database).
+      At each myopic step, surviving capacity from the prior step is exogenously fixed;
+      stranded asset costs (annualised capex not recovered via market revenues) are
+      tracked and reported (Supplementary Figures 11-14). CCGT stranding is a main
+      focus of the results.
+    variant: exogenous-existing-capacity
+    parameters: {}
+
+  - slug: discounting-and-cost-of-capital
+    role: canonical-use
+    evidence: >
+      "The financial discount rate applied to annualise costs is equal to 7% for every
+      technology and country... To estimate the cumulative cost of every transition
+      path, the annualised cost for all years are added up assuming a social discount
+      rate of 2%... For decentral solutions, such as rooftop PV or small water tanks, a
+      discount rate equal to 4% is considered." (Sec. 4 Methods)
+    procedure_notes: >
+      Two discount rates applied separately: 7% technology-level WACC for annualising
+      overnight capital (uniform across technologies and countries); 2% social discount
+      rate for summing annualised costs across 5-year steps to obtain cumulative costs.
+      Decentral assets use 4%. Sensitivity: cumulative cost advantage of Early & Steady
+      path holds for social discount rates below 15%.
+    variant: dual-rate-social-and-financial
+    parameters: {financial_dr_pct: 7, social_dr_pct: 2, decentral_dr_pct: 4}
+
+  - slug: shadow-prices-and-marginal-values
+    role: canonical-use
+    evidence: >
+      "The required CO2 price at every 5-years time step, Figure 5, is an outcome of
+      the model, i.e., it is the Lagrange/KKT multiplier associated with the maximum
+      CO2 constraint." (Sec. 2 Results). Stranded asset analysis compares annualised
+      expenditure with market revenues for each plant (Supplementary Figures 11-14).
+    procedure_notes: >
+      CO2 shadow price is the primary policy-relevant output; the paper plots its
+      trajectory under both paths. Market revenue for each conventional generator is
+      computed from the electricity price (itself the nodal dual of the energy balance)
+      times dispatched energy — standard LP duals used to evaluate cost recovery.
+    variant: co2-constraint-dual
+    parameters: {}
+
+  - slug: demand-side-flexibility-representation
+    role: canonical-use
+    evidence: >
+      "At every time step, half of the passenger car BEVs present in the model are
+      assumed to allow demand-side management and a quarter of the available BEVs are
+      assumed to provide vehicle-to-grid (V2G) services." (Sec. 2 Results, transport
+      subsection; Fig. 8 caption)
+    procedure_notes: >
+      BEV count is exogenous (not optimised); smart-charging share (50%) and V2G share
+      (25%) are fixed parameters. V2G and smart-charging reduce stationary battery need
+      and increase solar PV optimality. Sensitivity on these shares done in cited prior
+      work [21]; here the parameters are taken as given.
+    variant: bev-smart-charging-v2g
+    parameters: {smart_charging_share: 0.5, v2g_share: 0.25}
+
+  - slug: transmission-expansion-cooptimisation
+    role: routine-use
+    evidence: >
+      "When the model is allowed to optimise transmission capacities after 2030,
+      together with the generation and storage assets, the optimal configuration at the
+      end of the paths includes a transmission volume approximately three times higher
+      than that of 2030." (Sec. 2 Results). Baseline assumes TYNDP expansions up to
+      2030, then fixed.
+    procedure_notes: >
+      Baseline run: transmission fixed at TYNDP 2030 values after 2030. One sensitivity
+      scenario relaxes this to allow co-optimisation of HVDC link capacities post-2030.
+      Result: 1.3% lower cumulative cost, higher onshore/offshore wind, lower hydrogen
+      storage need.
+    variant: sensitivity-free-after-2030
+    parameters: {baseline: "TYNDP-fixed-post-2030", sensitivity: "co-optimised-post-2030"}
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      "We use a one-node-per-country network, including 30 countries corresponding to
+      the 28 European Union member states as of 2018 excluding Malta and Cyprus but
+      including Norway, Switzerland, Bosnia-Herzegovina, and Serbia." (Sec. 4 Methods)
+    procedure_notes: >
+      30 buses; countries connected by HVDC links (not AC network). No intra-country
+      grid representation; urban/rural split within each node is a demand disaggregation
+      rather than spatial clustering. Spatial resolution is fixed — not swept.
+    variant: one-node-per-country
+    parameters: {nodes: 30}
+
+  - slug: powerplant-matching-and-fleet-assembly
+    role: routine-use
+    evidence: >
+      "The database of existing power plants was described and validated in a separate
+      publication [40]." (Sec. 3 Discussion, citing Gotzens et al. 2019). Existing
+      capacities in 2020 are derived from this database.
+    procedure_notes: >
+      Fleet assembly delegated to Gotzens et al. [40] (Energy Strategy Reviews 2019).
+      The paper uses the resulting capacity-per-technology-per-country table as input
+      to the brownfield initialisation. No additional matching or deduplication is
+      performed here.
+    variant: null
+    parameters: {}
+
+unmatched_methods: []

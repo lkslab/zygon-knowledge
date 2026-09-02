@@ -1,0 +1,106 @@
+id: nuclear-fusion
+title: Nuclear fusion (emerging)
+summary: >
+  Fusion power plants as a prospective firm low-carbon generation technology
+  (tokamak/stellarator/inertial concepts, no operating fleet today).
+when_to_use:
+  - "add fusion power"
+  - "model nuclear fusion"
+  - "fusion reactors in future scenarios"
+  - "tokamak / stellarator electricity"
+  - "what if fusion becomes available by 2050"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        FULLY ABSENT — grounded absence. "fusion" appears nowhere in
+        config.default.yaml, the Snakefile, or scripts/: it is not in
+        electricity.conventional_carriers ([nuclear, oil, OCGT, CCGT, coal,
+        lignite, geothermal, biomass]) nor electricity.renewable_carriers
+        ([solar, onwind, offwind-ac, offwind-dc, hydro]), there is no fusion row in
+        the retrieved technology-data costs file, and no fleet exists in
+        powerplantmatching.
+      mechanism: >
+        Nearest machinery for introducing it: the conventional-carrier pipeline —
+        attach_conventional_generators in scripts/add_electricity.py adds any
+        carrier listed in electricity.conventional_carriers /
+        extendable_carriers.Generator that has costs and (for placement) fleet
+        rows; fusion would enter as a new firm carrier the same way conventional
+        nuclear does.
+      not_covered: >
+        Everything: no carrier, no costs row, no availability data, no siting
+        logic. Any fusion representation is user-constructed.
+      provenance: "config.default.yaml:conventional_carriers"
+    levers:
+      - key: electricity.extendable_carriers.Generator
+        effect: >
+          The list a new "fusion" carrier must join to be expandable; note
+          extendable conventional carriers are only placed at buses that already
+          host plants of that carrier in powerplants.csv, so fusion needs seeded
+          candidate rows or a code edit.
+        default: "[solar, onwind, offwind-ac, offwind-dc, OCGT]"
+        provenance: "scripts/add_electricity.py:attach_conventional_generators"
+      - key: electricity.conventional_carriers
+        effect: "The list a new fusion carrier joins for (custom) plants to be attached."
+        default: "[nuclear, oil, OCGT, CCGT, coal, lignite, geothermal, biomass]"
+        provenance: "config.default.yaml:conventional_carriers"
+      - key: electricity.custom_powerplants
+        effect: "'merge' injects user-authored fusion candidate units from data/custom_powerplants.csv."
+        default: "false"
+        provenance: "scripts/build_powerplants.py:add_custom_powerplants"
+    boundary:
+      - variant: "crude proxy: fusion as costed-down extendable nuclear"
+        rung: L1
+        note: >
+          add 'nuclear' to electricity.extendable_carriers.Generator and overwrite
+          its cost attributes via the costs config overwrites read by load_costs
+          (process_cost_data.py) — only meaningful where a nuclear fleet already
+          defines expansion buses, and it conflates the two technologies
+      - variant: "distinct fusion carrier in future planning horizons"
+        rung: L3
+        note: >
+          new costs row 'fusion' (investment, FOM, VOM, efficiency, lifetime, zero
+          CO2 intensity) added to the retrieved technology-data costs file or via a
+          custom costs.technology_data_version; carrier added to
+          electricity.conventional_carriers / extendable_carriers.Generator;
+          candidate units authored in data/custom_powerplants.csv so
+          attach_conventional_generators has buses for placement
+      - variant: "fusion buildable at every bus"
+        rung: L2
+        note: >
+          small localised edit in attach_conventional_generators, where
+          carrier_buses for extendable carriers is derived from the existing fleet
+      - variant: "availability-year gating (fusion only from e.g. 2050)"
+        rung: L3
+        note: >
+          set DateIn on the custom fusion rows and rely on build_year/lifetime
+          handling in attach_conventional_generators plus the
+          electricity.powerplants_filter query; for multi-horizon runs the
+          grouping_years_power machinery (existing_capacities) applies
+      - variant: "fusion-specific operational detail (tritium cycle, pulsed operation)"
+        rung: L5
+        note: "no machinery exists; bespoke component logic / constraints in solve_network.py extra_functionality"
+    where:
+      - change: "introducing the carrier (attachment + extendable placement)"
+        anchor: "scripts/add_electricity.py::attach_conventional_generators"
+        provenance: "scripts/add_electricity.py:attach_conventional_generators"
+      - change: "costs row / overrides"
+        anchor: "scripts/process_cost_data.py::load_costs; rule retrieve_cost_data; costs.technology_data_version"
+        provenance: "scripts/process_cost_data.py:load_costs"
+      - change: "candidate fusion units"
+        anchor: "scripts/build_powerplants.py::add_custom_powerplants with electricity.custom_powerplants"
+        provenance: "scripts/build_powerplants.py:add_custom_powerplants"
+      - change: "bespoke operational constraints"
+        anchor: "scripts/solve_network.py::extra_functionality"
+        provenance: "scripts/solve_network.py:extra_functionality"
+    data_dependencies:
+      - input: "fusion costs row (technology-data)"
+        required_for: "any fusion carrier"
+        availability: "absent — must be authored by the user"
+      - input: "data/custom_powerplants.csv candidate units"
+        required_for: "placing fusion capacity at buses (extendable placement follows the fleet)"
+        availability: "template exists by default; rows user-authored"
+      - input: "powerplantmatching database"
+        required_for: "nothing directly — no fusion plants exist in it"
+        availability: "absent for fusion by definition"

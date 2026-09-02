@@ -1,0 +1,204 @@
+paper: "2025_Seibold_Germany-Industry-Transformation.pdf"
+tier: 1
+model_used: >
+  PyPSA-DE, sector-coupled, 30 nodes for Germany plus 1–3 nodes per neighbouring
+  European country, single target year 2050, 4-hourly base resolution with TSAM
+  segmentation.
+scope: >
+  Quantifies cost savings and import-dependence trade-offs when Germany relocates
+  green hydrogen and industrial precursor production (HBI, ammonia, methanol) to
+  European or non-European partners, using PyPSA-DE coupled to the global supply
+  chain model TRACE across five scenarios.
+methods:
+  - slug: sector-coupled-network-assembly
+    role: routine-use
+    evidence: >
+      "The model accounts for energy and feedstock demand across five sectors:
+      electricity, heating, transport, industry and agriculture." (Methods,
+      "European energy system model with a focus on Germany"). Carriers include
+      electricity, hydrogen, CO2, HBI, methanol and ammonia (Appendix A, Eq. 3).
+    procedure_notes: >
+      PyPSA-DE co-optimises expansion and operation of generation, storage,
+      transmission and conversion infrastructure. Conversion efficiencies for
+      DRI, Haber-Bosch, methanolisation, Fischer-Tropsch and EAF are explicitly
+      parameterised (Appendix B, Table 1). Exhaust heat from synthesis plants is
+      not integrated into district heating to isolate input procurement costs.
+    variant: null
+    parameters: {sectors: "electricity, heating, transport, industry, agriculture", target_year: 2050}
+
+  - slug: carrier-network-routing-h2-co2
+    role: routine-use
+    evidence: >
+      "Hydrogen transport infrastructure can be developed either through new
+      pipeline construction or by repurposing existing natural gas pipelines."
+      (Methods, "European energy system model"). CO2 transport infrastructure is
+      also included. A cap of 20 GW per interregional hydrogen pipeline link is
+      imposed (Methods, "Boundary Conditions").
+    procedure_notes: >
+      New H2 pipeline construction and gas pipeline retrofit are co-optimised.
+      Natural gas transport is assumed unconstrained across Europe (not modelled
+      explicitly). Interregional H2 pipeline expansion capped at 20 GW
+      (equivalent to one 48-inch + one 36-inch pipeline). CO2 network enables
+      carbon capture and sequestration across regions.
+    variant: null
+    parameters: {h2_pipeline_cap_per_link: "20 GW", co2_sequestration_budget: "200 MtCO2/a Europe"}
+
+  - slug: import-and-trade-representation
+    role: extends
+    evidence: >
+      "Expanding the spatial scope to incorporate non-European partners is
+      computationally expensive. To mitigate this, we add the costs of imports
+      from 51 countries using an open model of global energy supply chains,
+      TRACE, following Neumann et al. [21]." (Methods, "Expanding Spatial Scope
+      Beyond Europe"). Imports of H2 (pipeline and ship), HBI, ammonia, methanol
+      and Fischer-Tropsch fuel are modelled via soft-linked supply curves.
+    procedure_notes: >
+      TRACE builds a stand-alone greenfield energy system per exporting country,
+      meets domestic demand, then expands for export. Export volumes capped at
+      500 TWh/a per country (238 Mt for HBI). Transport losses and ship fuel
+      costs are included. Weather data and technology costs harmonised across
+      PyPSA-DE and TRACE. The coupling is one-directional (supply curves fed
+      into PyPSA-DE); no iteration to consistency. Five scenarios progressively
+      relax import constraints: Base (no imports), EH (European H2), WH (global
+      H2), EHP (European H2 + precursors), WHP (global H2 + precursors).
+    variant: soft-linked-supply-curves
+    parameters: {exporting_countries: 51, export_cap: "500 TWh/a or 238 Mt HBI", carriers: "H2-pipeline, H2-ship, HBI, NH3, MeOH, Fischer-Tropsch"}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "The model is subject to two boundary conditions: achieving climate
+      neutrality and adhering to a carbon sequestration limit of 200 Mt per year
+      across the entire European model scope." (Methods, "Boundary Conditions").
+      "The German carbon price is represented by the sum of both shadow prices.
+      The carbon price varies across scenarios between 320.29 EUR/tCO2 and
+      303.94 EUR/tCO2." (Appendix C, "Carbon Balance").
+    procedure_notes: >
+      Net negative CO2 target for Germany of -50.5 Mt/a (to compensate for
+      non-CO2 GHGs) and net zero for Europe. Cap is implemented as a constraint;
+      the shadow price of this constraint is reported as the CO2 price. European
+      sequestration potential capped at 200 MtCO2/a (sensitivity: 400 MtCO2/a).
+    variant: emissions-cap
+    parameters: {germany_target: "-50.5 MtCO2/a net", europe_target: "net zero", sequestration_limit: "200 MtCO2/a", co2_price_range: "304-320 EUR/tCO2"}
+
+  - slug: discounting-and-cost-of-capital
+    role: routine-use
+    evidence: >
+      "Investment and operating parameters for the year 2050 are primarily taken
+      from the technology-data database v0.10.1 [38], with most cost assumptions
+      derived from the Danish Energy Agency data and discounted at a rate of 7 %."
+      (Methods, "European energy system model"). Sensitivity with WACC of 10 %
+      for non-European imports (Appendix D).
+    procedure_notes: >
+      Investment costs annualised using an annuity factor (Appendix A, Eq. 2).
+      A uniform 7 % discount rate is applied across all technologies. One
+      sensitivity run (wacc10) tests 10 % WACC for non-European exporting
+      countries only, raising their import costs and altering the optimal
+      import-domestic balance.
+    variant: null
+    parameters: {discount_rate: "7%", wacc_sensitivity: "10% for non-European countries"}
+
+  - slug: shadow-prices-and-marginal-values
+    role: routine-use
+    evidence: >
+      "From the optimization results, we extract the Lagrangian multipliers
+      λi,t, which represent the marginal price for an energy carrier or feedstock
+      in region i and time step t. When multiplied by the corresponding
+      consumption d, we obtain the consumer costs ccons." (Results, Eq. 1 and
+      Appendix A, Eq. 3).
+    procedure_notes: >
+      KKT multipliers on the nodal balance constraints are used directly as
+      marginal prices. Consumer costs are computed by summing λi,t · di,t over
+      all regions and time steps (Eq. 1). CO2 shadow prices are also extracted.
+      Hydrogen prices per region and scenario are mapped spatially (Fig. 4).
+    variant: null
+    parameters: {}
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "We assume a scenario in which all dispatchable and renewable generation
+      capacities from today reached their end of life but include existing
+      infrastructure." (Methods, "Renewable Potential and Availability"). Single
+      2050 target year optimised overnight.
+    procedure_notes: >
+      Greenfield generation (existing plants assumed retired), but existing grid
+      infrastructure (OpenStreetMap + TYNDP projects) and planned offshore wind
+      (30 GW by 2030) are included as fixed inputs. No transition dynamics or
+      myopic pathway — single-year investment optimisation.
+    variant: overnight
+    parameters: {target_year: 2050}
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "Land availability for renewable deployment is determined using the CORINE
+      land use database together with the Natura 2000 dataset, which allows us to
+      exclude protected areas and other unsuitable sites." (Methods, "Renewable
+      Potential and Availability"). Atlite used for weather-to-capacity-factor
+      conversion.
+    procedure_notes: >
+      Capacity densities: 3 MW/km2 onshore and offshore wind, 5.1 MW/km2 solar
+      (main run); sensitivity at 25 MW/km2 solar (HighSol). European countries
+      other than Germany subdivided into 5 subregions each to retain spatial
+      heterogeneity in renewable potential. ERA5 2019 weather year via atlite.
+    variant: null
+    parameters: {onshore_wind_density: "3 MW/km2", offshore_wind_density: "3 MW/km2", solar_density_main: "5.1 MW/km2", solar_density_sensitivity: "25 MW/km2", subregions_per_country: 5, weather_year: 2019}
+
+  - slug: temporal-aggregation-and-segmentation
+    role: routine-use
+    evidence: >
+      "The optimization covers one full year with a 4-hourly temporal resolution.
+      To improve the representation of critical system states, a segmentation
+      algorithm [44] refines the temporal resolution during extreme events such
+      as low renewable availability or high demand while reducing it during
+      periods with little variability." (Methods, "Renewable Potential and
+      Availability"). Reference [44] is the tsam library.
+    procedure_notes: >
+      Base resolution 4-hourly (2190 snapshots). Adaptive segmentation (tsam)
+      concentrates time steps around critical periods (low renewable / high
+      demand), sparse otherwise. Reported to retain similar accuracy to hourly
+      modelling while remaining computationally manageable, citing Neumann et al.
+      [34]. Snapshot weights sum to 8760 h/a (Appendix A, Eq. 2).
+    variant: adaptive-segmentation
+    parameters: {base_resolution: "4h", tool: "tsam"}
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: routine-use
+    evidence: >
+      "Parts of the results depend on how the model is parameterised. In
+      Appendix D we explore some dependencies on the weighted average cost of
+      capital (WACC) of the non-European imports, the investment costs of
+      electrolysis units, the potential volume of CO2 sequestration and the
+      amount of land made available to solar." (Results, "Sensitivity of results
+      to capital costs, electrolyser costs, sequestration potential and land use").
+    procedure_notes: >
+      Four one-at-a-time sensitivity runs: (1) Seq — European CO2 sequestration
+      doubled to 400 MtCO2/a; (2) Elec50 — electrolysis CAPEX halved from
+      1000 to 500 EUR/kW; (3) wacc10 — WACC for non-European importers raised
+      from 7 % to 10 %; (4) HighSol — solar density raised from 5.1 to
+      25 MW/km2. Each run repeated across all five import scenarios. Results
+      show overall conclusions are robust but wacc10 narrows the EHP/WHP gap.
+    variant: one-at-a-time
+    parameters: {sensitivity_dimensions: 4, scenarios_per_sensitivity: 5}
+
+  - slug: spatial-clustering-and-resolution
+    role: routine-use
+    evidence: >
+      "While Germany is represented in greater detail with 30 nodes ... Most
+      countries are modelled with one to three spatial nodes." (Methods,
+      "European energy system model"). "Since the spatial resolution in European
+      countries except for Germany is coarse, we subdivide the renewable
+      potentials in five subregions each." (Methods, "Renewable Potential and
+      Availability").
+    procedure_notes: >
+      Non-uniform spatial resolution: Germany at 30 nodes (administrative),
+      neighbours at 1–3 nodes. To avoid smoothing renewable heterogeneity in
+      coarsely-resolved countries, potential is split into 5 subregions per
+      country. Cross-border electricity import to Germany capped at 125 TWh/a
+      and 30 GW to account for unresolved grid bottlenecks in neighbouring
+      countries.
+    variant: null
+    parameters: {germany_nodes: 30, neighbour_nodes: "1-3", renewable_subregions_per_country: 5, import_cap: "125 TWh/a, 30 GW"}
+
+unmatched_methods: []

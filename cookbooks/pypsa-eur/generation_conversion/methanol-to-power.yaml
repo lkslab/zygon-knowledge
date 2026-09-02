@@ -1,0 +1,137 @@
+id: methanol-to-power
+title: Methanol-fired power plants (OCGT / CCGT / CCGT-CC / Allam)
+summary: >
+  Dispatchable power generation burning methanol instead of natural gas — from
+  simple open-cycle turbines to combined cycles with post-combustion capture
+  and an oxy-fuel Allam cycle variant — turning the methanol pool into a
+  storable e-fuel backup for the power system.
+when_to_use:
+  - "methanol power plant / burn methanol for electricity"
+  - "e-fuel backup generation / reconversion of synthetic fuels"
+  - "methanol OCGT or CCGT"
+  - "methanol turbine with carbon capture"
+  - "Allam cycle on methanol"
+  - "long-duration fuel storage to power (methanol instead of hydrogen)"
+  - "pypsa-eur carrier names: OCGT methanol, CCGT methanol, CCGT methanol CC, allam methanol"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Partially ON by default: sector.methanol.methanol_to_power.ocgt is true,
+        while ccgt, ccgt_cc and allam are false. add_methanol_to_power reads
+        that dict as its `types` argument and adds, per enabled type, one
+        extendable Link at EVERY population-layout node drawing from the single
+        "EU methanol" bus. "OCGT methanol": OCGT cost row (efficiency, VOM,
+        capital_cost — capital cost and VOM are multiplied by efficiency since
+        the cost row is per MW_el but link p_nom is methanol input), full fuel
+        carbon (methanolisation row carbondioxide-input, 0.248 tCO2/MWh_MeOH)
+        to "co2 atmosphere". "CCGT methanol": same pattern with the CCGT row.
+        "CCGT methanol CC": 4-bus link adding the co2 stored buses; the "cement
+        capture" row's capture_rate 0.95 splits the 0.248 t/MWh_MeOH into
+        0.236 captured / 0.012 to atmosphere, capture capex ('cement capture'
+        capital_cost * carbondioxide-input) added on top of the CCGT capital
+        cost (an in-code TODO notes CC efficiency penalties/energy inputs are
+        not modelled). "allam methanol": oxy-fuel variant using the "allam"
+        cost row (1500 EUR/kW_el, efficiency 0.6 — an own-assumption row, see
+        the allam-cycle recipe) with a HARDCODED 0.98/0.02 split of the fuel
+        carbon to co2 stored / atmosphere and a hardcoded lifetime of 25 years
+        (unlike "allam gas", which takes lifetime 30 from the cost row).
+        Because emissions are booked at combustion, firing green methanol whose
+        production drew CO2 from the atmosphere or the co2 stored buses is
+        net-neutral, and the CC/allam variants on such methanol are net-negative
+        — the model can and does use this as a carbon-management arbitrage.
+      mechanism: >
+        rule prepare_sector_network runs scripts/prepare_sector_network.py:
+        add_methanol -> add_methanol_to_power with types =
+        sector.methanol.methanol_to_power (the whole block is skipped only if
+        every flag under sector.methanol is false). add_carrier_buses has
+        created the EU methanol bus + store; supply comes from methanolisation
+        (add_industry), biomass-to-methanol (add_methanol) or imports. Cost
+        rows via rule process_cost_data.
+      not_covered: >
+        No methanol-specific turbine data — all four variants are priced with
+        gas-technology proxies (OCGT/CCGT rows, own-assumption allam row);
+        there are no dedicated methanol-engine or methanol-turbine cost rows.
+        No existing methanol-fired fleet, no unit commitment/ramping, no
+        minimum part load. No methanol CHP (heat output) variant. Fuel is drawn
+        from the EU-wide methanol pool, so plant siting is unconstrained by
+        fuel logistics (only the electricity side is nodal). The Allam cycle on
+        NATURAL GAS is a separate switch and recipe (sector.allam_cycle_gas,
+        allam-cycle recipe); H2-fired turbines are sector.hydrogen_turbine
+        (gas-power-plants recipe); methanol-to-kerosene and shipping/industry
+        methanol demand are other consumers of the same pool, not power.
+      provenance: "scripts/prepare_sector_network.py:add_methanol_to_power; scripts/prepare_sector_network.py:add_methanol; scripts/prepare_sector_network.py:add_carrier_buses"
+    levers:
+      - key: sector.methanol.methanol_to_power.ocgt
+        effect: "Switch for 'OCGT methanol' peakers at every node (the only variant on by default)."
+        default: "true"
+        provenance: "config/config.default.yaml:methanol_to_power; scripts/prepare_sector_network.py:add_methanol_to_power"
+      - key: sector.methanol.methanol_to_power.ccgt
+        effect: "true adds 'CCGT methanol' links (CCGT costs/efficiency, uncaptured)."
+        default: "false"
+        provenance: "config/config.default.yaml:methanol_to_power; scripts/prepare_sector_network.py:add_methanol_to_power"
+      - key: sector.methanol.methanol_to_power.ccgt_cc
+        effect: "true adds 'CCGT methanol CC' links with 95% post-combustion capture (cement capture row) to the co2 stored buses."
+        default: "false"
+        provenance: "config/config.default.yaml:methanol_to_power; scripts/prepare_sector_network.py:add_methanol_to_power"
+      - key: sector.methanol.methanol_to_power.allam
+        effect: "true adds 'allam methanol' oxy-fuel links: 98% of fuel CO2 captured to co2 stored, 2% to atmosphere, allam cost row, lifetime hardcoded 25 a."
+        default: "false"
+        provenance: "config/config.default.yaml:methanol_to_power; scripts/prepare_sector_network.py:add_methanol_to_power"
+      - key: costs.overwrites
+        effect: "Override OCGT/CCGT/allam efficiency or investment, cement capture capture_rate, or the methanolisation carbondioxide-input that sets the fuel's carbon content; deprecated in favour of data/custom_costs.csv (costs.custom_cost_fn)."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+      - key: sector.methanol.regional_methanol_demand
+        effect: "Regionalises methanol demand buses (shipping/industry); does not affect the power links, which always draw from the EU pool."
+        default: "false"
+        provenance: "config/config.default.yaml:regional_methanol_demand; scripts/prepare_sector_network.py:define_spatial"
+    boundary:
+      - variant: "methanol peakers in the capacity mix"
+        rung: L0
+        note: "default (ocgt: true) — candidates at every node, dispatch limited only by methanol supply cost"
+      - variant: "add CCGT / CCGT-CC / Allam methanol variants"
+        rung: L0
+        note: "flip the respective booleans under sector.methanol.methanol_to_power; all four can coexist"
+      - variant: "remove methanol-to-power entirely"
+        rung: L1
+        note: "set all four flags false (an all-false dict is falsy in add_methanol's gate)"
+      - variant: "change efficiency, cost or capture rate"
+        rung: L1
+        note: "costs.overwrites / data/custom_costs.csv on the OCGT, CCGT, allam or cement capture rows — beware these rows are shared with the gas-fired and industry technologies"
+      - variant: "methanol-specific turbine economics (decoupled from gas rows)"
+        rung: L2
+        note: "add a custom cost row and re-point the costs.at lookups inside add_methanol_to_power"
+      - variant: "change the Allam 98/2 capture split"
+        rung: L2
+        note: "the 0.98/0.02 factors are hardcoded literals in add_methanol_to_power (and add_allam_gas) — not a cost-file or config value"
+      - variant: "restrict siting to selected nodes"
+        rung: L2
+        note: "the function builds at all pop_layout nodes; subset `nodes` in add_methanol_to_power"
+      - variant: "methanol CHP (power + district heat)"
+        rung: L2
+        note: "no variant exists; clone the urban central gas CHP pattern in add_heat with bus0 = spatial.methanol.nodes and the methanol carbon coefficient"
+      - variant: "existing/planned methanol plant with fixed capacity"
+        rung: L2
+        note: "no brownfield path; set p_nom/p_nom_min on the link, e.g. via the adjustments mechanism or an edit in add_methanol_to_power"
+    where:
+      - change: "all four variant links, their costs and CO2 splits"
+        anchor: "scripts/prepare_sector_network.py::add_methanol_to_power (types = sector.methanol.methanol_to_power)"
+        provenance: "scripts/prepare_sector_network.py:add_methanol_to_power"
+      - change: "gate + methanol bus creation"
+        anchor: "scripts/prepare_sector_network.py::add_methanol -> add_carrier_buses (carrier 'methanol')"
+        provenance: "scripts/prepare_sector_network.py:add_methanol; scripts/prepare_sector_network.py:add_carrier_buses"
+      - change: "cost rows (OCGT, CCGT, allam, cement capture, methanolisation)"
+        anchor: "scripts/process_cost_data.py::prepare_costs / overwrite_costs (rule process_cost_data)"
+        provenance: "scripts/process_cost_data.py:prepare_costs; scripts/process_cost_data.py:overwrite_costs"
+    data_dependencies:
+      - input: "cost rows 'OCGT', 'CCGT', 'allam', 'cement capture', 'methanolisation' (carbondioxide-input)"
+        required_for: "efficiencies, costs and carbon coefficients of the four variants"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "methanol supply on the EU methanol bus (methanolisation / biomass-to-methanol / imports) plus the extendable methanol Store"
+        required_for: "fuel for dispatch — no fossil methanol generator exists"
+        availability: "exists by default in sector runs"
+      - input: "co2 stored buses with sequestration or utilisation downstream"
+        required_for: "the ccgt_cc and allam variants' captured CO2"
+        availability: "exists by default (add_co2_tracking; see co2-transport-and-sequestration recipe)"

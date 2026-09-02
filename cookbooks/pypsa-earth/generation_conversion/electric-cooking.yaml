@@ -1,0 +1,101 @@
+id: electric-cooking
+title: Induction / electric cooking
+summary: Switching household cooking from fuels (LPG, gas, biomass, kerosene, coal) to electricity (induction/resistive stoves).
+
+when_to_use:
+  - "electric cooking"
+  - "induction stoves"
+  - "e-cooking transition"
+  - "switch cooking from LPG/gas to electricity"
+  - "cooking electrification scenario"
+  - "kerosene to electric stove"
+  - "household cooking demand"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        NOT a distinct demand category — the string "cook" appears nowhere in the
+        scripts, Snakefile or config at this commit. Cooking energy is folded into the
+        residential fuel totals that build_base_energy_totals extracts from the UNSD
+        energy balance sector "consumption by households": "electricity residential",
+        "residential oil", "residential gas", "residential biomass" (heat commodities go
+        to space/water heat instead). These become nodal loads on the oil/gas/biomass
+        carrier buses and the electricity bus in add_residential. Fuel-to-electricity
+        switching of the NON-heat residential fuel demand (which implicitly contains
+        cooking) is a data lever: prepare_energy_totals applies fuel_shares.csv columns
+        "oil to elec share", "gas to elec share", "biomass to elec share" to move
+        (1 - residential heat share) fuel demand into "electricity residential" — note
+        this shift is applied 1:1, with no appliance-efficiency credit (the
+        efficiency_heat_*_to_elec factors apply only to the heat shift). Residential
+        coal is shifted to electricity out of the box when sector.coal.shift_to_elec is
+        true (default).
+      mechanism: >
+        rule build_base_energy_totals (UNSD "consumption by households" -> residential
+        fuel columns; coal folded into electricity if shift_to_elec) -> rule
+        prepare_energy_totals (fuel_shares.csv "* to elec share" reallocation, DEFAULT
+        row fallback via fill_country_data) -> prepare_sector_network add_residential
+        (loads "residential oil/gas/biomass" on carrier buses; residential electricity
+        load rescaled to energy_totals["electricity residential"]).
+      not_covered: >
+        No cooking-specific demand series, load profile, appliance stock or efficiency
+        representation; no LPG-vs-electric stove cost competition (the switch is purely
+        exogenous data); no distinction between cooking and other residential fuel uses,
+        so a "share of cooking electrified" must be translated by the user into a share
+        of total non-heat residential fuel use.
+      provenance: "scripts/build_base_energy_totals.py:consumption by households"
+
+    levers:
+      - key: sector.coal.shift_to_elec
+        effect: Counts residential/services coal consumption as electricity demand instead of dropping it (closest built-in fuel-to-electric cooking-adjacent switch).
+        default: "true"
+        provenance: "config.default.yaml:shift_to_elec; scripts/build_base_energy_totals.py:shift_coal_to_elec"
+      - key: sector.enable.residential
+        effect: Gates add_residential, i.e. whether residential fuel/electricity loads are added at all.
+        default: "true"
+        provenance: "config.default.yaml:enable; scripts/prepare_sector_network.py:add_residential"
+      - key: demand_data.base_year
+        effect: UNSD energy balance year from which residential fuel (incl. cooking) totals are taken.
+        default: "2019"
+        provenance: "config.default.yaml:base_year; Snakefile:build_base_energy_totals"
+
+    boundary:
+      - variant: "Shift residential coal (incl. coal cooking) to electricity"
+        rung: L0
+        note: "sector.coal.shift_to_elec, already true by default."
+      - variant: "Electrify a share of residential oil/gas/biomass use (cooking proxy) for a country"
+        rung: L3
+        note: "Edit the country row of data/demand/fuel_shares.csv columns 'oil to elec share', 'gas to elec share', 'biomass to elec share' (non-heat fuel demand; DEFAULT row is the fallback). Consumed by prepare_energy_totals with no efficiency factor — apply your own stove-efficiency adjustment to the share if needed."
+      - variant: "Apply an appliance-efficiency credit to the fuel->electricity shift"
+        rung: L2
+        note: "prepare_energy_totals multiplies heat shifts by efficiency_heat_*_to_elec but the non-heat shift by nothing; add a factor in the 'electricity residential' expression."
+      - variant: "Explicit cooking demand category with its own hourly profile and stove technologies competing on cost"
+        rung: L5
+        note: "Requires new demand extraction (cooking is not separable in the UNSD-based columns), new loads/components, and likely a new rule (L4) — nothing exists."
+
+    where:
+      - change: "Fuel-to-electricity reallocation of residential demand"
+        anchor: "scripts/prepare_energy_totals.py (electricity residential block, 'oil to elec share' etc.)"
+        provenance: "scripts/prepare_energy_totals.py:oil to elec share"
+      - change: "Per-country switching shares"
+        anchor: "data/demand/fuel_shares.csv (country rows + DEFAULT)"
+        provenance: "data/demand/fuel_shares.csv:oil to elec share"
+      - change: "Residential fuel loads on carrier buses and electricity load rescaling"
+        anchor: "scripts/prepare_sector_network.py:add_residential"
+        provenance: "scripts/prepare_sector_network.py:add_residential"
+      - change: "Base-year extraction of residential fuel totals"
+        anchor: "scripts/build_base_energy_totals.py:calc_sector ('consumption by households' branch)"
+        provenance: "scripts/build_base_energy_totals.py:calc_sector"
+
+    data_dependencies:
+      - input: "UNSD energy statistics database (household consumption by commodity)"
+        required_for: "Baseline residential fuel demand containing cooking"
+        availability: "must be built (build_base_energy_totals downloads it; demand_data.update_data)"
+      - input: "data/demand/fuel_shares.csv"
+        required_for: "Country-specific fuel-to-electricity switching shares"
+        availability: "region-dependent (few country rows — MA, TN, NA, US and others; DEFAULT fallback)"
+      - input: "GEGIS/DemandCast electricity load profiles (load_options)"
+        required_for: "Hourly shape onto which extra cooking electricity is scaled in add_residential"
+        availability: "exists by default (retrieved)"

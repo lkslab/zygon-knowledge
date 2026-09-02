@@ -1,0 +1,108 @@
+id: solar-thermal
+title: Solar thermal (water/heat)
+summary: Solar collectors producing low-temperature heat for buildings (water and space heating), weather-driven.
+
+when_to_use:
+  - "solar thermal"
+  - "solar water heater"
+  - "solar collectors for heating"
+  - "solar hot water"
+  - "rooftop solar thermal panels"
+  - "solar-assisted district heating"
+  - "SWH deployment"
+  - "known in pypsa-eur as: solar thermal, residential rural solar thermal, services rural solar thermal, residential urban decentral solar thermal, services urban decentral solar thermal, urban central solar thermal"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        When sector.solar_thermal is true (default), add_heat adds an extendable
+        GENERATOR "{name} solar thermal collector" directly on the heat bus of EVERY
+        heat system ("residential rural", "services rural", "residential urban
+        decentral", "services urban decentral", "urban central"), with p_max_pu set to
+        a population-weighted collector availability time series and capital
+        cost/lifetime from the "decentral solar thermal" / "central solar thermal"
+        cost rows. Profiles are built by rule build_solar_thermal_profiles using
+        atlite cutout.solar_thermal with the top-level solar_thermal config
+        (clearsky_model: simple; orientation slope 45, azimuth 180), then scaled by
+        sector.solar_cf_correction and converted W/m2 -> MW per 1000 m2 in
+        prepare_heat_data.
+      mechanism: >
+        rule build_solar_thermal_profiles (ERA5 cutout + pop layouts ->
+        solar_thermal_{total,urban,rural}.nc) -> rule prepare_heat_data
+        (solar_cf_correction * profile / 1e3 -> solar_thermal csv) -> rule
+        prepare_sector_network / add_heat (n.madd Generator on heat buses, gated by
+        options["solar_thermal"]).
+      not_covered: >
+        No dedicated hot-water-only collector (serves the combined space+water heat
+        bus); no rooftop-area potential limit on collector capacity (p_nom is
+        unconstrained); no seasonal pit storage tied to solar DH (only generic water
+        tanks); concentrating solar (renewable.csp) exists but as an electricity
+        generator, not process/building heat.
+      provenance: "scripts/prepare_sector_network.py:solar thermal collector"
+
+    levers:
+      - key: sector.solar_thermal
+        effect: Enables/disables solar thermal collectors on all heat buses.
+        default: "true"
+        provenance: "config.default.yaml:solar_thermal; scripts/prepare_sector_network.py:solar_thermal"
+      - key: sector.solar_cf_correction
+        effect: Multiplier on the raw atlite collector profile (calibration factor).
+        default: "0.788457"
+        provenance: "config.default.yaml:solar_cf_correction; scripts/prepare_heat_data.py:solar_cf_correction"
+      - key: solar_thermal.clearsky_model
+        effect: Atlite clearsky model used for the collector simulation.
+        default: "simple"
+        provenance: "config.default.yaml:clearsky_model; scripts/build_solar_thermal_profiles.py:solar_thermal_config"
+      - key: solar_thermal.orientation.slope
+        effect: Collector tilt angle in degrees passed to atlite cutout.solar_thermal.
+        default: "45."
+        provenance: "config.default.yaml:orientation; scripts/build_solar_thermal_profiles.py:solar_thermal_config"
+      - key: solar_thermal.orientation.azimuth
+        effect: Collector azimuth in degrees (180 = equator-facing in the northern hemisphere convention used by atlite).
+        default: "180."
+        provenance: "config.default.yaml:orientation; scripts/build_solar_thermal_profiles.py:solar_thermal_config"
+
+    boundary:
+      - variant: "Enable/disable solar thermal competition for heat"
+        rung: L0
+        note: "sector.solar_thermal (on by default)."
+      - variant: "Change collector tilt/azimuth or clearsky model"
+        rung: L1
+        note: "Top-level solar_thermal config block, consumed by rule build_solar_thermal_profiles."
+      - variant: "Calibrate collector yield"
+        rung: L1
+        note: "sector.solar_cf_correction."
+      - variant: "Different collector performance model (beyond atlite's parameterisation)"
+        rung: L2
+        note: "Edit build_solar_thermal_profiles.py (the cutout.solar_thermal call and post-processing)."
+      - variant: "Rooftop-area or per-capita potential limit on collector capacity"
+        rung: L5
+        note: "No p_nom_max is set on the collector Generators; needs new potential data (L3) plus logic in add_heat."
+      - variant: "Solar process heat for industry"
+        rung: L5
+        note: "Industry demand is not connected to solar collectors; new component logic required."
+
+    where:
+      - change: "Collector profile generation"
+        anchor: "rule build_solar_thermal_profiles (atlite cutout.solar_thermal, population-weighted)"
+        provenance: "scripts/build_solar_thermal_profiles.py:solar_thermal"
+      - change: "Profile scaling and unit conversion"
+        anchor: "scripts/prepare_heat_data.py:prepare_heat_data (solar_cf_correction block)"
+        provenance: "scripts/prepare_heat_data.py:solar_cf_correction"
+      - change: "Collector Generator addition on heat buses"
+        anchor: "scripts/prepare_sector_network.py:add_heat (options['solar_thermal'] block)"
+        provenance: "scripts/prepare_sector_network.py:solar thermal collector"
+
+    data_dependencies:
+      - input: "ERA5 cutout (solar influx) covering the model region"
+        required_for: "Collector availability profiles"
+        availability: "must be built or retrieved (enable.retrieve_cutout / build_cutout)"
+      - input: "Population layouts (total/urban/rural)"
+        required_for: "Weighting collector profiles to where heat demand sits"
+        availability: "must be built (build_population_layouts)"
+      - input: "Cost rows 'decentral solar thermal' / 'central solar thermal'"
+        required_for: "Collector investment costs and lifetime"
+        availability: "exists by default (retrieve_cost_data from technology-data)"

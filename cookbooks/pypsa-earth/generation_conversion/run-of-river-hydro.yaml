@@ -1,0 +1,177 @@
+id: run-of-river-hydro
+title: Run-of-river hydro
+summary: >
+  Hydropower plants without a reservoir that generate directly from river flow,
+  modelled as generators whose hourly availability follows natural inflow.
+when_to_use:
+  - "add run-of-river hydro"
+  - "model ror plants"
+  - "river hydropower without a dam"
+  - "hydro plants that follow the river flow"
+  - "why is my hydro plant a generator and not a storage unit"
+  - "change how hydro plants are classified as run-of-river vs reservoir"
+  - "run-of-river capacity factors / inflow time series"
+  - "rescale hydro inflow to national statistics"
+  - "small hydro on rivers"
+  - "known in pypsa-eur as: ror, run of river"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        Existing run-of-river plants from the powerplantmatching fleet are added as
+        non-extendable PyPSA Generators with carrier "ror" and an hourly p_max_pu
+        derived from per-plant natural inflow (inflow/p_nom, clipped at 1.0).
+        Plants whose powerplantmatching Technology is "Run-Of-River" map directly to
+        carrier "ror" via the tech_to_carrier dict; plants with missing technology are
+        classified ror vs reservoir by an energy-to-power heuristic (mean inflow per MW
+        below hydro_min_inflow_pu => ror). Inflow is computed per plant by the
+        build_renewable_profiles rule using the atlite hydro method on the ERA5 runoff
+        cutout aggregated over HydroBASINS catchments, optionally normalized to yearly
+        national hydro generation statistics (IRENA by default) and scaled by a
+        multiplier. Plants grouped by (bus, carrier, grouping_year) in attach_hydro.
+      mechanism: >
+        Snakefile rule build_renewable_profiles (technology "hydro", extra inputs from
+        the HYDRO_PROFILES dict: powerplants, hydrobasins, IRENA/EIA statistics) writes
+        resources/renewable_profiles/profile_hydro.nc with an "inflow" DataArray per
+        plant; scripts/add_electricity.py::attach_hydro reads it, splits the fleet into
+        ror/PHS/hydro via tech_to_carrier plus the hydro_min_inflow_pu heuristic, and
+        n.madd's ror Generators with p_max_pu = inflow/p_nom capped at 1.0 and costs
+        from the "ror" row of the technology-data costs file.
+      not_covered: >
+        No capacity expansion of ror (p_nom_extendable=False is hardcoded in
+        attach_hydro; the renewable.hydro.extendable config key has no consumer in the
+        scripts); no greenfield/new-site ror potential assessment (only plants present
+        in powerplants.csv are modelled); plants located outside the HydroBASINS
+        shapefile get a zero inflow series; plants whose inflow series is missing from
+        profile_hydro.nc are dropped with a capacity-loss warning.
+      provenance: "scripts/add_electricity.py:attach_hydro"
+    levers:
+      - key: electricity.renewable_carriers
+        effect: >
+          "hydro" must be in this list for profile_hydro.nc to be an input of the
+          add_electricity rule; removing it disables the whole hydro family (ror
+          included).
+        default: "[solar, onwind, offwind-ac, offwind-dc, hydro]"
+        provenance: "config.default.yaml:renewable_carriers"
+      - key: renewable.hydro.carriers
+        effect: >
+          Which hydro sub-carriers are attached; drop "ror" to skip adding
+          run-of-river generators while keeping PHS/reservoir.
+        default: "[ror, PHS, hydro]"
+        provenance: "scripts/add_electricity.py:attach_hydro"
+      - key: renewable.hydro.hydro_min_inflow_pu
+        effect: >
+          Energy-to-power threshold [h] used to classify plants with missing
+          Technology: mean inflow per MW >= threshold => reservoir, below => ror.
+          Lowering it pushes more unknown plants into the reservoir class and vice
+          versa.
+        default: "1.0"
+        provenance: "scripts/add_electricity.py:hydro_min_inflow_pu"
+      - key: renewable.hydro.clip_min_inflow
+        effect: "Inflow values below this level [MW] are set to zero in the profile build."
+        default: "1.0"
+        provenance: "scripts/build_renewable_profiles.py:clip_min_inflow"
+      - key: renewable.hydro.normalization.method
+        effect: >
+          Rescale computed inflow so yearly totals match national statistics:
+          "irena" (default), "eia", "hydro_capacities", or false for raw atlite runoff.
+        default: "irena"
+        provenance: "scripts/build_renewable_profiles.py:rescale_hydro"
+      - key: renewable.hydro.normalization.year
+        effect: "Statistics year used for the normalization (falls back to the cutout weather year)."
+        default: "2023"
+        provenance: "scripts/build_renewable_profiles.py:normalization"
+      - key: renewable.hydro.multiplier
+        effect: "Scalar applied to the inflow after normalization (biases ror availability up/down)."
+        default: "1.1"
+        provenance: "scripts/build_renewable_profiles.py:multiplier"
+      - key: renewable.hydro.hydrobasins_level
+        effect: "HydroBASINS aggregation level used when retrieving the basin shapefile."
+        default: "6"
+        provenance: "Snakefile:hydrobasins_level"
+      - key: renewable.hydro.resource.hydrobasins
+        effect: "Path to the HydroBASINS shapefile used to delineate catchments per plant."
+        default: "data/hydrobasins/hybas_world.shp"
+        provenance: "scripts/build_renewable_profiles.py:hydrobasins"
+      - key: renewable.hydro.cutout
+        effect: "Which atlite cutout supplies the runoff field ('auto' picks atlite.default)."
+        default: "auto"
+        provenance: "config.default.yaml:cutout"
+      - key: electricity.custom_powerplants
+        effect: >
+          "merge"/"replace" brings data/custom_powerplants.csv into the fleet — the
+          route for adding ror plants missing from powerplantmatching (set Fueltype
+          Hydro, Technology "Run-Of-River").
+        default: "false"
+        provenance: "scripts/build_powerplants.py:add_custom_powerplants"
+    boundary:
+      - variant: "turn run-of-river off (keep other hydro)"
+        rung: L0
+        note: "remove 'ror' from renewable.hydro.carriers"
+      - variant: "shift the ror-vs-reservoir split for plants with unknown technology"
+        rung: L0
+        note: "set renewable.hydro.hydro_min_inflow_pu to a different threshold"
+      - variant: "rescale ror output to match national generation statistics"
+        rung: L1
+        note: >
+          renewable.hydro.normalization.method (irena/eia/hydro_capacities/false),
+          normalization.year and multiplier; statistics files ship in data/
+      - variant: "add a specific ror plant absent from powerplantmatching"
+        rung: L3
+        note: >
+          author a row in data/custom_powerplants.csv (Fueltype Hydro, Technology
+          "Run-Of-River", lat/lon inside a hydrobasin) and set
+          electricity.custom_powerplants: merge
+      - variant: "use a different weather year for inflow"
+        rung: L3
+        note: >
+          change snapshots and rebuild the ERA5 cutout (enable.build_cutout: true,
+          needs CDS API access) or retrieve a matching cutout; normalization.year
+          selects the statistics year independently
+      - variant: "make ror capacity extendable"
+        rung: L2
+        note: >
+          p_nom_extendable=False is hardcoded in the ror n.madd block of attach_hydro;
+          small localised edit there (the renewable.hydro.extendable key is not read
+          anywhere) — also needs a p_nom_max policy since no ror potential exists
+      - variant: "greenfield ror potential map (candidate new sites)"
+        rung: L5
+        note: >
+          no site-potential logic exists for ror; requires bespoke resource assessment
+          plus new rule plumbing to feed candidate plants/inflows into attach_hydro
+    where:
+      - change: "ror attachment, classification heuristic, p_max_pu construction"
+        anchor: "scripts/add_electricity.py::attach_hydro (helpers aggregate_inflow_by_group, tech_to_carrier)"
+        provenance: "scripts/add_electricity.py:aggregate_inflow_by_group"
+      - change: "per-plant inflow computation, clipping, normalization, multiplier"
+        anchor: "scripts/build_renewable_profiles.py (hydro branch; rescale_hydro)"
+        provenance: "scripts/build_renewable_profiles.py:rescale_hydro"
+      - change: "hydro profile rule inputs (powerplants, hydrobasins, IRENA/EIA stats)"
+        anchor: "Snakefile rule build_renewable_profiles + HYDRO_PROFILES dict"
+        provenance: "Snakefile:HYDRO_PROFILES"
+      - change: "fleet construction / custom plant injection"
+        anchor: "Snakefile rule build_powerplants; scripts/build_powerplants.py::add_custom_powerplants"
+        provenance: "scripts/build_powerplants.py:add_custom_powerplants"
+      - change: "hydrobasins shapefile retrieval"
+        anchor: "rule retrieve_databundle_light; configs/bundle_config.yaml bundle_hydrobasins"
+        provenance: "configs/bundle_config.yaml:bundle_hydrobasins"
+    data_dependencies:
+      - input: "data/hydrobasins/hybas_world.shp (HydroBASINS shapefile)"
+        required_for: "any ror inflow computation"
+        availability: "must be built — retrieved by retrieve_databundle_light (bundle_hydrobasins global, tutorial bundle covers Africa only); plants outside it get zero inflow"
+      - input: "ERA5 cutout with runoff field (atlite.cutouts)"
+        required_for: "inflow time series"
+        availability: "must be built or retrieved (enable.retrieve_cutout / enable.build_cutout)"
+      - input: "resources/<run>/powerplants.csv hydro fleet with Technology column"
+        required_for: "identifying ror plants (Technology 'Run-Of-River'; missing values fall to the heuristic)"
+        availability: "region-dependent — powerplantmatching coverage of hydro technology labels is patchy outside Europe"
+      - input: "data/IRENA_Statistics_Extract_2025H2.xlsx / data/eia_hydro_annual_generation.csv / data/hydro_capacities.csv"
+        required_for: "inflow normalization methods irena / eia / hydro_capacities"
+        availability: "exists by default in data/"
+      - input: "data/custom_powerplants.csv"
+        required_for: "adding ror plants missing from powerplantmatching"
+        availability: "template exists by default; rows must be authored by the user"
+      - input: "costs row 'ror' in the retrieved technology-data costs file"
+        required_for: "efficiency and capital_cost of ror generators"
+        availability: "exists by default — retrieved by rule retrieve_cost_data (costs.technology_data_version)"

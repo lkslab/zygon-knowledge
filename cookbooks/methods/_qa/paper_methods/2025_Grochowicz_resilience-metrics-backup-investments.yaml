@@ -1,0 +1,208 @@
+paper: "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+tier: 2
+model_used: >
+  PyPSA-Eur v0.13.0, electricity-only, 90 nodes, hourly resolution, run 80 times
+  (once per weather year 1941–2021).
+scope: >
+  Characterises weather-driven system-defining events (SDEs) in a net-zero European
+  power system using shadow prices, classifies four SDE types (severe power deficit,
+  power deficit, cascading, energy deficit), quantifies the financial risk of
+  resilience back-up capacities, and proposes distinct short- and long-term
+  resilience metrics to guide back-up investment planning.
+methods:
+  - slug: extreme-event-and-dunkelflaute-analysis
+    role: extends
+    evidence: >
+      "We follow Grochowicz et al. [15] in identifying power system stress through
+      SDEs: periods during which a significant portion of the energy infrastructure
+      build-out is determined, measured by a rapidly accumulated cost (Methods)."
+      A period is an SDE if sum over nodes and time of d_{n,t}*lambda_{n,t} >= C=100 bn
+      EUR within T=14 days (Eq. 2, Methods). The paper extends this framework by
+      decoupling hydrogen energy and power capacities and doubling the weather-year
+      ensemble to 80 years, then classifying SDEs into four clusters using seven
+      system metrics (Methods, Clustering of events).
+    procedure_notes: >
+      Shadow-price threshold C=100 bn EUR accumulated over T=14 days (Eq. 2).
+      41 SDEs identified across 80 weather years (avg. one every ~2 years). Seven
+      metrics used for k-means clustering (Silhouette and Calinski-Harabasz scores
+      select k=4): highest net load [GW], average net load [GW], duration [h],
+      total fuel cell discharge [TWh], maximal fuel cell discharge [GW], average
+      relative load, wind CF anomaly. Validation via 80×79=6320 dispatch
+      optimisations measuring expected energy not served (EENS) and max unserved load.
+    variant: shadow-price-accumulation-threshold
+    parameters: {threshold_C: "100 bn EUR", window_T: "14 days", n_clusters: 4,
+                  n_events: 41, weather_years: "1941-2021 (80 years)"}
+
+  - slug: weather-year-ensembles
+    role: canonical-use
+    evidence: >
+      "We use 80 years of weather data from ERA5 (1941–2021) that were translated
+      into energy variables (capacity factors for solar generation, wind generation,
+      and hydropower inflow) via atlite." (Methods, Weather data). The main
+      optimisations are 80 independent capacity-expansion runs, one per weather year.
+    procedure_notes: >
+      80 independent LP capacity-expansion optimisations, each covering July 1 –
+      June 30 (preserving winters, disregarding leap years), using ERA5 reanalysis
+      translated via atlite. Electricity demand adjusted for temperature-dependent
+      heating/cooling across weather years. Each run requires 60 GB RAM and ~3 h on
+      an HPC cluster. Floating offshore wind and horizontal single-axis tracking
+      solar added relative to earlier work (Grochowicz et al. 2024, Ref. 15).
+    variant: null
+    parameters: {n_years: 80, period: "1941-2021", reanalysis: "ERA5",
+                  tool: "atlite", temporal_resolution: "hourly"}
+
+  - slug: shadow-prices-and-marginal-values
+    role: extends
+    evidence: >
+      "we use an approach based on shadow prices to identify periods of elevated
+      stress called system-defining events" (Abstract). The shadow price lambda_{n,t}
+      of the energy balance equation (Eq. 1, Methods) is used both for SDE detection
+      (Eq. 2) and as a resilience metric in Table E4. The paper contributes a
+      framework for interpreting shadow prices as indicators of infrastructure
+      investment pressure rather than dispatch electricity prices.
+    procedure_notes: >
+      Shadow prices extracted from the LP dual of the nodal energy balance (Eq. 1).
+      System-wide electricity cost = sum_n d_{n,t} * lambda_{n,t} used to define SDE
+      threshold (Eq. 2). Shadow prices also used to construct resilience metrics
+      (Table E4) distinguishing short-term (hours/days) from long-term (annual)
+      adequacy challenges. Net load used as a complementary metric where shadow prices
+      cannot compare severity across separate optimisations (Methods).
+    variant: null
+    parameters: {}
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "We assume inelastic demand and perfect foresight for the entire year." (Methods,
+      Flexibility). Each of the 80 runs is an overnight/greenfield LP co-optimisation
+      of capacity and dispatch for a fixed target year with full-year foresight.
+    procedure_notes: >
+      Partial greenfield: renewables, batteries and hydrogen storage optimised from
+      scratch; existing generation (nuclear, biomass, hydro, gas) and transmission
+      held fixed or bounded. Single target year per run, no inter-annual storage or
+      myopic pathway. Limitation acknowledged in Discussion: "A limitation in our
+      optimisation set-up is the common assumption of perfect foresight throughout
+      the year and the disregard of inter-annual energy storage."
+    variant: overnight
+    parameters: {horizon: "single year per run", foresight: "perfect within year"}
+
+  - slug: brownfield-and-capacity-vintaging
+    role: routine-use
+    evidence: >
+      "We assume existing (2023) generation capacities of gas, hydropower, nuclear,
+      biomass, and (DC and AC) transmission, which are all fixed except for the
+      latter." (Methods, Open model of the European power system). Existing fleet
+      enters exogenously at 2023 levels; renewables, batteries and hydrogen are
+      greenfield.
+    procedure_notes: >
+      Nuclear, hydropower (run-of-river + PHS), biomass capacities fixed at 2023
+      levels (~300 GW total). Gas fleet fixed (OCGT + CCGT, 2023) in sensitivity
+      scenarios only. Transmission fixed except for a 25% volume expansion allowance.
+      Technology cost assumptions: 2030 values from technology-data v0.9.2 (Table E3).
+      No retirement or lifetime modelling within the single-year horizon.
+    variant: null
+    parameters: {existing_fleet_year: 2023, cost_assumption_year: 2030,
+                  transmission_expansion_cap: "25% of current volume"}
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: routine-use
+    evidence: >
+      "To assess the robustness of the identified system-defining events across
+      different system configurations, we conduct a sensitivity analysis rooted in
+      three key assumptions. We vary the transmission levels, the assumed reduction
+      in CO2 emissions as well as requirements to generate enough electricity
+      nationally." (Methods, Sensitivity analysis). 27 scenario combinations explored.
+    procedure_notes: >
+      One-at-a-time sensitivity shown (Supplementary Figure S6); full 27-run
+      combination explored but not reported in detail. Transmission varied: none,
+      default (125%), 200% of current volume. CO2 reduction: 100% (default), 99%,
+      95% vs 1990. National self-sufficiency: none (default), 70%, 90%. Each
+      sensitivity run repeated across relevant weather years. SDE threshold adjusted
+      for low-CO2 scenarios to account for reduced shadow prices.
+    variant: one-at-a-time
+    parameters: {n_scenarios: 27, transmission_levels: "0%, 125%, 200%",
+                  co2_reduction: "95%, 99%, 100%",
+                  self_sufficiency: "none, 70%, 90%"}
+
+  - slug: carbon-constraints-and-pricing
+    role: routine-use
+    evidence: >
+      "The model co-optimises the capacity expansion and dispatch to minimise
+      annualised total system costs (formulated as a linear program) with a net-zero
+      constraint on CO2 emissions (except in a few sensitivity scenarios)." (Methods).
+      Default scenario: 100% CO2 reduction vs 1990; sensitivity scenarios use 95%
+      and 99% caps.
+    procedure_notes: >
+      Annual CO2 emissions cap binding in all default optimisations. At 99% reduction,
+      existing gas (OCGT + CCGT) can supply up to ~2.5% of annual generation,
+      eliminating hydrogen storage and fuel cells from the cost-optimal solution.
+      Cap expressed relative to 1990 European power-sector emissions.
+    variant: annual-cap
+    parameters: {default_reduction: "100% vs 1990", sensitivity_reductions: "95%, 99%"}
+
+  - slug: transmission-expansion-cooptimisation
+    role: routine-use
+    evidence: >
+      "For transmission, we allow a 25% expansion of current transmission volume
+      (sum of lines length multiplied by capacity) compared to today's levels."
+      (Methods). Transmission capacity co-optimised with generation and storage.
+    procedure_notes: >
+      AC and DC transmission expandable up to 125% of current volume (TWkm).
+      Sensitivity runs with no expansion and 200% cap. Transmission fixed at current
+      levels in the validation dispatch optimisations to avoid contaminating adequacy
+      assessments. 90-node network (Ref. 49, Frysztacki et al. 2021).
+    variant: volume-cap
+    parameters: {default_cap: "125% of current TWkm", nodes: 90,
+                  sensitivity_caps: "100%, 200%"}
+
+  - slug: storage-sizing-and-duration
+    role: extends
+    evidence: >
+      "In contrast to Grochowicz et al. [15], we disentangle charging and storage
+      capacities of both hydrogen and batteries in order to better represent the
+      trade-offs between additional energy and power capacities instead of a fixed
+      power-to-energy ratio." (Methods). This decoupling is identified as a key
+      methodological advance that reduces SDE frequency relative to the prior work.
+    procedure_notes: >
+      Battery: energy capacity (EUR 150/kWh) and inverter power (EUR 169/kW) sized
+      independently. Hydrogen: underground storage (EUR 2/kWh, 100-year lifetime),
+      fuel cell (EUR 1164/kW, 50% efficiency), electrolyser (EUR 1500/kW, 62%
+      efficiency) all independently expandable. This decoupling reduced SDE frequency
+      from one every 1.5 years (Ref. 15) to one every ~2 years. Storage capacities
+      vary significantly across weather years (Supplementary Figure S3).
+    variant: independent-energy-power-sizing
+    parameters: {battery_energy_cost: "150 EUR/kWh", battery_power_cost: "169 EUR/kW",
+                  h2_storage_cost: "2 EUR/kWh", fuel_cell_cost: "1164 EUR/kW",
+                  electrolyser_cost: "1500 EUR/kW"}
+
+  - slug: price-formation-and-scarcity-rents
+    role: canonical-use
+    evidence: >
+      "Resilience back-up capacities face financial risk due to inter-annual weather
+      variability (Figure 1): fuel cells bridge power deficits during system-defining
+      events, and in the absence of said SDEs they remain unused. This disproportionate
+      reliance on short-lived price spikes is more problematic due to low utilisation
+      factors." (Results, Financial risk of resilience back-ups). The analysis of cost
+      recovery and scarcity rents is a core result of the paper.
+    procedure_notes: >
+      Capital cost recovery computed as fraction of annualised capital cost recovered
+      during SDE hours vs full year. Fuel cells recover cost by optimality (endogenous
+      sizing); existing gas plants (exogenous, sensitivity scenarios) never recover
+      costs in any of 80 weather years. ~35% of annual electricity cost accumulated
+      during SDEs (~1% of hours). Revenue spread shown across 80 weather years for
+      both technologies (Figure 1(b)).
+    variant: null
+    parameters: {discount_rate: "7%", fuel_cell_capacity_factor: "~4% annually",
+                  sde_cost_share: "~35% of annual electricity cost"}
+
+unmatched_methods:
+  - name: "system-defining-event identification via shadow-price accumulation"
+    evidence: >
+      The SDE detection algorithm (Eq. 2: accumulated nodal electricity cost
+      sum_n d_{n,t}*lambda_{n,t} >= C over window T) is a specific method that does
+      not map to any existing slug. It combines shadow-prices-and-marginal-values
+      (the dual variable) with extreme-event-and-dunkelflaute-analysis (the purpose),
+      but the threshold-accumulation filter is a distinct algorithmic contribution
+      first introduced in Grochowicz et al. 2024 (Ref. 15) and extended here. No
+      single slug captures this event-detection algorithm as opposed to the general
+      use of shadow prices or extreme-event analysis.

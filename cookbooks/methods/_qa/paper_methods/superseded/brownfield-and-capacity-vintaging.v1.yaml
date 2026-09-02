@@ -1,0 +1,1696 @@
+id: brownfield-and-capacity-vintaging
+title: "Brownfield modelling and capacity vintaging (build years, ageing, retirement)"
+summary: >
+  Carrying the existing fleet into the model as dated cohorts with build years and
+  lifetimes, so that expansion is additional to what already stands and assets leave
+  the system when they age out rather than when the optimiser prefers.
+question: >
+  What do we already have, what is still standing in the target year, and how much of
+  the answer is new build rather than inherited stock?
+aliases:
+  - "brownfield"
+  - "brownfield investment approach"
+  - "brownfield capacity expansion"
+  - "partial greenfield"
+  - "capacity vintaging"
+  - "vintage cohorts"
+  - "build year"
+  - "grouping years"
+  - "existing capacities"
+  - "existing fleet"
+  - "installed capacity carry-forward"
+  - "capacity carry-over"
+  - "technical lifetime"
+  - "decommissioning"
+  - "phase-out"
+  - "early retirement"
+  - "stranded assets"
+  - "committed capacity"
+  - "legacy fleet"
+  - "fleet turnover"
+when_to_use:
+  - "we already have a fleet — don't build Europe from scratch"
+  - "how much new capacity do we need on top of what exists"
+  - "when does our coal fleet age out"
+  - "what happens if we retire nuclear early"
+  - "which of today's plants become stranded assets"
+  - "does the model know our gas plants were built in 2015"
+  - "we have committed projects already under construction — include them"
+  - "how much of the 2030 system is already standing today"
+  - "our plant list is different from the database — can we supply our own"
+  - "the model wants to build 200 GW of solar in a region that is already full"
+  - "how do capacities carry from one planning horizon to the next"
+  - "can the model shut a plant down before the end of its life"
+family: foresight-and-pathways
+prevalence:
+  papers: 20
+  tier1: 11
+  tier2: 9
+  sweep_hits: 32
+  basis: >
+    Hand-coded pass 1 over all 100 PDFs (2026-07-25) coded 20 papers as exercising
+    brownfield/vintaging. The regex screen returned 32, so it OVER-counts here: the
+    words "existing capacity" and "brownfield" appear in framing and related-work
+    sentences of papers that then run pure greenfield, and "lifetime" matches every
+    paper that reports an annuity. Role split is 2 canonical-use / 18 routine-use with
+    0 `defines` and 0 `extends`: the mechanism was inherited from PyPSA-Eur-Sec rather
+    than introduced by any paper in this corpus, and no paper here generalises it —
+    the one method contribution (build-year aggregation, vanGreevenbroek 2024) is a
+    computational trick on top, not a new formulation, so it is a `variant` with a
+    routine-use paper behind it. `EVIDENCE_INDEX.md` flags Victoria 2020 as a
+    mention-only suspect; it is KEPT and promoted to canonical-use, because the
+    flagged text is a verbatim description of exogenous vintaging with stranded-cost
+    accounting ("existing capacities in 2020 or capacities installed in a previous
+    year whose lifetime has not concluded are exogenously included") — the heuristic
+    misfired on a Methods paragraph that reads like a passing remark. Note the shape
+    of the corpus: only 6 of the 20 vintage the fleet into COHORTS at all; the other
+    14 inherit one undated block of capacity and call it brownfield.
+procedure:
+  - step: >
+      Assemble the existing fleet as a plant list with, per unit, a location, carrier,
+      capacity and — the field that makes vintaging possible rather than merely
+      brownfield — a commissioning year and a decommissioning year. This is the data
+      step and it is where the method usually fails; see
+      `powerplant-matching-and-fleet-assembly`.
+    handle: "rule build_powerplants -> powerplants.csv"
+    provenance: "scripts/build_powerplants.py:add_custom_powerplants"
+  - step: >
+      Filter the fleet to the units active in the base year, and inject known
+      committed projects the database does not carry. A date query on DateIn/DateOut
+      is the whole intervention for a study that only needs the right year's fleet
+      and no cohorts.
+    handle: "electricity.powerplants_filter (pandas query); electricity.custom_powerplants"
+    provenance: "scripts/build_powerplants.py:powerplants_filter; scripts/build_powerplants.py:add_custom_powerplants"
+  - step: >
+      Fill the missing dates. Roughly half of matched records have no commissioning
+      year (Gotzens 2019: 47% of entries, 56% of capacity without WEPP), so the
+      workflow imputes DateIn from the per-carrier mean and DateOut from
+      DateIn + technology lifetime. Every vintage claim rests on this imputation.
+    handle: "load_powerplants (DateIn fillna by carrier mean; DateOut = DateIn + costs.lifetime)"
+    provenance: "scripts/add_electricity.py:load_powerplants"
+  - step: >
+      Attach the fleet to the network as NON-EXTENDABLE components with
+      p_nom = p_nom_min = installed capacity, plus `build_year` and `lifetime`
+      attributes. Separately attach extendable components of the same carriers, at
+      zero, for the model to grow into. The existing/new split is a component split,
+      not a bound on one component.
+    handle: "attach_conventional_generators (p_nom_extendable=False, build_year=, lifetime=)"
+    provenance: "scripts/add_electricity.py:attach_conventional_generators"
+  - step: >
+      Bin build years into GROUPING YEARS: aggregate all units of a carrier at a bus
+      whose DateIn falls in the same interval into one cohort component named
+      `<bus> <carrier>-<grouping_year>`, and give the cohort a remaining lifetime
+      DateOut - grouping_year. This is the vintaging proper — it trades resolution in
+      the retirement schedule for a tractable component count.
+    handle: "existing_capacities.grouping_years_power -> per-cohort components"
+    provenance: "scripts/add_existing_baseyear.py:add_power_capacities_installed_before_baseyear"
+  - step: >
+      Stamp a build year on the assets the model is ALLOWED to build this horizon —
+      anything with a finite lifetime and build_year 0 — and rename it with the
+      horizon suffix, so that next horizon's carry-forward can tell this vintage from
+      the ones before it. Without this the vintages are indistinguishable and the
+      ageing test has nothing to test.
+    handle: "add_build_year_to_new_assets"
+    provenance: "scripts/add_existing_baseyear.py:add_build_year_to_new_assets"
+  - step: >
+      Do the same for the heat fleet, which has no plant register: take a national
+      stock of boilers/heat pumps, split it across nodes by heating load, and spread
+      it over grouping years on a linear-installation assumption over the last
+      `default_heating_lifetime` years. Heat vintages are a construction, not an
+      observation.
+    handle: "add_heating_capacities_installed_before_baseyear"
+    provenance: "scripts/add_existing_baseyear.py:add_heating_capacities_installed_before_baseyear"
+  - step: >
+      Decrement the remaining resource potential by what the existing vintages
+      already occupy: subtract existing p_nom per bus and carrier from the extendable
+      component's p_nom_max. Skipping this is the method's worst silent failure — the
+      run succeeds and builds new wind on hectares that are already covered in wind.
+    handle: "add_land_use_constraint / add_land_use_constraint_perfect"
+    provenance: "scripts/solve_network.py:add_land_use_constraint; scripts/solve_network.py:add_land_use_constraint_perfect"
+  - step: >
+      (pathway only) Between horizons, take the previous horizon's SOLVED network,
+      drop the cohorts whose build_year + lifetime has elapsed and the ones whose
+      optimised capacity fell below a threshold, freeze the survivors at p_nom_opt as
+      non-extendable, and import them into the next horizon's network. Ageing is
+      implemented as deletion between solves, not as a constraint inside one.
+    handle: "rule add_brownfield -> add_brownfield(n, n_p, year)"
+    provenance: "scripts/add_brownfield.py:add_brownfield; rules/solve_myopic.smk:add_brownfield"
+  - step: >
+      (pathway only) Carry forward the network as well as the fleet: set the previous
+      horizon's optimised line and DC-link capacities as this horizon's minima, and
+      decrement retrofit budgets (gas pipe km already converted to H2 is no longer
+      available to convert).
+    handle: "add_brownfield: n.lines.s_nom_min = n_p.lines.s_nom_opt; H2_retrofit branch"
+    provenance: "scripts/add_brownfield.py:add_brownfield"
+  - step: >
+      Cap how fast a carrier may grow between periods, so the inherited stock is
+      replaced at a physically plausible rate rather than in one five-year jump.
+      Available only where the solve is period-aware.
+    handle: "sector.limit_max_growth -> add_max_growth -> carriers.max_growth"
+    provenance: "scripts/solve_network.py:add_max_growth"
+  - step: >
+      Decide whether early retirement is allowed. In every model in this corpus the
+      answer is structural, not a config key: an inherited cohort is non-extendable
+      with p_nom fixed, so it cannot be un-built, only left idle — and its annuitised
+      capital cost keeps being charged. Making retirement a decision variable means
+      adding a retirement variable and a stranded-cost term.
+    handle: null
+    provenance: null
+  - step: >
+      Report what the vintaging was for: capacity by build-year cohort, retirement
+      schedule, and the stranded capital (annuities paid on cohorts with near-zero
+      utilisation). Neither model's summary tables split capacity by build year.
+    handle: null
+    provenance: null
+variants:
+  - id: single-year-fixed-fleet
+    what: >
+      One target year, existing fleet attached as non-extendable capacity with no
+      cohorts and no ageing: fossil plants present but frozen, renewables and storage
+      free to expand. The dominant corpus practice (14 of 20 papers) and the cheapest
+      honest form of "not greenfield" — buys you a realistic incumbent stack and
+      tells you nothing about timing. Includes the fossil-non-expandable pattern
+      (Aden 2026, Frysztacki 2022) and the "lifetimes exceeding the target year"
+      screen (Schauss 2026, Millinger 2022).
+    papers:
+      - "2022_Frysztacki_clustering-methods-spatial-reduction_EnergyInformatics.pdf"
+      - "2022_Millinger_Biofuel-mandates-cost-effective_ApplEnergy.pdf"
+      - "2022_Parzen_PyPSA-Earth-global-open-energy-model-Africa_ApplEnergy.pdf"
+      - "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+      - "2024_Riepin_Spatio-temporal-load-shifting-clean-computing_AdvApplEnergy.pdf"
+      - "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+      - "2026_Aden_spatial-equity-decentralization-decarbonization.pdf"
+      - "2026_Schauss_Pit-Thermal-Energy-Storage.pdf"
+      - "2026_Titz_Cascading-Failures-Critical-Infrastructures.pdf"
+  - id: partial-greenfield-selective-inheritance
+    what: >
+      Inherit only the assets you do not want the optimiser to choose — typically
+      transmission, hydro, nuclear and biomass at today's capacities — and build
+      everything else from zero. Not a weaker brownfield but a different claim: the
+      inherited set is chosen for MODELLING reasons (these are not investment
+      decisions on a 2050 horizon) rather than for data reasons. The corpus's most
+      common named approach after single-year-fixed-fleet, and the one whose
+      inheritance SET varies most between papers — which is why it must be stated
+      explicitly in any result.
+    papers:
+      - "2023_Grochowicz_weather-induced-extreme-events-renewable.pdf"
+      - "2023_vanGreevenbroek_regional-overall-energy-system-flexibility.pdf"
+      - "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+  - id: existing-fleet-as-lower-bound
+    what: >
+      Inherit existing capacity as p_nom_min on an EXTENDABLE component rather than
+      as a separate frozen component: the model may add but never subtract. One
+      component instead of two, so no build years and no ageing, but it keeps the
+      expansion decision endogenous for the same carrier. This is how both models
+      handle existing wind and solar in the electricity-only chain, and it is why VRE
+      vintaging needs the separate baseyear step.
+    papers:
+      - "2022_Frysztacki_clustering-methods-spatial-reduction_EnergyInformatics.pdf"
+  - id: vintaged-cohorts-with-retirement
+    what: >
+      The full method: bin the fleet into build-year cohorts, give each a remaining
+      lifetime, and let cohorts leave the system as horizons advance. Buys a
+      retirement schedule, stranded-asset visibility and a defensible answer to "when
+      does this plant close". Costs a component-count multiplier equal to the number
+      of occupied grouping-year bins and requires commissioning dates good enough to
+      bin on.
+    papers:
+      - "2020_Victoria_Early-decarbonisation-pays-off_NatComms.pdf"
+      - "2022_Victoria_Speed-technological-transformations_Joule.pdf"
+      - "2024_Xie_direct-indirect-hydrogen-storage-renewable-europe.pdf"
+      - "2025_DiBella_European-green-industrial-transformation.pdf"
+      - "2026_Xiong_Projects-of-Common-Interest_ERL.pdf"
+  - id: myopic-carryover-with-build-year-aggregation
+    what: >
+      Vintaged cohorts plus the computational fix for their accumulation: before each
+      horizon's solve, merge components that are identical except for build year, and
+      disaggregate after. vanGreevenbroek 2024 reports >2x memory saving at the later
+      horizons at <0.04% average error, with electrolysers and process-emission CCS
+      excluded because their efficiencies improve between vintages. The variant to
+      reach for when a six-horizon sector-coupled pathway will not fit in memory.
+    papers:
+      - "2024_vanGreevenbroek_robust-european-green-hydrogen-strategy.pdf"
+  - id: exogenous-cohort-construction
+    what: >
+      Build the vintage distribution by ASSUMPTION where no register exists: spread
+      the stock uniformly over the last L years so a fixed fraction retires each
+      period. Kalweit 2025 distributes the ICE fleet uniformly over 2011-2025 at a
+      15-year lifetime so 1/15 ages out per year; Victoria 2022 decommissions 25% of
+      2015 heating capacity every 5-year step. This is what both models do for heat,
+      and it is the honest fallback for any stock without dates — but the retirement
+      schedule is then an input, not a result.
+    papers:
+      - "2022_Victoria_Speed-technological-transformations_Joule.pdf"
+      - "2025_Kalweit_endogenous-transformation-land-transport-europe.pdf"
+  - id: early-retirement-with-stranded-cost
+    what: >
+      Allow the model to decommission before end of life while still charging the
+      annuitised capital — so retirement is an operating decision with a sunk cost,
+      not a free disposal. Kalweit 2025 states it exactly ("the model can decommission
+      vehicles before they reach the end of their lifetime, but the capital costs of
+      those vehicles are still included in the total cost"); Victoria 2020 reports
+      stranded CCGT annuities as a headline result; Schumm 2025 goes the other way and
+      EXCLUDES brownfield coal capital cost as sunk, which changes the utilisation
+      answer. No config key in either model reaches this — it is the card's L5 rung.
+    papers:
+      - "2020_Victoria_Early-decarbonisation-pays-off_NatComms.pdf"
+      - "2025_Kalweit_endogenous-transformation-land-transport-europe.pdf"
+      - "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+  - id: committed-project-injection
+    what: >
+      Insert named, dated projects that are decided but not built — PCI-PMI pipelines,
+      offshore wind under construction, national decommissioning schedules — at their
+      stated commissioning year, and treat them as committed capacity from that
+      horizon on. Mechanically the same as an existing vintage with a FUTURE build
+      year. Xiong 2026 does exactly this for hydrogen and CO2 infrastructure; Riepin
+      2024 for national coal and nuclear phase-out plans.
+    papers:
+      - "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+      - "2026_Xiong_Projects-of-Common-Interest_ERL.pdf"
+literature:
+  # ── the two papers that make vintaging the subject ─────────────────────────
+  - paper: "2020_Victoria_Early-decarbonisation-pays-off_NatComms.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The reference vintaged-pathway study in this literature and the paper to quote on
+      why vintaging changes an answer. States the mechanism verbatim: "existing
+      capacities in 2020 or capacities installed in a previous year whose lifetime has
+      not concluded are exogenously included in the model", and — the part that matters
+      — "for those fossil fuel generators that were installed in a previous year and
+      are not used due to the stringent CO2 emissions constraint, their annualised
+      costs are included in the total system cost as long as the end of their assumed
+      technical lifetime is not reached". That sentence IS the stranded-asset
+      formulation: inherited capital is charged whether or not it runs. Seven 5-year
+      myopic steps 2020-2050, 30 nodes, hourly, sector-coupled, fleet from Gotzens
+      et al. CCGT stranding is the headline, and the ~350 bn EUR early-vs-late saving
+      is partly a stranding result.
+  - paper: "2025_Kalweit_endogenous-transformation-land-transport-europe.pdf"
+    tier: 2
+    role: canonical-use
+    note: >
+      The clearest worked example of cohort CONSTRUCTION plus early retirement, on a
+      stock with no register at all: ICE vehicles "uniformly distributed over the years
+      2011 to 2025, ensuring that the first 1/15 reaches the end of its lifetime in
+      2026, while the last 1/15 needs to be replaced after 2035", EVs over 2021-2025,
+      15-year lifetime for all powertrains, initial split 96% ICE / 4% EV. And the
+      early-retirement rule stated in one sentence: "the model can decommission
+      vehicles before they reach the end of their lifetime, but the capital costs of
+      those vehicles are still included in the total cost." Copy this pattern for any
+      stock where you know the total and the lifetime but not the ages.
+  # ── vintaged cohorts in myopic pathways ────────────────────────────────────
+  - paper: "2022_Victoria_Speed-technological-transformations_Joule.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The companion pathway study, and the source of two concrete numbers a card user
+      needs: nuclear lifetime set to 60 years "to account for retrofitting" (i.e. the
+      lifetime is a policy assumption dressed as a technical one), and heating handled
+      by exogenous cohort decay — "25% of existing capacities in 2015 are assumed to be
+      decommissioned in every 5-year time step after 2020". Conventional capacities and
+      commissioning dates from powerplantmatching, wind and solar 2020 capacities from
+      annual statistics rather than the plant register. 37 nodes, 3-hourly, seven
+      myopic steps.
+  - paper: "2024_Xie_direct-indirect-hydrogen-storage-renewable-europe.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Routine vintaged carry-forward on the PyPSA-Eur-Sec-30-path fork: "includes
+      existing power plant capacities until the end of their technical lifetime", with
+      coal, lignite, oil, nuclear, hydro and PHS "exogenously fixed" and decommissioned
+      on reaching technical lifespan. Useful for its explicit storage-component
+      lifetime table (battery 20 y, H2 underground 100 y, electrolysis 25 y, fuel cell
+      10 y) — the spread from 10 to 100 years across one hydrogen chain is why a single
+      default lifetime is not a safe simplification for storage.
+  - paper: "2025_DiBella_European-green-industrial-transformation.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Extends brownfield beyond the power fleet to INDUSTRIAL plants, "enhanced in this
+      study with data on existing plants added to the original PyPSA-Eur model", with
+      location, type and construction year from Global Energy Monitor, the Spatial
+      Finance Initiative and Neuwirth et al. Contributes the pattern for legacy stock
+      that constrains a process rather than a capacity: a scrap-use bound on EAF steel
+      growing from 52% (2014 observed) to a 75% cap by 2050. Evidence that where a
+      register exists, the same vintaging idea travels outside the power sector — and
+      that the data must be brought by the study, not by the model.
+  - paper: "2026_Xiong_Projects-of-Common-Interest_ERL.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The committed-project pattern done deliberately: PCI-PMI hydrogen and CO2
+      pipelines, sequestration sites and H2 stores inserted at their stated
+      commissioning year and treated as committed in later horizons, on top of existing
+      power plant stocks. "The myopic approach ensures that investment decisions across
+      all planning horizons are non-anticipative and build on top of the previous
+      planning horizon." Three horizons 2030/2040/2050, 99 onshore regions. Its regret
+      analysis — fix the long-term pipelines, then ask what not building them costs —
+      is the natural way to value a committed project, and it needs the injection
+      machinery to pose the question at all.
+  - paper: "2024_vanGreevenbroek_robust-european-green-hydrogen-strategy.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      The corpus's only computational contribution to this method, and the paper to cite
+      when a long pathway will not fit in memory. Standard carry-forward at the front —
+      "currently existing power plants, transmission infrastructure, gas pipelines and
+      storage and heating infrastructure are added to the initial 2025 model", with
+      capacities that "have not yet reached the end of their lifetime" carried over per
+      horizon — but it adds BUILD YEAR AGGREGATION as a PyPSA-Eur modification: components
+      identical except for build year are merged before each solve and disaggregated
+      after, saving >2x memory at the later horizons at <0.04% average and <0.34% maximum
+      error. Names the exclusions that make it safe (electrolysers and process-emission
+      CCS, whose efficiencies improve between vintages), which is the part to copy. Six
+      horizons 2025-2050, 50 nodes, 750 segments. Also the empirical evidence for this
+      card's cost_profile claim that the LAST horizon is the largest model.
+  # ── the data paper that sets the ceiling on all of this ────────────────────
+  - paper: "2019_Gotzens_powerplantmatching-power-plant-databases_ESR.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      The card's data-quality anchor, and the reason to be sceptical of any vintage
+      claim: matching open sources WITHOUT the proprietary WEPP database leaves
+      "47.36% of the entries and 55.82% in terms of capacity" with no commissioning
+      year, falling to 10.68% / 6.33% with WEPP. Only ESE, OPSD and WEPP carry
+      YearCommissioned at all, so a matched record not confirmed by one of those three
+      has no vintage and gets an imputed one. Table 4 gives the per-country split. The
+      paper's own conclusion is that WEPP is "strongly needed" if commissioning years
+      are required — i.e. the open-data stack this book rests on is exactly the
+      configuration in which half the fleet's build years are guesses. No model
+      simulation is run in the paper; it is a tooling and data-quality assessment.
+  # ── partial greenfield: selective inheritance ──────────────────────────────
+  - paper: "2023_Grochowicz_weather-induced-extreme-events-renewable.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      A precise inheritance set worth copying verbatim into a scope note: "a partial
+      greenfield optimisation, i.e. with existing transmission network (2019) and
+      capacities of hydropower and nuclear power (2022), but without existing renewable
+      capacities", biomass included but non-expandable, transmission expandable to 25%
+      above current. Note the asymmetry it makes explicit — existing VRE deliberately
+      EXCLUDED while existing hydro and nuclear are kept, because the question is about
+      renewable investment and inherited VRE would pre-empt it.
+  - paper: "2023_vanGreevenbroek_regional-overall-energy-system-flexibility.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      Same approach with the gas network added: "existing transmission and gas networks
+      (2019) as well as nuclear, biomass, and hydropower generation (2022) are included
+      at today's capacities". Contributes the honest caveat about what a static
+      inheritance set gets wrong: Germany excludes recently decommissioned nuclear, but
+      Belgian, Spanish and Swiss decommissioning PLANS are not incorporated — i.e. the
+      fleet snapshot is as of a date, and announced closures after that date silently
+      do not happen in the model.
+  - paper: "2025_Grochowicz_resilience-metrics-backup-investments.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      "We assume existing (2023) generation capacities of gas, hydropower, nuclear,
+      biomass, and (DC and AC) transmission, which are all fixed except for the
+      latter" — ~300 GW of fixed nuclear/hydro/biomass at 90 nodes, with the gas fleet
+      fixed only in sensitivity scenarios. Explicitly no retirement or lifetime
+      modelling inside a single-year horizon, which is the correct reading of what
+      brownfield means in an overnight run: a stack, not a schedule.
+  # ── single-year fixed fleet: the field's actual practice ───────────────────
+  - paper: "2022_Frysztacki_clustering-methods-spatial-reduction_EnergyInformatics.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      "We perform a brownfield capacity optimisation that builds on a system that
+      exists as of 2018 for both the generating fleet according to the dataset provided
+      in (Open Power System Data 2020) and the planned transmission grid in the ten
+      year network development plan 2018." The clearest in-corpus statement of the
+      lower-bound variant: 2018 capacity is the LOWER BOUND for renewables
+      (G_v,s^2018), conventional expansion is forbidden, and the renewable upper bound
+      comes from GLAES land eligibility. Both bounds on one component, which is the
+      cheap way to be brownfield without cohorts.
+  - paper: "2022_Millinger_Biofuel-mandates-cost-effective_ApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The lifetime-screen form of brownfield in an overnight run: "for both years, it
+      is assumed that conventional and renewable capacities existing in 2020 still
+      exist in 2040 and 2060, unless they have reached the end of their life time",
+      called "overnight brown-field scenarios". A single survive/retire test against
+      one lifetime, no vintage tracking. This is the pattern to recommend when a user
+      wants a far target year and a realistic incumbent stack but no pathway — and the
+      one to warn about, because the two target years are unlinked (see
+      `foresight-and-planning-horizons`).
+  - paper: "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      "We use a brownfield investment approach, which means that we keep the existing
+      power generation and storage assets in the model and only optimise the capacity
+      expansion of new assets", fleet from powerplantmatching, plus NATIONAL
+      DECOMMISSIONING PLANS for coal and nuclear taken from beyondfossilfuels.org and
+      world-nuclear.org. That external-schedule step is the practical answer to the
+      Grochowicz/vanGreevenbroek gap above, and it is a custom_powerplants /
+      powerplants_filter job rather than a code change. Also the clean example of a
+      deliberately MIXED boundary: brownfield background system, greenfield for the
+      participating consumers' own assets.
+  - paper: "2024_Riepin_Spatio-temporal-load-shifting-clean-computing_AdvApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Same group, same pattern at a 2025 target year: "the model includes information
+      about the existing assets of the European electricity system", parametrised for
+      2025 including "decommissioning of legacy power plant fleet". Notable for how
+      near-term the target year is — at 2025 the answer is almost entirely inherited
+      stock, so brownfield is not a refinement but the whole model, and the fleet data
+      grade dominates the result.
+  - paper: "2026_Aden_spatial-equity-decentralization-decarbonization.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      The minimal form: "fossil-based generation technologies are not allowed to expand
+      their capacity" on a precompiled network that ships with existing capacities
+      preloaded, with only renewables, storage and transmission expandable. No ageing,
+      no cohorts — a structural commitment that fossil capacity is what it is. Worth
+      citing because it shows a brownfield claim can rest entirely on
+      `extendable_carriers` and nothing else.
+  - paper: "2026_Schauss_Pit-Thermal-Energy-Storage.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The lifetime screen applied to a 2045 target: "a brownfield approach towards 2045
+      carbon neutrality, which retains those of today's electricity generation and
+      transmission capacities, including combined heat-and-power (CHP) plants, with
+      lifetimes exceeding 2045". Contributes the registry-based initialisation pattern
+      for a sub-national fleet: "today's CHP capacities are assigned to district
+      heating systems using the German Marktstammdatenregister" — the national register
+      route when powerplantmatching is too coarse for the spatial question (49 regions,
+      40 largest district heating systems).
+  - paper: "2026_Titz_Cascading-Failures-Critical-Infrastructures.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Brownfield on the NETWORK side only: "investments and dispatch are optimised
+      under a CO2 emissions cap using a brownfield approach" with the ENTSO-E/GridKit
+      topology fixed and not co-optimised, generation and storage optimised on top.
+      The reminder that "brownfield" in this literature routinely refers to inherited
+      TRANSMISSION rather than an inherited generation fleet, and that a user saying
+      brownfield must be asked which.
+  # ── pypsa-earth family ─────────────────────────────────────────────────────
+  - paper: "2022_Parzen_PyPSA-Earth-global-open-energy-model-Africa_ApplEnergy.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      The pypsa-earth reference paper and the direct evidence for earth's verdict here:
+      "we perform a brownfield capacity expansion optimization. This means that new
+      renewable energy and transmission capacity can be built on top of existing
+      infrastructure." The 2020 fleet from powerplantmatching is locked in and 2060
+      additions optimised on top — but no age-based retirement is described, and the
+      demonstration is a single target year. Documented brownfield, undemonstrated
+      vintaging.
+  - paper: "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Earth's sector-coupled extension on Morocco at 14 nodes: "Based on this brownfield
+      electricity system, the sector-coupled energy model allows the capacity expansion
+      of storage, (electricity networks), hydrogen pipelines, renewable and conventional
+      generators", fleet via powerplantmatching over OpenStreetMap, Global Energy
+      Monitor and IRENA. Its distinctive choice is the one to flag to users: brownfield
+      coal CAPITAL cost is excluded from the optimisation as sunk, which makes the coal
+      utilisation result — the paper's welfare mechanism — a direct consequence of the
+      sunk-cost treatment rather than of the technology. The opposite convention to
+      Victoria 2020, on the same question.
+pitfalls:
+  - pitfall: >
+      "Brownfield" is not one thing. It ranges from inheriting only the transmission
+      topology, through a fixed fossil stack, to dated cohorts with a retirement
+      schedule — and papers use the single word for all of them. Two brownfield studies
+      of the same region are routinely not comparable.
+    evidence: "2026_Titz_Cascading-Failures-Critical-Infrastructures.pdf"
+    note: >
+      Pin down the INHERITANCE SET before anything else: which carriers, at which
+      year's capacities, expandable or fixed, and with or without build years. Write it
+      into the scope the way Grochowicz 2023 does. In interview terms this is one
+      question with four parts, and it decides the variant and therefore the rung.
+  - pitfall: >
+      Roughly half the fleet's build years are imputed, not observed. Without the
+      proprietary WEPP database 47% of matched entries and 56% of matched CAPACITY have
+      no commissioning year, and the workflow fills them from a per-carrier mean. Every
+      cohort boundary and every retirement date downstream inherits that guess.
+    evidence: "2019_Gotzens_powerplantmatching-power-plant-databases_ESR.pdf"
+    note: >
+      Never present a retirement schedule as a result without saying what fraction of
+      the capacity behind it had a real DateIn. Per-carrier mean imputation collapses
+      the age spread, so a cohort answer looks more precise than the data supports; the
+      honest fallback is the coarser variant (single-year-fixed-fleet with a lifetime
+      screen) plus a sensitivity on the assumed lifetime.
+  - pitfall: >
+      Inherited capacity is non-extendable with p_nom fixed, so the model cannot retire
+      it early — it can only leave it idle while still paying its annuity. Reported
+      "stranded assets" are therefore an ACCOUNTING output of a fixed schedule, not an
+      optimised retirement decision.
+    evidence: "2020_Victoria_Early-decarbonisation-pays-off_NatComms.pdf"
+    note: >
+      If the user's question is "should we close this plant early", the standard
+      brownfield machinery cannot answer it — that is the early-retirement-with-
+      stranded-cost variant and it is L5 in both models. What IS available at L1 is the
+      exogenous version: shorten DateOut via powerplants_filter or custom_powerplants
+      and compare runs.
+  - pitfall: >
+      Whether inherited capital cost is charged or treated as sunk changes the answer,
+      and the corpus does it both ways with no convention. Victoria 2020 charges
+      annuities on unused fossil plants; Schumm 2025 excludes brownfield coal capital as
+      sunk, and that choice drives its headline utilisation result.
+    evidence: "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+    note: >
+      Decide and state it. Charging sunk capital inflates total system cost but makes
+      stranding visible; excluding it gives a cleaner marginal comparison but hides the
+      cost of having built the wrong thing. For cost-comparison questions across
+      scenarios with different inherited stacks, the two conventions can reverse the
+      ranking.
+  - pitfall: >
+      Existing vintages consume land and resource potential. If p_nom_max is not
+      decremented by what already stands, a brownfield run builds new capacity on
+      hectares that are already occupied — the run succeeds, the numbers look
+      plausible, and the potential is double-booked.
+    evidence: "2022_Frysztacki_clustering-methods-spatial-reduction_EnergyInformatics.pdf"
+    note: >
+      This is the method's worst silent failure and it is why the land-use step is a
+      procedure step rather than a detail. In pypsa-eur it fires automatically under
+      myopic and perfect foresight; in an OVERNIGHT brownfield run it does not fire at
+      all in either model, so a fixed-fleet single-year study must check the arithmetic
+      by hand. Verify with the `verifies` check below before trusting any VRE result.
+  - pitfall: >
+      Grouping years are a resolution choice that silently drops data at both ends.
+      Assets built before the first bin or after the last are DISCARDED, not clipped —
+      pypsa-eur logs a warning and drops them, and earth's default bins start at 1960,
+      so older hydro and coal simply vanish.
+    evidence: "2022_Victoria_Speed-technological-transformations_Joule.pdf"
+    note: >
+      Check the fleet's DateIn range against `existing_capacities.grouping_years_power`
+      before the first run, and widen the bins rather than accepting the warning. Coarse
+      bins are also a substantive assumption: binning to 5-year cohorts makes retirement
+      arrive in 5-year steps, which is fine for a 5-year-step pathway and misleading for
+      a question about a specific plant's closure date.
+  - pitfall: >
+      Cohort count multiplies component count, and it accumulates: every horizon adds a
+      new vintage of every buildable technology on top of all the inherited ones, so the
+      last horizon of a pathway is the largest model, not the first.
+    evidence: "2024_vanGreevenbroek_robust-european-green-hydrogen-strategy.pdf"
+    note: >
+      Budget for the LAST horizon, not the first. The corpus's fix is build-year
+      aggregation (merge components identical except for build year, >2x memory saving,
+      <0.04% mean error) — but exclude technologies whose efficiency improves between
+      vintages, as vanGreevenbroek excludes electrolysers and process-emission CCS. The
+      cheap alternatives are coarser grouping years and the capacity threshold.
+  - pitfall: >
+      A fleet snapshot is as of a date, and announced closures after that date do not
+      happen in the model. vanGreevenbroek 2023 states it plainly: Germany's recent
+      nuclear decommissioning is excluded, but Belgian, Spanish and Swiss future
+      decommissioning plans are not incorporated.
+    evidence: "2023_vanGreevenbroek_regional-overall-energy-system-flexibility.pdf"
+    note: >
+      Policy phase-outs are separate data from the plant register and must be brought
+      in deliberately — Riepin 2024's external coal/nuclear schedules are the pattern.
+      This is L1 work (a DateOut edit via custom_powerplants) with a large effect, and
+      it is the single most common reason a brownfield run's near-term fossil fleet
+      looks wrong to a domestic expert.
+requires_methods:
+  - powerplant-matching-and-fleet-assembly
+combines_with:
+  - foresight-and-planning-horizons
+  - land-eligibility-and-potentials
+  - discounting-and-cost-of-capital
+  - carbon-constraints-and-pricing
+  - transmission-expansion-cooptimisation
+  - spatial-clustering-and-resolution
+  - sensitivity-and-uncertainty-sweeps
+  - model-validation-and-backtesting
+topics:
+  - coal-early-retirement
+  - stranded-asset-risk
+  - net-zero-pathways
+  - capacity-expansion
+pypsa_primitive:
+  symbol: "pypsa/descriptors.py:get_active_assets; pypsa/optimization/global_constraints.py:define_growth_limit"
+  pypsa_version: "0.30.3"
+  exposed_by: >
+    Both models declare build_year and lifetime on every Generator, Link and Store
+    (they are optional Input attributes in pypsa/component_attrs/generators.csv), but
+    NEITHER model reaches the pypsa code that ENFORCES them, except pypsa-eur under
+    `foresight: perfect`. get_active_assets evaluates
+    "build_year <= period < build_year + lifetime", and get_activity_mask calls it only
+    when n._multi_invest is true; otherwise it returns an all-True mask.
+    define_growth_limit returns immediately unless n._multi_invest, which is exactly
+    why eur's add_max_growth is perfect-foresight-only.
+  reachable_via: >
+    In a single-period solve (overnight, and every horizon of a myopic pathway)
+    build_year and lifetime are INERT DECORATION as far as the optimisation is
+    concerned: pypsa never reads them, and ageing happens because
+    scripts/add_brownfield.py deletes the aged rows between solves. To have the library
+    enforce vintages you need a multi-period network — a (period, snapshot) MultiIndex
+    plus n.investment_periods — which is `foresight: perfect`, i.e. pypsa-eur only. See
+    `foresight-and-planning-horizons`.
+  note: >
+    The sharpest thing to know about this method: there is no pypsa primitive for
+    brownfield in the mode almost everyone runs it in. Vintaging in a myopic pathway is
+    workflow bookkeeping (bin, freeze, delete, re-import) implemented in two ~200-line
+    scripts, not an optimisation formulation — which is good news for anyone modifying
+    it, because the change is pandas, not linopy. The corollary is a real trap: setting
+    build_year and lifetime on a component in an overnight run does nothing at all, and
+    the run will not warn you. Soft anchor — pypsa is a conda dependency, not a
+    submodule, so this is pinned to a version string rather than a SHA.
+models:
+  - model: pypsa-eur
+    version_anchor:
+      ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d"
+      date: "2026-07-25"
+    functionality:
+      - id: existing-baseyear-brownfield
+        role: >
+          the method itself in its full form — registry `working`. The one rule that
+          bins the fleet into build-year cohorts for BOTH power and heat, and the
+          shared first step of the myopic and perfect chains
+      - id: fleet-retirement-filter
+        role: >
+          `working`. The L1 lever: electricity.powerplants_filter is a pandas query on
+          DateIn/DateOut and electricity.custom_powerplants injects known projects.
+          This is the whole intervention for single-year-fixed-fleet and
+          committed-project-injection, and the only route to an EXOGENOUS early
+          retirement
+      - id: land-use-constraint
+        role: >
+          `working`, and the step that stops vintages double-booking land. Fires
+          automatically under myopic and perfect, with a SEPARATE implementation per
+          mode — and, critically, not at all under overnight
+      - id: myopic-foresight
+        role: >
+          `working` and registry-noted as "battle-tested in eur (unlike earth)". The
+          carry-forward half of the method: add_brownfield ages the previous horizon's
+          solution and freezes the survivors
+      - id: max-growth-limits
+        role: >
+          `partial` — per-carrier absolute and relative growth caps between periods,
+          wired ONLY for `foresight: perfect` at this ref, because the pypsa constraint
+          it sets carriers.max_growth for returns early on single-period networks
+      - id: renewable-potentials-land-eligibility
+        role: >
+          `working`. Supplies the p_nom_max that the land-use step decrements, and the
+          resource_class bins that existing VRE cohorts must be assigned into
+      - id: solar-potential-constraint
+        role: >
+          `working` and eur-only. Fixed and tracking PV share one land budget, so an
+          existing solar vintage constrains solar-hsat expansion too — a second-order
+          land interaction earth has no equivalent for
+      - id: transmission-projects
+        role: >
+          `working` and eur-only. The transmission-side form of
+          committed-project-injection: TYNDP2020 / German NEP candidate lines filtered
+          by permitting status
+      - id: perfect-foresight
+        role: >
+          `working` in eur and absent from earth's registry entirely. The only mode in
+          which pypsa itself enforces build_year/lifetime rather than the workflow
+          deleting rows between solves
+      - id: summary-outputs
+        role: >
+          `working`, and the honest gap: 14 summary tables, none of which splits
+          capacity by build year, so the retirement schedule and stranded annuities
+          must be derived from the postnetworks
+    available:
+      verdict: turnkey
+      how: >
+        Under `foresight: myopic` or `perfect` the whole procedure runs from config.
+        rule add_existing_baseyear calls add_power_capacities_installed_before_baseyear,
+        which reads powerplants_s_{clusters}.csv, maps Fueltype to carriers, fills
+        missing DateIn from the per-carrier mean and missing DateOut from
+        DateIn + costs.lifetime, folds in existing wind/solar via add_existing_renewables
+        (IRENASTAT, distributed across resource classes by p_nom_max share), drops
+        assets already phased out (DateOut < baseyear) and assets newer than the last
+        grouping year, then pd.cut's DateIn into existing_capacities.grouping_years_power
+        and adds one component per (grouping_year, Fueltype, resource_class, bus) with
+        lifetime = DateOut - grouping_year + 1. Conventional cohorts are added as LINKS
+        with a fuel bus0 and a `co2 atmosphere` bus2; VRE cohorts as Generators carrying
+        the base-year p_max_pu profile. add_build_year_to_new_assets stamps the horizon
+        on newly-buildable assets. Heat is handled in parallel by
+        add_heating_capacities_installed_before_baseyear off an existing_heating_distribution
+        table with grouping_years_heat and default_heating_lifetime. Then per horizon,
+        add_brownfield removes cohorts with build_year + lifetime <= year, removes
+        extendables below threshold_capacity, freezes p_nom = p_nom_opt with
+        p_nom_extendable = False, imports them into the next network, and sets
+        s_nom_min / DC p_nom_min from the previous solve. Land use is decremented at
+        solve time. Every step of procedure 1-11 has a handle.
+      missing: >
+        Procedure steps 12 and 13 only. Step 12 (endogenous early retirement): no
+        config key and no code path — inherited cohorts are non-extendable with p_nom
+        fixed, so they can be idled but not un-built, and their annuity is charged for
+        the whole remaining lifetime. Exogenous early retirement IS available at L1
+        (edit DateOut via powerplants_filter / custom_powerplants), which covers most
+        real questions. Step 13 (reporting by vintage): make_summary's 14 tables
+        aggregate by carrier, not by build year, so the retirement schedule and the
+        stranded-annuity figure Victoria 2020 reports must be computed from the
+        postnetworks. Two further caveats rather than gaps: the land-use decrement does
+        NOT fire under `foresight: overnight` (prepare_network branches on the foresight
+        key), so a single-year fixed-fleet study is exposed to the double-booking
+        pitfall; and add_max_growth is wired for perfect foresight only.
+      provenance: "scripts/add_existing_baseyear.py:add_power_capacities_installed_before_baseyear; scripts/add_brownfield.py:add_brownfield; scripts/solve_network.py:add_land_use_constraint"
+    levers:
+      - key: "existing_capacities.grouping_years_power"
+        effect: >
+          The vintage bins for the power fleet. pd.cut on DateIn with these edges, so
+          the cohort's build_year is the RIGHT edge of its bin and its lifetime is
+          DateOut - grouping_year + 1. Assets with DateIn after the last edge are
+          DROPPED with a warning, not clipped; the default range starts at 1900, which
+          is why eur keeps old hydro that earth's 1960 start loses. Coarser bins are
+          cheaper and make retirement arrive in coarser steps.
+        default: "[1900, 1950, 1955, 1960, ..., 2015, 2020, 2025, 2030] (18 edges, 5-year from 1950)"
+        provenance: "config/config.default.yaml:grouping_years_power; scripts/add_existing_baseyear.py:add_power_capacities_installed_before_baseyear"
+      - key: "existing_capacities.grouping_years_heat"
+        effect: >
+          The same for the heating stock, which has no register: capacity is spread over
+          these bins on a linear-installation assumption over the past
+          default_heating_lifetime years. Bins >= baseyear are dropped with a warning.
+          Note the last edge is 2019, so a baseyear later than 2019 inherits no heating
+          cohort newer than that.
+        default: "[1980, 1985, 1990, ..., 2015, 2019]"
+        provenance: "config/config.default.yaml:grouping_years_heat; scripts/add_existing_baseyear.py:add_heating_capacities_installed_before_baseyear"
+      - key: "existing_capacities.threshold_capacity"
+        effect: >
+          MW floor, used twice with different meanings: in add_existing_baseyear it
+          drops inherited cohorts below the threshold, and in add_brownfield it drops
+          extendable assets whose OPTIMISED capacity came in below it, so the pathway
+          does not accumulate a tail of 2 MW vintages. CHP heat links get a rescaled
+          threshold so the electric/heat pair is dropped together.
+        default: "10"
+        provenance: "config/config.default.yaml:threshold_capacity; scripts/add_brownfield.py:add_brownfield"
+      - key: "existing_capacities.conventional_carriers"
+        effect: >
+          Which fuel buses to create for inherited conventional cohorts. Read only when
+          foresight is myopic or perfect, and consumed by add_carrier_buses in
+          prepare_sector_network — so a fuel absent from this list has no bus for its
+          cohort's Link bus0 to attach to. The lever to touch when adding an inherited
+          fuel the sector network does not already carry.
+        default: "['lignite', 'coal', 'oil', 'uranium']"
+        provenance: "config/config.default.yaml:conventional_carriers; scripts/prepare_sector_network.py:conventional_carriers"
+      - key: "existing_capacities.default_heating_lifetime"
+        effect: >
+          The assumed lifetime of the inherited heating stock, and simultaneously the
+          window it is spread over: the linear-installation ratio per bin is the bin
+          width divided by this number. Shortening it both retires heating sooner and
+          concentrates it in later bins — one number doing two jobs.
+        default: "20"
+        provenance: "config/config.default.yaml:default_heating_lifetime; scripts/add_existing_baseyear.py:add_heating_capacities_installed_before_baseyear"
+      - key: "existing_capacities.solar_rooftop_ratio"
+        effect: >
+          Splits each existing solar cohort between utility-scale and rooftop, since
+          the plant register does not distinguish them. eur-only (earth has no such
+          key). Capital and marginal costs for existing VRE cohorts are taken from the
+          network's own generators rather than the cost table, so grid-connection costs
+          and the utility/rooftop split are preserved.
+        default: "0.5"
+        provenance: "config/config.default.yaml:solar_rooftop_ratio; scripts/add_existing_baseyear.py:add_power_capacities_installed_before_baseyear"
+      - key: "electricity.powerplants_filter"
+        effect: >
+          A pandas query on the powerplant table, evaluated in build_powerplants before
+          anything else sees the fleet. The default is an active-in-2026 window; a
+          `DateOut <= 2030` clause is the L1 form of an exogenous early-retirement
+          scenario, and a `YearCommissioned <= YYYY` clause pins the fleet to a
+          historical year. Ships already ON.
+        default: "'(DateOut > 2025 or DateOut != DateOut) and (DateIn < 2026 or DateIn != DateIn)'"
+        provenance: "config/config.default.yaml:powerplants_filter; scripts/build_powerplants.py:powerplants_filter"
+      - key: "electricity.custom_powerplants"
+        effect: >
+          false | true | a pandas query. Concatenates data/custom_powerplants.csv onto
+          the matched fleet, with DateIn/DateOut columns — so this is how committed
+          projects with a FUTURE build year, national phase-out schedules, and
+          user-supplied plant lists enter. The single most useful lever on this card
+          and it is off by default.
+        default: "false"
+        provenance: "config/config.default.yaml:custom_powerplants; scripts/build_powerplants.py:add_custom_powerplants"
+      - key: "electricity.estimate_renewable_capacities.expansion_limit"
+        effect: >
+          When set to a scalar, caps existing-VRE p_nom_max at that multiple of the
+          installed p_nom_min — the crude form of "you cannot triple the wind in this
+          region". Distinct from the land-use decrement: it is a growth cap relative to
+          the incumbent, not a subtraction from a resource potential.
+        default: "false"
+        provenance: "config/config.default.yaml:expansion_limit; scripts/add_electricity.py:estimate_renewable_capacities"
+      - key: "electricity.estimate_renewable_capacities.year"
+        effect: >
+          The IRENASTAT statistics year that existing wind/solar is reconciled to at the
+          electricity stage, where the shortfall against national totals is distributed
+          across generators by p_max_pu * p_nom_max and written to p_nom_min. This is
+          the existing-fleet-as-lower-bound variant, and it is separate from the cohort
+          machinery in add_existing_baseyear.
+        default: "2024"
+        provenance: "config/config.default.yaml:estimate_renewable_capacities; scripts/add_electricity.py:estimate_renewable_capacities"
+      - key: "sector.limit_max_growth.enable"
+        effect: >
+          Per-carrier absolute and relative deployment growth caps between investment
+          periods, so inherited stock is replaced at a plausible rate. Sets
+          carriers.max_growth / max_relative_growth, which pypsa's define_growth_limit
+          reads — and that function returns immediately unless the network is
+          multi-period, so this key is INERT under myopic. Off by default.
+        default: "false"
+        provenance: "config/config.default.yaml:limit_max_growth; scripts/solve_network.py:add_max_growth"
+      - key: "foresight"
+        effect: >
+          Decides which of this card's variants you get. `overnight` gives a fixed fleet
+          with NO ageing and NO land-use decrement. `myopic` adds the
+          add_existing_baseyear -> add_brownfield chain and per-horizon land use.
+          `perfect` additionally makes pypsa itself enforce build_year/lifetime and
+          enables max-growth. Detail in `foresight-and-planning-horizons`.
+        default: "'overnight'"
+        provenance: "config/config.default.yaml:foresight; rules/solve_myopic.smk:add_existing_baseyear"
+    assembly:
+      - step: >
+          Fix the inheritance set first — which carriers, at which year, expandable or
+          fixed. Mechanically this is `electricity.extendable_carriers` plus
+          powerplants_filter, and it decides the variant before any vintaging question
+          arises. A fossil carrier omitted from extendable_carriers is inherited and
+          frozen; that alone is the Aden 2026 pattern.
+        uses: [fleet-retirement-filter]
+        config: "electricity.powerplants_filter; electricity.extendable_carriers"
+        code: null
+        provenance: "scripts/build_powerplants.py:powerplants_filter"
+      - step: >
+          Correct the fleet where the register is wrong or incomplete. Put announced
+          phase-outs, committed projects and locally-known plants in
+          data/custom_powerplants.csv with explicit DateIn/DateOut and set
+          `custom_powerplants: true` (or a query to filter what you inject). This is
+          where Riepin 2024's external coal/nuclear schedules and Xiong 2026's PCI-PMI
+          commissioning years belong — a future DateIn is mechanically just another
+          vintage.
+        uses: [fleet-retirement-filter]
+        config: "electricity.custom_powerplants"
+        code: "data/custom_powerplants.csv (data, not code)"
+        provenance: "scripts/build_powerplants.py:add_custom_powerplants"
+      - step: >
+          For a single target year, stop here. The fleet is attached non-extendable with
+          build_year and lifetime by attach_conventional_generators, existing VRE gets
+          p_nom_min from IRENASTAT reconciliation, and that is single-year-fixed-fleet /
+          existing-fleet-as-lower-bound. But note what does NOT happen: no cohorts, and
+          NO land-use decrement, because that call is gated on foresight — so check the
+          VRE arithmetic by hand.
+        uses: [renewable-potentials-land-eligibility]
+        config: "electricity.estimate_renewable_capacities.year"
+        code: null
+        provenance: "scripts/add_electricity.py:attach_conventional_generators; scripts/add_electricity.py:estimate_renewable_capacities"
+      - step: >
+          For cohorts, switch to a pathway mode and set the bins. `foresight: myopic`
+          with a multi-element planning_horizons makes rule add_existing_baseyear run on
+          planning_horizons[0] only (pinned by wildcard_constraints) and bins the fleet
+          on grouping_years_power. Widen the bins to cover your fleet's DateIn range
+          BEFORE the first run — assets outside them are dropped with a warning.
+        uses: [existing-baseyear-brownfield, myopic-foresight]
+        config: "foresight; scenario.planning_horizons; existing_capacities.grouping_years_power; existing_capacities.threshold_capacity"
+        code: null
+        provenance: "rules/solve_myopic.smk:add_existing_baseyear; scripts/add_existing_baseyear.py:add_power_capacities_installed_before_baseyear"
+      - step: >
+          Make sure the inherited fuels have buses. Under myopic/perfect,
+          prepare_sector_network creates a carrier bus for each of
+          existing_capacities.conventional_carriers and calls add_lifetime_wind_solar to
+          stamp cost-table lifetimes on wind and solar. An inherited cohort whose fuel is
+          not in that list has nothing to attach bus0 to.
+        uses: [existing-baseyear-brownfield]
+        config: "existing_capacities.conventional_carriers"
+        code: "scripts/prepare_sector_network.py"
+        provenance: "scripts/prepare_sector_network.py:add_lifetime_wind_solar; scripts/prepare_sector_network.py:conventional_carriers"
+      - step: >
+          Let the horizons chain themselves. add_brownfield reads the previous horizon's
+          solved network through solved_previous_horizon, deletes cohorts with
+          build_year + lifetime <= year, deletes sub-threshold extendables, freezes
+          survivors at p_nom_opt, and carries s_nom_min / DC p_nom_min forward. Nothing
+          to configure; `ruleorder: add_existing_baseyear > add_brownfield` keeps the base
+          horizon from being processed twice.
+        uses: [myopic-foresight]
+        config: "existing_capacities.threshold_capacity"
+        code: "scripts/add_brownfield.py"
+        provenance: "scripts/add_brownfield.py:add_brownfield; rules/solve_myopic.smk:add_brownfield"
+      - step: >
+          Confirm the land decrement fires. Under myopic, prepare_network calls
+          add_land_use_constraint(n, planning_horizons), which subtracts each carrier's
+          existing non-extendable p_nom per bus from the current horizon's p_nom_max and
+          clips at zero; under perfect it is add_land_use_constraint_perfect, which
+          instead writes per-build-year nom_max_<carrier>_<year> attributes onto the
+          buses. Different implementations, same intent — and neither runs under
+          overnight.
+        uses: [land-use-constraint, solar-potential-constraint]
+        config: null
+        code: "scripts/solve_network.py"
+        provenance: "scripts/solve_network.py:add_land_use_constraint; scripts/solve_network.py:add_land_use_constraint_perfect"
+      - step: >
+          (perfect foresight only) Add replacement-rate realism with
+          `sector.limit_max_growth.enable: true` plus per-carrier max_growth /
+          max_relative_growth. Do not bother under myopic: add_max_growth sets
+          carriers.max_growth, and pypsa's define_growth_limit returns without doing
+          anything on a single-period network.
+        uses: [max-growth-limits, perfect-foresight]
+        config: "sector.limit_max_growth.{enable,factor,max_growth,max_relative_growth}"
+        code: "scripts/solve_network.py"
+        provenance: "scripts/solve_network.py:add_max_growth"
+      - step: >
+          (memory relief for long pathways) Merge components identical except for build
+          year before the solve and disaggregate after — vanGreevenbroek 2024's
+          build-year aggregation, >2x memory at the later horizons, <0.04% mean error,
+          excluding electrolysers and process-emission CCS. Not in the repo at this ref;
+          it goes between add_brownfield and the solve.
+        uses: [myopic-foresight]
+        config: null
+        code: "new step after scripts/add_brownfield.py, before solve"
+        provenance: "scripts/add_brownfield.py:add_brownfield"
+      - step: >
+          (early retirement, L5) To make retirement a decision, add a per-cohort
+          retirement variable in the custom constraint hook and a stranded-cost term, or
+          — far cheaper and what the corpus mostly does — run the exogenous version by
+          editing DateOut and comparing runs.
+        uses: [custom-constraint-hook, fleet-retirement-filter]
+        config: "solving.options.custom_extra_functionality; electricity.custom_powerplants"
+        code: "scripts/solve_network.py:custom_extra_functionality"
+        provenance: "scripts/solve_network.py:custom_extra_functionality; scripts/build_powerplants.py:add_custom_powerplants"
+      - step: >
+          Report by vintage. make_summary aggregates by carrier only, so capacity by
+          build-year cohort, the retirement schedule and stranded annuities (capital
+          charged on cohorts with near-zero dispatch) must be computed from the
+          postnetworks — n.generators/n.links grouped on build_year against p_nom_opt
+          and the dispatch time series.
+        uses: [summary-outputs]
+        config: null
+        code: "external post-processing over the postnetworks; scripts/make_summary.py as the hook"
+        provenance: "scripts/make_summary.py:calculate_capacities"
+    boundary:
+      - variant: single-year-fixed-fleet
+        rung: L0
+        note: >
+          The shipped behaviour. powerplants_filter is already on with an active-in-2026
+          window, the fleet is attached non-extendable with build_year and lifetime, and
+          fossil carriers absent from extendable_carriers are frozen. L0 to get it, L1 to
+          aim it at a specific year. The one thing to check by hand: the land-use
+          decrement does not fire under overnight.
+      - variant: partial-greenfield-selective-inheritance
+        rung: L1
+        note: >
+          Choose the inheritance set through `electricity.extendable_carriers` plus
+          powerplants_filter — e.g. keep hydro/nuclear/biomass fixed and let VRE, gas and
+          storage expand from zero, which is the Grochowicz 2023 / vanGreevenbroek 2023
+          set. Several non-default values that must be consistent with each other, hence
+          L1 not L0. No code.
+      - variant: existing-fleet-as-lower-bound
+        rung: L0
+        note: >
+          Already how eur handles existing wind and solar in the electricity chain:
+          estimate_renewable_capacities reconciles to IRENASTAT and writes p_nom_min on
+          the extendable generator. Set `expansion_limit` to a scalar for the paired
+          upper bound. L0, and worth naming to a user because it means "existing VRE" and
+          "VRE cohorts" are two different objects in the same model.
+      - variant: vintaged-cohorts-with-retirement
+        rung: L1
+        note: >
+          `foresight: myopic` plus a multi-element planning_horizons, with
+          grouping_years_power widened to cover the fleet. Registry `working` and
+          battle-tested; the whole bin/freeze/age/re-import chain is rules code. L1 rather
+          than L0 because at least three keys must move together and the base horizon is
+          pinned by a wildcard_constraints the scenario grammar cannot vary. Perfect
+          foresight is the same rung on the config surface and additionally makes pypsa
+          enforce the vintages, at a much higher solve cost.
+      - variant: exogenous-cohort-construction
+        rung: L1
+        note: >
+          Already implemented for heat, and configurable rather than written:
+          grouping_years_heat plus default_heating_lifetime ARE a
+          uniform-spread-over-L-years construction, the same shape as Victoria 2022's 25%
+          per 5-year step and Kalweit 2025's 1/15 per year. For a non-heat stock with no
+          dates, the equivalent is a synthetic custom_powerplants.csv with invented
+          DateIn/DateOut — still L1, since it is data, not code.
+      - variant: committed-project-injection
+        rung: L1
+        note: >
+          `custom_powerplants: true` and a csv with future DateIn values; the vintaging
+          machinery does not care that the build year is in the future. For transmission,
+          `transmission_projects.enable` with TYNDP2020/NEP filtered by permitting status
+          is the parallel eur-only surface. Cheap, high-impact, and the thing most likely
+          to fix a fleet a domestic expert says is wrong.
+      - variant: myopic-carryover-with-build-year-aggregation
+        rung: L5
+        note: >
+          Not in the repo at this ref. New Python between add_brownfield and the solve:
+          group components by everything-except-build_year, merge with capacity-weighted
+          attributes, solve, disaggregate the result back. vanGreevenbroek 2024 reports
+          >2x memory and <0.04% mean error, and names the exclusions (electrolysers,
+          process-emission CCS) that make it safe. L5 but self-contained — a transform on
+          a network object, no constraint work — and the fallbacks are all L1 (coarser
+          grouping years, higher threshold_capacity, fewer horizons).
+      - variant: early-retirement-with-stranded-cost
+        rung: L5
+        note: >
+          Endogenous retirement does not exist. Inherited cohorts are non-extendable with
+          p_nom fixed, so the LP has no variable to retire them with; making one means a
+          per-cohort capacity variable bounded above by the inherited p_nom, a term that
+          charges the annuity on the retired portion, and — if retirement should be
+          irreversible across a pathway — carrying the decision through add_brownfield.
+          That is custom-constraint work plus a pathway edit. The exogenous substitute
+          (shorten DateOut, compare runs) is L1 and answers most versions of the
+          question; escalate to L5 only when the user needs the model to CHOOSE the
+          closure date.
+    where:
+      - change: "build-year aggregation / disaggregation around the solve"
+        anchor: "between rule add_brownfield and rule solve_sector_network_myopic; scripts/add_brownfield.py::add_brownfield as the insertion point"
+        provenance: "scripts/add_brownfield.py:add_brownfield; rules/solve_myopic.smk:solve_sector_network_myopic"
+      - change: "endogenous early retirement variable + stranded-cost term"
+        anchor: "scripts/solve_network.py::custom_extra_functionality (the sanctioned hook), with carry-through in add_brownfield"
+        provenance: "scripts/solve_network.py:custom_extra_functionality; scripts/add_brownfield.py:add_brownfield"
+      - change: "cohort binning rule (different bins per carrier, or per-unit vintages instead of bins)"
+        anchor: "scripts/add_existing_baseyear.py::add_power_capacities_installed_before_baseyear (the pd.cut on grouping_years)"
+        provenance: "scripts/add_existing_baseyear.py:add_power_capacities_installed_before_baseyear"
+      - change: "existing-VRE cohort construction from a source other than IRENASTAT"
+        anchor: "scripts/add_existing_baseyear.py::add_existing_renewables"
+        provenance: "scripts/add_existing_baseyear.py:add_existing_renewables"
+      - change: "ageing rule other than build_year + lifetime <= year (e.g. probabilistic or policy-driven closure)"
+        anchor: "scripts/add_brownfield.py::add_brownfield (the n_p.remove on build_year + lifetime)"
+        provenance: "scripts/add_brownfield.py:add_brownfield"
+      - change: "land/resource decrement under OVERNIGHT foresight, where it currently does not fire"
+        anchor: "scripts/solve_network.py::prepare_network (the foresight branch around add_land_use_constraint)"
+        provenance: "scripts/solve_network.py:add_land_use_constraint"
+      - change: "vintage-resolved reporting (capacity by cohort, retirement schedule, stranded annuities)"
+        anchor: "scripts/make_summary.py::calculate_capacities (group on build_year, not just carrier)"
+        provenance: "scripts/make_summary.py:calculate_capacities"
+    data_dependencies:
+      - input: "powerplants_s_{clusters}.csv with credible DateIn/DateOut per unit"
+        required_for: "vintaged-cohorts-with-retirement, exogenous-cohort-construction"
+        availability: >
+          exists by default via powerplantmatching, but the vintage FIELD is the weak
+          one: without the proprietary WEPP database ~47% of entries and ~56% of capacity
+          have no commissioning year (Gotzens 2019) and are imputed from the per-carrier
+          mean. European coverage is the best case in this book. Treat the retirement
+          schedule as an output of an imputation unless you have checked the DateIn
+          fill rate for your carriers.
+      - input: "data/custom_powerplants.csv (announced phase-outs, committed projects, local plant lists)"
+        required_for: "committed-project-injection, exogenous early retirement"
+        availability: >
+          must be built — the file exists but custom_powerplants is false by default, and
+          the content is study-specific. Riepin 2024's coal/nuclear schedules came from
+          beyondfossilfuels.org and world-nuclear.org; national registers
+          (Marktstammdatenregister in Schauss 2026) are the route for sub-national
+          questions.
+      - input: "existing_heating_distribution_base_s_{clusters}_{horizon}.csv"
+        required_for: "the heat half of vintaged-cohorts-with-retirement"
+        availability: >
+          exists by default, built from national heating stock plus population and
+          heating-load layouts — but it is a national total distributed by load, not an
+          observed stock, so heat cohorts are a construction. This is the input earth's
+          chain has but does not use.
+      - input: "resource_class-resolved p_nom_max per bus and carrier"
+        required_for: "the land-use decrement for VRE cohorts"
+        availability: >
+          exists by default from the land-eligibility chain
+          (renewable-potentials-land-eligibility, `working`). Note existing VRE cohorts
+          must be assigned INTO resource classes, which add_existing_renewables does by
+          splitting national IRENASTAT capacity across a bus's classes in proportion to
+          p_nom_max — an assumption that existing plants are sited like the potential is
+          distributed, i.e. that the best sites were not taken first.
+    cost_profile:
+      solves: >
+        No extra solves — this method changes the SIZE of each solve, not the count.
+        Component count grows by roughly (occupied grouping-year bins) x (carriers x
+        buses) at the base year, and by one new vintage of every buildable technology
+        per horizon thereafter, so a myopic pathway's LAST horizon is its largest model.
+      relative: >
+        Single-year fixed fleet: negligible, and often FASTER than greenfield because
+        frozen capacity removes investment variables. Vintaged cohorts at eur's default
+        18 grouping-year edges: an order-of-magnitude increase in generator/link rows is
+        realistic for the conventional fleet, most of it in bins that hold little
+        capacity. vanGreevenbroek 2024 needed build-year aggregation to fit six horizons
+        at 50 nodes and reports >2x memory saved at the later horizons — take that as
+        the signal for when the growth stops being free.
+      note: >
+        Mitigations in order of cheapness, all L0/L1 except the last: raise
+        threshold_capacity (drops the long tail of tiny cohorts and is the single most
+        effective knob); coarsen grouping_years_power, accepting coarser retirement
+        timing; drop the earliest bins if nothing survives in them anyway; reduce the
+        horizon count; then build-year aggregation (L5). Because the growth is in rows
+        rather than in solve count, it shows up as memory before it shows up as time —
+        watch RSS at the final horizon, not wall clock at the first.
+    verifies:
+      - variant: vintaged-cohorts-with-retirement
+        check: "(n.generators.query('not p_nom_extendable and lifetime < inf').build_year > 0).all() and (n.links.query('not p_nom_extendable and lifetime < inf').build_year > 0).all()"
+        over: run
+        note: >
+          Every inherited, age-limited component must carry a real build year. A
+          build_year of 0 with a finite lifetime means add_build_year_to_new_assets or
+          the cohort binning did not reach that component — it will then be aged out at
+          the very first horizon (0 + lifetime <= year), silently deleting capacity that
+          should have survived. The single most valuable check on this card.
+      - variant: vintaged-cohorts-with-retirement
+        check: "all((ns[i].generators.query('not p_nom_extendable').build_year + ns[i].generators.query('not p_nom_extendable').lifetime > int(ns[i].meta['wildcards']['planning_horizons'])).all() for i in range(len(ns)))"
+        over: ensemble
+        note: >
+          No horizon may contain an inherited component that has already aged out. A
+          failure means add_brownfield's removal step did not run on that horizon — the
+          run succeeds and reports capacity from plants that should be closed, which is
+          exactly the result a user will be challenged on.
+      - variant: vintaged-cohorts-with-retirement
+        check: "all(not ns[i].generators.query('p_nom > 0 and not p_nom_extendable').empty for i in range(1, len(ns)))"
+        over: ensemble
+        note: >
+          Every non-base horizon must contain inherited non-extendable capacity. Empty
+          means the carry-forward produced nothing and each horizon solved as an
+          independent greenfield run — the pathway becomes a sequence of unlinked
+          overnight runs with no error raised.
+      - variant: single-year-fixed-fleet
+        check: "(n.generators.p_nom_max >= n.generators.p_nom_min - 1e-6).all()"
+        over: run
+        note: >
+          Existing capacity must not exceed the potential it sits in. A violation means
+          the land/resource decrement was skipped or double-counted — and under
+          `foresight: overnight` it is skipped BY DESIGN, so this check is the
+          hand-verification the overnight path does not do for you. Both models clamp
+          p_nom_max up to p_nom_min when they notice, which hides the problem rather
+          than fixing it, so compare against the undecremented potential too.
+      - variant: existing-fleet-as-lower-bound
+        check: "(n.generators.query('p_nom_extendable').p_nom_min >= 0).all() and n.generators.query('p_nom_extendable').p_nom_min.sum() > 0"
+        over: run
+        note: >
+          For the lower-bound variant the incumbent fleet lives in p_nom_min on
+          extendable components. A total of zero means the IRENASTAT reconciliation did
+          not run and the model is greenfield for VRE while still being described as
+          brownfield.
+      - variant: committed-project-injection
+        check: "(n.generators.build_year.max() >= int(n.meta['wildcards']['planning_horizons'])) or (n.links.build_year.max() >= int(n.meta['wildcards']['planning_horizons']))"
+        over: run
+        note: >
+          Injected committed projects have build years at or after the current horizon.
+          If the maximum build year is below the horizon, nothing with a future
+          commissioning date survived — most often because DateIn exceeded the last
+          grouping-year edge and the asset was dropped with a warning nobody read.
+  - model: pypsa-earth
+    version_anchor:
+      ref: "8435f4c8cc05f30088933b37b7db497ff860dc53"
+      date: "2026-07-25"
+    functionality:
+      - id: fleet-retirement-filter
+        role: >
+          `working`, and earth's STRONGEST surface on this card — stronger than eur's,
+          because the vintaging happens here rather than in the sector chain.
+          powerplants_filter is a date query on DateIn/DateOut applied in
+          build_powerplants, and build_powerplants additionally calls
+          powerplantmatching's fill_missing_decommissioning_years(), which eur does not
+      - id: existing-baseyear-brownfield
+        role: >
+          `partial`, and the grade understates the problem: at this ref
+          scripts/add_existing_baseyear.py does NOTHING but stamp build years. The power
+          function has no earth equivalent at all and the heating call is commented out
+          in the script's own main block. See `available.how`
+      - id: myopic-foresight
+        role: >
+          `partial`, registry-noted "sector chain, less battle-tested than overnight".
+          The carry-forward half exists (add_brownfield) and differs from eur's in two
+          semantics worth knowing — see `available.how`
+      - id: renewable-potentials-land-eligibility
+        role: >
+          `working`. Supplies the p_nom_max the land decrement subtracts from. Earth has
+          no resource_class binning, so existing VRE is one component per bus per carrier
+      - id: spatial-clustering
+        role: >
+          `working`. Load-bearing here for a bad reason: the land-use implementation
+          branches on whether the `clusters` wildcard contains "m", and the branch it
+          takes in that case raises a KeyError — see `available.missing`
+      - id: bau-minimum-capacities
+        role: >
+          `working` in earth (eur rates it `partial` with a missing config default). The
+          workable substitute for a phase-out FLOOR when the pathway machinery is not
+          trustworthy: per-carrier system-wide capacity minima via the BAU opts token
+      - id: country-carrier-capacity-limits
+        role: >
+          `working`. Per-country per-carrier capacity min/max from
+          data/agg_p_nom_minmax.csv — the lever for imposing an exogenous national
+          retirement or build trajectory without vintages
+      - id: summary-outputs
+        role: >
+          `working`, and the same gap as eur: no capacity-by-build-year table, so vintage
+          reporting is external post-processing
+    available:
+      verdict: assemble
+      how: >
+        Earth's brownfield story is genuinely BETTER than eur's in one place and worse in
+        two, and the split does not follow the registry.
+        BETTER — vintaging happens in the ELECTRICITY chain, where eur has none.
+        add_electricity's load_powerplants takes existing_capacities.grouping_years_power
+        and assigns a grouping_year per unit via get_grouping_year (np.digitize on the
+        bin edges); aggregate_ppl_by_bus_carrier_year then groups on (bus, carrier_gy),
+        names the component `<bus> <carrier>-<grouping_year>`, and sets
+        build_year = mean datein, lifetime = dateout - datein. attach_conventional_generators
+        adds those cohorts with p_nom = p_nom_min = p_nom_max = installed capacity,
+        p_nom_extendable = False, and a separate extendable generator per carrier at
+        zero. So an earth ELECTRICITY-ONLY run is already vintaged, with no sector chain
+        and no foresight setting involved — the state eur only reaches via
+        add_existing_baseyear under myopic/perfect. The same function is applied to hydro,
+        ror and batteries.
+        BETTER — the sector conversion preserves the vintages instead of destroying
+        them. prepare_sector_network's convert_conventional_generators_to_links takes each
+        existing conventional Generator, removes it, and re-adds it as a Link with
+        bus0 = fuel bus, bus1 = the AC bus, bus2 = "co2 atmosphere", carrying p_nom
+        (rescaled by efficiency), p_nom_extendable, efficiency, build_year AND lifetime
+        forward, then zeroes the fuel carrier's co2_emissions because the link's
+        efficiency2 now accounts for it. Compare eur: remove_elec_base_techs DELETES the
+        conventional generators outright ("since they're added here differently using
+        links") and prepare_sector_network rebuilds them greenfield, with the existing
+        fleet re-entering only later via add_existing_baseyear — which is why eur's
+        vintages are unavailable to an electricity-only or overnight sector run. Earth's
+        primitive is the better one, and this is the headline asymmetry on this card.
+        WORSE — the base-year rule is hollow. scripts/add_existing_baseyear.py contains
+        exactly two functions: add_build_year_to_new_assets and
+        add_heating_capacities_installed_before_baseyear. There is NO
+        add_power_capacities_installed_before_baseyear and no add_existing_renewables. The
+        main block calls only add_build_year_to_new_assets; the entire heating block is
+        commented out behind a "TODO: not implemented in -sec yet". The rule declares
+        `powerplants` and busmaps as inputs and the script never reads them
+        (snakemake.input is touched only for existing_heating_distribution, network and
+        costs). So the rule runs, produces a valid brownfield network, and adds no
+        existing capacity beyond what add_electricity already put there.
+        WORSE — the heating fleet has no vintages at all, and two config keys are dead:
+        existing_capacities.default_heating_lifetime and
+        existing_capacities.conventional_carriers appear in config.default.yaml but their
+        only occurrences in the repo are inside the commented-out block and nowhere
+        respectively. grouping_years_heat is read into a local variable that is then
+        unused.
+      missing: >
+        Procedure step 7 (heat vintaging) has NO live handle — the function exists but is
+        commented out of its own main block. Steps 11-13 have no handle: no
+        max-growth surface (no `limit_max_growth` key, and pypsa's define_growth_limit
+        needs a multi-period network earth cannot build), no endogenous retirement, no
+        vintage reporting. Step 8 (land-use decrement) is present and DOES decrement —
+        _add_land_use_constraint subtracts existing p_nom per (bus location, carrier) from
+        `<bus> <carrier>-<horizon>`'s p_nom_max, clips at zero, and additionally caps
+        p_nom/p_nom_min down when the decrement pushed p_nom_max below them (a
+        feasibility guard eur lacks) — but with three defects: (a) it is called only when
+        `foresight == "myopic"`, so an earth OVERNIGHT brownfield run, which is what every
+        earth paper in this corpus ran, never decrements potentials at all; (b) there is
+        no registry id for it, so the capability is invisible to routing; (c) the
+        `"m" in clusters` branch, _add_land_use_constraint_m, reads
+        snakemake.config["existing_capacities"]["grouping_years"] — a key that does NOT
+        exist in config.default.yaml (the real key is grouping_years_power), so that
+        branch raises KeyError at solve time. Steps 1-6 and 9-10 are present, with
+        step 5 (cohort binning) implemented EARLIER and more thoroughly than in eur.
+      provenance: "scripts/add_electricity.py:aggregate_ppl_by_bus_carrier_year; scripts/prepare_sector_network.py:convert_conventional_generators_to_links; scripts/solve_network.py:_add_land_use_constraint_m"
+    levers:
+      - key: "existing_capacities.grouping_years_power"
+        effect: >
+          The vintage bins, and unlike eur they bite in the ELECTRICITY chain: passed to
+          load_powerplants, turned into a per-unit grouping_year by np.digitize(right=True)
+          — so a unit is assigned the first edge >= its DateIn, the opposite convention
+          to eur's pd.cut right edge on a left-open interval. Note the default starts at
+          1960 where eur starts at 1900: pre-1960 assets (much African and Latin American
+          hydro) fall in the first digitize bucket rather than being dropped, but their
+          cohort is then labelled 1960 and their age understated.
+        default: "[1960, 1965, 1970, ..., 2015, 2020, 2025, 2030] (15 edges)"
+        provenance: "config.default.yaml:grouping_years_power; scripts/add_electricity.py:get_grouping_year"
+      - key: "existing_capacities.threshold_capacity"
+        effect: >
+          MW floor read by add_brownfield when deciding which of the previous horizon's
+          optimised extendables to carry forward. NOT applied to the base-year cohorts,
+          because earth has no base-year power function to apply it in — so the long tail
+          of tiny inherited cohorts that eur drops survives here.
+        default: "10"
+        provenance: "config.default.yaml:threshold_capacity; scripts/add_brownfield.py:add_brownfield"
+      - key: "existing_capacities.grouping_years_heat"
+        effect: >
+          DEAD at this ref. add_existing_baseyear reads it into a local variable and the
+          only consumer, add_heating_capacities_installed_before_baseyear, is commented
+          out of the main block behind "TODO: not implemented in -sec yet". The function
+          body is present and is a direct port of eur's, so re-enabling it is L4 (rule
+          inputs plus the call), not L5.
+        default: "[1980, 1985, 1990, ..., 2015, 2019]"
+        provenance: "config.default.yaml:grouping_years_heat; scripts/add_existing_baseyear.py:add_heating_capacities_installed_before_baseyear"
+      - key: "existing_capacities.default_heating_lifetime"
+        effect: >
+          DEAD KEY. Its only occurrence in the repo is inside the commented-out heating
+          block in add_existing_baseyear's main. Setting it changes nothing — the exact
+          silent failure this book's hard rules single out. eur's identical key is live.
+        default: "20"
+        provenance: "config.default.yaml:default_heating_lifetime; scripts/add_existing_baseyear.py:add_heating_capacities_installed_before_baseyear"
+      - key: "existing_capacities.conventional_carriers"
+        effect: >
+          DEAD KEY. Grep of scripts/, Snakefile and config for
+          existing_capacities.conventional_carriers finds only the config definition; the
+          fuel buses inherited cohorts attach to come from
+          sector.conventional_generation via convert_conventional_generators_to_links
+          instead. In eur the same key is live and read by prepare_sector_network.
+        default: "['lignite', 'coal', 'oil', 'uranium']"
+        provenance: "config.default.yaml:conventional_carriers; scripts/prepare_sector_network.py:convert_conventional_generators_to_links"
+      - key: "electricity.powerplants_filter"
+        effect: >
+          The pandas query on the powerplant table, applied in build_powerplants AFTER
+          powerplantmatching's fill_missing_decommissioning_years() has filled DateOut.
+          Ships already ON with an active-in-2022/23 window. Earth's single most reliable
+          lever on this card: a DateOut clause is an exogenous retirement scenario and a
+          DateIn clause pins the fleet to a year, both with no pathway machinery involved.
+        default: "'(DateOut >= 2022 or DateOut != DateOut) and (DateIn <= 2023 or DateIn != DateIn)'"
+        provenance: "config.default.yaml:powerplants_filter; scripts/build_powerplants.py:add_custom_powerplants"
+      - key: "electricity.custom_powerplants"
+        effect: >
+          false | true | "merge" | "replace" | a query — a richer grammar than eur's,
+          including a "replace" mode that skips powerplantmatching entirely and uses only
+          data/custom_powerplants.csv. That matters for regions where the matched fleet is
+          poor: bring your own plant list with real DateIn/DateOut and bypass the
+          imputation. The route for committed-project-injection and for user-supplied
+          fleets. Off by default.
+        default: "false"
+        provenance: "config.default.yaml:custom_powerplants; scripts/build_powerplants.py:add_custom_powerplants"
+      - key: "electricity.estimate_renewable_capacities.year"
+        effect: >
+          The IRENA statistics year existing wind/solar is reconciled to. The gap between
+          matched-fleet VRE and the national total is redistributed across a country's
+          buses and written to p_nom on the extendable generator with
+          p_nom_min = the matched capacity — i.e. existing-fleet-as-lower-bound, with NO
+          build_year, so existing VRE is the one part of earth's fleet that is not
+          vintaged.
+        default: "2023"
+        provenance: "config.default.yaml:estimate_renewable_capacities; scripts/add_electricity.py:attach_wind_and_solar"
+      - key: "costs.fill_values"
+        effect: >
+          Includes `lifetime: 25`, the fallback used when a unit has no DateOut and its
+          carrier has no cost-table lifetime — so it is the default retirement age for
+          the unrecorded part of the fleet, which in a C/D-grade region is most of it.
+          Worth setting per study rather than leaving at 25 for hydro and nuclear.
+        default: "{'FOM': 0, 'VOM': 0, 'efficiency': 1, 'fuel': 0, 'investment': 0, 'lifetime': 25, 'CO2 intensity': 0, 'discount rate': 0.07}"
+        provenance: "config.default.yaml:fill_values; scripts/add_electricity.py:fill_datein_dateout"
+      - key: "foresight"
+        effect: >
+          overnight | myopic only (`perfect` matches no Snakefile branch — see
+          `foresight-and-planning-horizons`). For this card the consequence is specific:
+          the land-use decrement is gated on `foresight == "myopic"`, so an overnight
+          earth run inherits a vintaged fleet AND leaves its potentials undecremented.
+        default: "'overnight'"
+        provenance: "config.default.yaml:foresight; scripts/solve_network.py:add_land_use_constraint"
+    assembly:
+      - step: >
+          Fix the inheritance set and the fleet dates. powerplants_filter is already on;
+          tighten it to your base year, and for anywhere the matched fleet is thin use
+          `custom_powerplants: "replace"` with your own DateIn/DateOut rather than
+          accepting powerplantmatching's imputation. This is the highest-value step on
+          earth by a wide margin, because data quality is the binding constraint here,
+          not code.
+        uses: [fleet-retirement-filter]
+        config: "electricity.powerplants_filter; electricity.custom_powerplants; costs.fill_values"
+        code: null
+        provenance: "scripts/build_powerplants.py:add_custom_powerplants; scripts/add_electricity.py:fill_datein_dateout"
+      - step: >
+          Set the vintage bins and let the ELECTRICITY chain do the cohorting. Widen
+          grouping_years_power below 1960 if the region has older hydro — np.digitize
+          will otherwise label a 1930 dam as a 1960 cohort and understate its age.
+          aggregate_ppl_by_bus_carrier_year then produces `<bus> <carrier>-<year>`
+          components with build_year and lifetime, non-extendable, with a paired
+          extendable generator at zero per carrier. No foresight setting needed: this is
+          on by default.
+        uses: [existing-baseyear-brownfield, fleet-retirement-filter]
+        config: "existing_capacities.grouping_years_power"
+        code: null
+        provenance: "scripts/add_electricity.py:get_grouping_year; scripts/add_electricity.py:attach_conventional_generators"
+      - step: >
+          (sector runs) Keep the vintages through the sector conversion — which is
+          automatic and is earth's advantage. convert_conventional_generators_to_links
+          re-expresses each existing conventional generator as a Link with a fuel bus0
+          and a `co2 atmosphere` bus2, carrying p_nom, p_nom_extendable, efficiency,
+          build_year and lifetime across. Confirm your carriers are in
+          sector.conventional_generation, which is the mapping it iterates
+          (existing_capacities.conventional_carriers is dead here and does NOT control
+          this).
+        uses: [existing-baseyear-brownfield]
+        config: "sector.conventional_generation"
+        code: "scripts/prepare_sector_network.py"
+        provenance: "scripts/prepare_sector_network.py:convert_conventional_generators_to_links"
+      - step: >
+          Do NOT expect add_existing_baseyear to add capacity. Under `foresight: myopic`
+          the rule runs on planning_horizons[0] and calls only
+          add_build_year_to_new_assets — it stamps the base year on assets that have a
+          lifetime and no build year, renames them with a `-{baseyear}` suffix, and
+          exports. Its declared `powerplants` and busmap inputs are never read. Treat the
+          rule as a build-year stamper, not as eur's base-year fleet builder.
+        uses: [existing-baseyear-brownfield, myopic-foresight]
+        config: "foresight; scenario.planning_horizons"
+        code: "scripts/add_existing_baseyear.py"
+        provenance: "scripts/add_existing_baseyear.py:add_build_year_to_new_assets"
+      - step: >
+          (heat) Re-enable heat vintaging if the question needs it. The function
+          add_heating_capacities_installed_before_baseyear is present and is a port of
+          eur's, but the call is commented out in the main block behind "TODO: not
+          implemented in -sec yet", along with the cop_air_total / cop_soil_total reads it
+          needs; the existing_heating_distribution input and its build rule DO exist. L4
+          work: uncomment the call and its inputs, verify grouping_years_heat and
+          default_heating_lifetime now reach it, and check the heat buses it expects are
+          in your network.
+        uses: [existing-baseyear-brownfield]
+        config: "existing_capacities.grouping_years_heat; existing_capacities.default_heating_lifetime"
+        code: "scripts/add_existing_baseyear.py (the commented-out heating block in main)"
+        provenance: "scripts/add_existing_baseyear.py:add_heating_capacities_installed_before_baseyear"
+      - step: >
+          (pathway) Chain the horizons and know the two semantic differences from eur.
+          add_brownfield removes previous-horizon assets with
+          build_year + lifetime < year — STRICTLY less than, where eur uses <=, so a
+          cohort expiring exactly at the horizon survives one extra period here. It also
+          removes all NON-extendable assets from the previous network on the grounds that
+          "they already exist in n", which is only true because earth's base fleet comes
+          from add_electricity and is rebuilt every horizon; and it resets p_nom_min and
+          p_nom to 0 on extendable generators to undo the IRENA lower bound and avoid
+          double-counting. Neither behaviour is wrong, both are easy to break.
+        uses: [myopic-foresight]
+        config: "existing_capacities.threshold_capacity"
+        code: "scripts/add_brownfield.py"
+        provenance: "scripts/add_brownfield.py:add_brownfield"
+      - step: >
+          Re-enable the commented-out brownfield rule inputs before trusting a pathway.
+          `unpack(input_profile_tech_brownfield)` is commented out in the myopic
+          add_brownfield rule and `clustered_pop_layout` in add_existing_baseyear, so
+          renewable profiles are not refreshed per horizon. Shared with
+          `foresight-and-planning-horizons`; L4.
+        uses: [myopic-foresight]
+        config: null
+        code: "Snakefile (myopic block: rule add_brownfield, rule add_existing_baseyear)"
+        provenance: "Snakefile:input_profile_tech_brownfield"
+      - step: >
+          Make the land decrement fire, and avoid the clusters trap. It runs only when
+          `foresight == "myopic"`, so an overnight brownfield run leaves potentials
+          undecremented — for a single-target-year study either accept and document that,
+          or replicate the subtraction yourself. And do NOT use an "m"-suffixed clusters
+          wildcard: that routes to _add_land_use_constraint_m, which reads
+          existing_capacities["grouping_years"], a key absent from config.default.yaml,
+          and raises KeyError at solve time. Adding the key (or fixing the read to
+          grouping_years_power) is the minimal repair. Note there is NO
+          `land-use-constraint` id in earth's registry to cite here — the code exists, the
+          capability record does not, which is why an interview cannot route to it.
+        uses: [spatial-clustering, renewable-potentials-land-eligibility]
+        config: "foresight; existing_capacities.grouping_years_power"
+        code: "scripts/solve_network.py"
+        provenance: "scripts/solve_network.py:_add_land_use_constraint; scripts/solve_network.py:_add_land_use_constraint_m"
+      - step: >
+          Substitute policy trajectories for the machinery earth lacks. There is no
+          max-growth surface and no endogenous retirement, but BAU (system-wide per-carrier
+          minima) and CCL (per-country per-carrier min/max from
+          data/agg_p_nom_minmax.csv) both work and are the practical way to impose a coal
+          phase-down or a build floor per horizon without vintages. Cheaper and more
+          transparent than fighting the pathway chain.
+        uses: [bau-minimum-capacities, country-carrier-capacity-limits]
+        config: "opts BAU / CCL tokens; electricity.BAU_mincapacities; electricity.agg_p_nom_limits"
+        code: "scripts/solve_network.py"
+        provenance: "scripts/solve_network.py:add_BAU_constraints; scripts/solve_network.py:add_CCL_constraints"
+      - step: >
+          Report by vintage externally. Earth's carrier names already carry the cohort
+          (`<bus> <carrier>-<year>`), which makes this easier than in eur: split the
+          carrier string, or group n.generators/n.links on build_year, against p_nom_opt
+          and dispatch. No summary table does it.
+        uses: [summary-outputs]
+        config: null
+        code: "external post-processing over RESDIR postnetworks"
+        provenance: "scripts/make_summary.py:make_summary"
+    boundary:
+      - variant: single-year-fixed-fleet
+        rung: L0
+        note: >
+          The shipped behaviour, and the only mode any earth paper in this corpus ran
+          (Parzen 2022, Schumm 2025). powerplants_filter is on, the fleet is attached
+          non-extendable, and — better than eur — it is already cohorted by
+          grouping_years_power. The caveat is real though: no land decrement under
+          overnight, so a brownfield run can build new VRE on already-occupied land. Check
+          it by hand.
+      - variant: partial-greenfield-selective-inheritance
+        rung: L1
+        note: >
+          `electricity.extendable_carriers` plus powerplants_filter, exactly as in eur.
+          Earth has no separate "fix hydro at today's capacity" switch, but hydro/ror
+          come through aggregate_ppl_by_bus_carrier_year as non-extendable cohorts
+          already, so the common inheritance set is close to the default.
+      - variant: existing-fleet-as-lower-bound
+        rung: L0
+        note: >
+          How earth handles existing wind and solar: attach_wind_and_solar sets
+          p_nom_min = the matched capacity on an extendable generator and tops p_nom up to
+          the IRENA national total. Note the interaction to watch — add_brownfield then
+          RESETS p_nom_min and p_nom to 0 on extendable generators at every non-base
+          horizon to avoid double-counting, so in a pathway the VRE lower bound exists
+          only at the base horizon.
+      - variant: vintaged-cohorts-with-retirement
+        rung: L1
+        note: >
+          Cohorts themselves are L0 (electricity chain, on by default) — genuinely ahead
+          of eur, where they need `foresight: myopic`. RETIREMENT is the L1 part:
+          `foresight: myopic` plus a horizon list activates add_brownfield's age-out.
+          Rated L1 on the config surface, but read the pathway caveats: registry status
+          `partial`, commented-out rule inputs, a hollow add_existing_baseyear, and no
+          heat vintages. Trustworthy for a conventional-fleet electricity question,
+          shakier for a sector-coupled one — the reason
+          `foresight-and-planning-horizons` rates the same pathway L4.
+      - variant: exogenous-cohort-construction
+        rung: L1
+        note: >
+          For power, a synthetic custom_powerplants.csv with invented DateIn/DateOut and
+          `custom_powerplants: "replace"` — data, not code, and the right answer for a
+          region whose register is unusable. For HEAT there is no live surface at all
+          (the function is commented out), so heat cohorts are L4 here where they are L1
+          in eur.
+      - variant: committed-project-injection
+        rung: L1
+        note: >
+          custom_powerplants with future DateIn values, and earth's "merge"/"replace"
+          grammar makes this cleaner than eur's boolean-or-query. What is missing is the
+          transmission side: earth has no transmission_projects equivalent, so committed
+          lines must be edited into the base network or added as custom entries.
+      - variant: myopic-carryover-with-build-year-aggregation
+        rung: L5
+        note: >
+          Not in the repo, same as eur. Marginally more attractive here because earth's
+          cohort naming (`<bus> <carrier>-<year>`) makes the grouping key trivial to
+          recover, but also less often needed: earth base cases in this corpus are 10-54
+          nodes and often electricity-only, so the component-count growth rarely binds
+          before the pathway's correctness problems do. Fix the pathway first.
+      - variant: early-retirement-with-stranded-cost
+        rung: L5
+        note: >
+          Absent, as in eur, and for the same structural reason: inherited cohorts are
+          non-extendable with p_nom fixed, so there is no variable to retire. Earth has
+          one advantage for the workaround — because vintaging happens in add_electricity,
+          an exogenous retirement scenario is a powerplants_filter/custom_powerplants edit
+          that needs no sector chain and no foresight setting, so the L1 substitute is
+          cheaper and more reliable here than in eur. Schumm 2025's sunk-cost treatment
+          of brownfield coal (exclude its capital cost from the objective) is the other
+          L5-adjacent option and is a capital_cost override, not a new variable.
+    where:
+      - change: "re-enable heat vintaging (the commented-out call and its cop inputs)"
+        anchor: "scripts/add_existing_baseyear.py::__main__ (the block behind 'TODO: not implemented in -sec yet'), plus the HEAT_BASEYEAR inputs in Snakefile's myopic block"
+        provenance: "scripts/add_existing_baseyear.py:add_heating_capacities_installed_before_baseyear"
+      - change: "fix the KeyError in the 'm'-clusters land-use branch"
+        anchor: "scripts/solve_network.py::_add_land_use_constraint_m (reads existing_capacities['grouping_years']; the real key is grouping_years_power)"
+        provenance: "scripts/solve_network.py:_add_land_use_constraint_m"
+      - change: "make the land decrement fire under overnight foresight"
+        anchor: "scripts/solve_network.py::prepare_network (the `if snakemake.config['foresight'] == 'myopic'` guard around add_land_use_constraint)"
+        provenance: "scripts/solve_network.py:add_land_use_constraint"
+      - change: "cohort binning rule (bin convention, per-carrier bins, or per-unit vintages)"
+        anchor: "scripts/add_electricity.py::get_grouping_year and ::aggregate_ppl_by_bus_carrier_year"
+        provenance: "scripts/add_electricity.py:get_grouping_year; scripts/add_electricity.py:aggregate_ppl_by_bus_carrier_year"
+      - change: "ageing rule between horizons (note earth's strict `<` vs eur's `<=`)"
+        anchor: "scripts/add_brownfield.py::add_brownfield"
+        provenance: "scripts/add_brownfield.py:add_brownfield"
+      - change: "vintage preservation across the sector conversion (the better primitive; port target for eur)"
+        anchor: "scripts/prepare_sector_network.py::convert_conventional_generators_to_links"
+        provenance: "scripts/prepare_sector_network.py:convert_conventional_generators_to_links"
+      - change: "re-enable the commented-out brownfield rule inputs"
+        anchor: "Snakefile, myopic block: rule add_brownfield input `unpack(input_profile_tech_brownfield)`; rule add_existing_baseyear input `clustered_pop_layout`"
+        provenance: "Snakefile:input_profile_tech_brownfield"
+      - change: "endogenous early retirement, or sunk-cost treatment of inherited capital"
+        anchor: "scripts/solve_network.py::extra_functionality for the variable; add_electricity's capital_cost assignment for the sunk-cost variant"
+        provenance: "scripts/solve_network.py:extra_functionality; scripts/add_electricity.py:attach_conventional_generators"
+      - change: "vintage-resolved reporting"
+        anchor: "scripts/make_summary.py::make_summary (earth's carrier_gy naming makes the cohort recoverable from the component name)"
+        provenance: "scripts/make_summary.py:make_summary"
+    data_dependencies:
+      - input: "powerplants.csv with credible DateIn/DateOut per unit"
+        required_for: "vintaged-cohorts-with-retirement, single-year-fixed-fleet"
+        availability: >
+          region-dependent, and this is earth's real blocker on this card — DATA, not
+          code, exactly as for foresight. powerplantmatching over OpenStreetMap, Global
+          Energy Monitor and IRENA covers non-European regions unevenly; Gotzens 2019's
+          47%-missing-commissioning-year figure is for EUROPE with the best open sources,
+          so treat it as a floor elsewhere. earth does call
+          fill_missing_decommissioning_years() (eur does not) and falls back to
+          fill_datein_dateout's per-carrier mean plus costs.fill_values.lifetime = 25.
+          Check the country's grade in cookbooks/pypsa-earth/data_quality before promising
+          a retirement schedule; for C/D grades the honest route is a hand-built
+          custom_powerplants.csv with `"replace"`.
+      - input: "existing_heating_distribution_{demand}_s{simpl}_{clusters}_{horizon}.csv"
+        required_for: "the heat half of vintaged-cohorts-with-retirement"
+        availability: >
+          must be built AND the consumer re-enabled. rule
+          build_existing_heating_distribution exists and produces the file from
+          data/existing_infrastructure/existing_heating_raw.csv plus population and
+          district-heat-share layouts — but the function that consumes it is commented out
+          of add_existing_baseyear's main block, and existing_heating_raw.csv is a
+          European-derived table, so for a non-European study the input must be replaced
+          as well as re-wired.
+      - input: "per-bus p_nom_max from the land-eligibility chain"
+        required_for: "the land-use decrement"
+        availability: >
+          exists by default (renewable-potentials-land-eligibility is `working`), but with
+          no resource_class binning, so existing VRE and new VRE share one p_nom_max per
+          bus and carrier — coarser than eur, and it makes the decrement arithmetic
+          simpler but the siting assumption stronger.
+    cost_profile:
+      solves: >
+        No extra solves; the effect is on model size. Earth cohorts the fleet in the
+        electricity chain, so the component-count increase is present from the very first
+        run rather than appearing when a pathway is switched on — an earth
+        electricity-only network is already larger than eur's equivalent for this reason.
+      relative: >
+        Small in absolute terms because earth base cases are small (10-54 nodes and often
+        electricity-only across this corpus, vs eur's 37-600 sector-coupled). The
+        conventional fleet in a single African or Asian country occupies far fewer of the
+        15 grouping-year bins than Europe's does, so cohorting is close to free. Pathway
+        growth compounds as in eur, but from a much lower base — build-year aggregation
+        is unlikely to be the binding issue here.
+      note: >
+        Compute is not the constraint on this card in earth; data quality and the two
+        code defects are. Budget engineering time for: the hollow add_existing_baseyear,
+        the commented-out heat block, the `m`-clusters KeyError, and the missing land
+        decrement under overnight — then validation time against the regional fleet. The
+        L0/L1 mitigations (threshold_capacity, coarser bins) exist but you will rarely
+        need them.
+    verifies:
+      - variant: vintaged-cohorts-with-retirement
+        check: "n.generators.index.str.contains(r'-(19|20)\\d\\d$', regex=True).any() or n.links.index.str.contains(r'-(19|20)\\d\\d$', regex=True).any()"
+        over: run
+        note: >
+          Earth's cohorts are identifiable from the component name (`<bus> <carrier>-<year>`
+          via carrier_gy). No year-suffixed component means aggregate_ppl_by_bus_carrier_year
+          did not cohort the fleet — most likely grouping_years_power was empty or the
+          powerplant table arrived without datein — and the run is brownfield-as-one-block,
+          not vintaged, with no error raised.
+      - variant: vintaged-cohorts-with-retirement
+        check: "(n.generators.query('not p_nom_extendable and lifetime < inf').build_year > 0).all()"
+        over: run
+        note: >
+          Same check as eur's and for the same reason: a finite lifetime with build_year 0
+          ages out immediately at the first horizon. Earth is more exposed to it because
+          add_build_year_to_new_assets is the ONLY thing its base-year rule does, so if
+          that rule is skipped nothing else stamps the year.
+      - variant: vintaged-cohorts-with-retirement
+        check: "all(not ns[i].generators.query('p_nom > 0 and not p_nom_extendable').empty for i in range(1, len(ns)))"
+        over: ensemble
+        note: >
+          Every non-base horizon must carry inherited non-extendable capacity. Earth's
+          add_brownfield deliberately drops the previous network's non-extendables
+          ("they already exist in n") and relies on add_electricity rebuilding the base
+          fleet each horizon — so if that assumption breaks, the pathway loses its
+          incumbent stack silently. The specific failure the commented-out rule inputs
+          make likely.
+      - variant: single-year-fixed-fleet
+        check: "(n.generators.p_nom_max >= n.generators.p_nom_min - 1e-6).all()"
+        over: run
+        note: >
+          Under earth's default `foresight: overnight` the land decrement never runs, so
+          this is the hand-check that existing VRE has not been double-booked against its
+          own potential. Passing does not prove the decrement happened — it only proves
+          the bounds are self-consistent; compare new-build p_nom_max against the
+          undecremented potential to see whether the land was counted twice.
+      - variant: exogenous-cohort-construction
+        check: "n.generators.query('not p_nom_extendable').lifetime.between(1, 200).all()"
+        over: run
+        note: >
+          Lifetimes must be plausible. earth computes lifetime = dateout - datein on
+          means over a group, so a group mixing a 1960 dam with a 2015 turbine yields a
+          nonsense lifetime, and costs.fill_values.lifetime = 25 silently becomes the
+          answer for everything unrecorded. Values at exactly 25 across many carriers are
+          the tell that the fleet's dates were imputed rather than observed.

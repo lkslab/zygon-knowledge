@@ -1,0 +1,49 @@
+id: refinery-chemicals-feedstock
+title: "Refinery / chemicals feedstock"
+rank: 79
+question: >
+  How do refineries and chemical plants decarbonize their feedstocks —
+  naphtha for plastics, hydrogen for ammonia and methanol, green vs fossil
+  routes — and what does that do to power and H2 demand? The
+  non-energy-use corner of industrial decarbonization.
+when_to_use:
+  - "chemical industry feedstock decarbonization"
+  - "naphtha / HVC demand for plastics"
+  - "green ammonia or methanol replacing fossil routes"
+  - "refinery hydrogen demand switch to electrolysis"
+  - "non-energy fuel use in the energy balance"
+recipes:
+  generation_conversion: [fossil-fuel-supply, electrolytic-chemicals,
+                          green-ammonia, e-methanol]
+  demand: [industrial-feedstocks-nonenergy, chemicals-demand]
+functionality:
+  - id: sector-coupled-workflow
+    role: "core — feedstock carriers (oil/naphtha, H2, ammonia) are distinct demands in the sector LP"
+  - id: h2-pipeline-routing
+    role: "delivering green H2 to chemical/refinery sites is half the cost question"
+  - id: co2-cap
+    role: "feedstock carbon sits inside the budget — naphtha CO2 is booked wholesale"
+  - id: co2-network-sequestration
+    role: "process-emission capture (CC links) as the alternative to route switching"
+  - id: scenario-matrix
+    role: "sweep demand scenarios and carbon budgets across feedstock futures"
+gap_assessment: >
+  Partial. The demand side is genuinely wired: chemical/petrochemical energy
+  and non-energy use comes from UNSD balances, ammonia gets a Haber-Bosch H2
+  demand sited by production data, and demand is placed at real refinery and
+  plant locations from the industrial database — so "what does greening
+  ammonia/methanol do to power and H2 systems" runs today. Two documented
+  upstream findings bound the answers (see industrial-feedstocks-nonenergy
+  and chemicals-demand): ALL industrial oil demand is labelled "naphtha for
+  industry" on the oil bus, with its CO2 booked wholesale against the
+  budget — fine for aggregate carbon, wrong for product-level plastics
+  accounting; and there is no refinery process step at all (fossil-fuel-supply
+  documents it) — a single "oil" carrier serves naphtha, kerosene, and
+  diesel with no conversion capacity, energy use, or refinery-gate margins,
+  so refinery transformation questions (hydrocracker H2 switch, refinery
+  closure) have no representation. Feedstock-route switching is a demand
+  scenario choice, not an endogenous decision.
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

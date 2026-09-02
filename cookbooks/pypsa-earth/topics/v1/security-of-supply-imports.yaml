@@ -1,0 +1,51 @@
+id: security-of-supply-imports
+title: Security of supply / imports
+rank: 65
+question: >
+  How exposed is the system to import dependence — fuels, electricity,
+  future H2 — and what does reducing that exposure cost? The post-2022
+  gas-crisis legacy question for Europe, and a standing one anywhere that
+  imports fuel or power across borders.
+when_to_use:
+  - "import dependence of the power/energy system"
+  - "cost of a self-sufficiency target"
+  - "fuel supply shock / gas phase-down scenario"
+  - "energy independence vs cheapest-system trade-off"
+  - "reliance on cross-border electricity imports"
+recipes:
+  generation_conversion: [fossil-fuel-supply, green-energy-imports,
+                          natural-gas-pipelines, gas-power-plants]
+  demand: [electricity-load, demand-scenarios-and-growth]
+functionality:
+  - id: equity-self-sufficiency
+    role: "core lever — EQ forces each country to supply >= f of its own consumption"
+  - id: autarky
+    role: "ATK/ATKc is the full-independence counterfactual, priced in one run"
+  - id: gas-usage-limit
+    role: "CH4L caps gas burn — the fuel-import phase-down constraint"
+  - id: carrier-attribute-scaling
+    role: "fuel-price shocks via marginal-cost multipliers (e.g. gas m2)"
+  - id: gas-network-links
+    role: "dead key — gas supply is nodal-unlimited, no import terminals or routes"
+  - id: scenario-matrix
+    role: "sweep EQ shares / fuel prices / CH4L to trace the cost of independence"
+gap_assessment: >
+  The electricity side is well served: EQ prices a national self-sufficiency
+  target (with a carbon-free-only variant), autarky prices full
+  independence, and cross-border flows are explicit on the real grid — the
+  "what does energy independence cost" curve is a config sweep. The fuel
+  side is where it thins out. Fossil fuels are unlimited nodal supplies at a
+  fixed price (the fossil-fuel-supply recipe documents this): imports are
+  implicit, with no supply routes, LNG terminals, source countries, or
+  volume limits beyond the CH4L gas budget, so exposure is measured in
+  fuel-spend and price-shock sensitivity, not physical supply disruption.
+  Green energy/H2 imports are the mirror gap — the model exports hydrogen
+  (h2-export-chain) but has no import counterpart; the green-energy-imports
+  recipe documents that hole. No strategic-reserve or N-1-supply machinery
+  either. Verdict: strong for electricity-import dependence and
+  carbon-constrained fuel phase-down, weak for fuel-supply-chain risk
+  proper.
+coverage: partial
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

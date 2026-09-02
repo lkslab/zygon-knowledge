@@ -1,0 +1,61 @@
+id: direct-electrification-vs-h2
+title: "Direct electrification vs H2"
+rank: 78
+question: >
+  Which end-uses justify hydrogen and which should electrify directly — heat
+  pumps vs H2 boilers, battery trucks vs fuel cells, electric process heat vs
+  H2 furnaces? The defining sector-coupling question of the post-hype era:
+  "where does hydrogen actually make sense".
+when_to_use:
+  - "hydrogen vs direct electrification by sector"
+  - "heat pumps vs hydrogen heating"
+  - "battery vs fuel-cell trucks"
+  - "efficiency penalty of the hydrogen route"
+  - "merit order of hydrogen end-uses"
+recipes:
+  generation_conversion: [air-source-heat-pumps, electric-process-heat,
+                          industry-process-heat-endogenous,
+                          electric-heavy-trucks, hydrogen-fuel-cell-trucks,
+                          h2-dri-steel, electrolysers]
+  demand: [land-transport-demand, industrial-process-heat-temperature-bands,
+           residential-space-heating-demand]
+functionality:
+  - id: sector-master-switches
+    role: "core — electricity and H2 routes compete for the same supply in one LP"
+  - id: co2-budget-pathway
+    role: "the carbon budget is what forces the choice between routes"
+  - id: industry-t-endogenous
+    role: "eur's upgrade over earth: industrial process-heat routes (H2 vs electric vs biomass per temperature band) chosen BY the optimizer (off by default)"
+  - id: exogenous-transport-shares
+    role: "the structural nuance: EV/FCEV/ICE splits are posited per horizon, not optimized"
+  - id: h2-network-retrofit
+    role: "H2 delivery cost (greenfield or retrofitted pipes) vs grid delivery cost shapes the spatial answer"
+  - id: distribution-grid-lv
+    role: "electrified heat/transport pays a distribution-grid reinforcement cost"
+  - id: bev-dsm-v2g
+    role: "flexibility credit of the electric route (EVs shift; H2 trucks do not)"
+  - id: carrier-attribute-scaling
+    role: "sweep the electrolyser/heat-pump cost assumptions the answer hinges on"
+  - id: scenario-matrix
+    role: "transport share combinations are swept as scenarios, compared on total system cost"
+gap_assessment: >
+  Strong — and stronger than pypsa-earth on the industry front. The supply
+  side is fully endogenous: both routes draw on one co-optimized system, so
+  the electrolysis efficiency penalty, when-is-power-cheap economics, H2
+  pipeline (greenfield or gas-retrofit) and salt-cavern storage costs, and
+  the carbon budget jointly decide which route serves flexible margins; heat
+  supply per node is chosen by the optimizer, and — unique to eur — flipping
+  sector.industry_t.endogen makes the industrial process-heat route choice
+  itself endogenous per temperature band (heat pumps and electric boilers vs
+  methane, biomass and H2), removing the biggest exogenous posit earth
+  carries. The remaining structural nuance is transport: EV/FCEV/ICE shares
+  are config knobs per planning horizon
+  (land_transport_electric/fuel_cell/ice_share), so the model prices
+  transport-route mixes you posit rather than choosing them — the honest
+  design is a scenario matrix over share combinations compared on total
+  system cost, which is standard practice and well supported. Endogenizing
+  the transport route (demand as multi-input link) remains a code extension.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

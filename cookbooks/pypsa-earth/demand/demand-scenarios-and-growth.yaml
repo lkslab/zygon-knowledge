@@ -1,0 +1,231 @@
+id: demand-scenarios-and-growth
+title: Demand scenarios & growth scaling machinery
+summary: >-
+  How annual sectoral energy demand is projected from a historical base year to
+  future planning horizons and varied across named scenarios — the growth-factor,
+  efficiency and fuel/technology-share machinery.
+when_to_use:
+  - "demand growth to 2030 / 2050"
+  - "demand scenarios (business as usual, net zero, ambitious)"
+  - "increase future electricity or energy demand"
+  - "CAGR / growth rate assumptions"
+  - "EV / hydrogen shipping uptake shares per year"
+  - "what does the AB / BU / NZ demand wildcard mean"
+  - "efficiency improvement assumptions"
+  - "how does demand change between planning horizons"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >-
+        Rule prepare_energy_totals produces energy_totals_{demand}_{planning_horizons}.csv:
+        historical UN-Statistics country energy balances (rule build_base_energy_totals,
+        base year demand_data.base_year = 2019) are scaled to the planning horizon by
+        compound growth, growth = (1 + cagr)^(horizon - base_year) (calculate_end_values),
+        using per-country per-sector CAGRs from data/demand/growth_factors_cagr.csv and
+        data/demand/efficiency_gains_cagr.csv, and re-partitioned between fuels/uses via
+        data/demand/fuel_shares.csv. Countries missing from any CSV fall back to its
+        DEFAULT row (fill_country_data, which also fills per-column NaNs from DEFAULT).
+        Technology-uptake shares (EV, FCEV, hydrogen shipping) are read from config dicts
+        keyed "{demand}_{planning_horizons}" (e.g. AB_2030) via the demand wildcard
+        (scenario.demand, default AB; keys BU/AP/NZ/DF/AB exist in
+        sector.land_transport_electric_share). Industry growth is scaled separately in
+        rule build_industry_demand from data/demand/industry_growth_cagr.csv with the
+        same DEFAULT fallback.
+      mechanism: >-
+        The {demand} wildcard threads through all sector-network outputs
+        (energy_totals_{demand}_{planning_horizons}.csv and downstream transport/heat
+        files), but note the split: the CAGR/efficiency/fuel-share CSVs are NOT
+        scenario-differentiated — one table serves all demand scenarios — while the
+        scenario letter only selects entries in the per-year config dicts
+        (land_transport_fuel_cell_share, land_transport_electric_share,
+        shipping_hydrogen_share) through get(options[...], demand_sc + "_" +
+        str(investment_year)) in prepare_energy_totals.py and prepare_sector_network.py.
+        The baseline electricity profile grows independently via
+        load_options.prediction_year (GEGIS), not via this machinery.
+      not_covered: >-
+        No scenario-specific growth/efficiency tables (the demand wildcard does not
+        reach the CSV inputs); no country-differentiated technology-uptake shares
+        (config dicts are global); no endogenous demand response; per-country CSV
+        coverage beyond the DEFAULT row is thin (many rows duplicate DEFAULT); the
+        electricity-only workflow ignores all of this and uses load_options only.
+      provenance: "Snakefile:rule prepare_energy_totals ; scripts/prepare_energy_totals.py:calculate_end_values ; scripts/prepare_energy_totals.py:fill_country_data ; scripts/build_industry_demand.py:industry_growth_cagr"
+    levers:
+      - key: scenario.demand
+        effect: "List of demand-scenario wildcards to run (AB/AP/BU/NZ/DF are the tags with keys in the default share dicts); selects which {TAG}_{year} entries of the sector share dicts apply."
+        default: "[\"AB\"]"
+        provenance: "config.default.yaml:demand: ; scripts/prepare_energy_totals.py:demand_sc"
+      - key: scenario.planning_horizons
+        effect: "Investment years; sets the exponent of the CAGR compounding ((1+cagr)^(horizon-base_year)) and the year part of the share-dict key."
+        default: "[2030]"
+        provenance: "config.default.yaml:planning_horizons ; scripts/prepare_energy_totals.py:calculate_end_values"
+      - key: demand_data.base_year
+        effect: "Historical base year of the UNSD energy balances and start of CAGR compounding."
+        default: "2019"
+        provenance: "config.default.yaml:base_year ; Snakefile:rule prepare_energy_totals"
+      - key: sector.land_transport_electric_share
+        effect: "EV share of land transport per {demand}_{planning_horizons} key (e.g. NZ_2050: 0.68); shifts road energy between ICE/EV efficiency rows of the CAGR tables."
+        default: "{BU_2030: 0.0, AP_2030: 0.075, NZ_2030: 0.13, DF_2030: 0.01, AB_2030: 0.01, ...}"
+        provenance: "config.default.yaml:land_transport_electric_share ; scripts/prepare_energy_totals.py:electric_share"
+      - key: sector.land_transport_fuel_cell_share
+        effect: "FCEV share of land transport per scenario-year key, same mechanism."
+        default: "{BU_2030: 0.00, AP_2030: 0.004, NZ_2030: 0.02, DF_2030: 0.01, AB_2030: 0.01, ...}"
+        provenance: "config.default.yaml:land_transport_fuel_cell_share ; scripts/prepare_energy_totals.py:fuel_cell_share"
+      - key: sector.shipping_hydrogen_share
+        effect: "Hydrogen share of navigation per scenario-year key; splits navigation totals between oil and H2 efficiency rows."
+        default: "{BU_2030: 0.00, AP_2030: 0.00, NZ_2030: 0.10, DF_2030: 0.05, AB_2030: 0.05, ...}"
+        provenance: "config.default.yaml:shipping_hydrogen_share ; scripts/prepare_energy_totals.py:hydrogen_shipping_share"
+      - key: custom_data.industry_demand
+        effect: "If true, bypasses the CAGR machinery for industry and reads data/custom/industry_demand_{demand}_{planning_horizons}.csv directly."
+        default: "false"
+        provenance: "config.default.yaml:custom_data ; scripts/build_industry_demand.py:industry_demand"
+    boundary:
+      - variant: "Run another packaged scenario tag or horizon"
+        rung: L0
+        note: "Set scenario.demand / scenario.planning_horizons; combinations must have keys in the share dicts (e.g. NZ_2050)."
+      - variant: "Define a new scenario tag (e.g. 'HG')"
+        rung: L1
+        note: "Add HG_{year} keys to sector.land_transport_electric_share / _fuel_cell_share / shipping_hydrogen_share and list HG under scenario.demand — but growth/efficiency CSVs stay shared across tags."
+      - variant: "Country-specific growth or efficiency assumptions"
+        rung: L3
+        note: "Add/edit country rows in data/demand/growth_factors_cagr.csv, efficiency_gains_cagr.csv, fuel_shares.csv (DEFAULT row is used otherwise)."
+      - variant: "Scenario-differentiated growth tables (different CAGRs per demand tag)"
+        rung: L4
+        note: "The {demand} wildcard is not plumbed into the CSV inputs of rule prepare_energy_totals; needs wildcard-parameterised input paths plus per-scenario CSVs."
+      - variant: "Exogenous industry production pathway per scenario"
+        rung: L3
+        note: "custom_data.industry_demand: true + data/custom/industry_demand_{demand}_{planning_horizons}.csv (per-country, per-carrier)."
+      - variant: "Growth of the baseline electricity profile itself"
+        rung: L1
+        note: "Separate machinery: load_options.prediction_year / load_options.scale (see electricity-load); the sector workflow later rescales residential/services electricity to the projected energy totals."
+    where:
+      - change: "Growth compounding, fuel-share arithmetic, DEFAULT fallback"
+        anchor: "scripts/prepare_energy_totals.py (rule prepare_energy_totals; functions calculate_end_values / fill_country_data)"
+        provenance: "scripts/prepare_energy_totals.py:fill_country_data"
+      - change: "Growth/efficiency/fuel-share assumptions data"
+        anchor: "data/demand/growth_factors_cagr.csv ; data/demand/efficiency_gains_cagr.csv ; data/demand/fuel_shares.csv (inputs of rule prepare_energy_totals)"
+        provenance: "Snakefile:growth_factors_cagr ; data/demand/growth_factors_cagr.csv:DEFAULT"
+      - change: "Industry growth scaling"
+        anchor: "scripts/build_industry_demand.py (rule build_industry_demand, input industry_growth_cagr)"
+        provenance: "scripts/build_industry_demand.py:calculate_end_values"
+      - change: "Scenario-year share lookup in the sector network"
+        anchor: "scripts/prepare_sector_network.py get(options[...], demand_sc + '_' + str(investment_year)) pattern"
+        provenance: "scripts/prepare_sector_network.py:def get"
+    data_dependencies:
+      - input: "UNSD energy balances (data/demand/unsd/data, downloaded when demand_data.update_data)"
+        required_for: "Base-year energy totals (rule build_base_energy_totals)"
+        availability: "must be built (downloaded on first run); country coverage from UN statistics"
+      - input: "data/demand/growth_factors_cagr.csv, efficiency_gains_cagr.csv, fuel_shares.csv, district_heating.csv"
+        required_for: "All scenario/horizon scaling"
+        availability: "exists by default, but many countries fall back to the DEFAULT row"
+      - input: "data/demand/industry_growth_cagr.csv"
+        required_for: "Industry demand growth"
+        availability: "exists by default with DEFAULT fallback"
+      - input: "data/custom/industry_demand_{demand}_{planning_horizons}.csv"
+        required_for: "custom_data.industry_demand route"
+        availability: "absent — user-supplied"
+    demand_dimensions:
+      driver: "UNSD base-year balances per country/sector compounded by CAGR growth and efficiency-gain factors"
+      spatial: "Country level here; nodal split happens downstream (see demand-spatial-disaggregation)"
+      temporal: "Annual totals only; profiles applied downstream (see demand-temporal-profiles)"
+      scenario: "{demand} wildcard (AB/AP/BU/NZ/DF) x {planning_horizons} selecting {TAG}_{year} keys of sector share dicts; CAGR tables shared across tags"
+  - model: pypsa-eur
+    version_anchor: {ref: "3e32e3c619f6ab79ada87759d6b915e9d5f3ff56", date: "2026-06-16"}
+    out_of_box:
+      covers: >-
+        Rule build_energy_totals compiles historical country energy balances per
+        year from JRC-IDEES (idees_per_country), eurostat balances and Swiss
+        statistics into a (country, year) table; energy.energy_totals_year (default
+        2023) selects the base year wherever a single year is needed (population
+        weighting, shipping, transport data). Future change is NOT modelled by
+        growth factors: totals stay at the base-year level, and the scenario
+        dimension enters through per-year config dicts resolved against the
+        {planning_horizons} wildcard by the helper get(item, investment_year) —
+        e.g. sector.land_transport_electric_share {2020: 0, ..., 2050: 1} in
+        add_land_transport, shipping shares, and industry transformation keys like
+        industry.St_primary_fraction consumed by
+        build_industrial_production_per_country_tomorrow. Whole alternative
+        scenario sets are expressed as config overrides via run.scenarios.enable +
+        a scenarios file (rule create_scenarios / config/scenarios.template.yaml).
+      mechanism: >-
+        get() picks the dict entry matching the investment year (clamping to
+        min/max keys with a warning). Myopic/perfect-foresight pathways re-resolve
+        these dicts at every horizon, so the "scenario" is the trajectory of
+        year-keyed shares; there is no named demand-scenario wildcard like
+        pypsa-earth's AB/NZ tags.
+      not_covered: >-
+        No demand-growth CAGR machinery — absolute sectoral activity (passenger-km,
+        tonnes steel, residential floor area) is frozen at base-year statistics;
+        scaling total demand up for a growth story requires editing the
+        energy_totals resource or config overrides per scenario; no per-country
+        technology-share differentiation (dicts are Europe-wide).
+      provenance: "rules/build_sector.smk:rule build_energy_totals ; scripts/build_energy_totals.py:idees_per_country ; scripts/_helpers.py:def get(item, investment_year=None) ; scripts/build_industrial_production_per_country_tomorrow.py:St_primary_fraction"
+    levers:
+      - key: energy.energy_totals_year
+        effect: "Which historical year of the multi-year energy-totals table anchors sectoral demand (2013-2023 from JRC-IDEES/eurostat)."
+        default: "2023"
+        provenance: "config/config.default.yaml:energy_totals_year ; scripts/build_population_weighted_energy_totals.py:energy_totals_year"
+      - key: scenario.planning_horizons
+        effect: "Investment years; the key against which all per-year sector/industry dicts are resolved via get()."
+        default: "[2050]"
+        provenance: "config/config.default.yaml:planning_horizons ; scripts/_helpers.py:investment_year"
+      - key: sector.land_transport_electric_share
+        effect: "EV share of land transport keyed by year {2020: 0 ... 2050: 1}; the canonical example of the per-year dict mechanism (add_land_transport)."
+        default: "{2020: 0, 2025: 0.05, 2030: 0.2, 2035: 0.45, 2040: 0.7, 2045: 0.85, 2050: 1}"
+        provenance: "config/config.default.yaml:land_transport_electric_share ; scripts/prepare_sector_network.py:def add_land_transport"
+      - key: sector.shipping_hydrogen_share
+        effect: "Year-keyed hydrogen share of shipping energy (all-zero by default; methanol/oil shares carry the default fleet)."
+        default: "{2020: 0, ..., 2050: 0}"
+        provenance: "config/config.default.yaml:shipping_hydrogen_share ; scripts/prepare_sector_network.py:shipping_hydrogen_share"
+      - key: industry.St_primary_fraction
+        effect: "Year-keyed share of primary steel production — the industry-side scenario dial scaling process demand between routes."
+        default: "{2020: 0.6, 2025: 0.55, 2030: 0.5, 2035: 0.45, 2040: 0.4, 2045: 0.35, 2050: 0.3}"
+        provenance: "config/config.default.yaml:St_primary_fraction ; scripts/build_industrial_production_per_country_tomorrow.py:st_primary_fraction"
+      - key: run.scenarios.enable
+        effect: "Activates multi-scenario runs where each named scenario in the scenarios file overrides arbitrary config keys (the eur way to express demand scenarios)."
+        default: "false"
+        provenance: "config/config.default.yaml:scenarios ; Snakefile:rule create_scenarios"
+    boundary:
+      - variant: "Change technology-uptake trajectory (EVs, H2 shipping, steel routes)"
+        rung: L0
+        note: "Edit the year-keyed dicts; get() clamps outside the given range."
+      - variant: "Define named demand scenarios (high/low demand)"
+        rung: L1
+        note: "run.scenarios.enable + scenarios file entries overriding e.g. load.scaling_factor and the sector dicts per scenario name."
+      - variant: "Use a different historical base year"
+        rung: L0
+        note: "energy.energy_totals_year (within years covered by JRC-IDEES/eurostat retrievals)."
+      - variant: "Absolute demand growth (e.g. +30% residential energy by 2050)"
+        rung: L2
+        note: "No growth-factor hook on energy totals; smallest change is scaling in build_energy_totals.py outputs or a patch between build_energy_totals and build_population_weighted_energy_totals (data-only alternative: edit resources/energy_totals.csv = L3)."
+      - variant: "Country-specific uptake shares"
+        rung: L2
+        note: "get() returns one scalar per year for all countries; add_land_transport would need per-country share logic."
+      - variant: "New scenario dimension with its own wildcard (earth-style demand tags)"
+        rung: L4
+        note: "Needs a new wildcard through the sector rules; the supported route is run.scenarios config overrides instead."
+    where:
+      - change: "Year-keyed dict resolution"
+        anchor: "scripts/_helpers.py function get(item, investment_year)"
+        provenance: "scripts/_helpers.py:investment_year"
+      - change: "Historical energy totals compilation"
+        anchor: "scripts/build_energy_totals.py (rule build_energy_totals; JRC-IDEES + eurostat + Swiss)"
+        provenance: "scripts/build_energy_totals.py:def build_energy_totals"
+      - change: "Industry production pathway"
+        anchor: "scripts/build_industrial_production_per_country_tomorrow.py (keys St_primary_fraction, DRI_fraction, ...)"
+        provenance: "scripts/build_industrial_production_per_country_tomorrow.py:investment_year"
+      - change: "Scenario override plumbing"
+        anchor: "Snakefile rule create_scenarios + config/scenarios.template.yaml + run.scenarios"
+        provenance: "Snakefile:rule create_scenarios"
+    data_dependencies:
+      - input: "JRC-IDEES country workbooks, eurostat energy balances, Swiss energy balances"
+        required_for: "Multi-year energy totals table"
+        availability: "exists by default (retrieve rules); Europe-only"
+      - input: "config scenarios file (config/scenarios.yaml from the template)"
+        required_for: "run.scenarios multi-scenario demand studies"
+        availability: "template shipped; concrete file user-supplied"
+    demand_dimensions:
+      driver: "Historical statistics (JRC-IDEES/eurostat/Swiss) frozen at energy.energy_totals_year"
+      spatial: "Country level here; nodal keys downstream"
+      temporal: "Annual totals; profiles downstream"
+      scenario: "Per-year config dicts resolved by get() against {planning_horizons}; named scenarios via run.scenarios config overrides — no growth-factor machinery"

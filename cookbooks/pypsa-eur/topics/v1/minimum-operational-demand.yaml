@@ -1,0 +1,61 @@
+id: minimum-operational-demand
+title: Minimum operational demand
+rank: 35
+question: >
+  What happens when distributed PV pushes midday operational (grid-served)
+  demand toward or below zero — can the system stay secure, what must-run /
+  backstop capability is needed, and which remedies (storage, load shifting,
+  curtailment of rooftop PV) are cheapest? Australia's signature problem.
+when_to_use:
+  - "minimum operational demand / minimum system load study"
+  - "too much rooftop solar — system security at midday"
+  - "must-run requirements when net load goes negative"
+  - "emergency backstop / distributed PV curtailment value"
+  - "AEMO-style low-demand security assessment"
+recipes:
+  generation_conversion: [rooftop-distributed-solar, behind-the-meter-der,
+                          electricity-distribution-grid, grid-scale-batteries,
+                          synchronous-condensers, grid-forming-inverters]
+  demand: [residential-electricity-demand, demand-temporal-profiles,
+           electricity-load]
+functionality:
+  - id: distribution-grid-lv
+    role: "rooftop PV, home batteries and EVs behind LV buses — the mechanism that hollows out grid demand (default-on in sector runs, cost proxy only)"
+  - id: inertia-stability
+    role: "absent — the security core of the topic (inertia, system strength, voltage) is unmodellable"
+  - id: linearized-unit-commitment
+    role: "LP-relaxed min-load data makes the must-run-vs-negative-net-load conflict at least visible (off by default, relaxation not commitment)"
+  - id: operational-reserves
+    role: "nearest security proxy: fixed contingency MW + %VRE reserve each hour"
+  - id: curtailment-mode
+    role: "makes curtailed distributed PV an explicit dispatched carrier — quantifies the backstop-curtailment volume"
+  - id: demand-elasticity
+    role: "absent — no tariff response of behind-the-meter PV/battery operation"
+  - id: bev-dsm-v2g
+    role: "EV charging shift and V2G — the demand-side soak-up remedies"
+  - id: sector-master-switches
+    role: "required to get rooftop PV, home batteries, and EVs behind the meter at all"
+gap_assessment: >
+  The energy-balance half is representable, marginally better than in
+  pypsa-earth: sector runs place rooftop PV, home batteries and EV charging
+  behind LV buses by default, so midday grid-demand hollowing, storage
+  soak-up and economic curtailment of distributed PV appear in dispatch;
+  curtailment_mode turns curtailed energy into an explicit carrier, and the
+  linearized UC layer can impose min-load costs on conventional units so
+  the must-run conflict at least registers in the objective. The security
+  half — which is what minimum operational demand is actually about — is
+  absent: no inertia or system-strength constraints, no frequency dynamics,
+  no minimum-synchronous-units commitment (the LP relaxation happily runs
+  on 100% inverter-based supply), and distributed PV has no ride-through or
+  emergency-backstop behaviour distinct from any other generator.
+  Synchronous condensers and grid-forming inverters exist as technologies
+  but nothing forces or rewards their stability contribution; a hand-rolled
+  synchronous-capacity floor via the custom constraint hook is the closest
+  workaround. You can compute when and how deep operational demand goes
+  negative and what storage/shifting costs to manage the energy, but "is
+  the system secure at 2 GW operational demand" cannot be answered here —
+  that needs a dynamics/stability toolchain.
+coverage: gap
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

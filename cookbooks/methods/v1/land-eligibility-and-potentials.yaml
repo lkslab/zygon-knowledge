@@ -1,0 +1,1517 @@
+id: land-eligibility-and-potentials
+title: "Land eligibility and renewable potentials (GIS exclusion + weather-to-power conversion)"
+summary: >
+  Turn weather reanalysis and land-cover rasters into two per-region numbers: an
+  installable-capacity ceiling from eligible area times an allowed deployment density,
+  and an hourly capacity-factor series from a turbine power curve or PV panel model.
+question: >
+  How much wind and solar can physically be built in each region, and what does the
+  weather let it produce hour by hour?
+aliases:
+  - "land eligibility"
+  - "land availability"
+  - "land-use availability"
+  - "availability matrix"
+  - "exclusion zones"
+  - "eligible area"
+  - "GIS exclusion analysis"
+  - "renewable potentials"
+  - "installable capacity potential"
+  - "technical potential"
+  - "capacity density / power density (MW/km2)"
+  - "capacity factor time series"
+  - "atlite"
+  - "GLAES"
+  - "GlobalEnergyGIS / GEGIS"
+  - "resource classes / resource quality classes"
+  - "supply curves"
+  - "cutout"
+  - "reanalysis-to-power conversion"
+when_to_use:
+  - "how much wind could my country actually build"
+  - "what is the maximum solar capacity in this region"
+  - "the model builds far more wind than would ever get planning permission"
+  - "I want to restrict wind expansion to reflect public acceptance"
+  - "how do I exclude national parks / protected areas from the siting"
+  - "can we include floating offshore wind in deeper water"
+  - "keep turbines away from shipping lanes and settlements"
+  - "what water depth limit is assumed for offshore wind"
+  - "the capacity factors look too high / too low versus what we actually measure"
+  - "which weather year is the model using and can I change it"
+  - "I want to model a different turbine or a tracking PV system"
+  - "how do I run this for a country outside Europe"
+  - "split each region into good and bad wind sites instead of one average"
+  - "the good sites should be built first, not an average site"
+  - "where does the model's rooftop-vs-utility solar split come from"
+family: spatial-resolution
+prevalence:
+  papers: 49
+  tier1: 33
+  tier2: 16
+  sweep_hits: 59
+  basis: >
+    Hand-coded pass 1 over all 100 PDFs (2026-07-25) found 49 papers that state a land
+    eligibility / potentials procedure with parameters — the 5th most prevalent method in
+    the corpus. The regex screen returned 59; the surplus is papers that name "atlite" or
+    "capacity factor" only in a data-availability or related-work sentence. No paper in
+    this slice is flagged in _qa/EVIDENCE_INDEX.md's mention-only list. The role split is
+    the tell: 41 of 49 are `routine-use`. This is infrastructure — almost nobody in the
+    PyPSA literature re-derives it, they inherit Hörsch's 2018 defaults and at most
+    override one density number. That is exactly why it is the highest-leverage silent
+    assumption in the book: a 2 vs 3 vs 1.5 MW/km2 onshore density changes the answer more
+    than most scenario choices, and 41 papers took it as given.
+procedure:
+  - step: >
+      Build (or fetch) a CUTOUT: a rectangular, time-sliced subset of a reanalysis
+      dataset, stored as netCDF with the weather features the later conversions need.
+      ERA5 is the universal base (0.25-0.3 deg, hourly); SARAH-2/SARAH-3 satellite
+      irradiance (0.05 deg, 30 min) is substituted for solar influx where available, and
+      GEBCO supplies bathymetry. The cutout's spatial extent and year range fix, once and
+      for all, which regions and which weather years the study can address.
+    handle: "Cutout(...).prepare() -> era5.get_data / sarah.get_data"
+    provenance: "atlite/cutout.py:def prepare; atlite/datasets/era5.py:get_data; atlite/datasets/sarah.py:get_data"
+  - step: >
+      Assemble the exclusion stack for one technology: a container of raster and vector
+      layers, each either excluding or (inverted) restricting to its codes. The corpus's
+      canonical stack is (a) land-cover codes — keep agriculture/forest/semi-natural for
+      onshore wind, keep a wider set for PV; (b) protected areas (Natura 2000 in Europe,
+      WDPA/protectedplanet globally); (c) a buffered distance rule around settlement
+      codes, 1000 m in the reference implementation; (d) offshore only: a bathymetry
+      threshold, a shore-distance buffer, and in later work a shipping-density threshold.
+    handle: "atlite.ExclusionContainer(crs=, res=).add_raster / .add_geometry"
+    provenance: "atlite/gis.py:ExclusionContainer; atlite/gis.py:def add_raster; atlite/gis.py:def add_geometry"
+  - step: >
+      Rasterise every region against that stack at the excluder resolution (100 m onshore,
+      200 m offshore in the reference config) and reduce to an AVAILABILITY MATRIX
+      A[region, x, y]: the eligible-area overlap of region r with cutout cell (x,y). This
+      is the expensive step — it is a reprojection and per-region mask over a
+      continental-scale raster, and it is what `nprocesses` parallelises.
+    handle: "cutout.availabilitymatrix(regions, excluder) -> compute_availabilitymatrix"
+    provenance: "atlite/cutout.py:availabilitymatrix; atlite/gis.py:compute_availabilitymatrix; atlite/gis.py:shape_availability"
+  - step: >
+      Convert weather to a per-cell capacity factor. Wind: extrapolate the reanalysis wind
+      speed to hub height by a logarithmic/power law, then evaluate a named turbine power
+      curve, optionally Gaussian-smoothed to represent within-cell speed spread. PV:
+      compute solar position and surface orientation (fixed slope/azimuth, latitude-optimal,
+      or single-axis tracking), split influx into direct/diffuse/ground components, then
+      apply a panel efficiency model (Huld or Bofinger) that includes the temperature
+      derate.
+    handle: "cutout.wind(turbine=, ...) / cutout.pv(panel=, orientation=, tracking=)"
+    provenance: "atlite/convert.py:def wind; atlite/convert.py:def pv; atlite/wind.py:extrapolate_wind_speed; atlite/resource.py:get_windturbineconfig; atlite/resource.py:windturbine_smooth; atlite/pv/orientation.py:SurfaceOrientation; atlite/pv/solar_panel_model.py:SolarPanelModel"
+  - step: >
+      Compute the per-region installable ceiling. atlite deliberately does NOT place
+      individual turbines: p_nom_max = capacity_per_sqkm * (A @ cell_area). The whole
+      siting question therefore collapses into ONE number per technology, the allowed
+      deployment density, which the corpus reports anywhere from 1.0 to 10 MW/km2 onshore
+      and 1.45 to 145 MW/km2 for PV depending on whether the number is a technical density
+      or a technical density already multiplied by an area-utilisation fraction.
+    handle: "capacity_per_sqkm * availability @ area"
+    provenance: "scripts/build_renewable_profiles.py:capacity_per_sqkm"
+  - step: >
+      Build the deployment LAYOUT — the assumed spatial distribution of capacity inside a
+      region — and aggregate the per-cell capacity factors against it into ONE per-region
+      p_max_pu series. The house default is layout = capacity_factor * area * density, i.e.
+      capacity proportional to local resource quality; the corpus also uses CF-squared
+      weighting and uniform layouts. This weighting is a modelling choice, not a
+      measurement, and it sets how optimistic the aggregated profile is.
+    handle: "convert_and_aggregate(matrix=, layout=, per_unit=True)"
+    provenance: "atlite/convert.py:convert_and_aggregate"
+  - step: >
+      (extension) Bin the cells of each region into RESOURCE CLASSES by capacity factor
+      and emit one (p_nom_max, p_max_pu) pair per class, so the optimiser sees a step
+      supply curve per region instead of one average site and builds the good sites first.
+      The corpus spans 3 classes (percentile bands) to 100 (GEGIS supply curves).
+    handle: "resource_classes -> class_masks"
+    provenance: "scripts/build_renewable_profiles.py:resource_classes; scripts/build_renewable_profiles.py:class_masks"
+  - step: >
+      Attach the pair to the network as an extendable generator with p_nom_max as the
+      capacity bound and p_max_pu as the dispatch bound, clipping tiny p_max_pu values to
+      zero and dropping regions below a minimum potential so the LP is not polluted with
+      near-useless generators.
+    handle: "attach_wind_and_solar(...) with clip_p_max_pu"
+    provenance: "scripts/add_electricity.py:attach_wind_and_solar; scripts/build_renewable_profiles.py:clip_p_max_pu"
+  - step: >
+      Reconcile the ceiling with what already exists and with policy: subtract existing
+      vintages from p_nom_max so brownfield capacity consumes the land budget; make
+      technologies that compete for the same land (fixed vs tracking PV) share one budget;
+      and optionally impose per-period build-rate caps so the ceiling is not reached
+      instantaneously.
+    handle: "add_land_use_constraint / add_solar_potential_constraints / add_max_growth"
+    provenance: "scripts/solve_network.py:add_land_use_constraint; scripts/solve_network.py:add_solar_potential_constraints; scripts/solve_network.py:add_max_growth"
+  - step: >
+      (extension) Bias-correct the resulting profiles against observation — a global
+      multiplicative factor, a linear regression, or a quantile-to-quantile mapping onto
+      metered generation. Reanalysis-derived profiles are known to be biased regionally,
+      and every correction in the corpus is applied AFTER conversion, never inside it.
+    handle: "correction_factor (scalar only)"
+    provenance: "scripts/build_renewable_profiles.py:correction_factor"
+  - step: >
+      (extension, hydro) The same runoff field becomes reservoir/ROR inflow via a
+      basin-routed potential-energy conversion, then is rescaled so the annual total
+      matches reported national generation — the one place in this method where an
+      observational anchor is applied by default rather than as an extension.
+    handle: "cutout.runoff(normalize_using_yearly=) / cutout.hydro"
+    provenance: "atlite/convert.py:def runoff; atlite/hydro.py:shift_and_aggregate_runoff_for_plants"
+variants:
+  - id: corine-natura-density-cap
+    what: >
+      The reference European recipe and the one 30+ corpus papers inherit verbatim: CORINE
+      land-cover code whitelist + Natura 2000 exclusion + a settlement-distance buffer +
+      a 50-60 m offshore depth limit, reduced to p_nom_max by a single MW/km2 density. The
+      only knob most studies touch is that density.
+    papers:
+      - "2018_Hoersch_PyPSA-Eur_EnergyStratRev.pdf"
+      - "2017_Hoersch_Spatial-scale-generation-transmission_EEM.pdf"
+      - "2017_Schlachtberger_Benefits-Cooperation-Renewable-Network_Energy.pdf"
+      - "2018_Brown_Synergies-sector-coupling-transmission_Energy.pdf"
+      - "2018_Schlott_Climate-Change-Renewable-Network_ApplEnergy.pdf"
+      - "2018_Zhu_CO2-prices-electricity-heating_ApplEnergy.pdf"
+      - "2019_Victoria_Storage-technologies-decarbonisation_EnConvMgmt.pdf"
+      - "2020_Schyska_sensitivity-power-system-expansion-models.pdf"
+      - "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+      - "2023_Neumann_Broad-Ranges-Investment-Robust_iScience.pdf"
+      - "2024_Xie_direct-indirect-hydrogen-storage-renewable-europe.pdf"
+      - "2025_Hofmann_H2-CO2-Network-Strategies_NatEnergy.pdf"
+      - "2025_Seibold_Germany-Industry-Transformation.pdf"
+      - "2026_Geis_Managing-the-Mismatch-Flexibility_AdvApplEnergy.pdf"
+      - "2026_Geis_Price-Formation-Sector-Coupled_EnergyEcon.pdf"
+      - "2024_Gallego-Castillo_PyPSA-Spain-extension-PyPSA-Eur_ESR.pdf"
+  - id: availability-matrix-tooling
+    what: >
+      The generic, projection-agnostic formulation that made the above reusable: an
+      ExclusionContainer of arbitrary rasters and geometries reduced to an availability
+      matrix, with potential = eligible area x allowed density and NO explicit placement
+      algorithm. Buys portability to any region and any exclusion layer; the price is that
+      "siting" is one scalar density.
+    papers:
+      - "2021_Hofmann_atlite-renewable-power-potentials_JOSS.pdf"
+      - "2021_Frysztacki_Network-resolution-wind-solar_ApplEnergy.pdf"
+      - "2022_Frysztacki_clustering-methods-spatial-reduction_EnergyInformatics.pdf"
+      - "2023_Frysztacki_Inverse-methods-disaggregation_Energy.pdf"
+      - "2022_Grochowicz_intersecting-near-optimal-spaces-weather.pdf"
+      - "2023_Grochowicz_weather-induced-extreme-events-renewable.pdf"
+      - "2023_Mockert_Dunkelflauten-Germany_MetApps.pdf"
+      - "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+      - "2024_Riepin_Spatio-temporal-load-shifting-clean-computing_AdvApplEnergy.pdf"
+      - "2023_Tries_Islanding-Green-Hydrogen.pdf"
+      - "2025_Che_space-based-solar-power-european-decarbonization.pdf"
+      - "2026_Kalweit_near-optimal-carbon-capture-conversion-storage.pdf"
+      - "2021_Parzen_beyond-cost-reduction-value-energy-storage.pdf"
+      - "2021_Zeyen_Mitigating-heat-demand-peaks_Energy.pdf"
+      - "2026_Glaum_Minimal-Methanol-Backstop_Joule.pdf"
+      - "2026_Schauss_Pit-Thermal-Energy-Storage.pdf"
+      - "2025_Franken_Geothermal-Market-Integration.pdf"
+  - id: global-non-corine-landcover
+    what: >
+      The same procedure outside Europe, where CORINE does not exist: Copernicus Global
+      Land Service 100 m land cover plus WDPA/protectedplanet protected areas, and a
+      cutout that must be built or staged per continent rather than downloaded ready-made.
+      Densities are re-derived from observed plants (4.6 MW/km2 PV, 3 MW/km2 onshore) and
+      applied uniformly regardless of land-cover type — conservative in deserts.
+    papers:
+      - "2022_Parzen_PyPSA-Earth-global-open-energy-model-Africa_ApplEnergy.pdf"
+      - "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+      - "2023_Parzen_value-competing-energy-storage-decarbonized.pdf"
+      - "2021_Kirli_PyPSA-meets-Africa-open-electricity-network.pdf"
+  - id: offshore-depth-banded-and-shipping
+    what: >
+      Offshore refinement: subdivide offshore regions by EEZ or to a maximum area
+      (~10,000 km2), split the resource into depth bands with different technologies
+      (fixed-bottom below 60 m, floating 60-1000 m), exclude busy shipping lanes, and let
+      investment cost vary with depth and distance. Buys a near-shore/far-shore
+      distinction that a single offshore potential per country destroys.
+    papers:
+      - "2023_Glaum_Offshore-Wind-North-Sea-Floating_EEM.pdf"
+      - "2024_Glaum_Offshore-power-hydrogen-North-Sea_ApplEnergy.pdf"
+  - id: resource-class-supply-curves
+    what: >
+      Bin each region's cells by capacity factor and emit one generator per class, so the
+      region presents a step supply curve. Corpus range: 3 percentile classes, 3 classes
+      per country in a dispatch hindcast, up to 100 CF classes in GEGIS-based export
+      studies. The fix for the average-site bias that aggregation otherwise bakes in.
+    papers:
+      - "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+      - "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+      - "2023_Hampp_Import-chemical-energy-carriers-Germany_PLOSONE.pdf"
+  - id: acceptance-restricted-potential
+    what: >
+      Deliberately shrink the geographic ceiling to represent public acceptance or
+      observed build rates rather than physics: sweep onshore potential from 0-100% of the
+      geographic limit, cut utility PV land to one third, or set onshore density to
+      1.0-1.5 MW/km2. Cheap to do and among the most consequential single assumptions in
+      the corpus.
+    papers:
+      - "2018_Schlachtberger_Cost-optimal-scenarios-weather_Energy.pdf"
+      - "2025_Neumann_Green-energy-steel-imports-net-zero_NatComms.pdf"
+      - "2023_vanGreevenbroek_regional-overall-energy-system-flexibility.pdf"
+      - "2022_Victoria_Speed-technological-transformations_Joule.pdf"
+  - id: profile-bias-correction
+    what: >
+      Correct the converted profiles against metered output: a global scalar (x0.9 wind,
+      x0.8 solar; PV -21%), a linear regression onto OPSD, or a quantile-to-quantile
+      mapping. Distinct from the density knob — it fixes the TIME SERIES, not the ceiling,
+      and only the scalar form is expressible in config.
+    papers:
+      - "2020_Frysztacki_Curtailment-Germany-Spatial-Resolution_EEM.pdf"
+      - "2024_Gallego-Castillo_PyPSA-Spain-extension-PyPSA-Eur_ESR.pdf"
+      - "2023_Mockert_Dunkelflauten-Germany_MetApps.pdf"
+      - "2018_Schlott_Climate-Change-Renewable-Network_ApplEnergy.pdf"
+      - "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+  - id: non-vre-land-potentials
+    what: >
+      Reuse the land-cover raster to derive a potential for something that is not a
+      turbine or a panel: afforestation and enhanced rock weathering area from CORINE
+      classes, pit thermal storage siting from land-cover categories, EGS geothermal
+      suitability, biomass from ENSPRESO. Same exclusion machinery, new target, and
+      always a new script — this is where the method reaches beyond its config surface.
+    papers:
+      - "2026_Fernandes_carbon-dioxide-removal-decarbonise.pdf"
+      - "2026_Schauss_Pit-Thermal-Energy-Storage.pdf"
+      - "2025_Franken_Geothermal-Market-Integration.pdf"
+      - "2026_Glaum_Minimal-Methanol-Backstop_Joule.pdf"
+  - id: climate-projection-cutout
+    what: >
+      Replace reanalysis with downscaled climate-model output (EURO-CORDEX,
+      CNRM-ALADIN63 under RCP4.5) so potentials and profiles reflect a future climate
+      rather than a historical year. The exclusion side is unchanged; only the cutout
+      source moves, which is precisely why it is a data problem and not a code one.
+    papers:
+      - "2025_DiBella_European-green-industrial-transformation.pdf"
+      - "2018_Schlott_Climate-Change-Renewable-Network_ApplEnergy.pdf"
+literature:
+  - paper: "2018_Hoersch_PyPSA-Eur_EnergyStratRev.pdf"
+    tier: 1
+    role: defines
+    note: >
+      The recipe 30+ later papers inherit. Fixes the European stack: CORINE codes for
+      agricultural + forest/semi-natural for onshore wind, 1000 m minimum distance from
+      urban fabric, Natura 2000 excluded, offshore capped at 50 m depth; ERA5 at 0.28 deg
+      via atlite with Vestas V112 3 MW (onshore) and NREL 5 MW (offshore) power curves
+      Gaussian-smoothed; and — the numbers that matter — 10 MW/km2 onshore technical
+      density at 30% land fraction, 145 MW/km2 solar at 1% permitted fraction. Capacity is
+      then distributed across Voronoi cells weighted by capacity factor x installable
+      area. Note the two-number form (technical density x permitted fraction); later work
+      collapses it to one effective density, which is why corpus densities look
+      inconsistent until you check which convention is meant.
+  - paper: "2021_Hofmann_atlite-renewable-power-potentials_JOSS.pdf"
+    tier: 2
+    role: defines
+    note: >
+      The tooling paper: what the harness should verify by name. Defines the Availability
+      Matrix A[r,x,y] as the eligible-area overlap of region r with cell (x,y), computed
+      from an ExclusionContainer of arbitrary rasters or vector geometries in arbitrary
+      projections (CLC codes, protected-area polygons), and states the design decision
+      that governs everything downstream: "atlite does not use an explicit placement
+      algorithm ... but the product of available area and allowed deployment density".
+      Capacity factors aggregate as phi_r(t) = sum_xy I_rxy lambda_xy phi_xy(t) with a
+      user-supplied layout weighting lambda. Defaults ERA5 0.25 deg / 1 h, SARAH-2
+      0.05 deg / 30 min. Credits GLAES (Ryberg 2018) as the inspiration.
+  - paper: "2021_Frysztacki_Network-resolution-wind-solar_ApplEnergy.pdf"
+    tier: 1
+    role: canonical-use
+    note: >
+      The reference demonstration that potentials resolution is a first-order result
+      driver, not a preprocessing detail. Uses GLAES rather than atlite for the
+      exclusions (nature reserves, cities, streets) with ERA5 for wind and SARAH-2 for
+      solar, and decomposes capacity-expansion outcomes into a resource-resolution effect
+      and a network-resolution effect at 37-1024 nodes: similar magnitude, OPPOSITE sign,
+      very different technology mixes. The single most useful citation when a user asks
+      whether a coarse model's potentials are good enough.
+  - paper: "2022_Parzen_PyPSA-Earth-global-open-energy-model-Africa_ApplEnergy.pdf"
+    tier: 2
+    role: canonical-use
+    note: >
+      The reference for doing this outside Europe, and the source of pypsa-earth's
+      defaults. Substitutes Copernicus Global Land Service land cover for CORINE and
+      protectedplanet.net for Natura 2000, builds the eligible-area raster at 0.25 deg and
+      area-weight-averages it down to the shapes, and re-derives socio-technical densities
+      against 41 large PV plants and 7 utility wind farms: 4.6 MW/km2 PV, 3 MW/km2
+      onshore, 2 MW/km2 offshore. Also rescales atlite hydro runoff to EIA reported
+      national production. Explicitly flags that one density applied irrespective of land
+      cover is conservative for desert regions.
+  - paper: "2023_Glaum_Offshore-Wind-North-Sea-Floating_EEM.pdf"
+    tier: 1
+    role: extends
+    note: >
+      The offshore extension that has since landed in pypsa-eur's defaults. Three changes:
+      exclude busy shipping lanes on top of nature reserves and depth; subdivide offshore
+      regions by exclusive economic zone for near/far-shore differentiation; and split the
+      resource at 60 m into fixed-bottom and floating, at 5 MW/km2 with an NREL 12 MW
+      turbine. Site-specific investment cost from the Danish Energy Agency model as a
+      function of depth, rotor diameter, hub height, specific power and farm size — the
+      "depth-dependent offshore cost model" that pass 1 could not slug, and the piece that
+      is still NOT in the config surface.
+  - paper: "2024_Glaum_Offshore-power-hydrogen-North-Sea_ApplEnergy.pdf"
+    tier: 1
+    role: extends
+    note: >
+      Pushes offshore spatial resolution to its useful limit: 66 offshore regions capped at
+      ~10,000 km2 each, three offshore wind technologies with separate potentials AND
+      separate profiles (near fixed-bottom 1-30 km <60 m, far fixed-bottom >30 km <60 m,
+      floating >1 km <1000 m), ERA5 at 30 km with exclusions rasterised at 100 m. Adds
+      piecewise wake losses by cumulative build-out (9% for the first 2 GW, 21% for the
+      next 10, 32% beyond) — a potential-dependent derate with no handle in either model.
+  - paper: "2024_Gallego-Castillo_PyPSA-Spain-extension-PyPSA-Eur_ESR.pdf"
+    tier: 2
+    role: extends
+    note: >
+      The most explicit audit of the exclusion stack in the corpus, and the source of the
+      bias-correction variant. Documents the exact CORINE codes per technology (onshore
+      wind: 12-32 included, 1-6 excluded with a 1 km buffer; PV: 1-32) and reports the
+      resulting eligible fractions for Spain — 64.65% for onshore wind, 41.97% for PV —
+      then applies a deliberately conservative 1 MW/km2 for public acceptance. Separately
+      adds a quantile-to-quantile bias correction of the atlite profiles against observed
+      generation, which is a shape correction the scalar `correction_factor` cannot express.
+  - paper: "2026_Fernandes_carbon-dioxide-removal-decarbonise.pdf"
+    tier: 2
+    role: extends
+    note: >
+      Extends the machinery past electricity: derives four CDR land potentials from the same
+      CORINE raster at 90-node resolution — afforestation from 60% of "transitional
+      woodland/shrub" (15 Mha, 83 MtCO2/a), enhanced rock weathering from 20% of arable land
+      filtered to regions with mean annual temperature >= 10 C (14 Mha, 43 MtCO2/a), biochar
+      from 20% of arable land (23 Mha, 30 MtCO2/a), perennialisation from JRC ENSPRESO
+      first-generation biofuel cropland (21 Mha, 43 MtCO2/a). The template for "use the
+      land raster for a non-VRE potential": a climate filter plus a utilisation fraction.
+  - paper: "2017_Hoersch_Spatial-scale-generation-transmission_EEM.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Pre-atlite ancestor: Natura 2000 + CORINE exclusion with the Aarhus renewable atlas
+      (40x40 km NCEP, 2012) for profiles, and densities of 2 MW/km2 wind / 1.7 MW/km2
+      solar reached by scaling layouts until the first site saturates. Records the
+      aggregation rule the whole family uses when clustering: sum the per-cell maxima,
+      average the availability series with site-quality weighting.
+  - paper: "2017_Schlachtberger_Benefits-Cooperation-Renewable-Network_Energy.pdf"
+    tier: 1
+    role: routine-use
+    note: "Same CORINE + Natura land-type restriction supplying per-node installable maxima on a 30-node European model; contributes no method content beyond confirming the stack was already standard by 2017."
+  - paper: "2018_Brown_Synergies-sector-coupling-transmission_Energy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Useful because it states the two-number convention explicitly: 10 MW/km2 theoretical
+      onshore of which 20% is used (2 MW/km2 effective), 145 MW/km2 theoretical solar of
+      which 1% is used (1.45 MW/km2 effective). Offshore 50 m depth. Anyone comparing
+      corpus densities needs this sentence.
+  - paper: "2018_Schlachtberger_Cost-optimal-scenarios-weather_Energy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The acceptance-sweep precedent: per-country CORINE-2006 + Natura 2000 caps that
+      explicitly include "likely public acceptance", then a policy sensitivity reducing
+      onshore wind's cap from 100% down to 0% of the geographic potential while leaving
+      offshore at the geographic limit. The template for turning a potential into a
+      scenario axis.
+  - paper: "2018_Schlott_Climate-Change-Renewable-Network_ApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Two contributions to the periphery of the method: it swaps reanalysis for EURO-CORDEX
+      climate projections while keeping the CORINE-2012/Natura exclusion unchanged (the
+      climate-projection-cutout variant), and it applies a blanket -21% correction to PV
+      capacity factors to match observation.
+  - paper: "2018_Zhu_CO2-prices-electricity-heating_ApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: "Natura 2000 + CORINE with the 20%-of-area wind / 1%-of-area PV convention and 50 m offshore depth, plus a 50/50 rooftop-vs-utility PV split at different costs — the origin of the rooftop share question users ask about."
+  - paper: "2019_Victoria_Storage-technologies-decarbonisation_EnConvMgmt.pdf"
+    tier: 1
+    role: routine-use
+    note: "Land eligibility at CFSR raster-cell level with the same 20%/1% coverage ratios (2 MW/km2 wind, 1.5 MW/km2 PV) and 50 m offshore limit; PV bias-corrected against satellite data."
+  - paper: "2020_Frysztacki_Curtailment-Germany-Spatial-Resolution_EEM.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The clearest statement of the crude bias correction: capacity factors from weather
+      are uniformly scaled by 0.9 (wind) and 0.8 (solar) at every point in space and time
+      to match historical production. Also substitutes registry-based capacity placement
+      (Marktstammdatenregister, nearest-substation assignment) for the resource-weighted
+      layout — a different answer to "where inside the region is the capacity".
+  - paper: "2020_Schyska_sensitivity-power-system-expansion-models.pdf"
+    tier: 2
+    role: routine-use
+    note: "Inherits the CORINE-2012/Natura stack at 3 MW/km2 onshore and 1.45 MW/km2 PV as LP upper bounds; states plainly that the potentials were not varied in the study, which is representative of the 41 routine-use papers."
+  - paper: "2021_Kirli_PyPSA-meets-Africa-open-electricity-network.pdf"
+    tier: 2
+    role: routine-use
+    note: "Announces the intended atlite + land-cover + protected-area + GEBCO pipeline for Africa but shows no results from it; kept because it documents the design intent that became pypsa-earth's build_renewable_profiles."
+  - paper: "2021_Parzen_beyond-cost-reduction-value-energy-storage.pdf"
+    tier: 2
+    role: routine-use
+    note: "Cites atlite as the land-availability and profile tool for the underlying model; no independent procedure content."
+  - paper: "2021_Zeyen_Mitigating-heat-demand-peaks_Energy.pdf"
+    tier: 1
+    role: routine-use
+    note: "Standard renewable potentials, plus a land-requirement argument used to restrict ground-source heat pumps to rural regions — a reminder that land constraints in this family are not only about VRE."
+  - paper: "2022_Frysztacki_clustering-methods-spatial-reduction_EnergyInformatics.pdf"
+    tier: 1
+    role: routine-use
+    note: "GLAES exclusions (nature reserves, cities, streets) bounding installable capacity from above and today's fleet from below; ERA5 0.281 deg wind, SARAH-2 0.05 deg solar, 80 m hub height, 35 deg south-facing PV. The concrete parameter set behind the clustering comparison."
+  - paper: "2022_Grochowicz_intersecting-near-optimal-spaces-weather.pdf"
+    tier: 2
+    role: routine-use
+    note: "Uses ERA5-derived atlite capacity factors across many weather years; the potentials side is standard and unvaried, which is what makes the weather ensemble interpretable."
+  - paper: "2022_Victoria_Speed-technological-transformations_Joule.pdf"
+    tier: 1
+    role: routine-use
+    note: "Per-region onshore, offshore and PV maxima from the standard estimate, used unchanged across a large pathway ensemble; an instance of the acceptance-restricted framing applied as a fixed assumption rather than a sweep."
+  - paper: "2023_Frysztacki_Inverse-methods-disaggregation_Energy.pdf"
+    tier: 1
+    role: routine-use
+    note: "Formalises the land-use bound as an explicit constraint G_vs <= G_vs^max in the disaggregation problem — useful for the wording of the constraint when it must be written by hand."
+  - paper: "2023_Grochowicz_weather-induced-extreme-events-renewable.pdf"
+    tier: 2
+    role: routine-use
+    note: "Documents the conversion chain a user should be told about: ERA5 100 m wind extrapolated logarithmically to hub height through a Vestas V112 3 MW reference curve, PV from direct+diffuse shortwave at fixed 35 deg tilt with no tracking, over 40 years."
+  - paper: "2023_Hampp_Import-chemical-energy-carriers-Germany_PLOSONE.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The supply-curve extreme, and the main non-atlite alternative in the corpus:
+      GlobalEnergyGIS on a 1 km2 grid excluding protected areas, unsuitable land, high
+      population density and anything outside 400 km of GDP density 100,000 USD/km2,
+      yielding 100 CF quality classes per technology per country at 1.45 MW/km2 PV and
+      3 MW/km2 wind, up to 300 independent hourly series per exporting country.
+  - paper: "2023_Mockert_Dunkelflauten-Germany_MetApps.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Names the conversion models a user might want changed (Huld PV model, azimuth 180,
+      slope 35; Vestas V112 3 MW onshore; NREL 5 MW offshore; ERA5 0.25 deg / 1 h), and is
+      candid that assuming capacity is distributed proportionally to capacity factor is
+      optimistic — hence a linear-regression correction to observed OPSD output.
+  - paper: "2023_Neumann_Broad-Ranges-Investment-Robust_iScience.pdf"
+    tier: 1
+    role: routine-use
+    note: "Per-technology eligible area computed inside each node's Voronoi cell, unvaried across the near-optimal sweep; the potentials are the fixed frame within which the ranges are reported."
+  - paper: "2023_Neumann_Hydrogen-Network-Europe_Joule.pdf"
+    tier: 1
+    role: routine-use
+    note: "ERA5 + SARAH-2 with CORINE/Natura exclusions and offshore EEZ Voronoi regions, plus a restricted-onshore-wind sensitivity — the acceptance restriction used as a robustness check on a network result."
+  - paper: "2023_Parzen_value-competing-energy-storage-decarbonized.pdf"
+    tier: 2
+    role: routine-use
+    note: "ERA5-derived potentials via the pypsa-earth pipeline; inherits the Copernicus/protectedplanet stack without modification."
+  - paper: "2023_Tries_Islanding-Green-Hydrogen.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      The degenerate case worth knowing: atlite used for two fixed points per country with
+      NO exclusion layer at all, and spatial aggregation weighted by the SQUARE of the mean
+      capacity factor to represent siting at the best resource. Shows how far the layout
+      weighting alone can move a profile.
+  - paper: "2023_vanGreevenbroek_regional-overall-energy-system-flexibility.pdf"
+    tier: 2
+    role: routine-use
+    note: "Cuts utility PV land to one third of the pypsa-eur default as a deliberate acceptance restriction — the clearest single-line example of the lever most users actually want."
+  - paper: "2024_Riepin_24-7-carbon-free-energy-procurement_EnergyStratRev.pdf"
+    tier: 1
+    role: routine-use
+    note: "atlite feed-in profiles as standard machinery; no potentials content beyond confirming the default chain."
+  - paper: "2024_Riepin_Spatio-temporal-load-shifting-clean-computing_AdvApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: "Weather-dependent potentials and profiles for PV and onshore wind from the default chain, used as fixed inputs to a load-shifting study."
+  - paper: "2024_Xie_direct-indirect-hydrogen-storage-renewable-europe.pdf"
+    tier: 2
+    role: routine-use
+    note: "CORINE-based aggregation of suitable land per reanalysis grid cell as the standard potential bound; no modification."
+  - paper: "2025_Che_space-based-solar-power-european-decarbonization.pdf"
+    tier: 2
+    role: routine-use
+    note: "Standard land-eligibility filters on ERA5 2020, with hydro pinned at p_nom_max = p_nom — the routine way to say a technology has no expansion potential."
+  - paper: "2025_DiBella_European-green-industrial-transformation.pdf"
+    tier: 1
+    role: routine-use
+    note: "Keeps atlite land eligibility but drives it with downscaled climate projections (CNRM-CERFACS-CM5 / CNRM-ALADIN63, RCP 4.5) instead of a historical reanalysis year; hydro fixed. The practical instance of the climate-projection-cutout variant."
+  - paper: "2025_Franken_Geothermal-Market-Integration.pdf"
+    tier: 1
+    role: routine-use
+    note: "Spatially heterogeneous EGS suitability introduced as a per-region potential from external geological data — the non-VRE land potential pattern applied to geothermal."
+  - paper: "2025_Hofmann_H2-CO2-Network-Strategies_NatEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: "Land-use-class and protected-area restricted expansion as inherited defaults in a large sector-coupled network study."
+  - paper: "2025_Neumann_Green-energy-steel-imports-net-zero_NatComms.pdf"
+    tier: 1
+    role: routine-use
+    note: >
+      Two things worth quoting to users. First, a deliberately restrictive 1.5 MW/km2
+      onshore density justified by observed low European build rates — the corpus's
+      most explicit reality-check on the default 3. Second, it replaces GEGIS with atlite
+      for the non-European exporting countries, i.e. the global variant used in anger.
+  - paper: "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+    tier: 1
+    role: routine-use
+    note: "The pypsa-earth chain stated plainly: atlite with ERA5 + SARAH-2 for time series and Copernicus Global Land Service at 100 m for land availability, at 14-node resolution — the reference sentence for a non-European study."
+  - paper: "2025_Seibold_Germany-Industry-Transformation.pdf"
+    tier: 1
+    role: routine-use
+    note: "CORINE + Natura 2000 land availability as inherited defaults; representative routine use in a national industry study."
+  - paper: "2026_Duque-Perez_demand-scenarios-weather-variability.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      A Boolean overlay of exclusion layers (forest, urban, cropland, water, snow, mixed)
+      plus non-land criteria the standard stack cannot express: a minimum suitability
+      score, within 30 km of the grid, and PtX restricted to coastal or low-water-stress
+      areas. Results binned into three percentile resource classes (top 5% / next 10% /
+      remainder) — the cleanest small-N instance of resource-class supply curves.
+  - paper: "2026_Geis_Managing-the-Mismatch-Flexibility_AdvApplEnergy.pdf"
+    tier: 1
+    role: routine-use
+    note: "atlite potentials and profiles with land-use restrictions as inherited defaults."
+  - paper: "2026_Geis_Price-Formation-Sector-Coupled_EnergyEcon.pdf"
+    tier: 1
+    role: routine-use
+    note: "Same inherited atlite chain; relevant here only because price formation is read off a system whose VRE ceiling came from this method."
+  - paper: "2026_Glaum_Minimal-Methanol-Backstop_Joule.pdf"
+    tier: 1
+    role: routine-use
+    note: "Regional biomass potentials from JRC ENSPRESO restricted to residues — a land-derived potential that enters the same p_nom_max/e_nom_max slot but comes from a spreadsheet, not a raster."
+  - paper: "2026_Kalweit_near-optimal-carbon-capture-conversion-storage.pdf"
+    tier: 2
+    role: routine-use
+    note: "Node-wise land-use and climate restrictions on afforestation, biochar, ERW and perennialisation capacities, inherited from the CDR extension; confirms those potentials are treated as hard per-node bounds."
+  - paper: "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+    tier: 2
+    role: routine-use
+    note: >
+      The most operationally specific citation in the slice, and the one to use when a user
+      asks whether profiles are trustworthy: atlite v0.4.1, 3 resource classes per
+      technology per country, ERA5 for wind and hydro inflow, SARAH3 for solar. Identifies
+      a known ERA5 wind-speed bias over the Iberian Peninsula as a cause of Spanish
+      dispatch discrepancies — a concrete regional failure of the conversion step.
+  - paper: "2026_Schauss_Pit-Thermal-Energy-Storage.pdf"
+    tier: 1
+    role: routine-use
+    note: "Siting eligibility for pit thermal storage from land-cover categories (arable, pasture, shrub/herbaceous, sparsely vegetated) — the exclusion raster reused for a storage technology."
+pitfalls:
+  - pitfall: >
+      The entire siting question is one scalar. Because potential = eligible area x
+      capacity_per_sqkm with no placement algorithm, the ceiling is linear in a number the
+      corpus reports across a 7x range for onshore wind (1.0 to 10 MW/km2) — and half those
+      numbers are technical densities awaiting an area-utilisation multiplier while the
+      other half already include it. Comparing two studies' potentials without checking
+      which convention each used is meaningless.
+    evidence: "2021_Hofmann_atlite-renewable-power-potentials_JOSS.pdf"
+    note: >
+      Always state the density AND whether a land-use fraction is already folded in. When a
+      user says "the model builds too much wind", the first question is the density, not the
+      cost assumption. 2018_Brown states the two-number convention explicitly; quote it.
+  - pitfall: >
+      Physical eligibility is not permittable land. The default stack encodes land cover,
+      protection status and distance, none of which capture planning refusal, local
+      opposition or grid-connection queues. The corpus's own practitioners routinely
+      override it downward — to 1.5 MW/km2, or to one third of the default PV area — and
+      say so in the text.
+    evidence: "2025_Neumann_Green-energy-steel-imports-net-zero_NatComms.pdf"
+    note: >
+      Treat the geographic potential as an upper bound to be restricted, not as a forecast.
+      Offer the acceptance-restricted-potential variant as a sweep (0-100% of geographic
+      potential) rather than picking one number silently.
+  - pitfall: >
+      Aggregating a region to one generator assumes the whole region has the region's
+      AVERAGE resource, and the default layout weighting (capacity proportional to local
+      capacity factor) then quietly makes it better than average. Resource resolution and
+      network resolution bias expansion results by similar magnitudes in OPPOSITE
+      directions, so a coarse model can look right by cancellation and be wrong in mix.
+    evidence: "2021_Frysztacki_Network-resolution-wind-solar_ApplEnergy.pdf"
+    note: >
+      Use resource classes (3 is usually enough) before adding buses. It is far cheaper
+      than clustering finer and it targets the actual bias.
+  - pitfall: >
+      Reanalysis-derived profiles carry regional biases that survive into dispatch and
+      price results, and the standard remedy is a blunt scalar. A known ERA5 wind-speed bias
+      over the Iberian Peninsula shows up directly as Spanish dispatch error; historical
+      practice has been to multiply wind by 0.9 and solar by 0.8 everywhere.
+    evidence: "2026_Karkossa_optimal-dispatch-models-recreate-reality.pdf"
+    note: >
+      A scalar correction_factor fixes the annual energy and leaves the SHAPE wrong. If the
+      question is about hours (prices, Dunkelflaute, hourly matching), use the
+      profile-bias-correction variant with a quantile mapping, and validate against metered
+      generation for the specific region before promising anything hour-resolved.
+  - pitfall: >
+      The cutout silently fixes the study's geography and weather years. Its bounding box
+      and year range are decided before any modelling, and a region partly outside it
+      produces a warning, not an error — so profiles can be built from incomplete weather
+      coverage and look plausible.
+    evidence: "2022_Parzen_PyPSA-Earth-global-open-energy-model-Africa_ApplEnergy.pdf"
+    note: >
+      Check cutout extent against the study region before anything else, and check the log
+      for partial-coverage warnings. Changing the weather year is cheap only if the cutout
+      already spans it; otherwise it is a data build with an API key.
+  - pitfall: >
+      Land is shared but the model does not know it unless told. Fixed and tracking PV
+      compete for the same hectares, existing turbines already occupy part of the ceiling,
+      and CDR/biomass/thermal-storage land potentials derived from the same raster classes
+      can double-count the same arable land across separate potential calculations.
+    evidence: "2026_Fernandes_carbon-dioxide-removal-decarbonise.pdf"
+    note: >
+      When a study adds a second land-consuming technology, check whether a shared-budget
+      constraint exists for it (pypsa-eur has one for solar/solar-hsat and one for
+      vintages; nothing generic). Otherwise the sum of potentials exceeds the land.
+  - pitfall: >
+      Offshore, a single potential per country hides the economics. Depth drives both
+      technology choice and cost, distance drives cable cost, and cumulative build-out
+      drives wake losses of 9-32% — none of which a per-country offshore ceiling can
+      express, and the cost side of it is not in any config surface.
+    evidence: "2024_Glaum_Offshore-power-hydrogen-North-Sea_ApplEnergy.pdf"
+    note: >
+      For any offshore-focused question use depth-banded technologies and finer offshore
+      regions. Be explicit that depth-dependent capital cost and build-out-dependent wake
+      losses remain bespoke code in both models.
+requires_methods:
+  - spatial-clustering-and-resolution
+combines_with:
+  - weather-year-ensembles
+  - spatial-clustering-and-resolution
+  - model-validation-and-backtesting
+  - brownfield-and-capacity-vintaging
+  - sensitivity-and-uncertainty-sweeps
+  - extreme-event-and-dunkelflaute-analysis
+  - import-and-trade-representation
+  - foresight-and-planning-horizons
+topics:
+  - renewable-energy-zones
+  - offshore-wind-integration
+  - high-resolution-spatial-modelling
+  - renewable-integration
+  - rooftop-solar-saturation
+  - water-energy-land-nexus
+  - multi-year-weather-variability
+pypsa_primitive: null
+models:
+  - model: pypsa-eur
+    version_anchor:
+      ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d"
+      date: "2026-07-25"
+    functionality:
+      - id: renewable-potentials-land-eligibility
+        role: >
+          the method itself — registry `working`. The full chain is two rules
+          (determine_availability_matrix, build_renewable_profiles) fully parameterised by
+          the `renewable.<tech>` config block, including per-node resource CLASSES
+      - id: weather-year-selection
+        role: >
+          the cutout/snapshot half of the method — registry `working`; the shipped
+          europe-1940-2024-era5 definition means any ERA5 year 1940-2024 is reachable by
+          moving the snapshots window IF the corresponding cutout file is present
+      - id: land-use-constraint
+        role: >
+          subtracts existing vintages from p_nom_max so brownfield capacity consumes the
+          land budget — `working` here, and absent from earth's registry entirely
+      - id: solar-potential-constraint
+        role: >
+          makes fixed and tracking PV share one land budget, weighted by their footprint
+          ratio — the only generic shared-land constraint in either model
+      - id: max-growth-limits
+        role: >
+          `partial`: per-carrier absolute/relative build-rate caps that stop the ceiling
+          being reached instantly — wired for foresight `perfect` only, and off by default
+      - id: hydro-inflow-normalization
+        role: "the observational anchor on the runoff branch of the same conversion step"
+      - id: multi-weather-year
+        role: "`partial` — needed if the potentials must be robust across years rather than built from one"
+      - id: spatial-clustering
+        role: >
+          the prerequisite: availability matrices and profiles are computed PER CLUSTERED
+          REGION, so the {clusters} wildcard sets what a potential is a potential of
+      - id: carrier-attribute-scaling
+        role: >
+          the cheapest acceptance restriction — `onwind+p2` or adjustments.electricity
+          rescales p_nom_max after the fact without rebuilding any raster
+      - id: shared-resources-caching
+        role: "cost control: availability matrices are wildcard-independent and can be shared across scenario runs instead of recomputed"
+      - id: data-retrieval-versioning
+        role: >
+          the switch that decides whether the cutout is DOWNLOADED or BUILT
+          (data.cutout.source: archive|build) — the single most important lever for whether
+          a weather-year change is L1 or L3
+    available:
+      verdict: turnkey
+      how: >
+        The whole procedure is the default workflow. `determine_availability_matrix` builds
+        an atlite ExclusionContainer from the `renewable.<tech>` block — natura raster,
+        corine or luisa grid_codes (inverted, i.e. a whitelist), a buffered
+        distance_grid_codes rule, a ship_threshold raster, GEBCO min/max depth, and
+        min/max_shore_distance geometry buffers — and writes availability_matrix per
+        {clusters} and {technology}. `build_renewable_profiles` then converts the cutout
+        through the named turbine/panel, bins cells into `resource_classes`, and emits
+        p_nom_max = capacity_per_sqkm * availability * class_masks @ area alongside the
+        profile. Every step of steps 1-9 has a config key. Notably the Glaum offshore
+        extensions are MERGED at this ref: `offwind-float` is a default renewable carrier
+        with min_depth 60 / max_depth 1000, all three offshore technologies carry
+        ship_threshold 400, and offshore regions are cut from EEZ shapes.
+      missing: >
+        Procedure step 10 (bias correction) exists only as a scalar `correction_factor`; the
+        regression and quantile-to-quantile corrections the corpus uses have no handle. Also
+        with no handle: depth- and distance-dependent capital cost, build-out-dependent wake
+        losses, non-land siting criteria (grid distance, water stress, suitability scores),
+        and any land potential for a non-VRE target (CDR, thermal storage, EGS) — the
+        exclusion machinery is reusable but nothing routes its output anywhere but a VRE
+        generator.
+      provenance: "scripts/determine_availability_matrix.py:ExclusionContainer; scripts/build_renewable_profiles.py:availabilitymatrix; scripts/add_electricity.py:attach_wind_and_solar"
+    levers:
+      - key: "renewable.onwind.capacity_per_sqkm"
+        effect: >
+          THE lever. Multiplies eligible area into p_nom_max, so the onshore ceiling is
+          linear in it. Corpus range 1.0-3.0 for the effective convention used here; drop to
+          1.5 for the restrictive/observed-build-rate assumption, 1.0 for a strong
+          acceptance restriction.
+        default: "3"
+        provenance: "config/config.default.yaml:capacity_per_sqkm; scripts/build_renewable_profiles.py:capacity_per_sqkm"
+      - key: "renewable.solar.capacity_per_sqkm"
+        effect: "Same for PV. Note the default is the effective density (5.1), not the 145 MW/km2 technical density of the 2018 paper."
+        default: "5.1"
+        provenance: "config/config.default.yaml:capacity_per_sqkm; scripts/build_renewable_profiles.py:capacity_per_sqkm"
+      - key: "renewable.onwind.corine.grid_codes"
+        effect: >
+          The land-cover WHITELIST (added inverted, so listed codes are the only eligible
+          ones). Default keeps CORINE 12-32, i.e. agricultural plus forest/semi-natural.
+          Narrowing it is the physically honest way to restrict potential.
+        default: "[12,13,...,29,31,32] (20 codes)"
+        provenance: "config/config.default.yaml:grid_codes; scripts/determine_availability_matrix.py:grid_codes"
+      - key: "renewable.onwind.corine.distance"
+        effect: "Buffer in metres applied around `distance_grid_codes` (urban fabric classes 1-6) — the settlement setback. Raising it is the standard proxy for stricter siting law."
+        default: "1000.0"
+        provenance: "config/config.default.yaml:distance_grid_codes; scripts/determine_availability_matrix.py:distance_grid_codes"
+      - key: "renewable.onwind.natura"
+        effect: "Include/exclude the Natura 2000 protected-area raster. Setting false silently enlarges every potential — never do it without saying so."
+        default: "true"
+        provenance: "config/config.default.yaml:natura; scripts/determine_availability_matrix.py:natura"
+      - key: "renewable.onwind.luisa"
+        effect: >
+          Swap CORINE for LUISA (50 m, JRC) land cover. `false` by default; the script warns
+          if it is enabled at a coarser excluder_resolution than 50 m. Present but unused
+          in the shipped config — check the retrieve rule fires before relying on it.
+        default: "false"
+        provenance: "config/config.default.yaml:luisa; scripts/determine_availability_matrix.py:luisa; rules/retrieve.smk:retrieve_luisa_land_cover"
+      - key: "renewable.onwind.excluder_resolution"
+        effect: "Raster resolution (m) at which exclusions are rasterised. 100 onshore, 200 offshore. Dominates the runtime and memory of determine_availability_matrix."
+        default: "100"
+        provenance: "config/config.default.yaml:excluder_resolution; scripts/determine_availability_matrix.py:excluder_resolution"
+      - key: "renewable.onwind.resource_classes"
+        effect: >
+          Number of capacity-factor bins per region; >1 emits one (p_nom_max, profile) pair
+          per bin plus a class_regions geojson, turning each region into a step supply
+          curve. The direct fix for the average-site bias. 3 is the corpus's practical value.
+        default: "1"
+        provenance: "config/config.default.yaml:resource_classes; scripts/build_renewable_profiles.py:resource_classes"
+      - key: "renewable.onwind.resource.turbine"
+        effect: >
+          Named atlite power curve (or a dict keyed by year for vintage-specific curves —
+          the script accepts either). Changing it changes the profile shape, not the ceiling.
+        default: "'Vestas_V112_3MW'"
+        provenance: "config/config.default.yaml:turbine; scripts/build_renewable_profiles.py:turbine"
+      - key: "renewable.onwind.correction_factor"
+        effect: "Scalar multiplier on the capacity factor — the only bias correction expressible in config. Applied to both the layout and the profile."
+        default: "1.0"
+        provenance: "config/config.default.yaml:correction_factor; scripts/build_renewable_profiles.py:correction_factor"
+      - key: "renewable.solar.resource.orientation.slope"
+        effect: "Fixed panel tilt in degrees (azimuth alongside it); `renewable.solar-hsat.resource.tracking: horizontal` is the single-axis variant sharing the same land budget."
+        default: "35.0"
+        provenance: "config/config.default.yaml:orientation; scripts/build_renewable_profiles.py:panel"
+      - key: "renewable.offwind-float.min_depth"
+        effect: >
+          Lower bathymetry bound (m), inverted-excluded via GEBCO. With max_depth 1000 this
+          is the 60-1000 m floating band; offwind-ac/dc take the complementary <60 m
+          fixed-bottom band. Glaum's depth split, shipped.
+        default: "60.0"
+        provenance: "config/config.default.yaml:min_depth; scripts/determine_availability_matrix.py:min_depth"
+      - key: "renewable.offwind-ac.max_depth"
+        effect: "Upper bathymetry bound (m) for fixed-bottom offshore. 60 here; the older literature used 50."
+        default: "60.0"
+        provenance: "config/config.default.yaml:max_depth; scripts/determine_availability_matrix.py:max_depth"
+      - key: "renewable.offwind-dc.min_shore_distance"
+        effect: "Buffer (m) around country_shapes excluding near-shore water — with offwind-ac's max_shore_distance it partitions offshore into AC-connected and DC-connected bands at 30 km."
+        default: "30000.0"
+        provenance: "config/config.default.yaml:min_shore_distance; scripts/determine_availability_matrix.py:min_shore_distance"
+      - key: "renewable.offwind-ac.ship_threshold"
+        effect: >
+          Shipping-density cutoff; cells above it are excluded via the shipdensity raster
+          (the value is multiplied by 8760*6 in the script to match the 6-year hourly data).
+          Glaum's shipping-lane exclusion, shipped and on by default for all three offshore
+          technologies.
+        default: "400"
+        provenance: "config/config.default.yaml:ship_threshold; scripts/determine_availability_matrix.py:ship_threshold; rules/build_electricity.smk:build_ship_raster"
+      - key: "renewable.onwind.clip_p_max_pu"
+        effect: "Zeroes p_max_pu below this value, keeping near-zero-output hours out of the LP. Interacts with extreme-event questions: it truncates the low tail by construction."
+        default: "0.01"
+        provenance: "config/config.default.yaml:clip_p_max_pu; scripts/build_renewable_profiles.py:clip_p_max_pu"
+      - key: "atlite.default_cutout"
+        effect: >
+          Which cutout every `cutout: default` technology resolves to. The shipped value
+          `europe-2013-sarah3-era5` is SARAH3-based and, critically, is NOT a key under
+          `atlite.cutouts` — it can only be downloaded, not built.
+        default: "'europe-2013-sarah3-era5'"
+        provenance: "config/config.default.yaml:default_cutout; rules/common.smk:input_cutout"
+      - key: "atlite.cutouts"
+        effect: >
+          Cutout definitions (module, bounding box, dx/dy, time range, prepare features).
+          Only `europe-1940-2024-era5` is defined, with `time: ['2013','2013']` — so
+          building a different weather year means editing this time range, and it is ERA5
+          only (no SARAH influx in its feature list).
+        default: "{europe-1940-2024-era5: era5, x [-12,42], y [33,72], dx/dy 0.3, time 2013-2013}"
+        provenance: "config/config.default.yaml:cutouts; rules/build_electricity.smk:build_cutout; scripts/build_cutout.py:cutout.prepare"
+      - key: "data.cutout.source"
+        effect: >
+          `archive` (default) fetches a prebuilt cutout from data.pypsa.org; `build` enables
+          rule build_cutout, which needs a CDS API key and downloads ERA5. This one key
+          decides whether a new weather year is a download or an API build.
+        default: "'archive'"
+        provenance: "config/config.default.yaml:cutout; rules/common.smk:dataset_version; data/versions.csv:cutout"
+      - key: "atlite.nprocesses"
+        effect: "Parallelism of the availability-matrix and profile computation; also sets the rules' threads and mem_mb. Default 1 makes the exclusion step painfully slow."
+        default: "1"
+        provenance: "config/config.default.yaml:nprocesses; rules/build_electricity.smk:nprocesses"
+      - key: "atlite.plot_availability_matrix"
+        effect: "Emits a PNG of the eligible area per technology — the cheapest sanity check that the exclusion stack did what was intended. Off by default."
+        default: "false"
+        provenance: "config/config.default.yaml:plot_availability_matrix; scripts/determine_availability_matrix.py:plot_availability_matrix"
+      - key: "adjustments.electricity"
+        effect: >
+          Post-hoc factor/absolute overrides on p_nom_max per component and carrier, applied
+          in prepare_network. The way to restrict a potential without rebuilding rasters —
+          and the way an acceptance sweep should be implemented.
+        default: "false"
+        provenance: "config/config.default.yaml:adjustments; scripts/prepare_network.py:maybe_adjust_costs_and_potentials"
+      - key: "electricity.estimate_renewable_capacities.expansion_limit"
+        effect: >
+          If a scalar, caps p_nom_max at that multiple of today's installed capacity per
+          technology — an observed-build-rate ceiling that overrides the geographic one
+          entirely. `false` leaves the land-derived ceiling in force.
+        default: "false"
+        provenance: "config/config.default.yaml:expansion_limit; scripts/add_electricity.py:estimate_renewable_capacities"
+      - key: "sector.limit_max_growth.enable"
+        effect: "Per-carrier absolute (max_growth, GW/period) and relative (max_relative_growth) build-rate caps. Registry `partial`: wired for foresight `perfect` only at this ref."
+        default: "false"
+        provenance: "config/config.default.yaml:limit_max_growth; scripts/solve_network.py:add_max_growth"
+      - key: "renewable.hydro.eia_norm_year"
+        effect: "Normalise ERA5 runoff inflow to a chosen EIA reporting year; with hydro.multiplier-free config this is the hydro-year lever on the same conversion chain."
+        default: "false"
+        provenance: "config/config.default.yaml:eia_norm_year; scripts/build_hydro_profile.py:eia_norm_year"
+      - key: "run.shared_resources.policy"
+        effect: "Share wildcard-independent resources (including availability matrices and cutout-derived data) across scenario runs instead of recomputing them per run."
+        default: "false"
+        provenance: "config/config.default.yaml:shared_resources; scripts/_helpers.py:get_run_path"
+    assembly:
+      - step: >
+          Fix the cutout first: confirm its bounding box covers the study region and its
+          years cover the snapshots window. If `data.cutout.source: archive` the default
+          SARAH3 cutout is a download; if a different year or region is needed, switch to
+          `build`, add/edit the entry under `atlite.cutouts` and provide a CDS API key.
+        uses: [weather-year-selection, data-retrieval-versioning]
+        config: "atlite.default_cutout; atlite.cutouts; data.cutout.source; snapshots.start/end"
+        code: null
+        provenance: "rules/common.smk:input_cutout; rules/common.smk:dataset_version; scripts/_helpers.py:get_snapshots"
+      - step: >
+          Set the exclusion stack per technology. Onshore/PV: corine.grid_codes whitelist,
+          corine.distance + distance_grid_codes setback, natura, excluder_resolution.
+          Offshore: min/max_depth, min/max_shore_distance, ship_threshold. Turn on
+          atlite.plot_availability_matrix once and look at the PNG — this is the only
+          cheap verification that the stack is what you meant.
+        uses: [renewable-potentials-land-eligibility]
+        config: "renewable.<tech>.{corine,luisa,natura,excluder_resolution,min_depth,max_depth,min_shore_distance,max_shore_distance,ship_threshold}; atlite.plot_availability_matrix"
+        code: null
+        provenance: "scripts/determine_availability_matrix.py:ExclusionContainer; rules/build_electricity.smk:determine_availability_matrix"
+      - step: >
+          Choose the density and the conversion model. capacity_per_sqkm sets the ceiling;
+          resource.turbine / resource.panel + orientation + tracking set the profile;
+          correction_factor is the only in-config bias handle. State the density and its
+          convention in the study writeup — it is the assumption most likely to be
+          challenged.
+        uses: [renewable-potentials-land-eligibility]
+        config: "renewable.<tech>.{capacity_per_sqkm,resource.*,correction_factor,clip_p_max_pu}"
+        code: null
+        provenance: "scripts/build_renewable_profiles.py:capacity_per_sqkm; scripts/build_renewable_profiles.py:correction_factor"
+      - step: >
+          If the question is siting quality or curtailment, set resource_classes > 1 before
+          increasing the cluster count. This emits one generator per (region, class) and a
+          class_regions geojson, at roughly linear extra cost in the profile rule only —
+          the availability matrix is computed once.
+        uses: [renewable-potentials-land-eligibility, spatial-clustering]
+        config: "renewable.<tech>.resource_classes; scenario.clusters"
+        code: null
+        provenance: "scripts/build_renewable_profiles.py:resource_classes; scripts/build_renewable_profiles.py:class_masks"
+      - step: >
+          Reconcile the ceiling with reality: keep land-use vintage subtraction and the
+          solar/solar-hsat shared budget on (both automatic), decide whether
+          estimate_renewable_capacities.expansion_limit should override the geographic
+          ceiling with an observed-build-rate one, and enable limit_max_growth if build
+          rates rather than totals are the binding concern.
+        uses: [land-use-constraint, solar-potential-constraint, max-growth-limits]
+        config: "electricity.estimate_renewable_capacities.expansion_limit; sector.limit_max_growth.enable"
+        code: null
+        provenance: "scripts/solve_network.py:add_land_use_constraint; scripts/solve_network.py:add_solar_potential_constraints; scripts/solve_network.py:add_max_growth"
+      - step: >
+          For an acceptance sweep, do NOT edit densities per run — that rebuilds every
+          raster. Use adjustments.electricity factor overrides on p_nom_max, or the
+          `onwind+pX` opts form, so the expensive availability matrices are computed once
+          and shared via run.shared_resources.
+        uses: [carrier-attribute-scaling, shared-resources-caching]
+        config: "adjustments.electricity; run.shared_resources.policy"
+        code: null
+        provenance: "scripts/prepare_network.py:maybe_adjust_costs_and_potentials; scripts/_helpers.py:get_run_path"
+      - step: >
+          For a shape-aware bias correction, or a land potential for a non-VRE target, write
+          a new script. The exclusion container is importable and the availability matrix is
+          a plain netCDF, so a new rule consuming availability_matrix_{clusters}_{technology}
+          and emitting a per-region potential is the sanctioned pattern — this is where the
+          CDR/thermal-storage/EGS papers landed.
+        uses: [renewable-potentials-land-eligibility]
+        config: null
+        code: "new script + rule beside rules/build_electricity.smk:determine_availability_matrix"
+        provenance: "scripts/determine_availability_matrix.py:ExclusionContainer"
+    boundary:
+      - variant: corine-natura-density-cap
+        rung: L0
+        note: >
+          This IS the default. Every element — code whitelist, Natura, setback, depth,
+          density — is a config key with a live consumer, and the prebuilt cutout is
+          downloaded. Flip nothing to get it; change one key to retune it.
+      - variant: availability-matrix-tooling
+        rung: L0
+        note: >
+          atlite is the implementation, not an alternative: determine_availability_matrix
+          builds the ExclusionContainer and calls cutout.availabilitymatrix directly. GLAES
+          (used by the Frysztacki papers) is NOT in the repo, but nothing in the corpus's
+          results depends on which of the two computed the eligible area.
+      - variant: acceptance-restricted-potential
+        rung: L1
+        note: >
+          A specific non-default value: capacity_per_sqkm down to 1.0-1.5, or a narrower
+          corine.grid_codes, or adjustments.electricity factors on p_nom_max. Prefer the
+          adjustments route for a sweep — it does not invalidate the availability matrices.
+      - variant: resource-class-supply-curves
+        rung: L1
+        note: >
+          `resource_classes: 3` and nothing else. The class-mask binning, the per-class
+          p_nom_max and the class_regions output are all implemented; this is the single
+          highest-value non-default key in the whole card.
+      - variant: offshore-depth-banded-and-shipping
+        rung: L1
+        note: >
+          Merged at this ref and no longer an extension. offwind-float ships as a default
+          renewable carrier with min_depth 60 / max_depth 1000, ship_threshold 400 is on for
+          all three offshore technologies, and offshore regions come from EEZ shapes. What is
+          still L5: depth/distance-dependent capital cost and build-out-dependent wake losses
+          (Glaum 2024's 9/21/32% schedule), neither of which has any surface.
+      - variant: profile-bias-correction
+        rung: L2
+        note: >
+          The scalar form is L1 (`correction_factor`, applied to both layout and profile).
+          The regression and quantile-to-quantile forms the corpus actually uses are L2: a
+          localised edit at the end of build_renewable_profiles, after the profile is
+          assembled, plus an observed-generation series to map onto.
+      - variant: climate-projection-cutout
+        rung: L3
+        note: >
+          Purely a data problem, which is why it is L3 not L5. atlite has a `cordex` dataset
+          module, but the shipped cutouts are era5 only and the prebuilt archive contains no
+          projection cutout — so the study needs a cutout built from downscaled climate
+          fields and an `atlite.cutouts` entry pointing at it. The exclusion and conversion
+          code is untouched.
+      - variant: global-non-corine-landcover
+        rung: L3
+        note: >
+          Possible but off-label. determine_availability_matrix_MD_UA already does exactly
+          this for Moldova and Ukraine — Copernicus land cover plus WDPA where CORINE stops
+          — and its output is patched over the CORINE-derived matrix, so the pattern exists
+          as a rule. For a genuinely non-European region the blocker is the cutout extent
+          and the CORINE raster's coverage, not the code. Use pypsa-earth instead.
+      - variant: non-vre-land-potentials
+        rung: L5
+        note: >
+          No route from an availability matrix to anything but a VRE generator. The
+          exclusion container is reusable, but the potential derivation (utilisation
+          fraction, climate filter, per-hectare yield) and its attachment as a Store or
+          Link limit are new code — this is what the CDR, pit-storage and EGS papers wrote.
+    where:
+      - change: "regression / quantile bias correction of the profiles"
+        anchor: "scripts/build_renewable_profiles.py — after the profiles xr.merge, before to_netcdf"
+        provenance: "scripts/build_renewable_profiles.py:correction_factor"
+      - change: "a cutout from non-ERA5 (climate projection) fields"
+        anchor: "atlite.cutouts entry + rule build_cutout (requires data.cutout.source: build)"
+        provenance: "rules/build_electricity.smk:build_cutout; scripts/build_cutout.py:cutout.prepare"
+      - change: "non-European land cover patched over the CORINE matrix"
+        anchor: "rule determine_availability_matrix_MD_UA — the existing precedent to copy"
+        provenance: "rules/build_electricity.smk:determine_availability_matrix_MD_UA; scripts/determine_availability_matrix_MD_UA.py:ExclusionContainer"
+      - change: "a land potential for a non-VRE technology"
+        anchor: "new script + rule alongside rule determine_availability_matrix; consumes availability_matrix_{clusters}_{technology}.nc"
+        provenance: "rules/build_electricity.smk:determine_availability_matrix; scripts/determine_availability_matrix.py:ExclusionContainer"
+      - change: "depth/distance-dependent offshore capital cost and wake-loss derate"
+        anchor: "scripts/add_electricity.py:attach_wind_and_solar — average_distance is already in the profile dataset and unused for cost"
+        provenance: "scripts/add_electricity.py:attach_wind_and_solar; scripts/build_renewable_profiles.py:average_distance"
+    data_dependencies:
+      - input: "ERA5/SARAH3 cutout covering the region and the snapshot years"
+        required_for: "every variant"
+        availability: >
+          exists by default — data.cutout.source: archive downloads europe-2013-sarah3-era5
+          (x [-12,42], y [33,72]). Any other year or extent requires data.cutout.source:
+          build plus a CDS API key; note the only buildable definition shipped
+          (europe-1940-2024-era5) is ERA5-ONLY with time ['2013','2013'], so switching
+          weather year loses SARAH solar influx unless a sarah_dir is supplied.
+      - input: "cutout from downscaled climate-projection fields (CORDEX or similar)"
+        required_for: climate-projection-cutout
+        availability: >
+          absent — atlite ships a cordex dataset module but no projection cutout exists in
+          the archive and no atlite.cutouts entry references one; must be built from
+          externally obtained climate fields
+      - input: "CORINE g250_clc06 land-cover raster; Natura 2000 raster; GEBCO bathymetry; ship-density raster"
+        required_for: "corine-natura-density-cap, offshore-depth-banded-and-shipping"
+        availability: >
+          exists by default — all four resolve through data/versions.csv with source
+          `archive`. CORINE and Natura are EUROPE-ONLY by construction; determine_availability
+          _matrix_MD_UA exists precisely because CORINE stops at the EU border
+      - input: "LUISA 50 m land cover"
+        required_for: "a higher-resolution European exclusion stack"
+        availability: "region-dependent — retrieve_luisa_land_cover exists but renewable.<tech>.luisa is false everywhere in the shipped config, so this path is untested here"
+      - input: "observed metered generation per region for bias correction"
+        required_for: profile-bias-correction
+        availability: >
+          absent — no rule retrieves metered VRE generation for this purpose. The corpus
+          used OPSD (Germany) and national TSO data; obtaining it is the user's problem and
+          it is per-country
+      - input: "per-country data-quality grade for land cover and weather inputs"
+        required_for: "any non-core-Europe region"
+        availability: >
+          see cookbooks/pypsa-eur/data_quality — a C or D grade for a land-cover or shape
+          input means a silent proxy fallback for that region, i.e. potentials that are
+          computed and plausible but not grounded. Check the grade before quoting a p_nom_max
+    cost_profile:
+      solves: >
+        Zero extra solves — this is preprocessing. Cost is measured in rule runtime:
+        one determine_availability_matrix + one build_renewable_profiles per
+        ({clusters}, {technology}) pair, 6 non-hydro technologies by default.
+      relative: >
+        The availability matrix is typically the single most expensive non-solve rule in a
+        pypsa-eur run: a continental raster reprojected and masked per region at 100-200 m.
+        It scales with (region count) x (1/excluder_resolution^2) and is parallelised only by
+        atlite.nprocesses, which DEFAULTS TO 1. The profile rule scales with snapshots x
+        cells x resource_classes.
+      note: >
+        Three mitigations, all L0/L1. (1) Raise atlite.nprocesses — the default of 1 is the
+        most common reason this step feels broken. (2) Set run.shared_resources.policy so
+        matrices are computed once across a scenario sweep. (3) For an acceptance sweep use
+        adjustments.electricity rather than capacity_per_sqkm, because the density is an
+        input to build_renewable_profiles and changing it re-triggers the whole chain,
+        whereas adjustments act at prepare_network. Coarsening excluder_resolution is the
+        last resort: it changes the answer, not just the runtime.
+    verifies:
+      - variant: corine-natura-density-cap
+        check: "(n.generators.loc[n.generators.carrier == 'onwind', 'p_nom_max'] > 0).all() and n.generators.loc[n.generators.carrier == 'onwind', 'p_nom_max'].max() < 1e7"
+        over: run
+        note: >
+          A zero or NaN onshore ceiling means the exclusion stack eliminated the whole
+          region — usually a projection mismatch or a code whitelist that excludes
+          everything. The run still succeeds and simply never builds wind, which reads as an
+          economic result rather than a data failure.
+      - variant: resource-class-supply-curves
+        check: "n.generators.index.str.contains('onwind').sum() == n_regions * n_classes"
+        over: run
+        note: "Fewer generators than regions x classes means classes collapsed (all cells in one bin) or were dropped by the min_p_nom_max/min_p_max_pu filter — the supply curve silently flattens back to one average site."
+      - variant: acceptance-restricted-potential
+        check: "p_nom_max_restricted.sum() < p_nom_max_default.sum()"
+        over: ensemble
+        note: >
+          If the restricted run's total ceiling is unchanged, the override did not reach
+          p_nom_max — the classic dead-lever failure when an adjustments key is misspelled,
+          since prepare_network does not error on an unmatched carrier.
+      - variant: offshore-depth-banded-and-shipping
+        check: "set(n.generators.carrier) >= {'offwind-ac', 'offwind-dc', 'offwind-float'}"
+        over: run
+        note: "A missing offwind-float means either the carrier was dropped from renewable_carriers or GEBCO/min_depth produced an empty band, so all deep-water resource silently disappeared from the study."
+  - model: pypsa-earth
+    version_anchor:
+      ref: "8435f4c8cc05f30088933b37b7db497ff860dc53"
+      date: "2026-07-25"
+    functionality:
+      - id: renewable-potentials-land-eligibility
+        role: >
+          the method itself — registry `working`, but a SMALLER surface than eur: one rule
+          (build_renewable_profiles) does exclusions and conversion together, and the config
+          block is `renewable.<tech>.copernicus`, not `corine`
+      - id: weather-year-selection
+        role: >
+          `working` but weaker: one weather year per run, and the cutout year must be kept
+          consistent with load_options.weather_year by hand — two independent keys that
+          silently disagree
+      - id: multi-weather-year
+        role: "`absent` here (vs `partial` in eur) — inter-annual robustness of potentials means separate runs, not one network"
+      - id: hydro-inflow-normalization
+        role: >
+          `working` and richer than eur's: an irena|eia|hydro_capacities method selector plus
+          a multiplier, all inside build_renewable_profiles rather than a separate rule
+      - id: spatial-clustering
+        role: "the prerequisite; earth adds GADM administrative zoning as an alternative to k-means, which matters because land-use policy is administrative"
+      - id: gadm-admin-clustering
+        role: >
+          earth-only: cluster to admin units so a potential is a potential of a
+          policy-relevant polygon rather than a Voronoi cell — the better default when the
+          answer must be handed to a ministry
+      - id: data-retrieval-bundles
+        role: >
+          the provisioning path for the Copernicus raster, WDPA protected areas, GEBCO and
+          the continental cutouts; `enable.retrieve_cutout` vs `enable.build_cutout` is the
+          fork that decides whether the study needs a CDS API key
+      - id: carrier-attribute-scaling
+        role: "the `onwind+p2` opts form, for restricting a potential without recomputing rasters"
+      - id: probabilistic-adequacy
+        role: "`absent` in both — noted because a potential is a bound, not a probability, and users asking about adequacy need routing elsewhere"
+    available:
+      verdict: turnkey
+      how: >
+        The same procedure, one rule. `build_renewable_profiles` constructs
+        atlite.ExclusionContainer(crs=area_crs, res=100), adds the natura raster, adds
+        `copernicus.grid_codes` inverted, applies `copernicus.distance` /
+        `distance_grid_codes` as a buffered setback, then max_depth via GEBCO and
+        min/max_shore_distance geometry buffers, calls cutout.availabilitymatrix, converts
+        through the named turbine/panel and emits p_nom_max plus profile in one pass. The
+        divergences from eur that matter operationally: land cover is COPERNICUS Global Land
+        Service 100 m, not CORINE (CORINE is Europe-only, so this is what makes earth work
+        globally at all); protected areas come from WDPA via a buildable natura raster
+        (`enable.build_natura_raster`, off by default, falling back to a shipped
+        data/natura/natura.tiff); and `potential: simple|conservative` selects between
+        area-summed and best-cell-normalised ceilings — a lever eur does not have.
+      missing: >
+        No `min_depth` and no `ship_threshold`: the depth-band split that makes floating
+        offshore a distinct technology, and the shipping-lane exclusion, are both absent
+        from the script, and `offwind-float` is not a carrier. No `excluder_resolution`
+        key — 100 m is hardcoded. No `resource_classes`: every region is one average site,
+        so the supply-curve variant is code work here where it is one key in eur. No
+        `luisa`. No land-use vintage subtraction, no shared solar land budget and no growth
+        limits — all three of those registry ids are absent from earth entirely, so a
+        brownfield run can build on land its existing fleet already occupies. Procedure
+        step 10 has only the scalar `correction_factor`.
+      provenance: "scripts/build_renewable_profiles.py:ExclusionContainer; scripts/build_renewable_profiles.py:availabilitymatrix; scripts/add_electricity.py:attach_wind_and_solar"
+    levers:
+      - key: "renewable.onwind.capacity_per_sqkm"
+        effect: >
+          THE lever, same as eur, but the defaults are Parzen's socio-technical densities
+          validated against 41 PV plants and 7 wind farms rather than Hörsch's European
+          numbers: 3 onshore, 4.6 solar, 2 offwind-ac, 3 offwind-dc.
+        default: "3"
+        provenance: "config.default.yaml:capacity_per_sqkm; scripts/build_renewable_profiles.py:capacity_per_sqkm"
+      - key: "renewable.onwind.copernicus.grid_codes"
+        effect: >
+          The land-cover whitelist, in COPERNICUS Global Land Service codes — NOT CORINE
+          codes. Default keeps 20/30/40/60/100/111-116/121-126 (shrub, herbaceous,
+          cropland, bare, moss, and the forest classes). A CORINE code list pasted here is
+          a silent mis-selection, not an error.
+        default: "[20,30,40,60,100,111,...,126]"
+        provenance: "config.default.yaml:grid_codes; scripts/build_renewable_profiles.py:copernicus"
+      - key: "renewable.onwind.copernicus.distance"
+        effect: "Setback buffer in metres around `distance_grid_codes` (code 50 = urban/built-up). Only applied when > 0."
+        default: "1000"
+        provenance: "config.default.yaml:distance_grid_codes; scripts/build_renewable_profiles.py:distance_grid_codes"
+      - key: "renewable.onwind.natura"
+        effect: "Include the protected-area raster. Passed through check_flag, so `false` skips the exclusion silently and enlarges every potential."
+        default: "true"
+        provenance: "config.default.yaml:natura; scripts/build_renewable_profiles.py:check_flag"
+      - key: "renewable.onwind.potential"
+        effect: >
+          `simple` sums the eligible area x density per region; `conservative` instead
+          divides the aggregated capacity by the region's best cell capacity factor, giving
+          a smaller ceiling consistent with the aggregated profile. eur has no equivalent —
+          this is earth's answer to the average-site problem, in place of resource classes.
+        default: "'simple'"
+        provenance: "config.default.yaml:potential; scripts/build_renewable_profiles.py:p_nom_max_meth"
+      - key: "renewable.onwind.cutout"
+        effect: "`auto` resolves to atlite.default via update_cutout_config; set explicitly to point one technology at a different continental cutout."
+        default: "'auto'"
+        provenance: "config.default.yaml:cutout; scripts/_helpers.py:update_cutout_config"
+      - key: "renewable.solar.correction_factor"
+        effect: >
+          Scalar bias correction, and unlike eur it is NOT 1.0 by default: solar ships at
+          0.854337. Anyone comparing earth and eur PV yields must account for this before
+          concluding anything about the weather data.
+        default: "0.854337"
+        provenance: "config.default.yaml:correction_factor; scripts/build_renewable_profiles.py:correction_factor"
+      - key: "renewable.solar.resource.orientation"
+        effect: >
+          `latitude_optimal` by default here, where eur ships a fixed 35 deg slope /
+          180 deg azimuth. A meaningful divergence for any low-latitude study and another
+          reason cross-model PV comparisons need care.
+        default: "'latitude_optimal'"
+        provenance: "config.default.yaml:orientation; scripts/build_renewable_profiles.py:resource"
+      - key: "renewable.offwind-ac.max_depth"
+        effect: "Fixed-bottom bathymetry limit (m) via GEBCO. 50 here — the older literature value — and there is no min_depth counterpart, so no floating band can be expressed."
+        default: "50"
+        provenance: "config.default.yaml:max_depth; scripts/build_renewable_profiles.py:max_depth"
+      - key: "renewable.offwind-dc.min_shore_distance"
+        effect: "Near-shore exclusion buffer (m) around country_shapes; with offwind-ac.max_shore_distance it partitions offshore at 30 km, as in eur."
+        default: "30000"
+        provenance: "config.default.yaml:min_shore_distance; scripts/build_renewable_profiles.py:min_shore_distance"
+      - key: "renewable.hydro.normalization.method"
+        effect: >
+          `irena` | `eia` | `hydro_capacities` — which reported-generation statistic the
+          ERA5 runoff inflow is rescaled to. Richer than eur's EIA-only path, and the right
+          lever for a region where EIA coverage is poor.
+        default: "'irena'"
+        provenance: "config.default.yaml:normalization; scripts/build_renewable_profiles.py:rescale_hydro"
+      - key: "renewable.hydro.multiplier"
+        effect: "Flat multiplier applied to inflow AFTER normalisation. Ships at 1.1, i.e. inflow is 10% above the reported-statistics match by default — an assumption worth surfacing."
+        default: "1.1"
+        provenance: "config.default.yaml:multiplier; scripts/build_renewable_profiles.py:multiplier"
+      - key: "enable.retrieve_cutout"
+        effect: >
+          Fetch a prebuilt continental cutout from a databundle. On by default, but only
+          seven continental cutouts are staged and there is NO Europe file — so which
+          regions are covered is a bundle question, not a config question.
+        default: "true"
+        provenance: "config.default.yaml:retrieve_cutout; Snakefile:retrieve_cutout; scripts/retrieve_databundle_light.py:download_and_unzip"
+      - key: "enable.build_cutout"
+        effect: >
+          Build the cutout from ERA5 instead. Requires a registered CDS API key. This is the
+          fork that makes earth's weather-year and region changes an L3 data build where
+          eur's are a download — and both this and retrieve_cutout refuse to run if the
+          target file already exists (terminate_if_cutout_exists).
+        default: "false"
+        provenance: "config.default.yaml:build_cutout; Snakefile:build_cutout; Snakefile:terminate_if_cutout_exists; scripts/build_cutout.py:cutout.prepare"
+      - key: "enable.build_natura_raster"
+        effect: >
+          Rasterise WDPA protected areas for the study region. OFF by default, in which case
+          rule copy_defaultnatura_tiff copies a shipped data/natura/natura.tiff — which may
+          not cover the region at all. The single most likely silent exclusion failure in
+          earth.
+        default: "false"
+        provenance: "config.default.yaml:build_natura_raster; Snakefile:build_natura_raster; Snakefile:copy_defaultnatura_tiff"
+      - key: "natura.natura_resolution"
+        effect: "Metre resolution of the built protected-area raster (earth's nearest analogue to eur's excluder_resolution, but it only affects this one layer)."
+        default: "100"
+        provenance: "config.default.yaml:natura_resolution; scripts/build_natura_raster.py:natura_resolution"
+      - key: "natura.natura_size"
+        effect: "`countries` | `cutout` | `global` — the extent the protected-area raster is built over. `countries` is cheapest and is what makes the raster region-specific."
+        default: "'countries'"
+        provenance: "config.default.yaml:natura_size; scripts/build_natura_raster.py:determine_region_xXyY"
+      - key: "atlite.nprocesses"
+        effect: "Parallelism of the availability-matrix computation. Defaults to 4 here, versus 1 in eur — earth is better tuned out of the box for this step."
+        default: "4"
+        provenance: "config.default.yaml:nprocesses; scripts/build_renewable_profiles.py:nprocesses"
+      - key: "atlite.cutouts"
+        effect: >
+          Cutout definitions. Only `cutout-2013-era5` with dx/dy 0.3 and NO x/y bounds and
+          NO time range — the extent is derived from the shapes at build time, which is how
+          the same key serves any country.
+        default: "{cutout-2013-era5: {module: era5, dx: 0.3, dy: 0.3}}"
+        provenance: "config.default.yaml:cutouts; Snakefile:build_cutout"
+      - key: "crs.area_crs"
+        effect: "The equal-area projection the exclusion container works in (Mollweide, ESRI:54009) — global, where eur hardcodes the Europe-specific EPSG:3035. The concrete reason earth generalises."
+        default: "'ESRI:54009'"
+        provenance: "config.default.yaml:area_crs; scripts/build_renewable_profiles.py:area_crs"
+      - key: "electricity.estimate_renewable_capacities.p_nom_max"
+        effect: >
+          If set, overrides the land-derived ceiling from installed-capacity statistics
+          (IRENA by default). `false` leaves the geographic ceiling in force. Note earth also
+          sets p_nom_min: 1, so today's fleet is a floor but does NOT consume the ceiling.
+        default: "false"
+        provenance: "config.default.yaml:estimate_renewable_capacities; scripts/add_electricity.py:estimate_renewable_capacities_config"
+    assembly:
+      - step: >
+          Settle the cutout question first, because it is the binding constraint. Decide
+          `enable.retrieve_cutout` (a staged continental bundle — seven exist, none for
+          Europe) versus `enable.build_cutout` (ERA5 via CDS, needs an API key). Then confirm
+          coverage: build_renewable_profiles hard-errors only if the region is COMPLETELY
+          outside the cutout and merely warns on partial coverage.
+        uses: [data-retrieval-bundles, weather-year-selection]
+        config: "enable.retrieve_cutout; enable.build_cutout; atlite.cutouts; atlite.default; snapshots.start/end; load_options.weather_year"
+        code: null
+        provenance: "Snakefile:retrieve_cutout; Snakefile:build_cutout; scripts/build_renewable_profiles.py:check_cutout_match; scripts/build_renewable_profiles.py:check_cutout_completness"
+      - step: >
+          Decide the protected-area layer explicitly. `enable.build_natura_raster: true` with
+          natura_size `countries` builds a WDPA raster for the study countries; leaving it
+          false copies a shipped tiff that may not cover the region, in which case the
+          protected-area exclusion is a no-op that nothing reports.
+        uses: [renewable-potentials-land-eligibility]
+        config: "enable.build_natura_raster; natura.natura_size; natura.natura_resolution"
+        code: null
+        provenance: "Snakefile:build_natura_raster; Snakefile:copy_defaultnatura_tiff; scripts/build_natura_raster.py:determine_region_xXyY"
+      - step: >
+          Set the exclusion stack in COPERNICUS codes — grid_codes whitelist, distance +
+          distance_grid_codes setback, max_depth and shore-distance buffers offshore.
+          Translate, do not transplant, any CORINE-based code list from a European study.
+        uses: [renewable-potentials-land-eligibility]
+        config: "renewable.<tech>.copernicus.{grid_codes,distance,distance_grid_codes}; renewable.<tech>.{natura,max_depth,min_shore_distance,max_shore_distance}"
+        code: null
+        provenance: "scripts/build_renewable_profiles.py:ExclusionContainer; scripts/build_renewable_profiles.py:copernicus"
+      - step: >
+          Choose density, conversion model and ceiling method. capacity_per_sqkm as always;
+          then `potential: conservative` if the aggregated profile's optimism matters, since
+          it is the only in-config mitigation for the average-site bias available here.
+        uses: [renewable-potentials-land-eligibility]
+        config: "renewable.<tech>.{capacity_per_sqkm,potential,resource.*,correction_factor,clip_p_max_pu}"
+        code: null
+        provenance: "scripts/build_renewable_profiles.py:p_nom_max_meth; scripts/build_renewable_profiles.py:capacity_per_sqkm"
+      - step: >
+          Pick the region geometry deliberately. `cluster_options.alternative_clustering`
+          routes to GADM administrative units, which is usually the right polygon for a
+          land-potential answer that has to be handed to a policymaker — a choice eur cannot
+          make this way.
+        uses: [spatial-clustering, gadm-admin-clustering]
+        config: "cluster_options.alternative_clustering; scenario.clusters"
+        code: null
+        provenance: "scripts/cluster_network.py:busmap_for_gadm_clusters"
+      - step: >
+          For resource classes, a floating offshore band, a shipping-lane exclusion or a
+          finer excluder resolution, edit build_renewable_profiles: the ExclusionContainer
+          construction and the p_nom_max computation are adjacent in one function, so all
+          four are localised edits to the same file. Port them from pypsa-eur's
+          determine_availability_matrix, which already implements each one.
+        uses: [renewable-potentials-land-eligibility]
+        config: null
+        code: "scripts/build_renewable_profiles.py — the ExclusionContainer block and the p_nom_max_meth branch"
+        provenance: "scripts/build_renewable_profiles.py:ExclusionContainer; scripts/build_renewable_profiles.py:p_nom_max_meth"
+    boundary:
+      - variant: global-non-corine-landcover
+        rung: L0
+        note: >
+          This is earth's default and its reason to exist: Copernicus Global Land Service
+          100 m codes plus WDPA, in an equal-area global projection (ESRI:54009). For any
+          region outside Europe this is the entry point, and it is a config-only path.
+      - variant: availability-matrix-tooling
+        rung: L0
+        note: "atlite is the implementation here too — same ExclusionContainer and availabilitymatrix calls, pinned at atlite>=0.4.1 in envs/environment.yaml."
+      - variant: acceptance-restricted-potential
+        rung: L1
+        note: >
+          capacity_per_sqkm, a narrower copernicus.grid_codes, or `potential: conservative`.
+          The `conservative` method is the earth-specific option worth knowing: it shrinks
+          the ceiling to be consistent with the aggregated profile rather than by fiat.
+      - variant: corine-natura-density-cap
+        rung: L3
+        note: >
+          Deliberately NOT available: CORINE is Europe-only and earth ships no CORINE
+          raster or config key. If a user wants to reproduce a European CORINE-based study,
+          the answer is pypsa-eur, not a data addition here. Recorded as L3 rather than
+          absent because the exclusion container would accept a CORINE raster if one were
+          supplied and the codes rewritten — but there is no reason to.
+      - variant: resource-class-supply-curves
+        rung: L2
+        note: >
+          No `resource_classes` key and no binning code. It is a localised edit — bin
+          capacity_factor per region, mask the availability matrix per bin, emit a `bin`
+          dimension — and pypsa-eur's build_renewable_profiles is a working reference to
+          port from. L2, not L5, because the surrounding data flow already carries per-cell
+          capacity factors and an availability matrix in the same function.
+      - variant: offshore-depth-banded-and-shipping
+        rung: L2
+        note: >
+          `min_depth` and `ship_threshold` are simply not read by the script and
+          offwind-float is not a carrier, so this is a code change: two extra add_raster
+          calls (both one-liners already written in eur's
+          determine_availability_matrix.py) plus a new technology entry. The ship-density
+          raster is additionally an L3 data dependency — earth has no rule that builds one.
+      - variant: profile-bias-correction
+        rung: L2
+        note: >
+          Scalar form is L1 and is already non-trivially in use (solar ships at 0.854337).
+          Shape-aware forms are an edit at the end of build_renewable_profiles plus an
+          observed-generation series, which for most earth target countries does not exist
+          at hourly resolution — check the data_quality grade before promising it.
+      - variant: climate-projection-cutout
+        rung: L3
+        note: >
+          Same shape as eur: the code path is indifferent to where the weather fields came
+          from, so this is entirely a cutout-construction problem. Marginally easier here
+          because atlite.cutouts carries no hardcoded bounds, and marginally harder because
+          nothing is prebuilt.
+      - variant: non-vre-land-potentials
+        rung: L5
+        note: >
+          As in eur, nothing routes an availability matrix anywhere but a VRE generator, and
+          earth does not even write the matrix out as a separate artefact — it is an
+          in-memory intermediate inside build_renewable_profiles, so a new consumer needs
+          the rule split first.
+    where:
+      - change: "resource classes / capacity-factor binning per region"
+        anchor: "scripts/build_renewable_profiles.py — between the availabilitymatrix call and the p_nom_max_meth branch"
+        provenance: "scripts/build_renewable_profiles.py:p_nom_max_meth"
+      - change: "min_depth (floating band) and ship_threshold exclusions"
+        anchor: "scripts/build_renewable_profiles.py — the ExclusionContainer block, beside the existing max_depth add_raster"
+        provenance: "scripts/build_renewable_profiles.py:max_depth"
+      - change: "excluder resolution other than 100 m"
+        anchor: "scripts/build_renewable_profiles.py — atlite.ExclusionContainer(crs=area_crs, res=100) is hardcoded; add a config key beside `potential`"
+        provenance: "scripts/build_renewable_profiles.py:ExclusionContainer"
+      - change: "land-use vintage subtraction / shared solar land budget / growth limits"
+        anchor: "scripts/solve_network.py:extra_functionality — none of the three exists here; port from pypsa-eur's add_land_use_constraint family"
+        provenance: "scripts/solve_network.py:extra_functionality"
+      - change: "a cutout for a new region or weather year"
+        anchor: "rule build_cutout via enable.build_cutout (CDS key), or a staged bundle via scripts/stage_continental_cutouts.py"
+        provenance: "Snakefile:build_cutout; scripts/stage_continental_cutouts.py:stage"
+    data_dependencies:
+      - input: "ERA5 cutout covering the study region and year"
+        required_for: "every variant"
+        availability: >
+          region-dependent, and this is earth's characteristic L3 blocker. Seven continental
+          cutouts are staged (africa, asia, northamerica, northeurasia, oceania,
+          southamerica, westasia) and there is NO europe file; coverage per bundle is defined
+          by the `countries` lists in configs/bundle_config.yaml. Anything outside them must
+          be built with enable.build_cutout, which needs a registered CDS API key and an ERA5
+          download — flag this to the user BEFORE promising a study, and note that a region
+          only PARTIALLY covered produces a warning, not an error.
+      - input: "Copernicus Global Land Service 100 m discrete-classification raster"
+        required_for: "global-non-corine-landcover, acceptance-restricted-potential"
+        availability: >
+          exists by default — global single file under data/copernicus, fetched by the
+          databundle. Being global, no country is 'missing'; the risk is code mistranslation
+          from CORINE, not absence.
+      - input: "WDPA / protected-area raster for the study region"
+        required_for: "every variant with natura: true"
+        availability: >
+          must be built — enable.build_natura_raster is false by default and
+          copy_defaultnatura_tiff substitutes a shipped data/natura/natura.tiff whose extent
+          is not guaranteed to cover the region. This is a silent no-op, not an error.
+      - input: "GEBCO bathymetry"
+        required_for: offshore-depth-banded-and-shipping
+        availability: "exists by default — global GEBCO_2025_sub_ice.nc via the databundle"
+      - input: "global ship-density raster"
+        required_for: offshore-depth-banded-and-shipping
+        availability: "absent — earth has no equivalent of eur's build_ship_raster rule and no ship_threshold consumer; both the data and the code would be new"
+      - input: "IRENA / EIA / hydro_capacities annual generation statistics per country"
+        required_for: "the hydro branch of every variant"
+        availability: "exists by default for the three normalization methods, but per-country completeness varies; rescale_hydro logs a warning and performs NO normalisation when the requested year is missing from the statistics"
+      - input: "per-country data-quality grades for land cover, shapes and weather"
+        required_for: "any region-specific claim about a potential"
+        availability: >
+          see cookbooks/pypsa-earth/data_quality (datasets.yaml `era5-cutout` and
+          `global-gis-layers`, plus MATRIX.csv per country). A C or D grade means a silent
+          proxy fallback for the target region — the run succeeds and the potential looks
+          reasonable. Read the grade before quoting a number; do not restate it here.
+    cost_profile:
+      solves: >
+        Zero extra solves. One build_renewable_profiles per technology (6 by default,
+        including csp), each doing exclusions and conversion in one pass.
+      relative: >
+        Cheaper than eur per region — smaller study areas, no separate availability-matrix
+        artefact, and atlite.nprocesses defaults to 4 rather than 1. But the ONE-OFF cost is
+        higher and front-loaded: building a cutout from ERA5 over a new region is an hours-
+        to-days download against the CDS queue, and it must complete before any profile can
+        be built.
+      note: >
+        Budget the cutout, not the exclusions. If the region is covered by a staged
+        continental bundle the whole method is minutes; if it is not, the study has an
+        external dependency with a queue and an API key in front of it. Both retrieve_cutout
+        and build_cutout also refuse to overwrite an existing cutout file
+        (terminate_if_cutout_exists), so a half-finished download must be cleared by hand
+        rather than retried.
+    verifies:
+      - variant: global-non-corine-landcover
+        check: "(n.generators.loc[n.generators.carrier == 'onwind', 'p_nom_max'] > 0).any()"
+        over: run
+        note: >
+          An all-zero onshore ceiling almost always means the copernicus.grid_codes list does
+          not match the raster's actual codes — the exact failure mode of pasting a CORINE
+          code list into earth's config. Nothing errors; the model simply never builds wind.
+      - variant: acceptance-restricted-potential
+        check: "p_nom_max_conservative.sum() <= p_nom_max_simple.sum()"
+        over: ensemble
+        note: "If `potential: conservative` does not reduce the ceiling relative to `simple`, the key never reached p_nom_max_meth — the run succeeds with the optimistic area-summed ceiling."
+      - variant: availability-matrix-tooling
+        check: "n_cells_lost == 0"
+        over: run
+        note: >
+          build_renewable_profiles reports cells with incomplete weather coverage. A non-zero
+          count means the cutout does not fully cover the study region, which is a warning in
+          the log and otherwise invisible — profiles are still produced, from partial weather.

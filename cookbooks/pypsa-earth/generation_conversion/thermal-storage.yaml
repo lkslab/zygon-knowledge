@@ -1,0 +1,117 @@
+id: thermal-storage
+title: Thermal storage
+summary: Storage of heat — CSP molten-salt tanks on the power side, and hot-water tanks buffering building/district heat on the sector side.
+when_to_use:
+  - thermal energy storage / TES
+  - CSP with storage / molten salt tanks
+  - hot water tanks / heat storage
+  - district heating storage
+  - seasonal heat storage
+  - store solar thermal heat
+  - heat buffer for heat pumps
+  - "known in pypsa-eur as: water tanks, residential rural water tanks, services rural water tanks, residential urban decentral water tanks, services urban decentral water tanks, urban central water tanks, hot water storage, hot water charging, hot water discharging, urban central water tanks charger, urban central water tanks discharger, residential rural water tanks charger, residential rural water tanks discharger, residential urban decentral water tanks charger, residential urban decentral water tanks discharger, services rural water tanks charger, services rural water tanks discharger, services urban decentral water tanks charger, services urban decentral water tanks discharger, water pits, water pits charger, water pits discharger, urban central water pits, urban central water pits charger, urban central water pits discharger, aquifer thermal energy storage, aquifer thermal energy storage charger, aquifer thermal energy storage discharger"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        Two separate thermal-storage mechanisms. Power-only chain: CSP thermal
+        energy storage — when "csp" is a renewable carrier and
+        renewable.csp.csp_model is "advanced" (the default model setting, but csp is
+        NOT in the default carrier list), CSP generators are moved onto dedicated
+        csp buses with an extendable Store (costs row "csp-tower TES") and a
+        power-block Link to the grid (costs row "csp-tower") — solar heat can be
+        stored before conversion. Sector chain: water-tank heat storage at every
+        heat node — when sector.tes is true (default), each residential/services
+        urban/rural heat bus gets a water-tank Bus, charger/discharger Links (costs
+        rows "water tank charger"/"water tank discharger") and an extendable Store
+        with standing_loss derived from the sector.tes_tau time constant (3 days
+        decentral, 180 days central — i.e. seasonal for district heat) and
+        capital cost from "{central|decentral} water tank storage" (converted from
+        EUR/m3 assuming 40 K spread, 1.17 kWh/m3K).
+      mechanism: >
+        Power chain: attach_stores in scripts/add_extra_components.py (rule
+        add_extra_components), csp branch gated on "csp" in
+        electricity.renewable_carriers and config["renewable"]["csp"]["csp_model"]
+        == "advanced". Sector chain: add_heat in scripts/prepare_sector_network.py
+        (rule prepare_sector_network), gated on sector.enable.heat and
+        options["tes"]; loss factor standing_loss = 1 - exp(-1/24/tes_time_constant_days).
+      not_covered: >
+        No power-to-heat-to-power (Carnot battery / pumped thermal) pathway. No
+        industrial high-temperature heat storage. No pit/aquifer/borehole storage —
+        technology-data v0.13.2 ships "central water pit storage" (+charger/
+        discharger) rows but no code consumes them; the water-tank cost keys are
+        hardcoded. CSP TES in the "simple" csp model collapses to a plain generator
+        (no Store).
+      provenance: scripts/prepare_sector_network.py:add_heat
+    levers:
+      - key: sector.tes
+        effect: Master switch for water-tank thermal storage at all heat nodes in the sector chain.
+        default: "true"
+        provenance: scripts/prepare_sector_network.py:add_heat
+      - key: sector.tes_tau.central
+        effect: Loss time constant (days) for central (district-heating) water tanks — sets standing_loss; 180 d ~ seasonal storage.
+        default: "180"
+        provenance: scripts/prepare_sector_network.py:tes_tau
+      - key: sector.tes_tau.decentral
+        effect: Loss time constant (days) for decentral (building-level) water tanks.
+        default: "3"
+        provenance: scripts/prepare_sector_network.py:tes_tau
+      - key: renewable.csp.csp_model
+        effect: '"advanced" gives CSP a separate heat bus + TES Store + power-block Link; "simple" models CSP as a plain generator with no storage.'
+        default: "advanced"
+        provenance: scripts/add_extra_components.py:attach_stores
+      - key: electricity.renewable_carriers
+        effect: Add "csp" here (it is absent by default) to activate CSP at all — prerequisite for CSP TES.
+        default: "[solar, onwind, offwind-ac, offwind-dc, hydro]"
+        provenance: scripts/add_extra_components.py:attach_stores
+      - key: sector.solar_thermal
+        effect: Adds solar-thermal collectors feeding the same heat buses the water tanks buffer (the main charging source besides heat pumps/boilers).
+        default: "true"
+        provenance: scripts/prepare_sector_network.py:add_heat
+      - key: sector.enable.heat
+        effect: Master switch for the whole heat block (and thus water-tank TES) in the sector chain.
+        default: "true"
+        provenance: scripts/prepare_sector_network.py:add_heat
+    boundary:
+      - variant: Water-tank heat storage at heat nodes
+        rung: L0
+        note: Default on via sector.tes.
+      - variant: Change storage losses / effective duration of heat storage
+        rung: L0
+        note: sector.tes_tau.central / .decentral.
+      - variant: CSP with thermal storage
+        rung: L1
+        note: Add "csp" to electricity.renewable_carriers (csp_model already defaults to "advanced"); requires the csp renewable profile inputs to be built.
+      - variant: Pit / large seasonal heat storage as a distinct technology
+        rung: L2
+        note: Costs rows ("central water pit storage" etc.) exist in retrieved technology-data v0.13.2, but the cost keys in add_heat are hardcoded to water tanks — add a parallel branch or parameterise the tech name.
+      - variant: Carnot battery / pumped-thermal electricity storage
+        rung: L5
+        note: No heat-to-power path from storage exists; needs a new component chain (electric charger Link, heat Store, heat-engine discharger Link).
+      - variant: Industrial process-heat storage
+        rung: L5
+        note: Industry demand is not modelled with storable heat buses; bespoke components required.
+    where:
+      - change: CSP TES store/link (costs keys "csp-tower TES", "csp-tower")
+        anchor: scripts/add_extra_components.py, function attach_stores, csp branch (rule add_extra_components)
+        provenance: scripts/add_extra_components.py:attach_stores
+      - change: Water-tank TES components, cost keys, loss formula
+        anchor: scripts/prepare_sector_network.py, function add_heat, options["tes"] block (rule prepare_sector_network)
+        provenance: scripts/prepare_sector_network.py:add_heat
+      - change: TES time constants
+        anchor: config path sector.tes_tau (dict with central/decentral)
+        provenance: config.default.yaml:tes_tau
+    data_dependencies:
+      - input: costs rows "csp-tower TES", "csp-tower" (technology-data via rule retrieve_cost_data; also in offline fallback data/costs.csv)
+        required_for: CSP thermal storage
+        availability: exists by default
+      - input: costs rows "central water tank storage", "decentral water tank storage", "water tank charger", "water tank discharger"
+        required_for: Sector water-tank TES
+        availability: exists by default (also in offline fallback data/costs.csv)
+      - input: CSP renewable profile (rule build_renewable_profiles) and cutout for the region
+        required_for: CSP with TES
+        availability: must be built (only when csp is enabled)
+      - input: heat demand and COP profiles (heat block inputs of rule prepare_sector_network)
+        required_for: Sector water-tank TES (heat buses must exist)
+        availability: must be built (default sector workflow)

@@ -1,0 +1,185 @@
+id: industrial-process-cooling
+title: Industrial process cooling and refrigeration
+summary: >
+  Electricity (and heat) used for process cooling and refrigeration in industry
+  — food cold chains, chemicals process cooling, cryogenics — as a distinct
+  end-use with its own load, efficiency (COP) and flexibility potential.
+
+when_to_use:
+  - "industrial cooling demand"
+  - "process cooling / refrigeration in factories"
+  - "cold chain electricity demand"
+  - "chillers in industry"
+  - "food processing refrigeration"
+  - "chemicals process cooling"
+  - "cooling as flexible industrial load"
+  - "split cooling out of industry electricity"
+
+reference_taxonomy:
+  framework: "FORECAST (Fraunhofer ISI)"
+  concepts:
+    - "FORECAST's end-use balance covers process cooling alongside process heating by temperature level, following the Rehfeldt et al. bottom-up estimation of heating and cooling demand in European industry."
+    - "Cooling is resolved per product/process in a bottom-up model of 60+ products (e.g. food-industry refrigeration vs chemicals process cooling), not as an aggregate electricity share."
+    - "Cooling equipment counts as a cross-cutting technology class with its own energy-efficiency measures, diffusion and stock turnover."
+    - "More than 10 energy carriers are tracked, so cooling supplied by electricity vs absorption (heat-driven) chillers can be distinguished."
+  sources:
+    - "https://www.forecast-model.eu/forecast-en/content/methodology.php"
+    - "https://www.sciencedirect.com/science/article/pii/S2211467X18300890"
+    - "https://irees.de/wp-content/uploads/2020/06/1-031-16_Rehfeldt.pdf"
+    - "https://github.com/fraunhofer-isi/forecast-sites"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        Not covered as a distinct end-use. Whatever electricity industry uses
+        for cooling is invisibly embedded in the single flat "industry
+        electricity" load; UNSD energy balances (the demand source) report
+        carriers per industry, never end-uses, so no cooling number exists
+        anywhere in the pipeline.
+      mechanism: >
+        build_base_industry_totals aggregates UNSD rows to (country, carrier,
+        industry); build_industry_demand grows and nodally distributes them;
+        prepare_sector_network.add_industry attaches the aggregate as the
+        "industry electricity" Load per node. No cooling, chiller or
+        refrigeration term appears in the industry chain.
+      not_covered: >
+        No cooling load, no COP/chiller representation, no cooling flexibility,
+        no temperature-level cold demand. Any cooling analysis requires first
+        splitting the electricity aggregate with external data.
+      provenance: "scripts/prepare_sector_network.py:industry electricity; scripts/build_base_industry_totals.py:create_industry_base_totals"
+
+    levers:
+      - key: sector.enable.industry
+        effect: "On/off for all industry loads (cooling is inside the electricity aggregate)."
+        default: "true"
+        provenance: "config.default.yaml:industry; Snakefile:rule build_industry_demand"
+      - key: custom_data.industry_demand
+        effect: >
+          Custom (country x carrier) x industry csv replaces the UNSD baseline
+          — the place to inject an externally estimated cooling electricity
+          quantity, but only as part of the electricity row, not as a new
+          end-use.
+        default: "false"
+        provenance: "config.default.yaml:industry_demand; scripts/build_industry_demand.py:country_to_nodal"
+
+    boundary:
+      - variant: "scale total industry electricity (incl. embedded cooling)"
+        rung: L3
+        note: "custom_data.industry_demand csv or edit industry_growth_cagr.csv per industry."
+      - variant: "report/split cooling electricity as its own carrier column"
+        rung: L3
+        note: >
+          Needs an external end-use split (FORECAST/Rehfeldt-style cooling
+          shares per industry) applied to the electricity column — data first,
+          then a small edit where build_industry_demand assembles carriers.
+      - variant: "separate 'industry cooling' load in the network"
+        rung: L4
+        note: "new column through build_industry_demand output + a new Load block in add_industry; wildcard plumbing unchanged but the resource schema grows."
+      - variant: "endogenous chiller technology / cooling COP / absorption cooling from waste heat"
+        rung: L5
+        note: "requires a cold-delivery bus with competing supply links (electric chiller, absorption) — no analogous structure exists anywhere in the earth industry model."
+
+    where:
+      - change: "carrier assembly where a cooling column would be added"
+        anchor: "all_carriers list and nodal_df assembly in build_industry_demand"
+        provenance: "scripts/build_industry_demand.py:all_carriers"
+      - change: "network load where a cooling Load block would be added"
+        anchor: "add_industry in prepare_sector_network (next to the industry electricity load)"
+        provenance: "scripts/prepare_sector_network.py:add_industry"
+
+    data_dependencies:
+      - input: "cooling share of industrial electricity per industry (external, e.g. Rehfeldt-style estimates)"
+        required_for: "any cooling split"
+        availability: "absent — no end-use data in the repo"
+      - input: "data/custom/industry_demand_{demand}_{planning_horizons}.csv"
+        required_for: "injecting adjusted electricity totals"
+        availability: "absent — user-supplied"
+
+    demand_dimensions:
+      driver: "none of its own — cooling rides inside UNSD industry electricity totals grown by CAGRs"
+      spatial: "inherits the industry electricity nodal keys (plant locations, GDP fallback)"
+      temporal: "flat — annual/8760 constant, no ambient-temperature dependence"
+      scenario: "only via the aggregate electricity column per {demand}/{planning_horizons}"
+
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+
+    out_of_box:
+      covers: >
+        Not covered as a distinct model object — but, unlike pypsa-earth,
+        cooling is explicitly visible in the demand derivation.
+        build_industry_sector_ratios reads JRC-IDEES end-use rows such as
+        "Chemicals: Process cooling - Electric" and "Food: Process cooling and
+        refrigeration" (electrified at the "Food: Electric cooling" efficiency)
+        and folds them into the per-sector "elec" ratio. In the network the
+        result is indistinguishable inside the flat "industry electricity"
+        load.
+      mechanism: >
+        Per-sector functions (chemicals_industry, food_beverages_tobacco,
+        other_industrial_sectors) sum cooling end-uses into df.loc["elec"];
+        build_industrial_energy_demand_per_node multiplies ratios by nodal
+        production; prepare_sector_network.add_industry attaches "industry
+        electricity". The temperature-band machinery (industry_t) covers only
+        heat bands — there are no cold bands.
+      not_covered: >
+        No separate cooling carrier/load, no chiller technology choice, no cold
+        storage or pre-cooling flexibility, no ambient-dependent COP. The
+        cooling quantities exist mid-pipeline but are summed away before the
+        network sees them.
+      provenance: "scripts/build_industry_sector_ratios.py:Chemicals: Process cooling - Electric; scripts/build_industry_sector_ratios.py:Food: Electric cooling; scripts/prepare_sector_network.py:industry electricity"
+
+    levers:
+      - key: sector.industry
+        effect: "On/off for the industry demand block that contains the (embedded) cooling electricity."
+        default: "true"
+        provenance: "config/config.default.yaml:industry; scripts/prepare_sector_network.py:add_industry"
+      - key: industry.sector_ratios_fraction_future
+        effect: "Moves country ratios toward the fully electrified best-in-class ratios — implicitly re-scales the electricity (incl. cooling) intensity per tonne."
+        default: "0.0 (2020) rising to 1.0 (2050)"
+        provenance: "config/config.default.yaml:sector_ratios_fraction_future; scripts/build_industry_sector_ratios_intermediate.py:sector_ratios_fraction_future"
+
+    boundary:
+      - variant: "scale cooling intensity of a sector"
+        rung: L2
+        note: "edit the cooling end-use terms in the relevant sector function of build_industry_sector_ratios (the JRC-IDEES rows are already isolated there)."
+      - variant: "carry cooling as its own carrier row through the pipeline"
+        rung: L3
+        note: >
+          Add a 'cooling' entry to the carrier index in
+          build_industry_sector_ratios and stop summing the cooling end-uses
+          into elec — the data (JRC-IDEES end-use rows) already exists in the
+          inputs, so this is mostly re-plumbing plus a new column downstream.
+      - variant: "distinct 'industry cooling' load in the network"
+        rung: L4
+        note: "new column must survive build_industrial_energy_demand_per_node (incl. the endogenous block copy-over) and get a Load in add_industry."
+      - variant: "endogenous chiller choice (electric vs absorption from waste heat) or flexible cold storage"
+        rung: L5
+        note: "needs cold buses + supply links analogous to add_t_industry* but for cold; nothing to copy exists."
+
+    where:
+      - change: "cooling end-use terms per sector"
+        anchor: "chemicals_industry / food_beverages_tobacco / other_industrial_sectors in build_industry_sector_ratios"
+        provenance: "scripts/build_industry_sector_ratios.py:chemicals_industry; scripts/build_industry_sector_ratios.py:food_beverages_tobacco"
+      - change: "carrier plumbing for a new cooling column"
+        anchor: "rule build_industrial_energy_demand_per_node (rename_sectors, endogenous copy-over list)"
+        provenance: "scripts/build_industrial_energy_demand_per_node.py:rename_sectors; rules/build_sector.smk:rule build_industrial_energy_demand_per_node"
+      - change: "network load"
+        anchor: "add_industry in prepare_sector_network"
+        provenance: "scripts/prepare_sector_network.py:add_industry"
+
+    data_dependencies:
+      - input: "JRC-IDEES per-sector end-use sheets (contain the process-cooling rows)"
+        required_for: "any cooling split — the data already flows through build_industry_sector_ratios"
+        availability: "must be built (retrieved); EU-focused"
+      - input: "chiller/absorption technology costs"
+        required_for: "endogenous cooling supply"
+        availability: "region-dependent — check technology-data before assuming rows exist"
+
+    demand_dimensions:
+      driver: "kt/a production per sector x JRC-IDEES cooling end-use intensity, folded into MWh_elec/t"
+      spatial: "inherits industry electricity distribution (Hotmaps/GEM keys per sector)"
+      temporal: "flat — annual/nhours constant p_set, no weather dependence"
+      scenario: "via sector_ratios_fraction_future interpolation and production scenarios per planning horizon"

@@ -1,0 +1,59 @@
+id: long-duration-storage-ldes
+title: "Long-duration storage (LDES)"
+rank: 11
+question: >
+  What fills the seasonal gap — hydrogen, pumped hydro, thermal, novel LDES —
+  at what cost, and how much storage of which duration does a given VRE share
+  require? EU-prioritized (Horizon Cluster 5 LDES calls); the seasonal-storage
+  gap is a recognized unsolved problem for investors, TSOs, and researchers.
+when_to_use:
+  - "how much long-duration / seasonal storage do we need"
+  - "hydrogen caverns vs pumped hydro vs iron-air for multi-day gaps"
+  - "storage duration mix at high VRE shares"
+  - "seasonal storage gap under deep decarbonization"
+  - "storage vs grid vs flexible demand as substitutes"
+recipes:
+  generation_conversion: [long-duration-storage, hydrogen-storage-salt-caverns,
+                          pumped-hydro-storage, iron-air-batteries,
+                          compressed-air-storage, thermal-storage,
+                          aquifer-thermal-storage]
+  demand: [electricity-load, residential-space-heating-demand]
+functionality:
+  - id: co2-cap
+    role: "tight Co2L (or a cb budget) is what makes seasonal storage bind — sweep it to trace the LDES demand curve"
+  - id: temporal-resolution-nh
+    role: "full-year chronology is kept at any nH averaging, so seasonal state-of-charge cycling is visible in solved networks"
+  - id: time-segmentation-tsam
+    role: "nSEG segmentation preserves scarcity extremes better than uniform averaging when coarsening"
+  - id: sector-master-switches
+    role: "H2 and thermal stores compete against cross-sector flexibility only with the sector layers on"
+  - id: district-heating-suite
+    role: "temperature-limited pit storage (PTES) gives district heat its own seasonal store, competing with electric LDES"
+  - id: weather-year-selection
+    role: "LDES value swings strongly with the chosen weather year"
+  - id: multi-weather-year
+    role: "cutout concatenation exists but the standard workflow sizes on one year — sweep years as separate runs"
+  - id: battery-charger-ratio
+    role: "caveat — the newer storage-suite carriers (iron-air, LAES, vanadium...) have uncoupled, zero-cost dischargers"
+  - id: carrier-attribute-scaling
+    role: "storage cost sensitivity (e.g. H2 store capital_cost factor) via adjustments or opts token"
+  - id: summary-outputs
+    role: "energy balances and store capacities per carrier for duration-mix reporting"
+gap_assessment: >
+  Core strength: capacity expansion co-optimizes batteries, pumped hydro,
+  hydrogen storage (electrolyser + cavern/tank + fuel cell/turbine chains),
+  and a suite of novel LDES carriers (iron-air, LAES, CAES, vanadium)
+  against grid and generation, with seasonal cycling directly readable from
+  solved store time series — and Europe-specific inputs are strong (mapped
+  salt-cavern potentials per region, GIS-based district-heating PTES).
+  Honest caveats: (1) the newer storage-suite carriers bypass the
+  charger-ratio constraint — their discharger sizing is unconstrained and
+  costed at zero, so audit duration results for those techs; (2) a single
+  weather year per solve means LDES sizing is not robust to inter-annual
+  variability — sweep years via the scenario matrix, or re-dispatch a fixed
+  system against other years with the operations-only rule; probabilistic
+  multi-year sizing in one optimization remains absent.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

@@ -1,0 +1,54 @@
+id: cooling-ac-peak-demand
+title: Cooling / AC peak demand
+rank: 49
+question: >
+  How fast does air-conditioning growth reshape peak demand, and can the system
+  ride heat waves? AC stock growth plus cooling degree days is becoming a peak
+  driver even in Europe — southern-Europe heat waves already stress summer
+  systems — and defines it in hot emerging economies.
+when_to_use:
+  - "AC demand growth scenario"
+  - "cooling peak on hot days / heat-wave stress"
+  - "cooling degree days in demand profiles"
+  - "summer peak shift in southern Europe"
+  - "district cooling options"
+recipes:
+  generation_conversion: [air-source-heat-pumps]
+  demand: [space-cooling-demand, electricity-load, demand-temporal-profiles, industrial-process-cooling]
+functionality:
+  - id: weather-year-selection
+    role: "cooling is implicit in the historical base electricity profiles — 85 ERA5 years let you pick 2003/2022-style hot years deliberately"
+  - id: safe-reserve-margin
+    role: "deterministic peak-adequacy check under a scaled-up load; needs the user-added SAFE_reservemargin config key"
+  - id: load-shedding-voll
+    role: "unserved-energy diagnosis when the (implicit) cooling peak binds"
+  - id: demand-elasticity
+    role: "absent — no price-responsive AC or cooling demand response"
+  - id: residential-heat-dsm
+    role: "the thermal-mass DSM pattern a cooling-flexibility model would mirror — heating-only today"
+  - id: scenario-matrix
+    role: "load-growth scenarios as a crude AC-growth proxy across parallel runs"
+gap_assessment: >
+  Grounded absence as a building end-use — same verdict as earth, from a
+  different starting point. The heating pipeline is HDD-only
+  (build_daily_heat_demand computes heating degree days; no cooling analogue),
+  and there is no residential/services space-cooling carrier, load or config
+  key. Cooling appears only as: JRC-IDEES industrial process cooling embedded
+  in the industry electricity ratios (annual, not weather-driven), vehicle
+  cabin conditioning corrections in build_transport_demand, and a DH
+  heat-source parameter name. Residential/services AC sits unidentified
+  inside the historical base electricity load — present but not separately
+  scalable and not weather-responsive for future scenarios. AC-growth studies
+  can therefore only scale total load, smearing growth across all hours
+  instead of concentrating it in hot afternoons — precisely wrong for peak
+  questions; heat-wave realism is limited to choosing a hot historical
+  weather year whose (that year's) AC response is baked into the load data.
+  Building the real thing is a code job: mirror build_daily_heat_demand with
+  CDDs (atlite exposes cooling demand upstream), scale to JRC-IDEES/Eurostat
+  cooling totals, add AC-stock growth scenarios, and optionally a reversible
+  heat-pump link; residential-heat-dsm shows the flexibility pattern. No
+  district cooling anywhere.
+coverage: gap
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

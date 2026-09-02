@@ -1,0 +1,190 @@
+paper: "2025_Schumm_Temporal-hydrogen-regulation-exporters_NatComms.pdf"
+tier: 1
+model_used: >
+  PyPSA-Earth with sector-coupling extension (PyPSA-Earth-Sec), bespoke Morocco
+  model, 14 nodes, 3-hourly resolution, sector-coupled capacity expansion.
+scope: >
+  Studies the interplay of hydrogen exports, domestic energy transition, and
+  temporal hydrogen regulation (no rule / annual / monthly / hourly matching)
+  in Morocco, evaluating welfare redistribution between hydrogen exporters and
+  domestic electricity consumers across 264 scenario runs.
+methods:
+  - slug: additionality-and-24-7-matching
+    role: canonical-use
+    evidence: >
+      "The green hydrogen constraint applied in this study aligns with the
+      Delegated regulation on Union methodology for RFNBOs … 1. Additionality:
+      The electricity demand of electrolysers must be provided by additional RE
+      power generation … 2. Temporal correlation: Hourly matching (from
+      1.1.2030 onwards, until 31.12.2029 monthly)" (Sec. Methods – Green
+      hydrogen policy). Four matching regimes are swept: no rule, annual,
+      monthly, hourly.
+    procedure_notes: >
+      A constraint on electrolysis electricity demand is formulated for each
+      matching regime. The additionality criterion requires RE capacity
+      installed within 3 years before the electrolyser. Hourly matching
+      requires electricity supply from additional renewables equal to the
+      electrolysis demand in each hour; annual and monthly matching use the
+      corresponding time window. The 264 model runs cover all combinations of
+      export volumes (1–120 TWh/a), mitigation levels (0–100%), and four
+      matching regimes. The paper analyses how matching strictness affects
+      electricity price duration curves, dispatch, and welfare redistribution.
+    variant: annual-monthly-hourly-sweep
+    parameters: {matching_levels: "no rule, annual, monthly, hourly", runs: 264}
+
+  - slug: sector-coupled-network-assembly
+    role: canonical-use
+    evidence: >
+      "The sector-coupled energy model of Morocco is based on the global
+      electricity model PyPSA-Earth and the sector-coupling extension using
+      linear optimisation and overnight scenarios. This capacity extension model
+      optimises the generation, transmission and storage capacities of
+      Morocco's energy system by minimising the total annualised system costs."
+      (Sec. Methods – Sector-coupled energy model). Sectors include
+      electricity, heating, industry, transport (incl. aviation/shipping), and
+      agriculture.
+    procedure_notes: >
+      Model includes electricity buses, gas pipeline buses, hydrogen pipelines,
+      CO2 network, and a shared CO2 accounting bus. Vehicle-to-Grid (V2G),
+      air heat pumps, direct air capture (DAC), Fischer-Tropsch synthesis, BEV
+      chargers, and resistive heaters are all represented as conversion links.
+      Energy demand is distributed spatially according to GDP or production
+      sites across 14 nodes aligned with GADM level 1 regions.
+    variant: morocco-14-node-3h
+    parameters: {nodes: 14, temporal_resolution: "3h", sectors: "electricity, heating, industry, transport, agriculture"}
+
+  - slug: import-and-trade-representation
+    role: canonical-use
+    evidence: >
+      "The amount of hydrogen to be exported or further synthesised for export
+      is implemented as an exogenous parameter in the range of 0–120 TWh/a,
+      with sensitivity analysis up to 200 TWh/a." (Sec. Methods – Hydrogen
+      export). The paper's central research question is the effect of export
+      volumes on domestic electricity consumers.
+    procedure_notes: >
+      Hydrogen export is a fixed exogenous demand at country border nodes
+      (ports). The model endogenously selects the cost-optimal export port(s).
+      Each port can build hydrogen underground or steel tank storage depending
+      on geological conditions. Export profile is constant (representing
+      pipeline or further synthesis with limited flexibility). Transport mode
+      beyond the border is not modelled.
+    variant: exogenous-export-volume-sweep
+    parameters: {export_range: "1–120 TWh/a", sensitivity: "up to 200 TWh/a", profile: "constant"}
+
+  - slug: brownfield-and-capacity-vintaging
+    role: routine-use
+    evidence: >
+      "Following the workflow of [Parzen et al. 2023], Figure 8 shows the
+      current capacities of electricity generation and distribution of Morocco.
+      Based on this brownfield electricity system, the sector-coupled energy
+      model allows the capacity expansion of storage, (electricity networks),
+      hydrogen pipelines, renewable and conventional generators." (Sec.
+      Methods – Brownfield model and capacity expansion). Results text notes
+      that "existing (brownfield) capacities of onshore wind, hydro, and
+      combined-cycle gas turbines (CCGT) play only a minor role" at low
+      mitigation.
+    procedure_notes: >
+      Existing conventional power plants obtained via powerplantmatching tool
+      using OpenStreetMap, Global Energy Monitor and IRENA sources. Brownfield
+      coal power plant capacity costs are excluded from the system optimisation
+      (sunk cost); their utilisation reduction under stricter hydrogen
+      regulation is a key welfare mechanism analysed.
+    variant: null
+    parameters: {}
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      "The sector-coupled energy model of Morocco is based on the global
+      electricity model PyPSA-Earth and the sector-coupling extension using
+      linear optimisation and overnight scenarios." (Sec. Methods – Sector-
+      coupled energy model). All technology and cost assumptions are for 2030.
+    procedure_notes: >
+      Single target year (2030) overnight investment optimisation. No
+      inter-period pathway or myopic rolling — the 264 runs sweep scenario
+      parameters, not time periods.
+    variant: overnight
+    parameters: {target_year: 2030}
+
+  - slug: land-eligibility-and-potentials
+    role: routine-use
+    evidence: >
+      "The sector-coupled energy model follows the data pipeline of [Parzen
+      et al.] by incorporating solar PV, onshore wind and hydro power using
+      the open source package Atlite. Atlite obtains technology-specific time
+      series based on weather data (ERA5 reanalysis data, SARAH-2 satellite
+      data). In addition to the time series, Atlite calculates land
+      availabilities and linked potentials using the Copernicus Global Land
+      Service." (Sec. Methods – Renewable Energy Sources).
+    procedure_notes: >
+      Land eligibility computed via Atlite using Copernicus Global Land
+      Service land cover at 100 m. ERA5 reanalysis and SARAH-2 satellite data
+      used for capacity factor time series at 14-node spatial resolution.
+    variant: atlite-era5-sarah2
+    parameters: {spatial_resolution: "14 nodes", temporal_resolution: "3h"}
+
+  - slug: powerplant-matching-and-fleet-assembly
+    role: routine-use
+    evidence: >
+      "The conventional electricity generators are obtained from the
+      powerplantmatching tool. Powerplantmatching uses various input sources
+      as OpenStreetMap2022, Global Energy Monitor, IRENA to download, filter
+      and merge the datasets. In this study, powerplantmatching is applied to
+      Morocco delivering the conventional power plants." (Sec. Methods –
+      Conventional electricity generation).
+    procedure_notes: >
+      Standard powerplantmatching workflow applied to Morocco. No bespoke
+      modifications noted beyond standard source fusion and deduplication.
+    variant: null
+    parameters: {}
+
+  - slug: discounting-and-cost-of-capital
+    role: routine-use
+    evidence: >
+      "All technology and cost assumptions are based on the year 2030, taken
+      from github.com/pypsa/technologydata version 0.4.0. A discount rate of
+      13% is applied." (Sec. Methods – Technology and cost assumptions).
+    procedure_notes: >
+      Single discount rate for all technologies. Technology costs from
+      PyPSA technology-data v0.4.0. No country- or technology-specific
+      differentiation mentioned.
+    variant: null
+    parameters: {discount_rate: "13%", technology_data_version: "0.4.0"}
+
+  - slug: sensitivity-and-uncertainty-sweeps
+    role: routine-use
+    evidence: >
+      "This three-dimensional scenario space results in 264 model runs
+      (excluding sensitivity analysis) to grasp the full extent of the
+      interaction between various parameters." and "sensitivity analysis up to
+      200 TWh/a presented in the Supplementary Information section High export
+      scenarios." (Introduction and Sec. Methods – Hydrogen export).
+    procedure_notes: >
+      Three-dimensional sweep over: (1) domestic mitigation 0–100%, (2)
+      hydrogen export 1–120 TWh/a, (3) four temporal matching regimes.
+      Additional one-at-a-time sensitivity extending export to 200 TWh/a
+      shown in SI. No Monte Carlo or Latin hypercube — structured grid sweep.
+    variant: structured-grid
+    parameters: {dimensions: 3, total_runs: 264, sensitivity_export_max: "200 TWh/a"}
+
+  - slug: price-formation-and-scarcity-rents
+    role: canonical-use
+    evidence: >
+      "The price spillover is observable in Figure 5 depicting the price
+      duration curve at 120 TWh/a export and 0% domestic climate change
+      mitigation. The price duration curve describes the sorted price of
+      electricity (spatial mean) at every hour of the year. Stricter hydrogen
+      regulation pushes the price duration curve towards the left, since
+      additional renewable electricity capacities phase out fossil generation
+      with higher marginal costs than renewable electricity." (Sec. Results –
+      Hydrogen regulation reduces domestic electricity prices).
+    procedure_notes: >
+      Price duration curves plotted for each matching regime to illustrate
+      merit-order effect. Two mechanisms identified: (1) price spillover —
+      renewables crowd out high-MC fossil; (2) energy spillover — excess
+      renewable capacity from hydrogen regulation supplies domestic grid.
+      Domestic electricity cost reductions up to 31% from hourly matching.
+    variant: null
+    parameters: {}
+
+unmatched_methods: []

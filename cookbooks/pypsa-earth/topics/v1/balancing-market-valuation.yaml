@@ -1,0 +1,50 @@
+id: balancing-market-valuation
+title: Balancing-market valuation
+rank: 31
+question: >
+  What is flexibility worth in the balancing timeframe — what would a
+  battery, peaker, or demand-side asset earn from balancing energy and
+  reserve products, and how does that value shift as VRE shares rise?
+  Core question for aggregators, VPP startups, and TSO market design.
+when_to_use:
+  - "what would our asset earn in the balancing market"
+  - "value of flexibility across energy and balancing"
+  - "balancing energy price forecast under high VRE"
+  - "reserve procurement cost trajectory"
+  - "business case for a battery beyond energy arbitrage"
+recipes:
+  generation_conversion: [grid-scale-batteries, gas-power-plants,
+                          virtual-power-plants, vehicle-to-grid]
+  demand: [electricity-load, demand-temporal-profiles]
+functionality:
+  - id: market-design-mechanisms
+    role: "the missing core — no balancing products, bids, or settlement"
+  - id: operational-reserves
+    role: "nearest proxy: hourly reserve requirement constraint (%load + %VRE + MW), not a priced product"
+  - id: nodal-marginal-prices
+    role: "energy-market value from duals; reserve-constraint duals give a shadow reserve price"
+  - id: load-shedding-voll
+    role: "scarcity pricing upper bound via VOLL slack generators"
+  - id: temporal-resolution-nh
+    role: "hourly floor — sub-hourly imbalance, where balancing value lives, is invisible"
+  - id: unit-commitment
+    role: "no start-up/ramp costs, so thermal inflexibility that drives balancing prices is absent"
+gap_assessment: >
+  This is a market-design topic and pypsa-earth is a cost-minimizing planner:
+  there are no balancing products, no bids, no activation prices, no
+  imbalance settlement. What the model does give is the competitive-benchmark
+  system view — hourly nodal energy prices from duals, plus a GenX-style
+  operational reserve requirement whose constraint dual acts as a shadow
+  reserve price and whose cost can be attributed to reserve-providing
+  capacity. That supports "how much flexible capacity does the system need
+  and what does holding reserves cost" — not "what will the aFRR price be."
+  Two structural floors: temporal resolution is hourly (sub-hourly imbalance
+  dynamics are unrepresentable), and the LP has no unit-commitment or ramp
+  costs, so the thermal inflexibility that spikes real balancing prices is
+  smoothed away. Treat model duals as a lower-bound long-run value of
+  flexibility; actual balancing revenues need a dedicated market model
+  downstream.
+coverage: gap
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

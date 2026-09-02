@@ -1,0 +1,56 @@
+id: balancing-market-valuation
+title: Balancing-market valuation
+rank: 31
+question: >
+  What is flexibility worth in the balancing timeframe — what would a
+  battery, peaker, or demand-side asset earn from balancing energy and
+  reserve products, and how does that value shift as VRE shares rise?
+  Core question for aggregators, VPP startups, and TSO market design.
+when_to_use:
+  - "what would our asset earn in the balancing market"
+  - "value of flexibility across energy and balancing"
+  - "balancing energy price forecast under high VRE"
+  - "reserve procurement cost trajectory"
+  - "business case for a battery beyond energy arbitrage"
+recipes:
+  generation_conversion: [grid-scale-batteries, gas-power-plants,
+                          virtual-power-plants, vehicle-to-grid]
+  demand: [electricity-load, demand-temporal-profiles]
+functionality:
+  - id: market-design-mechanisms
+    role: "the missing core — no balancing products, bids, or imbalance settlement"
+  - id: operational-reserves
+    role: "nearest proxy: hourly reserve requirement (%load + %VRE + MW) co-optimized with dispatch, not a priced product"
+  - id: nodal-marginal-prices
+    role: "energy-market value from duals; the reserve-constraint dual gives a shadow reserve price"
+  - id: load-shedding-voll
+    role: "scarcity-pricing upper bound via per-carrier VOLL slack generators"
+  - id: sub-hourly-resolution
+    role: "absent — sub-hourly imbalance, where balancing value actually lives, is invisible at the hourly floor"
+  - id: linearized-unit-commitment
+    role: "LP-relaxed start-up/min-load/ramp data per conventional carrier — a slice of the thermal inflexibility that drives balancing prices (off by default)"
+  - id: operations-only-solve
+    role: "dispatch-only re-solve with fixed capacities — a production-cost-style price series more credible than expansion-run duals"
+  - id: rolling-horizon-dispatch
+    role: "sequential-window dispatch limits foresight, nudging prices toward operational realism"
+gap_assessment: >
+  A market-design topic against a cost-minimizing planner: pypsa-eur has no
+  balancing products, no bids, no activation prices, no imbalance
+  settlement. What it does give is a better competitive benchmark than
+  pypsa-earth: hourly nodal energy prices from duals, a GenX-style reserve
+  requirement whose dual acts as a shadow reserve price, plus — unlike
+  earth — a linearized unit-commitment layer (start-up costs, min load,
+  ramps as LP relaxation) and a dedicated operations-only rule so you can
+  fix an expansion plan and re-solve dispatch production-cost-style, with
+  rolling horizons to curb perfect foresight. That supports "how much
+  flexible capacity does the system need and what does holding reserves
+  cost", and yields somewhat more realistic price duration curves. It still
+  cannot say what aFRR will clear at: temporal resolution is hourly, so
+  sub-hourly imbalance dynamics are unrepresentable, and the single
+  symmetric reserve is not a product set. Treat duals as a lower-bound
+  long-run value of flexibility; actual balancing revenues need a dedicated
+  market model downstream.
+coverage: gap
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

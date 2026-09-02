@@ -1,0 +1,103 @@
+id: solar-mini-grids
+title: Solar mini-grids
+summary: Community-scale islanded or weakly-connected solar+storage systems serving settlements off or at the edge of the main grid.
+when_to_use:
+  - "mini-grids / micro-grids for rural electrification"
+  - "off-grid solar for villages"
+  - "islanded community power systems"
+  - "electrification of settlements far from the grid"
+  - "grid extension vs decentralised supply"
+  - "isolated networks in the model"
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        Not covered as mini-grids. The model has no distribution level in the
+        power chain: only OSM assets above clean_osm_data_options.threshold_voltage
+        (51 kV) enter the network, so mini-grids are invisible in the data. What
+        the workflow DOES have is explicit handling of isolated (sub)networks that
+        emerge from patchy OSM coverage: simplify_network drops isolated networks
+        below a power threshold (drop_isolated_networks, config
+        cluster_options.simplify_network.p_threshold_drop_isolated) or merges them
+        into a single isolated bus (p_threshold_merge_isolated) — i.e. small
+        detached grids are cleaned away or lumped, not modelled as candidate
+        mini-grids. Demand is allocated to grid buses from population/GDP
+        (build_demand_profiles), including people who in reality are unelectrified.
+      mechanism: >
+        Nearest mechanisms: (a) isolated-network handling in
+        scripts/simplify_network.py (drop_isolated_networks); (b) in the sector
+        chain, prepare_sector_network's add_electricity_distribution_grid adds one
+        aggregate "low voltage" bus per node with rooftop PV (solar_rooftop) and
+        home batteries (home_battery) behind a distribution Link — an aggregate
+        stand-in for decentralised solar+storage, though grid-connected, not
+        islanded.
+      not_covered: >
+        Settlement-level siting, mini-grid vs grid-extension competition, islanded
+        operation, diesel-hybrid mini-grids, and any electrification-access
+        accounting.
+      provenance: "scripts/simplify_network.py:drop_isolated_networks"
+    levers:
+      - key: cluster_options.simplify_network.p_threshold_drop_isolated
+        effect: "Isolated (sub)networks/nodes with mean power below this [MW] are discarded — raise/lower to keep or drop small detached grids."
+        default: "20"
+        provenance: "scripts/simplify_network.py:p_threshold_drop_isolated"
+      - key: cluster_options.simplify_network.p_threshold_merge_isolated
+        effect: "Isolated networks below this [MW] are merged into a single isolated bus instead of being kept separate."
+        default: "300"
+        provenance: "scripts/simplify_network.py:p_threshold_merge_isolated"
+      - key: cluster_options.simplify_network.s_threshold_fetch_isolated
+        effect: "Share of national load above which an isolated network is merged into the backbone network."
+        default: "false"
+        provenance: "config.default.yaml:s_threshold_fetch_isolated"
+      - key: sector.electricity_distribution_grid
+        effect: "Sector chain only: adds aggregate low-voltage buses + distribution Links per node — prerequisite for the decentralised solar/battery stand-ins."
+        default: "true"
+        provenance: "scripts/prepare_sector_network.py:add_electricity_distribution_grid"
+      - key: sector.solar_rooftop.enable
+        effect: "Sector chain: adds 'solar rooftop' generators on low-voltage buses with population- or building-derived potential."
+        default: "true"
+        provenance: "scripts/prepare_sector_network.py:add_electricity_distribution_grid"
+      - key: sector.home_battery
+        effect: "Sector chain: adds home battery stores on low-voltage buses."
+        default: "true"
+        provenance: "config.default.yaml:home_battery"
+    boundary:
+      - variant: "Keep small isolated grids in the model instead of dropping them"
+        rung: L0
+        note: "Lower p_threshold_drop_isolated / p_threshold_merge_isolated; each isolated network is then optimised as its own island within the LP."
+      - variant: "Aggregate decentralised solar+storage at every node (sector chain)"
+        rung: L0
+        note: "sector.electricity_distribution_grid + solar_rooftop + home_battery are on by default in the sector workflow."
+      - variant: "Represent a known mini-grid fleet as capacity"
+        rung: L3
+        note: "Feed it in as custom powerplants data (electricity.custom_powerplants: 'merge' with a custom powerplants file) — it lands on the nearest HV bus, losing the islanded character."
+      - variant: "Mini-grid vs grid-extension competition per settlement"
+        rung: L4
+        note: "Needs a new rule building settlement/off-grid demand points (population rasters exist via build_population_layouts; electrification status does not) plus candidate mini-grid buses and connection Links — new wildcard-level plumbing."
+      - variant: "Islanded operational detail (autonomy, reliability targets)"
+        rung: L5
+        note: "Bespoke components and constraints; outside what the national-scale LP resolves."
+    where:
+      - change: "Isolated-network thresholds"
+        anchor: "scripts/simplify_network.py:drop_isolated_networks + cluster_options.simplify_network config"
+        provenance: "scripts/simplify_network.py:drop_isolated_networks"
+      - change: "Aggregate LV solar/battery stand-in"
+        anchor: "scripts/prepare_sector_network.py:add_electricity_distribution_grid"
+        provenance: "scripts/prepare_sector_network.py:add_electricity_distribution_grid"
+      - change: "Demand placement (who a mini-grid would serve)"
+        anchor: "rule build_demand_profiles -> scripts/build_demand_profiles.py (population/GDP disaggregation, load_options)"
+        provenance: "Snakefile:build_demand_profiles"
+      - change: "Known mini-grid capacity as data"
+        anchor: "config electricity.custom_powerplants + rule build_powerplants"
+        provenance: "config.default.yaml:custom_powerplants"
+    data_dependencies:
+      - input: "population layouts / WorldPop rasters (build_shape_options.worldpop_method)"
+        required_for: "locating decentralised demand and rooftop potential"
+        availability: "exists by default in the workflow (region-dependent quality)"
+      - input: "settlement-level electrification-status data"
+        required_for: "mini-grid vs grid-extension variant (L4)"
+        availability: "absent — user-provided"
+      - input: "custom powerplants file"
+        required_for: "representing an existing mini-grid fleet"
+        availability: "absent — user-provided"

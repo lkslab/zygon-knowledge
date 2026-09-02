@@ -1,0 +1,112 @@
+id: ocean-cdr
+title: Ocean-based CDR
+summary: >
+  Marine carbon removal — ocean alkalinity enhancement, direct ocean capture,
+  macroalgae sinking and similar pathways that use the ocean as the carbon
+  sink.
+when_to_use:
+  - "ocean carbon removal"
+  - "ocean alkalinity enhancement / OAE"
+  - "direct ocean capture"
+  - "seaweed / kelp carbon sinking"
+  - "marine CDR"
+  - "blue carbon removal technologies"
+  - "negative emissions from the sea"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Nothing — no ocean-CDR concept exists in scripts/, rules/, config/
+        or the technology-data cost file (v0.14.0 checked; no alkalinity /
+        olivine / seaweed rows). The marine touchpoints that DO exist are
+        unrelated: GEBCO bathymetry in determine_availability_matrix
+        (renewables siting), rule retrieve_seawater_temperature (Copernicus
+        ocean reanalysis feeding surface-water heat pumps), and — closest in
+        spirit but categorically different — the SEA IS already the model's
+        default carbon sink in the geological sense: regional sequestration
+        potentials are allocated to OFFSHORE regions only
+        (sector.regional_co2_sequestration_potential.include_onshore: false
+        in build_clustered_co2_sequestration_potentials) and add_co2_network
+        prices "CO2 submarine pipeline" segments by underwater fraction. That
+        is sub-seabed storage of point-captured CO2, not ocean CDR. The CDR
+        machinery any marine pathway would plug into: add_co2_tracking
+        ("co2 atmosphere" store with e_min_pu = -1; per-node "co2 stored" and
+        "co2 sequestered" chain capped by sector.co2_sequestration_potential
+        via solve_network.py::add_co2_sequestration_limit) and add_dac (the
+        single existing atmosphere-withdrawal Link, sized in MW electricity).
+      mechanism: >
+        None. Structurally, an ocean-CDR pathway is an electricity-(and
+        possibly heat-)consuming Link withdrawing from "co2 atmosphere",
+        sinking into a NEW dedicated marine store carrier with its own
+        rate/total caps — not into "co2 stored", whose downstream "co2
+        sequestered" budget represents geological storage. Because
+        add_co2_sequestration_limit keys on carrier_attribute "co2
+        sequestered" only, a separate marine carrier escapes that cap
+        automatically and needs its own bound. Coastal siting could reuse
+        the regions_offshore geometries (inputs to
+        build_clustered_co2_sequestration_potentials), but nothing is wired
+        for it.
+      not_covered: >
+        Everything: no marine chemistry, no coastal/vessel siting or
+        logistics, no permanence or leakage treatment, no cost rows, no
+        removal potentials.
+      provenance: "scripts/prepare_sector_network.py:add_co2_tracking; scripts/prepare_sector_network.py:add_dac; scripts/prepare_sector_network.py:add_co2_network; scripts/build_clustered_co2_sequestration_potentials.py:include_onshore; scripts/solve_network.py:add_co2_sequestration_limit"
+    levers:
+      - key: sector.dac
+        effect: "Closest existing removal option (a stand-in only); toggles the sole atmosphere-withdrawal links in the model."
+        default: "true"
+        provenance: "config/config.default.yaml:dac; scripts/prepare_sector_network.py:add_dac"
+      - key: sector.co2_sequestration_potential
+        effect: "Only relevant if ocean-CDR carbon is crudely dumped into the co2 stored -> co2 sequestered chain; a faithful implementation uses its own store outside this cap."
+        default: "{2020: 0, ..., 2050: 250}"
+        provenance: "config/config.default.yaml:co2_sequestration_potential; scripts/solve_network.py:add_co2_sequestration_limit"
+      - key: sector.regional_co2_sequestration_potential.include_onshore
+        effect: "Not ocean CDR, but the adjacent fact: with the default false the model's entire geological CO2 storage budget already sits under the seabed (offshore regions only)."
+        default: "false"
+        provenance: "config/config.default.yaml:include_onshore; scripts/build_clustered_co2_sequestration_potentials.py:include_onshore"
+      - key: costs.custom_cost_fn
+        effect: "data/custom_costs.csv can introduce new ocean-CDR technology rows (overwrite_costs concatenates unknown technologies) — the L3 half of any implementation."
+        default: "data/custom_costs.csv"
+        provenance: "config/config.default.yaml:custom_cost_fn; scripts/process_cost_data.py:overwrite_costs"
+    boundary:
+      - variant: "crude stand-in: cost-tuned DAC-like backstop inside the geological budget"
+        rung: L2
+        note: >-
+          Clone the add_dac link with ocean-CDR cost/energy numbers (authored
+          rows in data/custom_costs.csv, L3), delivering into the local co2
+          stored bus — acceptable only if lumping marine removal into
+          sector.co2_sequestration_potential (itself offshore-geological) is
+          tolerable.
+      - variant: "any faithful ocean-CDR representation"
+        rung: L5
+        note: >-
+          Bespoke Python: new removal link(s) from "co2 atmosphere" with
+          energy inputs, a new marine store carrier (escapes the co2
+          sequestered GlobalConstraint automatically) and its own
+          rate/total cap in solve_network.py::prepare_network alongside
+          add_co2_sequestration_limit; coastal siting could filter nodes by
+          the regions_offshore geometries but nothing is wired.
+      - variant: "ocean-CDR techno-economics"
+        rung: L3
+        note: "no rows anywhere in technology-data v0.14.0 — author per-pathway rows (EUR per tCO2/h, energy per tCO2) in data/custom_costs.csv"
+    where:
+      - change: "new marine removal link / store / cap"
+        anchor: "scripts/prepare_sector_network.py::add_dac (link template) and ::add_co2_tracking (carbon bus/store patterns); scripts/solve_network.py::prepare_network (rate cap)"
+        provenance: "scripts/prepare_sector_network.py:add_dac; scripts/prepare_sector_network.py:add_co2_tracking; scripts/solve_network.py:prepare_network"
+      - change: "coastal siting inputs (if spatialised)"
+        anchor: "regions_offshore geometries (input of rule build_clustered_co2_sequestration_potentials)"
+        provenance: "rules/build_sector.smk:regions_offshore"
+      - change: "authored ocean-CDR cost rows"
+        anchor: "data/custom_costs.csv via scripts/process_cost_data.py::overwrite_costs (costs.custom_cost_fn)"
+        provenance: "scripts/process_cost_data.py:overwrite_costs; config/config.default.yaml:custom_cost_fn"
+    data_dependencies:
+      - input: "ocean-CDR techno-economics (EUR/tCO2, energy per tCO2) per pathway"
+        required_for: "the L2/L5 pathway"
+        availability: "absent — must be supplied (no technology-data rows)"
+      - input: "regional marine deployment potential (alkalinity dosing limits, cultivation area)"
+        required_for: "a defensible removal cap"
+        availability: "absent — must be supplied"
+      - input: "offshore region geometries (regions_offshore)"
+        required_for: "coastal siting of a spatialised variant"
+        availability: "exists by default (built by the workflow)"

@@ -1,0 +1,162 @@
+id: grid-scale-batteries
+title: Grid-scale batteries (Li-ion / LFP)
+summary: Utility-scale electrochemical battery storage attached to grid buses, optimised for power and energy capacity.
+when_to_use:
+  - "add batteries to the model"
+  - "grid-scale battery storage"
+  - "utility-scale battery / BESS"
+  - "lithium-ion storage buildout"
+  - "LFP battery"
+  - "battery cost or duration assumptions"
+  - "fixed-duration battery (4h / 6h battery)"
+  - "existing battery fleet"
+  - "home batteries / behind-the-meter batteries"
+  - "short-duration storage for solar/wind balancing"
+  - "pypsa-eur config tokens: battery, li-ion, lfp, home battery"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Electricity workflow: extendable greenfield batteries at every bus, on by
+        default because electricity.extendable_carriers.Store defaults to
+        [battery, H2]. attach_stores builds, per bus, a "battery" Bus + Store
+        (cost row "battery storage") and charger/discharger Links priced with
+        "battery inverter", efficiency split sqrt each way (roundtrip_correction
+        0.5 in STORE_LOOKUP); at solve time add_battery_constraints ties charger
+        p_nom = discharger p_nom * efficiency for all links whose names contain
+        "battery charger"/"battery discharger". A second, single-investment-variable
+        representation exists as StorageUnit (attach_storageunits) with fixed
+        duration electricity.max_hours.battery (6 h) and a synthetic combined
+        capital-cost row built in prepare_costs (costs_for_storage: max_hours *
+        store + bicharger) — off by default (extendable_carriers.StorageUnit: []).
+        Two further wired chemistry tokens exist: "li-ion" (an alias of battery —
+        same "battery storage"/"battery inverter" rows) and "lfp"
+        ("Lithium-Ion-LFP-store"/"Lithium-Ion-LFP-bicharger" rows) — add either
+        to the extendable carrier lists to activate (L1). EXISTING fleet: with
+        electricity.estimate_battery_capacities: true (default false),
+        attach_existing_batteries adds the powerplantmatching rows with carrier
+        "battery" as fixed StorageUnits (max_hours from the data, median-filled).
+      mechanism: >
+        rule add_electricity runs scripts/add_electricity.py: attach_stores /
+        attach_storageunits iterate over the extendable carrier lists filtered
+        through get_available_storage_carriers (intersection with the hardcoded
+        STORE_LOOKUP dict, which maps each config token to technology-data cost
+        rows); rule process_cost_data (scripts/process_cost_data.py::prepare_costs)
+        synthesises one combined cost row per key of electricity.max_hours for the
+        StorageUnit path. rule solve_network applies add_battery_constraints
+        unconditionally in extra_functionality. Sector workflow: home batteries
+        only — insert_electricity_distribution_grid adds "home battery" Bus/Store
+        ("home battery storage") + charger/discharger ("battery inverter"
+        efficiency, "home battery inverter" cost) on every low-voltage bus,
+        unconditionally whenever sector.electricity_distribution_grid is true.
+      not_covered: >
+        Sector-coupled runs have NO utility-scale battery at this ref:
+        patch_electricity_network strips the elec-network battery Stores/Links
+        (the pypsa_eur keep-lists hold Store: [] and Link: [DC]) and
+        remove_non_electric_buses drops the battery buses (hardcoded to keep only
+        AC/DC carriers), and prepare_sector_network contains no code that
+        re-adds a grid battery (verified by search: the only battery blocks in
+        the script are "home battery" and "EV battery"). The only batteries in a
+        default sector run are home batteries and EV batteries. There is no
+        sector.home_battery switch — home batteries are tied to
+        sector.electricity_distribution_grid. Myopic brownfield: powerplantmatching
+        fueltype "Battery" is explicitly dropped (fueltype_to_drop in
+        add_existing_baseyear), so no battery vintages enter myopic runs. No
+        degradation, cycle limits, or state-of-charge-dependent behaviour. For the
+        Store representation of "lfp" note the coupling gap: the bicharger cost is
+        charged on the charger link only (discharge_capital_cost = 0.0) and
+        add_battery_constraints does not match "lfp charger" names, so the free
+        discharger link is unconstrained — the StorageUnit representation avoids
+        this.
+      provenance: "scripts/add_electricity.py:attach_stores; scripts/add_electricity.py:attach_storageunits; scripts/add_electricity.py:attach_existing_batteries; scripts/add_electricity.py:STORE_LOOKUP; scripts/solve_network.py:add_battery_constraints; scripts/prepare_sector_network.py:remove_non_electric_buses; scripts/prepare_sector_network.py:insert_electricity_distribution_grid; scripts/add_existing_baseyear.py:fueltype_to_drop"
+    levers:
+      - key: electricity.extendable_carriers.Store
+        effect: "Which storage tokens get the Store+Links (endogenous duration) representation at every bus; 'battery' is in by default, 'li-ion'/'lfp' can be added."
+        default: "[battery, H2]"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_stores"
+      - key: electricity.extendable_carriers.StorageUnit
+        effect: "Which tokens get the fixed-duration StorageUnit representation (one investment variable, duration from electricity.max_hours)."
+        default: "[] (empty)"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_storageunits"
+      - key: electricity.max_hours.battery
+        effect: "Energy/power ratio (h) of the battery StorageUnit representation; also the duration used to synthesise the combined 'battery' cost row in prepare_costs."
+        default: "6"
+        provenance: "config/config.default.yaml:max_hours; scripts/process_cost_data.py:costs_for_storage"
+      - key: electricity.max_hours.lfp
+        effect: "Duration of the 'lfp' StorageUnit variant (sibling keys li-ion: 6 exist too)."
+        default: "6"
+        provenance: "config/config.default.yaml:max_hours; scripts/add_electricity.py:Lithium-Ion-LFP-store"
+      - key: electricity.estimate_battery_capacities
+        effect: "true attaches the existing battery fleet from powerplantmatching (rows with carrier 'battery') as fixed StorageUnits with data-derived max_hours."
+        default: "false"
+        provenance: "config/config.default.yaml:estimate_battery_capacities; scripts/add_electricity.py:attach_existing_batteries"
+      - key: sector.electricity_distribution_grid
+        effect: "Sector runs: true (default) adds low-voltage buses and with them, unconditionally, 'home battery' Store + charger/discharger at every node."
+        default: "true"
+        provenance: "config/config.default.yaml:electricity_distribution_grid; scripts/prepare_sector_network.py:insert_electricity_distribution_grid"
+      - key: pypsa_eur
+        effect: "Keep-lists deciding which elec-network components survive into sector runs; Store: [] and Link: [DC] strip the batteries (extending them is NOT sufficient — see boundary)."
+        default: "{Bus: [AC], Link: [DC], ..., StorageUnit: [PHS, hydro], Store: []}"
+        provenance: "config/config.default.yaml:pypsa_eur; scripts/prepare_sector_network.py:remove_elec_base_techs"
+      - key: costs.overwrites
+        effect: "Override investment/lifetime/FOM/VOM/efficiency per technology row (e.g. {investment: {battery storage: 120000}}); deprecated in favour of rows in data/custom_costs.csv (costs.custom_cost_fn)."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+    boundary:
+      - variant: "endogenous battery buildout with free power/energy ratio (electricity workflow)"
+        rung: L0
+        note: "default — 'battery' in electricity.extendable_carriers.Store; add_battery_constraints keeps charger = discharger"
+      - variant: "fixed-duration battery (e.g. 4h) as one investment variable"
+        rung: L1
+        note: "move 'battery' to extendable_carriers.StorageUnit and set electricity.max_hours.battery (remove from Store to avoid doubling)"
+      - variant: "LFP as a distinct chemistry alongside generic Li-ion"
+        rung: L1
+        note: "add 'lfp' to extendable_carriers.StorageUnit (max_hours.lfp: 6 exists) — for the Store representation note the uncoupled free discharger caveat in not_covered"
+      - variant: "include the existing battery fleet"
+        rung: L0
+        note: "electricity.estimate_battery_capacities: true"
+      - variant: "remove batteries entirely from the electricity workflow"
+        rung: L1
+        note: "drop 'battery' from extendable_carriers.Store (and StorageUnit) and keep estimate_battery_capacities false"
+      - variant: "change battery cost assumptions"
+        rung: L1
+        note: "costs.overwrites (config) or a row in data/custom_costs.csv — the combined StorageUnit row is re-synthesised from the store/inverter rows, so override those"
+      - variant: "utility-scale battery in sector-coupled runs"
+        rung: L2
+        note: "no code path exists at this ref — add a battery Bus/Store/charger/discharger block in prepare_sector_network (the 'home battery' block in insert_electricity_distribution_grid is the in-repo template; add_battery_constraints will pick the names up automatically); merely extending the pypsa_eur keep-lists fails because remove_non_electric_buses hardcodes AC/DC"
+      - variant: "brownfield battery vintages in myopic runs"
+        rung: L2
+        note: "fueltype 'Battery' is on the drop list in add_existing_baseyear; remove it there and map it to a carrier plus wire heat/elec buses — no data gap (powerplantmatching carries the fleet)"
+      - variant: "degradation, cycle limits, SOC-dependent behaviour"
+        rung: L5
+        note: "no hook; custom constraint in solve_network extra_functionality (add_battery_constraints is the pattern)"
+    where:
+      - change: "greenfield Store+Links and StorageUnit creation; chemistry token wiring"
+        anchor: "scripts/add_electricity.py::attach_stores / ::attach_storageunits / STORE_LOOKUP (rule add_electricity)"
+        provenance: "scripts/add_electricity.py:attach_stores; scripts/add_electricity.py:STORE_LOOKUP"
+      - change: "existing fleet attachment"
+        anchor: "scripts/add_electricity.py::attach_existing_batteries (gate electricity.estimate_battery_capacities)"
+        provenance: "scripts/add_electricity.py:attach_existing_batteries"
+      - change: "combined StorageUnit cost row synthesis"
+        anchor: "scripts/process_cost_data.py::prepare_costs (costs_for_storage loop over electricity.max_hours)"
+        provenance: "scripts/process_cost_data.py:costs_for_storage"
+      - change: "charger = discharger coupling"
+        anchor: "scripts/solve_network.py::add_battery_constraints (called unconditionally in extra_functionality)"
+        provenance: "scripts/solve_network.py:add_battery_constraints; scripts/solve_network.py:extra_functionality"
+      - change: "sector-run stripping of elec-network batteries / place to re-add them"
+        anchor: "scripts/prepare_sector_network.py::patch_electricity_network (remove_elec_base_techs + remove_non_electric_buses); home battery block in ::insert_electricity_distribution_grid"
+        provenance: "scripts/prepare_sector_network.py:patch_electricity_network; scripts/prepare_sector_network.py:home battery charger"
+      - change: "myopic brownfield drop list"
+        anchor: "scripts/add_existing_baseyear.py fueltype_to_drop ('Battery')"
+        provenance: "scripts/add_existing_baseyear.py:fueltype_to_drop"
+    data_dependencies:
+      - input: "cost rows 'battery storage', 'battery inverter', 'Lithium-Ion-LFP-store', 'Lithium-Ion-LFP-bicharger' in the technology-data costs file"
+        required_for: "all battery representations (verified present in a locally built processed costs file)"
+        availability: "exists by default (rule retrieve_cost_data + rule process_cost_data)"
+      - input: "powerplantmatching rows with carrier 'battery' (incl. max_hours/duration)"
+        required_for: "existing fleet via estimate_battery_capacities"
+        availability: "retrieved by the workflow (rule build_powerplants input)"
+      - input: "cost rows 'home battery storage', 'home battery inverter'"
+        required_for: "sector-run home batteries"
+        availability: "exists by default in the technology-data costs file"

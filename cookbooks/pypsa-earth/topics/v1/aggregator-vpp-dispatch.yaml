@@ -1,0 +1,51 @@
+id: aggregator-vpp-dispatch
+title: Aggregator / VPP dispatch
+rank: 61
+question: >
+  How should an aggregator dispatch a portfolio of distributed assets —
+  batteries, EVs, rooftop PV, flexible loads — against prices, and what is
+  that portfolio worth? The commercial core of the flexibility wedge:
+  aggregators and VPP startups are among the strongest buyers of modelling.
+when_to_use:
+  - "dispatch strategy for a VPP portfolio"
+  - "what is our aggregated DER fleet worth"
+  - "aggregator bidding / portfolio optimization"
+  - "VPP participation in energy or balancing markets"
+  - "value of aggregating small assets vs standalone"
+recipes:
+  generation_conversion: [virtual-power-plants, behind-the-meter-der,
+                          grid-scale-batteries, vehicle-to-grid, smart-meters]
+  demand: [electricity-load, demand-temporal-profiles]
+functionality:
+  - id: market-design-mechanisms
+    role: "the missing core — no bids, no products, no actor who dispatches a portfolio"
+  - id: financial-viability-actors
+    role: "single social planner; an aggregator's revenue/P&L view does not exist"
+  - id: nodal-marginal-prices
+    role: "system duals give the price series a VPP would dispatch against"
+  - id: distribution-grid-lv
+    role: "DERs sit on stylized LV buses with linear cost — no feeder constraints on aggregation"
+  - id: bev-dsm-v2g
+    role: "EV fleets are the one endogenously flexible distributed asset"
+  - id: demand-elasticity
+    role: "no tariff-responsive loads to aggregate — profiles are fixed"
+  - id: operational-reserves
+    role: "reserves are a system constraint, not a product a VPP can sell into"
+gap_assessment: >
+  Not a VPP tool. pypsa-earth has exactly one decision-maker — the social
+  planner — so there is no aggregator entity, no portfolio, no bidding, and
+  no revenue capture; the virtual-power-plants recipe in the tech book
+  documents the same hole from the technology side. What the model provides
+  is the system envelope around a VPP business: hourly nodal prices from
+  duals (the competitive-benchmark signal a price-taking VPP would face),
+  and system-optimal dispatch of the asset classes a VPP aggregates —
+  batteries, EV fleets via bev-dsm-v2g, rooftop PV and home batteries on the
+  stylized LV bus. That answers "how much distributed flexibility does the
+  system want and when does it dispatch" — an upper bound on aggregate VPP
+  value — not "what does my portfolio earn under this tariff." Actor-level
+  dispatch against extracted prices is a downstream model the user must
+  build; sub-hourly and ancillary revenues are invisible on top of that.
+coverage: gap
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

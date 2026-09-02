@@ -1,0 +1,47 @@
+id: waste-heat-recovery
+title: "Waste heat recovery"
+rank: 80
+question: >
+  How much industrial excess heat can be recovered — on-site or fed into
+  district heating — and what fuel and carbon does it displace? A staple of
+  industrial-cluster and district-heating studies (data centres, kilns,
+  electrolysers as heat sources).
+when_to_use:
+  - "industrial waste heat to district heating"
+  - "on-site heat recovery from furnaces / kilns"
+  - "excess heat from electrolysers or data centres"
+  - "heat cascading in industrial clusters"
+  - "value of recovered heat vs heat pumps"
+recipes:
+  generation_conversion: [waste-heat-recovery, industrial-heat-pumps,
+                          district-heating, combined-heat-and-power]
+  demand: [industrial-process-heat-temperature-bands,
+           district-heating-demand-share, services-heat-demand]
+functionality:
+  - id: sector-coupled-workflow
+    role: "industry enters as one-directional loads — no heat output port to recover from"
+  - id: co2-network-sequestration
+    role: "CC links assume 'enough local waste heat' — capture heat demand is free, not modelled"
+  - id: chp-operation-constraints
+    role: "the DH supply stack the recovered heat would compete in is itself simplified (dead-key)"
+  - id: summary-outputs
+    role: "where the displaced boiler/heat-pump supply would show up in a comparison"
+gap_assessment: >
+  Gap — mirroring the waste-heat-recovery recipe's verdict: nothing exists.
+  Industrial processes are flat per-carrier demand loads with no activity
+  variable and no heat by-product, so there is no excess-heat source in the
+  model; district heat buses are supplied only by heat pumps, resistive
+  heaters, gas boilers, CHP, and solar thermal; and even the
+  Fischer-Tropsch/electrolysis waste-heat-to-DH links that pypsa-eur has are
+  absent here. The only textual trace is the comment assuming free local
+  waste heat for carbon capture. Workarounds are exogenous: encode on-site
+  recovery as reduced fuel/heat rows in a custom industry demand csv (L3),
+  or hand-add a fixed excess-heat feed-in on urban-central-heat buses sized
+  from the industrial database's plant locations (L2 script edit) — both
+  assume the recovery rather than optimize it. Endogenous recovery
+  (heat output coupled to industrial activity, competing with other DH
+  supply) requires re-modelling industry demands as links with heat ports.
+coverage: gap
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}

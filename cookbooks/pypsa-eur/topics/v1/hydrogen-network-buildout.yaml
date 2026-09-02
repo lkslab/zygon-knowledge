@@ -1,0 +1,59 @@
+id: hydrogen-network-buildout
+title: Hydrogen network buildout
+rank: 59
+question: >
+  What hydrogen transport infrastructure emerges endogenously — repurposed gas
+  pipelines vs greenfield H2 pipelines vs moving electricity instead — and
+  where do storage and production sit relative to the network?
+when_to_use:
+  - "endogenous H2 backbone / pipeline buildout"
+  - "repurpose gas pipelines for hydrogen"
+  - "pipeline vs wires: transport H2 or electricity"
+  - "gas grid decommissioning vs conversion"
+  - "hydrogen storage siting on the network"
+recipes:
+  generation_conversion: [hydrogen-pipelines, hydrogen-pipeline-retrofitting,
+                          natural-gas-pipelines, hydrogen-storage-salt-caverns,
+                          electrolysers, green-hydrogen]
+  demand: [hydrogen-export-demand, steel-demand]
+functionality:
+  - id: h2-network-retrofit
+    role: "core — greenfield H2 pipelines along electricity/DC/gas corridors (default on) plus opt-in retrofit of existing gas pipes at cheaper repurposed costs, with salt-cavern storage potentials"
+  - id: pipe-retrofit-constraint
+    role: "the capacity coupling earth lacks: retrofitted H2 capacity subtracts from the parent gas pipe, so repurposing genuinely costs the gas system"
+  - id: gas-network-links
+    role: "the methane side is REAL (clustered SciGRID pipelines, entry points) — 'gas grid vs H2 grid' has both sides, unlike earth's dead gas key"
+  - id: lossy-bidirectional-links
+    role: "compression electricity and length-dependent losses on H2 (and gas) pipelines, capacity-synced forward/reverse pairs"
+  - id: myopic-foresight
+    role: "staged buildout: pipeline vintages and already-retrofitted capacity carried across horizons by add_brownfield"
+  - id: post-discretization
+    role: "snap optimized pipe capacities to 1200 MW units between iterations (off by default)"
+  - id: spatial-clustering
+    role: "pipeline candidates are cluster-to-cluster; resolution sets network detail"
+  - id: plotting-suite
+    role: "dedicated H2 and gas network maps (plot_hydrogen_network, plot_gas_network)"
+gap_assessment: >
+  Ready, and strictly stronger than pypsa-earth. With the sector chain on,
+  bidirectional extendable H2 pipelines are co-optimized along corridors
+  where an electricity, DC or gas connection already runs (greenfield,
+  default on), and opting into H2_retrofit adds a cheaper repurposed-pipe
+  candidate class on every clustered SciGRID gas corridor whose capacity is
+  COUPLED to the parent gas pipe by an always-wired solve-time constraint
+  (gas p_nom + retrofit/0.6 == today's capacity) — so conversion vs
+  decommissioning vs keeping methane is a real three-way trade-off, because
+  the methane network itself is modelled with entry-point-limited supply
+  (earth's structural hole). Compression electricity, pipeline losses,
+  salt-cavern storage potentials, myopic vintaging of built pipes and
+  dedicated network maps complete the study. Honest limits: (1) routing is
+  confined to existing electricity/DC/gas corridors — no free-route pipeline
+  optimization or greenfield rights-of-way; (2) H2_retrofit is off by
+  default, and disabling H2_network string-matches away retrofitted pipes
+  too; (3) no earth-style GWkm cap on total network size (linemaxext-style
+  bounds apply to electricity, network size discipline comes from costs); (4)
+  no export demand chain — an export-anchored backbone needs hand-added
+  loads, only the import side ships.
+coverage: ready
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}

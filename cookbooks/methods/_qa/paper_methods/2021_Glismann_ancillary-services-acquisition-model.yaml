@@ -1,0 +1,159 @@
+paper: "2021_Glismann_ancillary-services-acquisition-model.pdf"
+tier: 2
+model_used: >
+  PyPSA library only (used as an embedded dispatch-optimisation engine inside
+  ASAM, the Ancillary Services Acquisition Model; no PyPSA-Eur or PyPSA-Earth
+  model is run — PyPSA instances are created per agent and per market-clearing
+  step for one-node grids).
+scope: >
+  Introduces ASAM, an open-source agent-based model that combines the MESA
+  framework with PyPSA to simulate and evaluate ancillary-services and
+  electricity-market design options (DAM, IDM, redispatch, balancing energy,
+  imbalance mechanism) in the European context; validated on a stylized
+  two-agent scenario studying all-or-none block orders in redispatch.
+methods:
+  - slug: balancing-and-ancillary-services
+    role: defines
+    evidence: >
+      The paper's central contribution: "this paper contributes an open-source
+      agent-based model to test design options for ancillary services and
+      electricity markets" (Abstract). ASAM implements configurable clearing
+      algorithms for DAM, IDM, redispatch market (RDM), balancing energy market
+      (BEM), and imbalance mechanism (IBM), all described in Sec. 3.4. Novel
+      redispatch performance indicators (over-procurement, under-procurement,
+      redispatch-induced imbalance) and a price mark-up performance indicator
+      are introduced (Sec. 3.2, Fig. 10).
+    procedure_notes: >
+      Each market has configurable design variables: acquisition method, pricing
+      method, order types (limit, all-or-none, multi-MTU block), gate-opening
+      time, gate-closure time, provider accreditation (Sec. 3.1). The redispatch
+      clearing uses PyPSA OPF on per-area one-node grids with exogenous
+      redispatch demand as load; custom constraints implement block orders
+      (Eq. C.5) and the equilibrium threshold (Eq. C.6) (Appendix C). The BEM
+      order book is implemented but clearing is exogenous/simplified at this
+      stage (Sec. 3.4). The stylized scenario applies Dutch "Reserves for Other
+      Purposes" all-or-none pay-as-bid RDM design and Dutch IBM pricing
+      (Appendix E, Table E.9). Simulation horizon is 96 ISPs of 15 minutes
+      (one day), seed = 3, flat residual load at 0.85 p.u., one congestion
+      event and one forecast error event (Table E.6–E.7).
+    variant: agent-based-simulation
+    parameters: {ISP_minutes: 15, sim_steps: 96, agents: 2, generators_per_agent: 2}
+
+  - slug: zonal-nodal-and-redispatch
+    role: defines
+    evidence: >
+      The paper models zonal pricing as the base electricity market structure:
+      "Zonal pricing is assumed for electricity markets instead of nodal pricing.
+      Cross-zonal capacity in DAM and IDM is allocated implicitly via market
+      coupling processes" (Sec. 3.1, assumption 5). Redispatch is the explicit
+      service that resolves congestion after the zonal schedule is fixed (Sec.
+      3.4, Appendix C). A novel redispatch clearing algorithm — including
+      all-or-none and multi-MTU block orders — is a key contribution (Sec. 6).
+    procedure_notes: >
+      Redispatch demand is exogenous: the grid operator provides MW volumes per
+      area (north/south) as the congestion source; physical power flow is not
+      modelled ("the physical grid is currently not modeled in ASAM", Sec. 3.4).
+      Each redispatch area is a separate one-node PyPSA instance; redispatch
+      supply orders become generators with p_min_pu encoding limit vs.
+      all-or-none order type. Equilibrium constraint (Eq. C.6) enforces
+      approximate energy neutrality per ISP with a configurable threshold.
+      Multi-MTU block orders use minimum-up-time constraint (Eq. C.4) and a
+      custom equality constraint (Eq. C.5). ASAM currently has only one bidding
+      zone (Sec. 3.1, footnote 9).
+    variant: zonal-with-exogenous-redispatch-demand
+    parameters: {areas: 2, equilibrium_threshold_options: [0, 5, 50, "inf"]}
+
+  - slug: unit-commitment-and-ramping
+    role: routine-use
+    evidence: >
+      Generator assets in ASAM have full inter-temporal constraints: minimum
+      stable level (p_min_pu), minimum up-time, minimum down-time, ramp-up
+      limit, ramp-down limit, start-up cost, and shut-down cost. These are
+      listed in the variable table (Table 3, Sec. 9) and applied in both the
+      agent portfolio dispatch optimisation (Appendix D) and the redispatch
+      clearing algorithm (Appendix C, Eqs. C.3–C.4). The stylized scenario
+      explicitly exercises ramp constraints, causing imbalances (Sec. 4, Fig. 8).
+    procedure_notes: >
+      PyPSA's binary status variable u_{n,s,t} and inter-temporal constraints
+      are used (Eq. C.3 operating-level, Eq. C.4 minimum-up-time). Start-up
+      and shut-down costs are parameters (suc, sdc in Table 3). Ramp limits
+      r_u and r_d are expressed in MW/ISP. Minimum up/down times are in ISPs.
+      Simulation asset parameters (Table E.8): old-gas CCGT with p_min=50 MW,
+      ramp=0.25 p.u./ISP, min_up=min_down=12 ISP; coal with p_min=400 MW,
+      ramp=0.25, min_up=min_down=20 ISP. The linear relaxation of binary
+      variables is not discussed; PyPSA's committable generator formulation
+      is cited ("p_min_pu is used to define whether an order can be partially
+      called or only fully called", Sec. 3.4).
+    variant: null
+    parameters: {min_up_time_ISP_range: "8–20", ramp_limit_pu_ISP: 0.25,
+                  start_up_costs_EUR_range: "6000–50000"}
+
+  - slug: custom-constraints-with-linopy
+    role: routine-use
+    evidence: >
+      Two custom constraints are added to the PyPSA OPF solver within the
+      redispatch algorithm: the block-order equality constraint (Eq. C.5) and
+      the equilibrium threshold constraint (Eq. C.6). The paper states: "PyPSA
+      allows for formulating custom constraints. The block order constraint can
+      be expressed as follows: g_{n,s,t} = g_{n,s,t-1}" (Appendix C, Sec. on
+      Additional block order constraint).
+    procedure_notes: >
+      PyPSA version 0.13.1 is used (Sec. 3.4, footnote 12). Custom constraints
+      are added directly to the solver (no linopy API, which postdates this
+      paper); the extra_functionality hook mechanism is implied. The block
+      constraint enforces constant dispatch across all MTUs of a block order's
+      delivery period. The equilibrium constraint limits the per-ISP imbalance
+      between cleared upward and downward redispatch volumes to a configurable
+      threshold. This is described as a novelty enabling complex RDM designs
+      "usually strongly simplified due to complexity" (Sec. 3.4).
+    variant: pre-linopy-custom-constraints
+    parameters: {pypsa_version: "0.13.1"}
+
+  - slug: linearised-optimal-power-flow
+    role: routine-use
+    evidence: >
+      "The clearing method of the DAM uses a linear optimal power flow of
+      PyPSA with a one-node grid" (Sec. 3.4). The redispatch clearing also
+      uses "The optimal power flow function of PyPSA with its inter-temporal
+      constraints" (Sec. 3.4). Agent portfolio dispatch optimisation uses
+      "the optimal power flow functionality of PyPSA" with a per-agent
+      one-node grid (Sec. 3.5).
+    procedure_notes: >
+      All OPF runs are one-node (no physical grid), so no transmission
+      constraints or PTDFs are exercised; the LOPF is used solely for
+      cost-minimising dispatch and unit-commitment subject to generator
+      inter-temporal constraints. The paper explicitly notes the physical grid
+      is not modelled and that power distribution factors are omitted
+      (Appendix C). PyPSA v0.13.1.
+    variant: single-node-dispatch-only
+    parameters: {pypsa_version: "0.13.1", nodes: 1}
+
+  - slug: foresight-and-planning-horizons
+    role: routine-use
+    evidence: >
+      ASAM is a short-term operational dispatch model with no investment
+      decisions. Agent dispatch optimisation "considers the entire schedules
+      horizon (i.e. all ISPs until the latest traded MTU of the day-ahead
+      market)" (Sec. 3.5). The simulation horizon is one day (96 ISPs of 15
+      minutes, Table E.6). This is an overnight/single-period operational
+      model; there is no investment or multi-year pathway.
+    procedure_notes: >
+      One simulation day, 96 steps of 15 minutes each. Agents optimise over
+      the full schedule horizon in each step (rolling look-ahead to the end
+      of the day-ahead schedule). No capacity investment, no multi-year
+      planning.
+    variant: overnight-operational
+    parameters: {horizon_days: 1, ISP_minutes: 15, steps: 96}
+
+unmatched_methods:
+  - name: "agent-based-simulation-framework"
+    evidence: >
+      The paper's primary methodological contribution is an agent-based
+      modelling (ABM) approach using the MESA framework, where heterogeneous
+      agents (market parties, grid operators, market operators) act with
+      bounded rationality and configurable heuristic bidding strategies.
+      This underpins all market clearing simulations (Sec. 2.3, 3.1, 3.5).
+      No existing SLUGS.yaml entry covers ABM as a simulation paradigm
+      (as distinct from optimisation-based methods); the closest is
+      custom-constraints-with-linopy, which is about constraint formulation,
+      not agent simulation architecture.
