@@ -26,22 +26,13 @@ scenario:
   planning_horizons:
   - 2050
 
-# PR #1943 (the fork's flagship): optimiser chooses industry process-heat
-# fuel. Needs fork commit 849c8858 (partial-scope fixes: skip endogenised
-# sectors with zero in-scope production; mean-ratio fallback for countries
-# absent from JRC-IDEES). KNOWN DATA GAP (2026-07-23): GB industrial energy
-# demand is ~zero in the model's data chain (~1.9 TWh even Europe-wide vs
-# ~250 TWh real — GB not in IDEES, eurostat fallback near-empty), so the
-# baseline's GB industry is effectively unmodelled; likely also affects UK
-# industry-heat research runs. Fixing needs a real GB data source (DESNZ).
-sector:
-  industry_t:
-    endogen: true
-
 # the default hook is a no-op stub, and the rule resolves it to an ABSOLUTE
 # path inside solve params — which differs in every runspace clone and marks
 # the solve "params changed" forever, breaking the settledness oracle. The
 # baseline must carry no path-dependent params.
 solving:
+  solver:
+    name: highs
+    options: highs-default
   options:
     custom_extra_functionality: ""

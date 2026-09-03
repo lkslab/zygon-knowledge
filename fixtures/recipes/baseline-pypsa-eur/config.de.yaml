@@ -10,3 +10,8 @@ run:
 
 countries:
 - DE
+
+solving:
+  solver:
+    name: highs
+    options: highs-default

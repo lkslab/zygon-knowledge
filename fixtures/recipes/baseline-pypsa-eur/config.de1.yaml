@@ -33,3 +33,8 @@ scenario:
   - 3H
   planning_horizons:
   - 2050
+
+solving:
+  solver:
+    name: highs
+    options: highs-default

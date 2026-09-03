@@ -34,3 +34,8 @@ sector:
   # 2026-07-30 at job 66/67). Config-level scope fix, no code change.
   hydrogen_underground_storage_locations:
   - onshore
+
+solving:
+  solver:
+    name: highs
+    options: highs-default
