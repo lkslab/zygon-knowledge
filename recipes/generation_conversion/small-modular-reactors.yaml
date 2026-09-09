@@ -1,0 +1,248 @@
+id: small-modular-reactors
+title: Small modular reactors (SMR)
+summary: >
+  Small modular nuclear reactors as a distinct electricity generation
+  technology (smaller unit size, different cost structure than conventional
+  nuclear).
+when_to_use:
+  - "add small modular reactors"
+  - "model SMRs (nuclear reactors, NOT steam methane reforming)"
+  - "SMR nuclear"
+  - "mini nuclear reactors / micro reactors"
+  - "advanced modular reactors"
+  - "new small nuclear plants"
+  - "note: in pypsa-eur the carrier 'SMR' means steam methane reforming (hydrogen)"
+  - "model SMRs"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Not covered as a generation technology. There is no SMR-reactor
+        carrier in electricity.conventional_carriers or
+        electricity.extendable_carriers, no reactor-SMR cost row in the
+        processed technology-data file (only "nuclear"), and no SMR entries in
+        the powerplant pipeline. RETRIEVAL TRAP — name collision: "SMR" DOES
+        exist in pypsa-eur, but it is Steam Methane Reforming, a gas-to-
+        hydrogen technology: sector.SMR and sector.SMR_cc (both true by
+        default) make add_h2_gas_infrastructure add "SMR" and "SMR CC" Links
+        (bus0 gas, bus1 H2, CO2 to atmosphere / co2 stored) priced from the
+        "SMR"/"SMR CC" cost rows. Do not repurpose any of these for nuclear
+        reactors.
+      mechanism: >
+        Nearest existing machinery is conventional nuclear: carrier "nuclear"
+        in electricity.conventional_carriers, fleet + extendable candidates
+        via attach_conventional_generators, greenfield seeding at all
+        substations via electricity.everywhere_powerplants: ['Nuclear']
+        (add_everywhere_powerplants), the country availability derating from
+        conventional.nuclear.p_max_pu, and cost overrides via costs.overwrites
+        or data/custom_costs.csv — overwrite_costs can also CREATE technology
+        rows that do not exist in technology-data (it concatenates missing
+        technologies from the custom costs file), which is the supported route
+        to an SMR-specific cost row.
+      not_covered: >
+        No SMR carrier, no reactor-SMR cost row, no modular-unit sizing or
+        integer-build logic (conventional.unit_commitment covers operation,
+        not lumpy investment), no SMR siting data. Everything under the "SMR"
+        name in configs, scripts and cost data is steam methane reforming and
+        is unrelated. See the conventional-nuclear recipe for the proxy's full
+        lever set.
+      provenance: "scripts/prepare_sector_network.py:add_h2_gas_infrastructure; config/config.default.yaml:SMR_cc; scripts/add_electricity.py:attach_conventional_generators; scripts/process_cost_data.py:overwrite_costs"
+    levers:
+      - key: electricity.extendable_carriers.Generator
+        effect: "The list 'nuclear' (proxy route) or a new SMR carrier must join to be expandable."
+        default: "[solar, solar-hsat, onwind, offwind-ac, offwind-dc, offwind-float, OCGT, CCGT]"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_conventional_generators"
+      - key: electricity.everywhere_powerplants
+        effect: "['Nuclear'] seeds zero-capacity nuclear plants at all substations — lets the (proxy) SMR expand at every bus rather than only existing nuclear sites."
+        default: "[] (empty)"
+        provenance: "config/config.default.yaml:everywhere_powerplants; scripts/build_powerplants.py:add_everywhere_powerplants"
+      - key: electricity.conventional_carriers
+        effect: "The list a new carrier must join for fleet/custom rows to be attached with p_nom_min = p_nom."
+        default: "[nuclear, oil, OCGT, CCGT, coal, lignite, geothermal, waste, biomass]"
+        provenance: "config/config.default.yaml:conventional_carriers; scripts/add_electricity.py:attach_conventional_generators"
+      - key: electricity.custom_powerplants
+        effect: "Pandas query (or true) to inject user-authored SMR units/sites from data/custom_powerplants.csv."
+        default: "false"
+        provenance: "config/config.default.yaml:custom_powerplants; scripts/build_powerplants.py:add_custom_powerplants"
+      - key: costs.custom_cost_fn
+        effect: "Path to a custom costs CSV whose rows overwrite AND extend the technology-data table (overwrite_costs concatenates technologies missing from it) — the route to an SMR-reactor cost row; name it distinctly, 'SMR' is taken by steam methane reforming."
+        default: "data/custom_costs.csv"
+        provenance: "config/config.default.yaml:custom_cost_fn; scripts/process_cost_data.py:overwrite_costs"
+      - key: costs.overwrites
+        effect: "Config-level per-technology cost overwrites (deprecated in favour of custom_cost_fn) — e.g. give the proxy 'nuclear' SMR-like investment/FOM."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+      - key: sector.SMR
+        effect: "CAUTION — steam methane reforming (gas -> H2 Links), not reactors; listed only to flag the name collision (sector.SMR_cc is the capture variant)."
+        default: "true"
+        provenance: "config/config.default.yaml:SMR; scripts/prepare_sector_network.py:add_h2_gas_infrastructure"
+    boundary:
+      - variant: "approximate SMRs as extendable nuclear with SMR-like costs"
+        rung: L1
+        note: >
+          add 'nuclear' to electricity.extendable_carriers.Generator (plus
+          electricity.everywhere_powerplants: ['Nuclear'] for siting freedom)
+          and override investment/FOM/lifetime via costs.overwrites — loses
+          the distinct-technology accounting and inherits the nuclear
+          availability derating (conventional.nuclear.p_max_pu)
+      - variant: "distinct SMR carrier with its own costs and sites"
+        rung: L3
+        note: >
+          (a) author a cost row named distinctly (e.g. 'nuclear-SMR' — 'SMR'
+          is steam methane reforming in technology-data) in data/custom_costs.csv
+          (costs.custom_cost_fn; overwrite_costs adds missing technologies),
+          (b) add the carrier to electricity.conventional_carriers /
+          extendable_carriers.Generator, (c) author fleet/candidate rows in
+          data/custom_powerplants.csv whose Fueltype yields that carrier so
+          attach_conventional_generators has buses to place units at
+      - variant: "SMR expandable at every bus"
+        rung: L1
+        note: "for the nuclear proxy: electricity.everywhere_powerplants: ['Nuclear']; for a distinct carrier the Fueltype must be seeded the same way (add_everywhere_powerplants takes any fueltype list) or via custom_powerplants rows (L3)"
+      - variant: "SMR as an extendable Link in sector runs"
+        rung: L3
+        note: >
+          add an entry '<name>: uranium' to sector.conventional_generation
+          (add_generation builds a Link per node priced from the cost row of
+          that name; spatial.uranium exists as the EU uranium bus) plus the
+          cost row via custom_cost_fn — but at this ref add_carrier_buses adds
+          no uranium fuel-supply generator (its fossils list is [coal, gas,
+          oil, lignite]), so a supply fix is also needed (L2, see the
+          conventional-nuclear recipe)
+      - variant: "modular integer builds / unit-size economics"
+        rung: L5
+        note: "no integer-investment logic exists anywhere; bespoke MILP constraint code in solve_network.py extra_functionality"
+      - variant: "SMR-supplied district/industrial heat"
+        rung: L5
+        note: "no nuclear-to-heat coupling exists in prepare_sector_network; would need a new multilink into the heat buses"
+    where:
+      - change: "carrier attachment / extendable placement (the SMR entry point)"
+        anchor: "scripts/add_electricity.py::attach_conventional_generators (rule add_electricity)"
+        provenance: "scripts/add_electricity.py:attach_conventional_generators"
+      - change: "cost row creation / overrides for the new or proxy carrier"
+        anchor: "scripts/process_cost_data.py::overwrite_costs / ::prepare_costs; data/custom_costs.csv (costs.custom_cost_fn)"
+        provenance: "scripts/process_cost_data.py:overwrite_costs; scripts/process_cost_data.py:prepare_costs"
+      - change: "SMR fleet / candidate sites / seed-everywhere"
+        anchor: "scripts/build_powerplants.py::add_custom_powerplants / ::add_everywhere_powerplants (rule build_powerplants)"
+        provenance: "scripts/build_powerplants.py:add_custom_powerplants; scripts/build_powerplants.py:add_everywhere_powerplants"
+      - change: "sector-run generation Links keyed by cost-row name"
+        anchor: "scripts/prepare_sector_network.py::add_generation (sector.conventional_generation)"
+        provenance: "scripts/prepare_sector_network.py:add_generation"
+      - change: "steam-methane-reforming 'SMR' (hydrogen, NOT reactors) — the colliding namesake"
+        anchor: "scripts/prepare_sector_network.py::add_h2_gas_infrastructure (sector.SMR / sector.SMR_cc)"
+        provenance: "scripts/prepare_sector_network.py:add_h2_gas_infrastructure"
+      - change: "bespoke build constraints (integer/lumpy investment)"
+        anchor: "scripts/solve_network.py::extra_functionality"
+        provenance: "scripts/solve_network.py:extra_functionality"
+    data_dependencies:
+      - input: "cost row for the SMR reactor technology (investment, FOM, VOM, fuel, efficiency, lifetime)"
+        required_for: "distinct SMR carrier or honest proxy costing"
+        availability: "absent — author via data/custom_costs.csv; do NOT reuse the existing 'SMR'/'SMR CC' rows (steam methane reforming)"
+      - input: "data/custom_powerplants.csv rows for SMR units/sites"
+        required_for: "placing existing or candidate SMR capacity at buses (distinct-carrier route)"
+        availability: "template exists by default; rows user-authored"
+      - input: "powerplantmatching database (Fueltype Nuclear)"
+        required_for: "the nuclear-proxy approximation (existing nuclear buses); no SMRs are listed as such"
+        availability: "retrieved by the workflow"
+      - input: "data/nuclear_p_max_pu.csv"
+        required_for: "the proxy inherits the per-country nuclear availability derating"
+        availability: "exists by default"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        NOT covered as a generation technology. There is no SMR-reactor carrier in
+        electricity.conventional_carriers or electricity.extendable_carriers, no
+        SMR costs handling in scripts/add_electricity.py, and no SMR entry in the
+        powerplant pipeline. RETRIEVAL TRAP — name collision: the string "SMR" DOES
+        appear in the codebase, but it means Steam Methane Reforming, a hydrogen
+        production technology. In scripts/prepare_sector_network.py::add_hydrogen,
+        "SMR" and "SMR CC" are gas-to-H2 Links (bus0 gas, bus1 H2, CO2 to
+        atmosphere), enabled via sector.hydrogen.production_technologies, and the
+        "SMR"/"SMR CC" rows in the technology-data costs file price steam methane
+        reforming, not reactors. Do not repurpose any of these for nuclear SMRs.
+      mechanism: >
+        Nearest existing machinery: conventional nuclear via
+        attach_conventional_generators (carrier "nuclear" in
+        electricity.conventional_carriers, fleet from powerplantmatching, "nuclear"
+        costs row) — an SMR can be approximated as nuclear with adjusted cost
+        assumptions, or introduced as a genuinely new conventional carrier.
+      not_covered: >
+        No SMR carrier, no SMR-reactor costs row, no modular-unit sizing or
+        integer-build logic, no SMR siting data. The sector-side "SMR" symbols are
+        steam methane reforming and are unrelated.
+      provenance: "scripts/prepare_sector_network.py:add_hydrogen"
+    levers:
+      - key: electricity.extendable_carriers.Generator
+        effect: >
+          The list a new "SMR-reactor" carrier (or plain "nuclear" as a proxy) must
+          join to be expandable; extendable conventional carriers are only placed at
+          buses that already host plants of that carrier.
+        default: "[solar, onwind, offwind-ac, offwind-dc, OCGT]"
+        provenance: "scripts/add_electricity.py:attach_conventional_generators"
+      - key: electricity.conventional_carriers
+        effect: "The list a new carrier joins for its existing/custom fleet to be attached."
+        default: "[nuclear, oil, OCGT, CCGT, coal, lignite, geothermal, biomass]"
+        provenance: "config.default.yaml:conventional_carriers"
+      - key: electricity.custom_powerplants
+        effect: "'merge' injects user-authored SMR units/sites from data/custom_powerplants.csv into the fleet."
+        default: "false"
+        provenance: "scripts/build_powerplants.py:add_custom_powerplants"
+      - key: sector.hydrogen.production_technologies
+        effect: >
+          CAUTION — controls Steam-Methane-Reforming H2 links ("SMR", "SMR CC"),
+          not reactors; listed here only to flag the collision.
+        default: '["H2 Electrolysis", "SMR", "SMR CC"]'
+        provenance: "config.default.yaml:production_technologies"
+    boundary:
+      - variant: "approximate SMRs as conventional nuclear with SMR-like costs"
+        rung: L1
+        note: >
+          add 'nuclear' to electricity.extendable_carriers.Generator and overwrite
+          cost attributes via the costs config read by load_costs
+          (process_cost_data.py; investment overwrite block exists commented-out in
+          config.default.yaml) — loses the distinct-technology accounting
+      - variant: "distinct SMR carrier with its own costs and sites"
+        rung: L3
+        note: >
+          needs (a) a new costs row (name it distinctly, e.g. 'nuclear-SMR' — the
+          name 'SMR' is TAKEN by steam methane reforming in technology-data) in the
+          retrieved costs file or a custom technology-data version
+          (costs.technology_data_version), (b) the carrier added to
+          electricity.conventional_carriers / extendable_carriers.Generator, and
+          (c) fleet/candidate rows in data/custom_powerplants.csv so
+          attach_conventional_generators has buses to place extendable units at
+      - variant: "SMR expandable at every bus (no existing-site restriction)"
+        rung: L2
+        note: >
+          small localised edit in attach_conventional_generators, where
+          carrier_buses is derived from the existing fleet of the carrier
+      - variant: "modular integer builds / unit-size economics"
+        rung: L5
+        note: "no integer/unit-commitment build logic exists; bespoke constraint code in solve_network.py extra_functionality"
+    where:
+      - change: "new/extendable conventional carrier attachment (the SMR entry point)"
+        anchor: "scripts/add_electricity.py::attach_conventional_generators"
+        provenance: "scripts/add_electricity.py:attach_conventional_generators"
+      - change: "costs row / cost overrides for the new carrier"
+        anchor: "scripts/process_cost_data.py::load_costs; rule retrieve_cost_data; costs.technology_data_version"
+        provenance: "scripts/process_cost_data.py:load_costs"
+      - change: "SMR fleet / candidate sites"
+        anchor: "scripts/build_powerplants.py::add_custom_powerplants with electricity.custom_powerplants"
+        provenance: "scripts/build_powerplants.py:add_custom_powerplants"
+      - change: "steam-methane-reforming SMR (hydrogen, NOT reactors) — the colliding namesake"
+        anchor: "scripts/prepare_sector_network.py::add_hydrogen; sector.hydrogen.production_technologies"
+        provenance: "scripts/prepare_sector_network.py:production_technologies"
+      - change: "bespoke build constraints"
+        anchor: "scripts/solve_network.py::extra_functionality"
+        provenance: "scripts/solve_network.py:extra_functionality"
+    data_dependencies:
+      - input: "costs row for the SMR reactor technology"
+        required_for: "distinct SMR carrier"
+        availability: "absent — must be added to the retrieved technology-data costs CSV or supplied via cost overwrites; do NOT reuse the existing 'SMR' row (steam methane reforming)"
+      - input: "data/custom_powerplants.csv rows for SMR units/sites"
+        required_for: "placing existing or candidate SMR capacity at buses"
+        availability: "absent — user-authored (template file exists by default)"
+      - input: "powerplantmatching database"
+        required_for: "the nuclear-proxy approximation (existing nuclear buses)"
+        availability: "region-dependent; no SMRs are listed as such"

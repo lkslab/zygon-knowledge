@@ -1,0 +1,68 @@
+id: procurement
+title: Procurement
+question: >-
+  How should firm capacity and energy be procured and remunerated: energy-only spot
+  markets, capacity markets, strategic reserves, reliability options? What would each
+  design procure, at what clearing price, and with what dispatch and investment signals?
+  Market design as such, not least-cost planning.
+when_to_use:
+- capacity market vs energy-only vs strategic reserve
+- what would a capacity auction procure / clear at
+- missing-money problem for firm capacity
+- derating factors for storage and VRE in capacity markets
+- capacity remuneration mechanism design
+- introduce a spot market / marginal pricing
+- bidding-zone reconfiguration price outcomes
+- what prices would a competitive market produce
+- dispatch and price outcomes under market reform
+- bidding, scarcity pricing, market power questions
+- provincial vs unified market design (China)
+models:
+- model: pypsa-eur
+  coverage: gap
+  gap_assessment: >-
+    No executable method is wired for pypsa-eur yet. This card descends from the v1
+    cards capacity-market-design, power-market-reform-spot-markets (archived under
+    archive/cookbooks/pypsa-eur/topics/v1/); the recipes below are the parts of those
+    cards whose recipe pages exist in the merged book with a section for this model.
+    Until a method spec is verified for pypsa-eur, the assistant can describe levers
+    but cannot scope a study.
+  recipes:
+    generation_conversion:
+    - gas-power-plants
+    - grid-scale-batteries
+    - stationary-fuel-cells
+    - coal-power-plants
+    demand:
+    - electricity-load
+    - demand-scenarios-and-growth
+    - demand-temporal-profiles
+  methods: []
+  defaults: []
+  version_anchor:
+    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
+    date: '2026-09-09'
+- model: pypsa-earth
+  coverage: gap
+  gap_assessment: >-
+    No executable method is wired for pypsa-earth yet. This card descends from the
+    v1 cards capacity-market-design, power-market-reform-spot-markets (archived under
+    archive/cookbooks/pypsa-earth/topics/v1/); the recipes below are the parts of
+    those cards whose recipe pages exist in the merged book with a section for this
+    model. Until a method spec is verified for pypsa-earth, the assistant can describe
+    levers but cannot scope a study.
+  recipes:
+    generation_conversion:
+    - gas-power-plants
+    - grid-scale-batteries
+    - stationary-fuel-cells
+    - coal-power-plants
+    demand:
+    - electricity-load
+    - demand-scenarios-and-growth
+    - demand-temporal-profiles
+  methods: []
+  defaults: []
+  version_anchor:
+    ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
+    date: '2026-09-09'

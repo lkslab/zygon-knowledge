@@ -1,0 +1,102 @@
+id: pathway-perfect
+title: perfect-foresight pathway — all horizons in one LP
+family: foresight-and-pathways
+what: 'All planning horizons co-optimised in a single LP with full knowledge of the
+  future: per-horizon networks concatenated over multi-indexed snapshots (investment_periods),
+  the objective discounted with a social discount rate, assets active per period through
+  build_year/lifetime windows. The no-regret benchmark against [[pathway-myopic]]
+  — the cost gap between the two is the value of foresight. Native on eur (solve_perfect.smk);
+  on earth it is a PORT of the eur machinery shipped as this method''s pre-tested
+  payload (payload/pypsa-earth/).
+
+  '
+when_to_use:
+- optimal transition path, no regret
+- least total-system-cost pathway
+- value of foresight vs myopic
+models:
+- model: pypsa-earth
+  version_anchor:
+    ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
+    date: '2026-08-01'
+  baseline: null
+  execution:
+  - kind: config
+    key: foresight
+    value: perfect
+    note: 'the key exists but earth''s Snakefile has NO perfect branch — the rule
+      step below adds it; without that this value is dead.
+
+      '
+  - kind: config
+    key: scenario.planning_horizons
+    value:
+    - 2030
+    - 2050
+  - kind: config
+    key: sector.land_transport_fuel_cell_share
+    value:
+      AB_2030: 0.01
+      AB_2050: 0.05
+    note: 'AB_2050 entries required (issue #10). The REAL ramp, same as [[pathway-myopic]]
+      — the payload''s per-period windowing handles period-varying exogenous sizing
+      (issues #14/#15 closed).
+
+      '
+  - kind: config
+    key: sector.land_transport_electric_share
+    value:
+      AB_2030: 0.01
+      AB_2050: 0.4
+  - kind: config
+    key: sector.shipping_hydrogen_share
+    value:
+      AB_2030: 0.05
+      AB_2050: 0.3
+  - kind: payload
+    note: 'ONE method_payload change materializes payload/pypsa-earth/: NEW prepare_perfect_foresight.py
+      (concat + exogenous windowing), patches for the Snakefile perfect branch and
+      the solve fixes.
+
+      '
+  - kind: invocation
+    note: 'bundle invocation REPLACES heads: prenetworks per horizon (prepared) +
+      the *_all_years postnetwork (solved) — the postnetworks template, horizon wildcard
+      -> all_years.
+
+      '
+  invalidates:
+  - add_existing_baseyear
+  - prepare_sector_network
+  budget:
+    jobs: 55
+    class: hours
+  success_metric:
+  - name: multi-period-lp
+    needs: solved
+    check: len(n.investment_periods) == 2
+    expect: the ported concat produced a genuine multi-period network
+  - name: discounted-weightings
+    needs: solved
+    check: (n.investment_period_weightings['objective'] > 0).all()
+    expect: years + objective weightings set for both periods
+  - name: cohort-window
+    needs: solved
+    check: ((n.generators.build_year == 2030) & (n.generators.p_nom_opt > 0)).any()
+    expect: 2030-vintage capacity active in the joint optimum
+  - name: exogenous-split
+    needs: solved
+    check: any(str(i).endswith('-2050') for i in n.links.index[n.links.carrier ==
+      'BEV charger'])
+    expect: period-variant exogenous EV components split per period, not collided
+notes: 'Earth port ships as the payload; the old scope limit (#14/#15) is CLOSED:
+  split_period_variant_exogenous windows period-variant exogenous components, and
+  the real presolve infeasibility was a NEGATIVE load-shedding p_nom on the co2 atmosphere
+  bus (concat makes static loads time-varying; the shedding sizer reads the negative
+  net load) — the payload clips it. EV shedding parity with myopic (~67% on MX) is
+  BASELINE DATA, not the port. EUR BLOCKED UPSTREAM (#8): prepare_perfect_foresight.py
+  refuses pypsa >=1.0, env has 1.0.3; epoch backlog. Port scope: concat only — SKIP
+  set_all_phase_outs, hvdc_transport_model, heating/H2 (power-cohorts-only). Cost
+  files pre-cached; first horizon must be 2030. Detail: runs/issues/methods-pathways-20260801.md.
+
+  '

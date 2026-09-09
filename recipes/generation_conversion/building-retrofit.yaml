@@ -1,0 +1,229 @@
+id: building-retrofit
+title: Building retrofit (insulation)
+summary: >
+  Improving building envelopes (insulation, windows) to cut space heating
+  demand — either as an exogenous demand reduction or as an endogenous
+  investment competing with heat supply.
+when_to_use:
+  - "building retrofit"
+  - "insulation investment"
+  - "building renovation scenario"
+  - "energy efficiency in buildings"
+  - "reduce heating demand"
+  - "renovation rate / renovation wave"
+  - "demand-side efficiency vs supply trade-off"
+  - "thermal envelope upgrade"
+  - "pypsa-eur carrier names: retrofitting (generators 'retrofitting moderate ...' / 'retrofitting ambitious ...' per heat bus); config term: retro_endogen"
+  - "insulation"
+  - "demand-side efficiency for space heating"
+  - "building codes / efficiency standards"
+  - "known in pypsa-eur as: retrofitting, building retrofitting"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Two mechanisms. (1) EXOGENOUS (on by default):
+        sector.reduce_space_heat_exogenously scales down SPACE heat demand (not
+        water) by a per-horizon factor (sector.reduce_space_heat_exogenously_factor:
+        0.10 in 2020 rising to 0.29 by 2050) at the top of add_heat — a
+        costless, uniform renovation assumption. (2) ENDOGENOUS (off by
+        default, sector.retrofitting.retro_endogen: false): rule
+        build_retro_cost computes, per country and sector
+        (residential/services/tot), space-heat savings dE and costs [EUR/m2]
+        for 8 insulation-thickness steps (module constant l_strength =
+        0.07..0.26 m) using the EN ISO 13790 seasonal method with TABULA
+        building typologies, hotmaps building-stock u-values, and
+        cluster-region air temperature (heating degree days); the 8 steps are
+        collapsed to TWO strengths in sample_dE_costs_area — "moderate" (the
+        step with the lowest cost per MWh saved, per country/sector) and
+        "ambitious" (the 0.26 m step). add_heat then adds, at every heat load
+        of all five heat systems, one "retrofitting" Generator per strength on
+        the heat bus: must-run against the space-heat profile
+        (p_max_pu = p_min_pu = normalised space heat demand), p_nom_max = the
+        achievable saving for that strength (dE_diff x peak space heat), and
+        capital_cost converted from EUR/m2 via the node's heated floor area
+        (floor_area file) — so saved heat competes 1:1 with heat supply
+        capacity, weighted by sector.retrofitting.cost_factor. Costs can be
+        annualised (interest_rate 0.04, annualise_cost true) and weighted by
+        country construction-cost index (construction_index true) and
+        electricity taxes (tax_weighting false).
+      mechanism: >
+        rule build_retro_cost (scripts/build_retro_cost.py:
+        prepare_building_stock_data -> calculate_space_heat_savings ->
+        calculate_retro_costs -> sample_dE_costs_area) -> retro_cost and
+        floor_area CSVs (inputs of rule prepare_sector_network only when
+        retro_endogen) -> add_heat retrofitting block (w_space share splits
+        space from water per node; urban central uses the combined "tot"
+        sector). The exogenous factor is applied in add_heat BEFORE the
+        retrofit block and there is no guard against enabling both — with both
+        on, endogenous retrofit competes only for the residual space heat.
+      not_covered: >
+        No renovation-RATE constraint (workforce/annual-rate limits): the
+        optimiser can retrofit the entire stock in one investment period. Only
+        two effective strengths reach the network (moderate/ambitious) even
+        though 8 are computed. Retrofit saves SPACE heat only — hot water
+        demand is untouched (w_space weighting). No cooling-demand benefit. No
+        building-level heterogeneity below country x sector (costs are
+        national; the same curve is applied at every node of a country). Not in
+        the electricity-only workflow. Retrofit generators carry no lifetime
+        vintaging logic beyond the default build_year stamping. Thermal-mass
+        flexibility is a separate mechanism (sector.residential_heat.dsm,
+        default false — see the demand book's building-heat-dsm recipe), not
+        part of retrofit.
+      provenance: "scripts/prepare_sector_network.py:add_heat; scripts/prepare_sector_network.py:retro_endogen; scripts/build_retro_cost.py:l_strength; scripts/build_retro_cost.py:sample_dE_costs_area; scripts/build_retro_cost.py:calculate_space_heat_savings; rules/build_sector.smk:build_retro_cost"
+    levers:
+      - key: sector.retrofitting.retro_endogen
+        effect: "true switches on the endogenous retrofit generators (and makes rule build_retro_cost an input of prepare_sector_network)."
+        default: "false"
+        provenance: "config/config.default.yaml:retro_endogen; scripts/prepare_sector_network.py:retro_endogen"
+      - key: sector.retrofitting.cost_factor
+        effect: "Scales retrofit capital cost (sensitivity lever for cheap/expensive renovation)."
+        default: "1.0"
+        provenance: "config/config.default.yaml:cost_factor; scripts/prepare_sector_network.py:cost_factor"
+      - key: sector.retrofitting.interest_rate
+        effect: "Discount rate for annualising retrofit investment in build_retro_cost."
+        default: "0.04"
+        provenance: "config/config.default.yaml:interest_rate; scripts/build_retro_cost.py:interest_rate"
+      - key: sector.retrofitting.annualise_cost
+        effect: "true annualises the EUR/m2 investment over measure lifetime; false uses overnight cost."
+        default: "true"
+        provenance: "config/config.default.yaml:annualise_cost; scripts/build_retro_cost.py:annualise_cost"
+      - key: sector.retrofitting.construction_index
+        effect: "true weights costs by national labour/material construction-cost index (data/retro/comparative_level_investment.csv)."
+        default: "true"
+        provenance: "config/config.default.yaml:construction_index; scripts/build_retro_cost.py:construction_index"
+      - key: sector.retrofitting.tax_weighting
+        effect: "true additionally weights costs by national electricity taxes (data/retro/electricity_taxes_eu.csv)."
+        default: "false"
+        provenance: "config/config.default.yaml:tax_weighting; scripts/build_retro_cost.py:tax_weighting"
+      - key: sector.reduce_space_heat_exogenously
+        effect: "Master switch of the costless exogenous space-heat reduction path."
+        default: "true"
+        provenance: "config/config.default.yaml:reduce_space_heat_exogenously; scripts/prepare_sector_network.py:reduce_space_heat_exogenously"
+      - key: sector.reduce_space_heat_exogenously_factor
+        effect: "Per-horizon fraction of space heat removed (renovation trajectory proxy); set all years 0 when using endogenous retrofit cleanly."
+        default: "{2020: 0.1, 2025: 0.09, 2030: 0.09, 2035: 0.11, 2040: 0.16, 2045: 0.21, 2050: 0.29}"
+        provenance: "config/config.default.yaml:reduce_space_heat_exogenously_factor; scripts/prepare_sector_network.py:reduce_space_heat_exogenously_factor"
+    boundary:
+      - variant: "uniform demand-reduction renovation trajectory"
+        rung: L0
+        note: "default (reduce_space_heat_exogenously with the factor schedule); change numbers per horizon at L1"
+      - variant: "endogenous cost-optimal retrofit vs supply"
+        rung: L0
+        note: "sector.retrofitting.retro_endogen: true (ideally zero the exogenous factors to avoid double counting — both mechanisms run together with no guard)"
+      - variant: "cheaper/dearer renovation sensitivity"
+        rung: L1
+        note: "sector.retrofitting.cost_factor"
+      - variant: "country-differentiated retrofit ambition"
+        rung: L3
+        note: "cost/saving curves are per country already; differentiated AMBITION needs edits to the input data under data/retro/ (building stock, costs) — no per-country config knob"
+      - variant: "more/other insulation strengths on the network"
+        rung: L2
+        note: "l_strength is a module constant in build_retro_cost.py and sample_dE_costs_area hard-collapses to moderate+ambitious; expose more strengths by editing that collapse (add_heat already loops over whatever strengths the CSV carries)"
+      - variant: "annual renovation-rate limit"
+        rung: L5
+        note: "no hook; needs a custom constraint on retrofitting generator p_nom additions per horizon in solve_network.py extra_functionality"
+      - variant: "retrofit of hot-water or cooling demand"
+        rung: L5
+        note: "retrofit generators are masked to the space-heat profile via w_space; other end uses are architecturally out of scope of the block"
+      - variant: "building thermal-mass flexibility (pre-heating), not insulation"
+        rung: L0
+        note: "different lever: sector.residential_heat.dsm.enable (heat dsm Store per residential heat bus) — see demand book building-heat-dsm"
+    where:
+      - change: "retrofit generator creation (strengths, floor-area cost conversion, space-heat masking)"
+        anchor: "scripts/prepare_sector_network.py::add_heat (retrofitting block, carrier 'retrofitting', w_space)"
+        provenance: "scripts/prepare_sector_network.py:retrofitting; scripts/prepare_sector_network.py:w_space"
+      - change: "cost/saving curves, insulation steps, moderate/ambitious collapse"
+        anchor: "scripts/build_retro_cost.py::sample_dE_costs_area and module constant l_strength (rule build_retro_cost)"
+        provenance: "scripts/build_retro_cost.py:sample_dE_costs_area; scripts/build_retro_cost.py:moderate_dE_cost"
+      - change: "exogenous space heat reduction"
+        anchor: "scripts/prepare_sector_network.py::add_heat (reduce_space_heat_exogenously block, get(options, investment_year))"
+        provenance: "scripts/prepare_sector_network.py:reduce_space_heat_exogenously_factor"
+      - change: "heat DSM store (adjacent flexibility mechanism)"
+        anchor: "scripts/prepare_sector_network.py::add_heat (residential_heat dsm block); scripts/build_hourly_heat_demand.py::heat_dsm_profile"
+        provenance: "scripts/prepare_sector_network.py:heat dsm; scripts/build_hourly_heat_demand.py:heat_dsm_profile"
+    data_dependencies:
+      - input: "data/retro/ inputs: data_building_stock.csv, u_values_poland.csv, electricity_taxes_eu.csv, comparative_level_investment.csv, floor_area_missing.csv, retro_cost_germany.csv, window_assumptions.csv + data/bundle/retro/tabula-calculator-calcsetbuilding.csv"
+        required_for: "endogenous retrofit cost curves"
+        availability: "exists by default (repo + data bundle); Europe-specific sources (hotmaps, TABULA)"
+      - input: "temp_air_total (cluster air temperature)"
+        required_for: "heating-season degree-day term in savings calculation"
+        availability: "must be built (rule build_temperature_profiles); automatic"
+      - input: "floor_area resource (heated floor area per country/sector)"
+        required_for: "EUR/m2 -> EUR/MWh conversion in add_heat"
+        availability: "must be built (output of rule build_retro_cost)"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        Only an EXOGENOUS space-heat demand reduction. In add_heat, if
+        sector.reduce_space_heat_exogenously is true, the factor
+        sector.reduce_space_heat_exogenously_factor (default 0.29) scales down the
+        "residential space" and "services space" heat demand columns uniformly:
+        heat_demand[sector + " space"] = (1 - dE) * heat_demand[sector + " space"].
+        The factor may be a dict keyed by planning horizon (resolved via get(...,
+        investment_year)), so a renovation trajectory over myopic horizons is possible.
+        Water heating demand is untouched. The config comments state the default factors
+        are Europe-specific (EU calculator LTS scenario) and that a negative factor can
+        represent demand growth.
+      mechanism: >
+        rule prepare_sector_network -> add_heat -> reduce_space_heat_exogenously block,
+        applied to the heat_demand csv produced by prepare_heat_data before loads are
+        added to the heat buses.
+      not_covered: >
+        No ENDOGENOUS retrofitting: there is no retrofit investment option, no cost-vs-
+        savings supply curve, no building-stock data, and no per-country or per-node
+        differentiation of the reduction factor (a single scalar/dict applies to all
+        nodes and both sectors). Grepping this repository finds no building
+        retrofit/insulation logic (the only "retrofit" config key is
+        H2_retrofit_capacity_per_CH4 for gas pipelines). Note: this is a claim about
+        pypsa-earth at this commit only.
+      provenance: "scripts/prepare_sector_network.py:reduce_space_heat_exogenously"
+
+    levers:
+      - key: sector.reduce_space_heat_exogenously
+        effect: Enables the exogenous space-heat demand reduction.
+        default: "false"
+        provenance: "config.default.yaml:reduce_space_heat_exogenously; scripts/prepare_sector_network.py:reduce_space_heat_exogenously"
+      - key: sector.reduce_space_heat_exogenously_factor
+        effect: "Per-unit reduction of space heat demand; scalar or dict {planning_horizon: factor}; negative values increase demand."
+        default: "0.29"
+        provenance: "config.default.yaml:reduce_space_heat_exogenously_factor; scripts/prepare_sector_network.py:reduce_space_heat_exogenously_factor"
+
+    boundary:
+      - variant: "Apply a uniform space-heat demand reduction (renovation proxy)"
+        rung: L0
+        note: "Flip sector.reduce_space_heat_exogenously to true (default factor 0.29)."
+      - variant: "Year-dependent renovation trajectory across planning horizons"
+        rung: L1
+        note: "Give reduce_space_heat_exogenously_factor as a dict keyed by planning horizon (get(..., investment_year) resolves it)."
+      - variant: "Country- or node-differentiated retrofit depth"
+        rung: L2
+        note: "The factor is applied uniformly in add_heat; a small edit there can map a per-country factor onto heat_demand columns (plus a data table if read from file, an L3 addition)."
+      - variant: "Region-appropriate reduction factors (defaults are Europe-derived)"
+        rung: L3
+        note: "No dataset shipped; user must derive factors for the target region and set them in config — flagged in config comments as needing regional adjustment."
+      - variant: "Endogenous retrofit investment (cost-optimal insulation vs supply)"
+        rung: L5
+        note: "Requires new component logic (e.g. retrofit 'generators' on heat buses with cost-potential steps), new building-stock/cost data (L3) and likely a new rule (L4); nothing exists in this repo."
+
+    where:
+      - change: "Where the exogenous reduction is applied"
+        anchor: "scripts/prepare_sector_network.py:add_heat (reduce_space_heat_exogenously block)"
+        provenance: "scripts/prepare_sector_network.py:reduce_space_heat_exogenously"
+      - change: "Space heat demand series being scaled"
+        anchor: "rule prepare_heat_data output heat_demand csv (columns 'residential space', 'services space')"
+        provenance: "scripts/prepare_heat_data.py:prepare_heat_data"
+      - change: "Weather-driven space heat shape (degree-day basis)"
+        anchor: "rule build_heat_demand (atlite cutout.heat_demand)"
+        provenance: "scripts/build_heat_demand.py:heat_demand"
+
+    data_dependencies:
+      - input: "Regionally appropriate reduction factors"
+        required_for: "Any non-European retrofit scenario"
+        availability: "absent (defaults are Europe-specific per config comments)"
+      - input: "UNSD energy balances + ERA5 cutout + population layouts"
+        required_for: "The baseline space heat demand being reduced"
+        availability: "must be built (build_base_energy_totals, build_heat_demand, build_population_layouts)"

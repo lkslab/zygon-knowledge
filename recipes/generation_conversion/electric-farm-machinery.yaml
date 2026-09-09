@@ -1,0 +1,219 @@
+id: electric-farm-machinery
+title: Electric farm machinery
+summary: >
+  Electrifying diesel-driven agricultural machinery (tractors, pumps, farm
+  motors) — shifting that final-energy demand from oil to electricity.
+when_to_use:
+  - "electrify tractors / farm equipment"
+  - "electric agricultural machinery"
+  - "agriculture diesel to electricity"
+  - "reduce farm fuel use"
+  - "off-road / non-road machinery electrification"
+  - "share of electric vs oil farm machinery"
+  - "pypsa-eur carrier names: agriculture machinery electric, agriculture machinery oil"
+  - "construction machinery electrification"
+  - "off-road vehicle electrification"
+  - "known in pypsa-eur as: agriculture machinery electric"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Agriculture machinery is a first-class, tunable split — unlike the
+        other agriculture end uses. In sector runs (sector.agriculture true)
+        add_agriculture adds three demand blocks per node: an "agriculture
+        electricity" Load on the AC bus, an "agriculture heat" Load on the
+        services-rural-heat bus, and a machinery demand that IS split between
+        electricity and oil by config shares. The machinery energy total
+        ("total agriculture machinery", built by idees_per_country from the
+        JRC-IDEES rows "Motor drives", "Farming machine drives (diesel oil
+        and liquid biofuels)", "Pumping devices (diesel oil and liquid
+        biofuels)") is multiplied by sector.agriculture_machinery_electric_
+        share to give an "agriculture machinery electric" Load on the AC bus,
+        and by sector.agriculture_machinery_oil_share to give an "agriculture
+        machinery oil" Load fed through an oil Link that books oil CO2 to "co2
+        atmosphere". The electric branch is scaled down by an efficiency gain
+        = agriculture_machinery_fuel_efficiency / agriculture_machinery_
+        electric_efficiency (default 0.7/0.3 ≈ 2.33x), reflecting the higher
+        efficiency of electric drivetrains. Both shares are year-dependent-
+        capable dicts read through get(...investment_year), so an
+        electrification pathway across horizons is expressed purely in config.
+        Defaults are a static 50/50 electric/oil split.
+      mechanism: >
+        rule build_energy_totals (scripts/build_energy_totals.py:
+        idees_per_country) extracts "total agriculture machinery" per country
+        from JRC-IDEES (filled from Eurostat FC_OTH_AF_E for missing
+        countries); rule build_population_weighted_energy_totals distributes
+        it to nodes; rule prepare_sector_network runs add_agriculture (gated
+        by sector.agriculture) which reads the four
+        agriculture_machinery_* options and creates the electric Load, the
+        oil Load and the oil combustion Link. All loads are flat (annual
+        total / snapshot hours).
+      not_covered: >
+        The electric-vs-oil split is EXOGENOUS, not optimised — both are
+        fixed Loads sized by the config shares; the model never chooses
+        diesel vs electric on cost (contrast land transport, which also uses
+        fixed shares here, not an endogenous EV/ICE competition). Electric
+        machinery is a plain inflexible Load on the AC bus — no dedicated
+        machinery bus, no charging profile, no seasonality (flat annual
+        profile), and no battery/charger asset. There is no construction /
+        non-road-mobile-machinery category distinct from agriculture. The
+        oil branch draws from the (optionally regional, sector.
+        regional_oil_demand) oil buses; the electric branch does not carry
+        the drivetrain-efficiency assumption anywhere except the one
+        efficiency_gain ratio. If the two shares do not sum to 1 the model
+        silently changes total machinery demand (only a warning is logged).
+      provenance: "scripts/prepare_sector_network.py:add_agriculture; scripts/prepare_sector_network.py:agriculture machinery electric; scripts/build_energy_totals.py:total agriculture machinery; scripts/build_energy_totals.py:idees_per_country"
+    levers:
+      - key: sector.agriculture_machinery_electric_share
+        effect: "Fraction of agriculture machinery final energy served electrically (year-dependent dict allowed). The primary electrification lever — the electric Load is this share x machinery energy / efficiency_gain."
+        default: "0.5"
+        provenance: "config/config.default.yaml:agriculture_machinery_electric_share; scripts/prepare_sector_network.py:agriculture machinery electric"
+      - key: sector.agriculture_machinery_oil_share
+        effect: "Fraction served by oil/diesel (the residual). The oil Load books oil CO2 to the atmosphere; drop toward 0 as the electric share rises."
+        default: "0.5"
+        provenance: "config/config.default.yaml:agriculture_machinery_oil_share; scripts/prepare_sector_network.py:agriculture machinery oil"
+      - key: sector.agriculture_machinery_fuel_efficiency
+        effect: "Assumed drivetrain efficiency of oil machinery; numerator of the efficiency_gain applied to the electric Load."
+        default: "0.7"
+        provenance: "config/config.default.yaml:agriculture_machinery_fuel_efficiency; scripts/prepare_sector_network.py:agriculture_machinery_fuel_efficiency"
+      - key: sector.agriculture_machinery_electric_efficiency
+        effect: "Assumed efficiency of electric machinery; denominator of the efficiency_gain, so higher values shrink the electricity a given machinery energy demand needs."
+        default: "0.3"
+        provenance: "config/config.default.yaml:agriculture_machinery_electric_efficiency; scripts/prepare_sector_network.py:agriculture_machinery_electric_efficiency"
+      - key: sector.agriculture
+        effect: "Master switch for all agriculture loads (electricity, heat, machinery); false removes add_agriculture entirely."
+        default: "true"
+        provenance: "config/config.default.yaml:agriculture; scripts/prepare_sector_network.py:add_agriculture"
+      - key: sector.regional_oil_demand
+        effect: "true keeps the agriculture machinery oil Load regional (per node); false aggregates it to a single EU oil demand bus."
+        default: "true"
+        provenance: "config/config.default.yaml:regional_oil_demand; scripts/prepare_sector_network.py:agriculture machinery oil"
+    boundary:
+      - variant: "static electrification share of farm machinery"
+        rung: L1
+        note: "set sector.agriculture_machinery_electric_share and _oil_share (they should sum to 1) — the default is 50/50"
+      - variant: "electrification pathway across planning horizons"
+        rung: L1
+        note: "give agriculture_machinery_electric_share / _oil_share year-keyed dicts (e.g. {2030: 0.2, 2050: 0.9}); get() picks the horizon value"
+      - variant: "fully electric or fully diesel machinery"
+        rung: L1
+        note: "electric_share 1.0 / oil_share 0.0 (or the reverse); the branch with share 0 is skipped"
+      - variant: "change the assumed electric vs diesel drivetrain efficiencies"
+        rung: L0
+        note: "agriculture_machinery_electric_efficiency / _fuel_efficiency set the efficiency_gain that scales the electric Load"
+      - variant: "drop agriculture demand entirely"
+        rung: L0
+        note: "sector.agriculture: false"
+      - variant: "endogenous machinery fuel choice (model decides diesel vs electric on cost)"
+        rung: L5
+        note: "both branches are fixed Loads; a competition needs a machinery service bus fed by rival electric/oil Links (the land-transport EV/ICE structure is the nearest template, but it too is share-driven) — bespoke component logic"
+      - variant: "flexible / time-varying electric machinery charging"
+        rung: L5
+        note: "the electric demand is a flat Load with no charger asset or profile; adding demand-response needs a new bus + store/link, not a config key"
+      - variant: "construction / non-road machinery as its own demand"
+        rung: L5
+        note: "no such category in the energy-totals data or the network; needs new demand rows (build_energy_totals) plus new load logic in add_agriculture"
+    where:
+      - change: "machinery electric/oil split, efficiency gain, load creation"
+        anchor: "scripts/prepare_sector_network.py::add_agriculture (rule prepare_sector_network, gated by sector.agriculture; reads the agriculture_machinery_* options)"
+        provenance: "scripts/prepare_sector_network.py:add_agriculture"
+      - change: "the machinery energy total this split is applied to"
+        anchor: "scripts/build_energy_totals.py::idees_per_country ('total agriculture machinery' from IDEES AGR_fec rows), rule build_energy_totals"
+        provenance: "scripts/build_energy_totals.py:idees_per_country; scripts/build_energy_totals.py:total agriculture machinery"
+      - change: "endogenous fuel choice or flexible charging"
+        anchor: "scripts/prepare_sector_network.py::add_land_transport (share/competition pattern to adapt) and ::add_agriculture"
+        provenance: "scripts/prepare_sector_network.py:add_land_transport; scripts/prepare_sector_network.py:add_agriculture"
+    data_dependencies:
+      - input: "JRC-IDEES AGR_fec agriculture machinery rows (Motor drives, Farming machine drives, Pumping devices)"
+        required_for: "the machinery energy baseline"
+        availability: "retrieved/built by the workflow (rule build_energy_totals); IDEES covers EU countries, others filled from Eurostat FC_OTH_AF_E"
+      - input: "population-weighted energy totals per node"
+        required_for: "distributing the national machinery total to model nodes"
+        availability: "built by the workflow (rule build_population_weighted_energy_totals)"
+      - input: "oil cost row (CO2 intensity) + oil buses"
+        required_for: "the machinery oil Load and its combustion CO2 Link"
+        availability: "exists by default in sector runs"
+      - input: "machinery share of farm energy for the target country"
+        required_for: "a defensible electric_share value"
+        availability: "user judgement — the model provides the machinery total but not an electrification pathway"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >-
+        Agriculture final energy as two FIXED loads per node: an
+        "agriculture electricity" Load on the AC buses and an "agriculture oil" Load
+        on the oil buses (machinery diesel sits inside this), plus a static
+        "oil emissions" load on "co2 atmosphere" for the oil combustion. Demand levels
+        come from UNSD energy balances (base year), projected to the planning horizon
+        by per-country CAGR factors for "agriculture electricity" and
+        "agriculture oil" columns in the growth/efficiency CSVs.
+      mechanism: >-
+        build_base_energy_totals.py:calc_sector extracts the agriculture rows from the
+        UNSD balances; prepare_energy_totals.py multiplies base totals by
+        calculate_end_values(growth/efficiency CAGRs) — agriculture columns pass
+        through this generic scaling with NO fuel-share shift (fuel_shares.csv has
+        oil-to-elec shifts for residential/services only);
+        prepare_sector_network.py:add_agriculture then adds the Loads (constant
+        profile, annual total / 8760). Machinery is not separated from other farm
+        energy use. Note: "machinery" in build_industry_demand.py is the MANUFACTURE
+        of machinery (an industry subsector), not its use.
+      not_covered: >-
+        No machinery-electrification share key exists in the config; no
+        elec-vs-oil substitution is optimised (both are fixed exogenous loads); no
+        agriculture heat or biomass load in the network (columns exist in the data but
+        add_agriculture only builds electricity and oil); no construction-machinery
+        demand category at all; agriculture loads are flat (no seasonality).
+      provenance: "scripts/prepare_sector_network.py:add_agriculture"
+    levers:
+      - key: sector.enable.agriculture
+        effect: "Master switch for the agriculture loads (add_agriculture only called when true)."
+        default: "true"
+        provenance: "config.default.yaml:agriculture ; scripts/prepare_sector_network.py:add_agriculture"
+      - key: demand_data.base_year
+        effect: "UNSD energy-balance year the agriculture demand baseline is taken from."
+        default: "2019"
+        provenance: "config.default.yaml:base_year ; scripts/build_base_energy_totals.py:calc_sector"
+    boundary:
+      - variant: "Drop agriculture demand entirely"
+        rung: L0
+        note: "sector.enable.agriculture: false."
+      - variant: "Electrify a share of machinery oil demand exogenously"
+        rung: L3
+        note: >-
+          Data edit: adjust the per-country 'agriculture oil' and
+          'agriculture electricity' CAGR columns in data/demand/growth_factors_cagr.csv /
+          data/demand/efficiency_gains_cagr.csv so the projected totals embody the
+          shift (there is no config share key, unlike land transport).
+      - variant: "Config-style oil->elec share for agriculture"
+        rung: L2
+        note: >-
+          Small localised edit: mirror the residential 'oil to elec share' logic of
+          prepare_energy_totals.py for the agriculture columns (with an efficiency
+          gain factor), or apply the shift directly in add_agriculture before madd.
+      - variant: "Endogenous machinery fuel choice (model decides diesel vs electric)"
+        rung: L5
+        note: "Requires a machinery service bus fed by competing elec/oil Links (pattern: land-transport EV/ICE split in add_land_transport) — bespoke component logic."
+      - variant: "Construction machinery as its own demand"
+        rung: L5
+        note: "No such category exists in the demand data or network; needs new data plus new load logic."
+    where:
+      - change: "Shift agriculture oil to electricity (data route)"
+        anchor: "data/demand/growth_factors_cagr.csv and data/demand/efficiency_gains_cagr.csv, columns 'agriculture oil' / 'agriculture electricity' (consumed by rule prepare_energy_totals)"
+        provenance: "data/demand/efficiency_gains_cagr.csv:agriculture oil"
+      - change: "Add an agriculture fuel-share parameter (code route)"
+        anchor: "scripts/prepare_energy_totals.py (fuel_shares handling; agriculture currently only passes the generic scaling) and scripts/prepare_sector_network.py function add_agriculture"
+        provenance: "scripts/prepare_energy_totals.py:calculate_end_values"
+      - change: "Endogenous machinery fuel choice"
+        anchor: "scripts/prepare_sector_network.py function add_land_transport (EV/ICE share pattern to copy) and function add_agriculture"
+        provenance: "scripts/prepare_sector_network.py:add_land_transport"
+    data_dependencies:
+      - input: "UNSD energy balances (data/demand/unsd/data)"
+        required_for: "Agriculture electricity/oil baseline totals"
+        availability: "must be built (downloaded when demand_data.update_data); region coverage generally good"
+      - input: "data/demand/growth_factors_cagr.csv, data/demand/efficiency_gains_cagr.csv"
+        required_for: "Projecting agriculture demand to the planning horizon (and the L3 electrification edit)"
+        availability: "exists by default (DEFAULT row used where a country is missing)"
+      - input: "Machinery share of farm diesel use for the target country"
+        required_for: "A defensible electrification share (machinery is not separated in the model data)"
+        availability: "absent — must be supplied by the user"

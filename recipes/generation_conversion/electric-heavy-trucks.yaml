@@ -1,0 +1,190 @@
+id: electric-heavy-trucks
+title: Battery electric heavy trucks
+summary: >
+  Battery-electric heavy goods vehicles (HGV/HDV road freight) — depot or
+  megawatt charging, truck-specific demand and electrification pathways.
+when_to_use:
+  - "electric trucks / e-trucks / battery trucks"
+  - "electrify road freight / HGV / HDV"
+  - "heavy duty vehicle electrification"
+  - "truck charging demand / megawatt charging"
+  - "freight transport decarbonisation by battery"
+  - "pypsa-eur carrier names: land transport EV (aggregate only — no truck carrier exists)"
+  - "electrify road freight / heavy goods vehicles / HGVs / lorries"
+  - "truck electrification scenario"
+  - "heavy-duty vehicle decarbonisation"
+  - "freight transport electricity demand"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Not covered as a distinct segment. PyPSA-Eur models ONE aggregate land
+        transport fleet: build_transport_demand sums "total road" (which
+        includes heavy-truck fuel from the Eurostat/JRC-IDEES road balance)
+        plus non-electric rail into a single driven-km series, converts it
+        with the JRC-IDEES "passenger car efficiency", and add_land_transport
+        splits it by the single electric/fuel_cell/ice share triplet. Truck
+        energy therefore DOES electrify when land_transport_electric_share
+        rises — but as pseudo passenger-car-km with car-like parameters (11 kW
+        chargers, 50 kWh batteries, car plug-in profiles). Notably, the
+        ingredients for a split exist unused: rule build_energy_totals writes
+        segment columns to energy_totals.csv — "total heavy duty road freight"
+        (JRC-IDEES row 'Heavy goods vehicles (diesel oil incl. biofuels)') and
+        "total light duty road freight" ('Light commercial vehicles') — but
+        build_transport_demand reads only the road/rail totals. The weekly
+        demand shape (BASt kfz.csv) already includes truck traffic, since
+        "kfz" counts ALL motor vehicles; the plug-in availability shape
+        (pkw.csv) is passenger-cars-only.
+      mechanism: >
+        rule build_energy_totals (build_transport_data + the TrRoad_ene sheet
+        parsing) -> energy_totals.csv incl. unused truck columns; rule
+        build_transport_demand collapses total road + total rail - electricity
+        rail into one km series; rule prepare_sector_network ->
+        add_land_transport -> add_EVs applies the aggregate electric share.
+      not_covered: >
+        No truck carrier, no truck share key, no truck efficiency, battery,
+        charger rating or availability profile; no megawatt charging or depot
+        infrastructure; no freight tonne-km representation. The
+        car-efficiency conversion misprices truck energy in km terms (though
+        energy totals are preserved in aggregate at the ICE base year). No
+        distinction between LDV and HDV electrification pace.
+      provenance: "scripts/build_transport_demand.py:build_transport_demand; scripts/build_energy_totals.py:total heavy duty road freight; scripts/build_energy_totals.py:total light duty road freight; scripts/prepare_sector_network.py:add_land_transport; scripts/build_mobility_profiles.py:BASt"
+    levers:
+      - key: sector.land_transport_electric_share
+        effect: "The only electrification knob touching truck energy — applies uniformly to the whole road+rail-non-elec aggregate."
+        default: "{2020: 0, 2025: 0.05, 2030: 0.2, 2035: 0.45, 2040: 0.7, 2045: 0.85, 2050: 1}"
+        provenance: "config/config.default.yaml:land_transport_electric_share; scripts/prepare_sector_network.py:add_land_transport"
+      - key: sector.transport_electric_efficiency
+        effect: "Single fleet-wide EV efficiency [100 km/MWh]; can be blended offline to reflect a truck-heavier electric fleet."
+        default: "53.19"
+        provenance: "config/config.default.yaml:transport_electric_efficiency; scripts/prepare_sector_network.py:add_EVs"
+      - key: sector.bev_charge_rate
+        effect: "Fleet-wide per-vehicle charger power (11 kW, car-like); a blended value can crudely reflect truck depot chargers."
+        default: "0.011"
+        provenance: "config/config.default.yaml:bev_charge_rate; scripts/prepare_sector_network.py:add_EVs"
+    boundary:
+      - variant: "electrify road freight together with all other road transport"
+        rung: L1
+        note: "raise sector.land_transport_electric_share — trucks cannot be targeted alone"
+      - variant: "approximate truck-only electrification by share arithmetic"
+        rung: L1
+        note: "compute the aggregate share offline as (truck fraction of road energy, readable from the 'total heavy duty road freight' column of energy_totals.csv) x truck electrification and set it — honest kludge; EV parameters stay car-like"
+      - variant: "separate truck demand from the road aggregate"
+        rung: L2
+        note: "the energy data ALREADY exists (energy_totals columns 'total heavy duty road freight' / 'total light duty road freight'); carve them out in build_transport_demand (subtract from the aggregate, emit a second demand series) and add a second load block with its own shares in add_land_transport — code edit is localised, no new external data needed"
+      - variant: "truck-specific charging profile / availability"
+        rung: L3
+        note: "BASt raw counts distinguish vehicle classes but rule build_mobility_profiles only emits kfz (all vehicles) and pkw (cars); a truck profile needs a third extraction from the raw BASt files or external depot-charging data"
+      - variant: "truck segment with own config keys, charger/battery parameters and rule outputs"
+        rung: L4
+        note: "new outputs through rules build_energy_totals/build_transport_demand plus new sector.* keys consumed in add_land_transport — rule and config-schema plumbing"
+      - variant: "megawatt charging network, depot siting, endogenous battery-vs-H2 truck competition"
+        rung: L5
+        note: "bespoke components and constraints; nothing to build on out of the box"
+    where:
+      - change: "where a truck split of the demand aggregate would be made"
+        anchor: "scripts/build_transport_demand.py::build_transport_demand (rule build_transport_demand)"
+        provenance: "scripts/build_transport_demand.py:build_transport_demand; rules/build_sector.smk:build_transport_demand"
+      - change: "unused truck energy columns to carve out"
+        anchor: "scripts/build_energy_totals.py TrRoad_ene parsing ('total heavy duty road freight', 'total light duty road freight')"
+        provenance: "scripts/build_energy_totals.py:total heavy duty road freight"
+      - change: "where truck-specific loads/shares would be added"
+        anchor: "scripts/prepare_sector_network.py::add_land_transport / ::add_EVs"
+        provenance: "scripts/prepare_sector_network.py:add_land_transport; scripts/prepare_sector_network.py:add_EVs"
+      - change: "where a truck weekly profile would be extracted"
+        anchor: "rule build_mobility_profiles -> scripts/build_mobility_profiles.py (BASt raw zip files)"
+        provenance: "rules/build_sector.smk:build_mobility_profiles; scripts/build_mobility_profiles.py:BASt"
+    data_dependencies:
+      - input: "energy_totals.csv columns 'total heavy duty road freight' / 'total light duty road freight' (JRC-IDEES; non-IDEES countries filled by road-fraction split)"
+        required_for: "any truck/LDV demand separation"
+        availability: "exists by default (rule build_energy_totals) but UNUSED by the transport chain"
+      - input: "BASt raw traffic counts by vehicle class"
+        required_for: "a truck-specific weekly demand/charging shape"
+        availability: "retrieved by rule build_mobility_profiles, but only kfz/pkw aggregations are emitted — truck extraction must be built"
+      - input: "truck charger/battery cost and rating assumptions"
+        required_for: "truck-specific charging representation"
+        availability: "absent — no truck rows referenced in the costs chain"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        NOT covered as a distinct segment. All road transport — cars, trucks, buses —
+        is ONE aggregate demand ("total road" from UNSD energy balances), split only
+        by fuel: sector.land_transport_electric_share (EV),
+        sector.land_transport_fuel_cell_share (FCEV), remainder ICE oil. Raising the
+        electric share electrifies trucks and cars indistinguishably, with
+        passenger-car assumptions (battery size bev_energy, charge rate, car counts
+        from WHO vehicle statistics).
+      mechanism: >
+        add_land_transport in prepare_sector_network splits the aggregate demand
+        series (built by rule prepare_transport_data from energy totals shaped by the
+        German KFZ__count all-vehicle traffic profile) by the exogenous shares keyed
+        {demand}_{planning_horizon}. There is no truck wildcard, no truck share key,
+        and no truck-specific efficiency or battery parameter anywhere in the sector
+        config.
+      not_covered: >
+        Truck-vs-car disaggregation, truck-specific charging power/battery capacity,
+        depot vs en-route charging, freight activity data (tkm). Note the repo ships
+        an unused truck traffic profile data/emobility/Lkw__count that could seed a
+        truck-specific demand shape.
+      provenance: "scripts/prepare_sector_network.py:add_land_transport"
+
+    levers:
+      - key: sector.land_transport_electric_share
+        effect: "Electrifies the WHOLE road aggregate (trucks included, not separable), keyed {demand}_{planning_horizon}."
+        default: "AB_2030: 0.01 (dict per scenario/year)"
+        provenance: "scripts/prepare_sector_network.py:land_transport_electric_share"
+      - key: sector.land_transport_fuel_cell_share
+        effect: "H2 share of the same aggregate; remainder is ICE oil."
+        default: "AB_2030: 0.01 (dict per scenario/year)"
+        provenance: "scripts/prepare_sector_network.py:land_transport_fuel_cell_share"
+      - key: sector.enable.land_transport
+        effect: "Master switch for the whole land transport block."
+        default: "true"
+        provenance: "Snakefile:prepare_sector_network"
+
+    boundary:
+      - variant: "Electrify road freight together with all other road transport"
+        rung: L1
+        note: "Only as part of the aggregate: raise sector.land_transport_electric_share. Cannot target trucks alone."
+      - variant: "Approximate a truck-only electrification by share arithmetic"
+        rung: L1
+        note: "Compute the electric share offline as (truck energy fraction of total road) x (truck electrification) and set it — honest kludge, EV parameters stay car-like."
+      - variant: "Separate truck demand from the road aggregate"
+        rung: L3
+        note: >
+          Needs a data-driven disaggregation of 'total road' into truck vs non-truck
+          energy (UNSD does not provide it) plus a truck demand shape — the repo's
+          unused data/emobility/Lkw__count weekly truck counts can supply the shape —
+          then new share keys and a second load block in add_land_transport (the code
+          edit itself is small, the data split is the blocker).
+      - variant: "Truck segment with own share keys, charger/battery parameters, wildcards"
+        rung: L4
+        note: "New columns/outputs through rule prepare_transport_data and new config keys consumed in add_land_transport — rule plumbing plus config schema changes."
+      - variant: "Endogenous truck fleet/charging optimisation"
+        rung: L5
+        note: "Bespoke component logic; nothing to build on out of the box."
+
+    where:
+      - change: "Where a truck-specific split/loads would be added"
+        anchor: "scripts/prepare_sector_network.py function add_land_transport"
+        provenance: "scripts/prepare_sector_network.py:add_land_transport"
+      - change: "Where truck demand series/profiles would be produced"
+        anchor: "rule prepare_transport_data -> scripts/prepare_transport_data.py"
+        provenance: "Snakefile:prepare_transport_data"
+      - change: "Unused truck traffic profile that can seed a truck demand shape"
+        anchor: "data/emobility/Lkw__count (sibling of the wired-in KFZ__count input)"
+        provenance: "Snakefile:traffic_data_KFZ"
+
+    data_dependencies:
+      - input: "UNSD energy balances 'total road' (no truck/car split)"
+        required_for: "aggregate demand that any truck share would be carved from"
+        availability: "must be built; truck disaggregation absent"
+      - input: "data/emobility/Lkw__count (German weekly truck traffic counts)"
+        required_for: "truck-specific demand shape (variant L3+)"
+        availability: "exists by default but NOT wired into any rule"
+      - input: "Truck stock / freight activity data for the target region"
+        required_for: "truck-specific charger and battery sizing"
+        availability: "absent (vehicle stats used are total registered vehicles from WHO)"

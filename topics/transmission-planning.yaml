@@ -1,0 +1,57 @@
+id: transmission-planning
+title: Transmission planning
+question: >-
+  Where and when should transmission be built, what does congestion or non-building
+  cost, and which corridors are robust across scenarios? The highest-urgency topic
+  globally: FERC 1920 (US), UHV (China), power pools (Africa/ASEAN), REZs (Australia).
+when_to_use:
+- where should we build transmission
+- grid expansion plan / TYNDP-style study
+- cost of not building the grid
+- corridor selection under uncertainty
+- co-optimize generation and transmission
+models:
+- model: pypsa-eur
+  coverage: gap
+  gap_assessment: >-
+    No executable method is wired for pypsa-eur yet. This card descends from the v1
+    cards transmission-expansion-planning (archived under archive/cookbooks/pypsa-eur/topics/v1/);
+    the recipes below are the parts of those cards whose recipe pages exist in the
+    merged book with a section for this model. Until a method spec is verified for
+    pypsa-eur, the assistant can describe levers but cannot scope a study.
+  recipes:
+    generation_conversion:
+    - hv-transmission-lines
+    - hvdc-interconnectors
+    - uhv-dc
+    - transmission-expansion-projects
+    - dynamic-line-rating-facts
+    demand:
+    - electricity-load
+    - demand-spatial-disaggregation
+  methods: []
+  defaults: []
+  version_anchor:
+    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
+    date: '2026-09-09'
+- model: pypsa-earth
+  coverage: gap
+  gap_assessment: >-
+    No executable method is wired for pypsa-earth yet. This card descends from the
+    v1 cards transmission-expansion-planning (archived under archive/cookbooks/pypsa-earth/topics/v1/);
+    the recipes below are the parts of those cards whose recipe pages exist in the
+    merged book with a section for this model. Until a method spec is verified for
+    pypsa-earth, the assistant can describe levers but cannot scope a study.
+  recipes:
+    generation_conversion:
+    - hv-transmission-lines
+    - hvdc-interconnectors
+    - uhv-dc
+    demand:
+    - electricity-load
+    - demand-spatial-disaggregation
+  methods: []
+  defaults: []
+  version_anchor:
+    ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
+    date: '2026-09-09'

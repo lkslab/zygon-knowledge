@@ -1,0 +1,173 @@
+id: gravity-storage
+title: Gravity storage
+summary: Gravity-based electricity storage — lifting solid masses (bricks/blocks) or water in shafts to store potential energy.
+when_to_use:
+  - "gravity storage / gravity battery"
+  - "Energy Vault style block towers"
+  - "mine-shaft weight storage"
+  - "gravitational potential energy storage"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Nothing gravity-storage-specific — grounded absence: no gravity token
+        exists in STORE_LOOKUP (scripts/add_electricity.py) or
+        electricity.max_hours, so no config setting can activate it (the only
+        related concept is pumped hydro, covered by its own recipe). The gap is
+        purely a wiring gap: the technology-data costs file already ships THREE
+        gravity variants — "Gravity-Brick-store"/"Gravity-Brick-bicharger",
+        "Gravity-Water-Aboveground-store"/"-bicharger" and
+        "Gravity-Water-Underground-store"/"-bicharger" (verified in a locally
+        built processed costs file) — and the generic storage machinery
+        (attach_storageunits / attach_stores) consumes exactly this
+        store+bicharger row shape for the six chemistries it does wire.
+      mechanism: >
+        Not built by any rule. The entry points are attach_stores /
+        attach_storageunits in scripts/add_electricity.py (rule
+        add_electricity): both filter the configured carrier lists through
+        get_available_storage_carriers, which intersects with STORE_LOOKUP and
+        silently skips unknown tokens with a warning. rule process_cost_data
+        (scripts/process_cost_data.py::prepare_costs) synthesises a combined
+        capital-cost row for every key of electricity.max_hours via
+        costs_for_storage — a new "gravity" key there requires the matching
+        STORE_LOOKUP entry or prepare_costs raises a KeyError.
+      not_covered: >
+        Everything gravity-specific: carrier, cost-row consumption, and any
+        siting constraint (shaft/terrain availability — no dataset exists). If
+        wired as a bicharger technology it would inherit the same caveat as
+        lfp/vanadium/pair: the discharger link is free and uncoupled unless
+        add_battery_constraints is generalised. The nearest wired proxy for
+        experiments is "pair" (adiabatic CAES, 24 h, bicharger structure) with
+        overridden costs.
+      provenance: "scripts/add_electricity.py:STORE_LOOKUP; scripts/add_electricity.py:get_available_storage_carriers; scripts/process_cost_data.py:costs_for_storage; scripts/add_electricity.py:attach_stores"
+    levers:
+      - key: electricity.extendable_carriers.StorageUnit
+        effect: "Where a new gravity carrier must be listed for the fixed-duration StorageUnit representation (config half of the L2 wiring)."
+        default: "[] (empty)"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_storageunits"
+      - key: electricity.extendable_carriers.Store
+        effect: "Where a new gravity carrier must be listed for the Store+Links representation."
+        default: "[battery, H2]"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_stores"
+      - key: electricity.max_hours.pair
+        effect: "Proxy route — re-cost the wired adiabatic-CAES token 'pair' (same store+bicharger structure) with gravity numbers and a suitable duration."
+        default: "24"
+        provenance: "config/config.default.yaml:max_hours; scripts/add_electricity.py:Compressed-Air-Adiabatic-store"
+      - key: costs.custom_cost_fn
+        effect: "Custom-costs CSV for overriding the proxy rows (or tuning the Gravity-* rows once wired); overwrite_costs also accepts brand-new technology rows."
+        default: "data/custom_costs.csv"
+        provenance: "config/config.default.yaml:custom_cost_fn; scripts/process_cost_data.py:overwrite_costs"
+    boundary:
+      - variant: "gravity storage as a re-costed wired token (proxy)"
+        rung: L1
+        note: "activate 'pair' (or 'lfp') in extendable_carriers.StorageUnit, set its max_hours, and override its store/bicharger rows with gravity numbers via data/custom_costs.csv — loses that token's own technology in the run"
+      - variant: "distinct gravity carrier (brick or water variant)"
+        rung: L2
+        note: "add a STORE_LOOKUP entry pointing at 'Gravity-Brick-store'/'Gravity-Brick-bicharger' (or a Gravity-Water variant) + an electricity.max_hours key + the carrier in extendable_carriers — cost rows exist, no data work"
+      - variant: "couple charger/discharger sizing of the new carrier (Store representation)"
+        rung: L2
+        note: "generalise the name filter in add_battery_constraints (bicharger cost sits on the charger link only)"
+      - variant: "site-constrained gravity storage (mine shafts, terrain)"
+        rung: L3
+        note: "no siting dataset exists; supply regional potentials and cap e_nom_max in a Store-representation branch (the salt-cavern e_nom_max pattern in add_h2_gas_infrastructure is the in-repo template)"
+      - variant: "discrete block/mass scheduling behaviour"
+        rung: L5
+        note: "continuous Store/Link variables cannot represent discrete masses; bespoke (integer) formulation"
+    where:
+      - change: "new storage carrier wiring (code half)"
+        anchor: "scripts/add_electricity.py STORE_LOOKUP + ::attach_stores / ::attach_storageunits (rule add_electricity)"
+        provenance: "scripts/add_electricity.py:STORE_LOOKUP; scripts/add_electricity.py:attach_storageunits"
+      - change: "combined cost row synthesis for the new max_hours key"
+        anchor: "scripts/process_cost_data.py::prepare_costs (costs_for_storage loop)"
+        provenance: "scripts/process_cost_data.py:costs_for_storage"
+      - change: "charger/discharger coupling constraint"
+        anchor: "scripts/solve_network.py::add_battery_constraints (name filter to generalise)"
+        provenance: "scripts/solve_network.py:add_battery_constraints"
+      - change: "template for potential-capped stores"
+        anchor: "scripts/prepare_sector_network.py::add_h2_gas_infrastructure (e_nom_max from regional potentials)"
+        provenance: "scripts/prepare_sector_network.py:add_h2_gas_infrastructure"
+    data_dependencies:
+      - input: "cost rows 'Gravity-Brick-store'/'Gravity-Brick-bicharger', 'Gravity-Water-Aboveground-store'/'-bicharger', 'Gravity-Water-Underground-store'/'-bicharger'"
+        required_for: "distinct gravity carrier (L2 wiring)"
+        availability: "exists by default in the technology-data costs file (verified in a locally built processed costs file); unconsumed by code at this ref"
+      - input: "regional siting/potential data (shafts, terrain)"
+        required_for: "site-constrained gravity storage"
+        availability: "absent — must be provided by the user"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        Nothing gravity-storage-specific — grounded absence: no gravity carrier,
+        config key, or code branch exists in scripts/ or config.default.yaml (the
+        only related concept is pumped hydro, covered by its own recipe). The
+        generic Store + charger/discharger Links machinery in attach_stores could
+        represent it, but only "H2" and "battery" branches exist.
+      mechanism: >
+        Not built by any rule. Entry points are attach_stores / attach_storageunits
+        in scripts/add_extra_components.py (rule add_extra_components), with
+        hardcoded carrier branches and lookup_store / lookup_dispatch dicts limited
+        to H2 and battery. The retrieved technology-data v0.13.2 costs file ships
+        "Gravity-Brick-store" / "Gravity-Brick-bicharger",
+        "Gravity-Water-Aboveground-store" / "Gravity-Water-Aboveground-bicharger"
+        and "Gravity-Water-Underground-store" / "Gravity-Water-Underground-bicharger"
+        rows (verified in a locally built costs_2030_elec.csv) — cost data exists
+        upstream, unconsumed.
+      not_covered: >
+        Everything technology-specific: carrier, cost mapping, site constraints
+        (shaft/terrain availability).
+      provenance: scripts/add_extra_components.py:attach_stores
+    levers:
+      - key: electricity.extendable_carriers.Store
+        effect: Carrier list read by attach_stores — config-side half of a distinct gravity-storage carrier (needs code branch).
+        default: "[battery, H2]"
+        provenance: scripts/add_extra_components.py:attach_stores
+      - key: electricity.extendable_carriers.StorageUnit
+        effect: Carrier list read by attach_storageunits — config-side half of a fixed-duration gravity StorageUnit.
+        default: "[]"
+        provenance: scripts/add_extra_components.py:attach_storageunits
+      - key: electricity.max_hours.battery
+        effect: Proxy route — generic battery StorageUnit with gravity-storage duration and overridden costs.
+        default: "6"
+        provenance: scripts/process_cost_data.py:costs_for_storage
+    boundary:
+      - variant: Gravity storage as a re-costed generic storage (proxy)
+        rung: L1
+        note: Battery carrier with suitable electricity.max_hours.battery and cost/efficiency overrides via the costs section (load_costs override maps; investment map present only as comment in config.default.yaml). Replaces Li-ion in the run.
+      - variant: Distinct gravity-storage Store+Link carrier
+        rung: L2
+        note: >
+          New branch in attach_stores (Store from "Gravity-Brick-store" or a
+          Gravity-Water variant, charger and discharger Links from the matching
+          "-bicharger" row) plus the carrier in
+          electricity.extendable_carriers.Store. Costs rows exist in retrieved
+          technology-data v0.13.2 — no data work.
+      - variant: Distinct fixed-duration gravity StorageUnit
+        rung: L2
+        note: Extend lookup_store/lookup_dispatch in attach_storageunits, add carrier to extendable_carriers.StorageUnit + electricity.max_hours, and synthesise its combined capital-cost row in load_costs.
+      - variant: Site-constrained gravity storage (mine shafts, terrain)
+        rung: L3
+        note: No siting dataset exists; supply regional potentials and cap e_nom_max/p_nom_max in the new branch (the country-CSV-to-node pattern in add_hydrogen's underground_storage block is the in-repo template).
+      - variant: Discrete block/mass scheduling behaviour
+        rung: L5
+        note: Continuous Store/Link variables cannot represent discrete masses; bespoke (integer) formulation.
+    where:
+      - change: New Store+Link storage carrier
+        anchor: scripts/add_extra_components.py, function attach_stores (rule add_extra_components)
+        provenance: scripts/add_extra_components.py:attach_stores
+      - change: New StorageUnit carrier (cost lookup dicts)
+        anchor: scripts/add_extra_components.py, function attach_storageunits (lookup_store / lookup_dispatch)
+        provenance: scripts/add_extra_components.py:lookup_store
+      - change: Combined capital-cost row for a new StorageUnit carrier
+        anchor: scripts/process_cost_data.py, function load_costs (helper costs_for_storage)
+        provenance: scripts/process_cost_data.py:costs_for_storage
+      - change: Template for potential-limited stores
+        anchor: scripts/prepare_sector_network.py, function add_hydrogen, underground_storage block (rule prepare_sector_network)
+        provenance: scripts/prepare_sector_network.py:underground_storage
+    data_dependencies:
+      - input: technology-data costs rows "Gravity-Brick-store"/"Gravity-Brick-bicharger", "Gravity-Water-Aboveground-store"/"Gravity-Water-Aboveground-bicharger", "Gravity-Water-Underground-store"/"Gravity-Water-Underground-bicharger" (rule retrieve_cost_data, costs.technology_data_version v0.13.2)
+        required_for: Distinct gravity-storage carrier
+        availability: exists by default in the retrieved costs file; absent from the offline fallback data/costs.csv
+      - input: Regional siting/potential data (shafts, terrain)
+        required_for: Site-constrained gravity storage
+        availability: absent — must be provided by the user

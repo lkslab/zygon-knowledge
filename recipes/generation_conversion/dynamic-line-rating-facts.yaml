@@ -1,0 +1,201 @@
+id: dynamic-line-rating-facts
+title: Dynamic line rating / FACTS
+summary: Weather-dependent thermal ratings of overhead lines (DLR) and flexible AC transmission devices (FACTS) that push more power through the existing grid.
+when_to_use:
+  - "dynamic line rating / ampacity forecasting"
+  - "get more out of the existing grid without building lines"
+  - "weather-dependent transmission capacity"
+  - "FACTS devices / SVC / STATCOM / phase shifters"
+  - "seasonal line ratings"
+  - "why are line capacities constant all year"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        DLR: genuinely covered (unlike pypsa-earth), off by default. With
+        lines.dynamic_line_rating.activate: true, rule build_line_rating
+        computes an hourly per-line ampacity series from the atlite ERA5
+        cutout: cutout.line_rating solves a conductor heat balance (resistive
+        losses, solar gain, radiative loss, forced and natural convection) at a
+        maximum conductor temperature Ts=353 K, with conductor diameter
+        D=0.0218 m, emissivity 0.8 and absorptivity 0.8 hardcoded in
+        calculate_line_rating; conductor resistance is reconstructed from the
+        line type's r_per_length and bundle count (regex on the type name).
+        Only non-underground lines are rated (relevant_lines excludes
+        underground). rule add_transmission_projects_and_dlr then writes the
+        result into n.lines_t.s_max_pu = rating / s_nom *
+        lines.dynamic_line_rating.correction_factor (default 0.95), optionally
+        clipped by a voltage-stability cap derived from line reactance
+        (max_voltage_difference, in degrees) and by a hard multiple
+        (max_line_rating, e.g. 1.3), and finally multiplied by the static
+        lines.s_max_pu — producing base_extended.nc consumed by
+        simplify_network. FACTS: not covered at all — no SVC/STATCOM/phase
+        shifter exists anywhere in scripts/ (transformers get only x, s_nom,
+        type from the transformers config in
+        _set_electrical_parameters_transformers), and the linearised OPF has no
+        controllable-impedance representation.
+      mechanism: >
+        rule build_line_rating (input networks/base.nc + cutout ->
+        resources dlr.nc) -> rule add_transmission_projects_and_dlr
+        (attach_line_rating writes lines_t.s_max_pu) -> simplify/cluster ->
+        solve. The DLR series is computed on the ORIGINAL base-network lines:
+        rating columns index base.nc line ids, and transmission-project lines
+        appended in the same rule keep their static rating.
+      not_covered: >
+        FACTS devices, phase-shifting transformers, reactive compensation and
+        any controllable-impedance dispatch. DLR limitations at this ref: line
+        weather exposure is sampled along a STRAIGHT line between bus
+        coordinates (shapes built from Point(bus0)/Point(bus1) in
+        calculate_line_rating), not the actual route geometry; only overhead
+        (non-underground) lines; a code comment flags "TODO: Only considers
+        overhead lines"; conductor geometry (D, Ts, epsilon, alpha) is
+        hardcoded, not config; project lines and anything added after
+        base.nc get no DLR series. prepare_network's set_line_s_max_pu still
+        writes the static s_max_pu scalar into n.lines['s_max_pu'] — the DLR
+        time series in lines_t.s_max_pu is a separate, snapshot-varying input.
+      provenance: "scripts/build_line_rating.py:calculate_line_rating; scripts/add_transmission_projects_and_dlr.py:attach_line_rating; scripts/base_network.py:_set_electrical_parameters_transformers; scripts/prepare_network.py:set_line_s_max_pu"
+    levers:
+      - key: lines.dynamic_line_rating.activate
+        effect: "Master switch: triggers rule build_line_rating and the attach in add_transmission_projects_and_dlr."
+        default: "false"
+        provenance: "config/config.default.yaml:dynamic_line_rating; rules/build_electricity.smk:build_line_rating"
+      - key: lines.dynamic_line_rating.cutout
+        effect: "Which atlite cutout supplies the weather (temperature, wind, insolation) for the heat balance."
+        default: "default (-> atlite.default_cutout, europe-2013-sarah3-era5)"
+        provenance: "config/config.default.yaml:dynamic_line_rating; scripts/build_line_rating.py:load_cutout"
+      - key: lines.dynamic_line_rating.correction_factor
+        effect: "Scalar derating of the computed ampacity series (safety margin on the idealised heat balance)."
+        default: "0.95"
+        provenance: "config/config.default.yaml:correction_factor; scripts/add_transmission_projects_and_dlr.py:attach_line_rating"
+      - key: lines.dynamic_line_rating.max_voltage_difference
+        effect: "If set (degrees), caps the DLR uplift by an angle-stability limit computed from each line's reactance (s_max_pu_cap = deg2rad(angle)/(x_pu*s_nom), clipped >= 1)."
+        default: "false"
+        provenance: "config/config.default.yaml:max_voltage_difference; scripts/add_transmission_projects_and_dlr.py:attach_line_rating"
+      - key: lines.dynamic_line_rating.max_line_rating
+        effect: "If set (e.g. 1.3), hard-clips the rating multiple relative to static s_nom."
+        default: "false"
+        provenance: "config/config.default.yaml:max_line_rating; scripts/add_transmission_projects_and_dlr.py:attach_line_rating"
+      - key: lines.s_max_pu
+        effect: "Static N-1 margin, multiplied into the DLR series as the last step (and the only rating knob when DLR is off)."
+        default: "0.7"
+        provenance: "config/config.default.yaml:s_max_pu; scripts/add_transmission_projects_and_dlr.py:attach_line_rating"
+    boundary:
+      - variant: "weather-driven dynamic line rating"
+        rung: L0
+        note: "lines.dynamic_line_rating.activate: true — full chain exists (rule build_line_rating + attach_line_rating)"
+      - variant: "conservative DLR (stability- and hardware-capped)"
+        rung: L1
+        note: "set max_voltage_difference (degrees) and/or max_line_rating (multiple), tune correction_factor"
+      - variant: "uniform static rating change"
+        rung: L0
+        note: "lines.s_max_pu"
+      - variant: "DLR from a different weather year"
+        rung: L1
+        note: "point lines.dynamic_line_rating.cutout at another configured atlite cutout (must cover the snapshots)"
+      - variant: "actual route geometry / different conductor parameters in the heat balance"
+        rung: L2
+        note: "calculate_line_rating builds straight bus-to-bus shapes and hardcodes D=0.0218, Ts=353, epsilon/alpha 0.8 — localised edit in scripts/build_line_rating.py"
+      - variant: "DLR on transmission-project lines too"
+        rung: L2
+        note: "build_line_rating reads networks/base.nc, so project lines (appended later in the same rule that attaches DLR) keep static ratings; re-order the rule chain or re-run rating on base_extended"
+      - variant: "phase-shifting transformers / FACTS dispatch"
+        rung: L5
+        note: "no representation in the linearised LP; nearest bespoke approximations are impedance edits or custom constraints via solving.options.custom_extra_functionality"
+      - variant: "reactive power compensation studies"
+        rung: L5
+        note: "out of scope of the LP; requires exporting dispatch to an external power-flow tool"
+    where:
+      - change: "ampacity computation (heat balance, conductor parameters, line shapes)"
+        anchor: "scripts/build_line_rating.py::calculate_line_rating (rule build_line_rating)"
+        provenance: "scripts/build_line_rating.py:calculate_line_rating; rules/build_electricity.smk:build_line_rating"
+      - change: "attaching the rating as lines_t.s_max_pu with caps and margins"
+        anchor: "scripts/add_transmission_projects_and_dlr.py::attach_line_rating (rule add_transmission_projects_and_dlr)"
+        provenance: "scripts/add_transmission_projects_and_dlr.py:attach_line_rating"
+      - change: "static margin fallback"
+        anchor: "scripts/prepare_network.py::set_line_s_max_pu"
+        provenance: "scripts/prepare_network.py:set_line_s_max_pu"
+      - change: "custom stability-proxy or FACTS-like constraints"
+        anchor: "scripts/solve_network.py::extra_functionality (or the solving.options.custom_extra_functionality file hook)"
+        provenance: "scripts/solve_network.py:extra_functionality; config/config.default.yaml:custom_extra_functionality"
+    data_dependencies:
+      - input: "atlite ERA5 cutout covering the region and snapshots (atlite.default_cutout europe-2013-sarah3-era5)"
+        required_for: "the DLR heat balance"
+        availability: "retrieved or built by the workflow (rule build_cutout / retrieve)"
+      - input: "networks/base.nc with line types carrying r_per_length and bundle-count in the type name"
+        required_for: "resistance reconstruction in calculate_line_rating"
+        availability: "exists by default (rule base_network; lines.types entries are pypsa standard types)"
+      - input: "underground flag per line in the base data"
+        required_for: "excluding cables from DLR"
+        availability: "exists by default (OSM prebuilt data column)"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        Not covered. Line capacities are static: s_nom is derived once from the
+        standard line type per voltage class (_set_lines_s_nom_from_linetypes in
+        base_network.py), and the usable fraction is a single scalar applied to
+        all lines and all snapshots — lines.s_max_pu (default 0.7), set in
+        base_network (_set_electrical_parameters_lines) and re-applied in
+        prepare_network (set_line_s_max_pu writes n.lines["s_max_pu"], logged as
+        the N-1 security margin). No script computes weather-dependent ratings
+        (there is no line_rating rule in the Snakefile, unlike pypsa-eur), and no
+        FACTS devices exist — power flow is linearised (solve_network.py), so
+        controllable impedance/phase devices have no native representation.
+      mechanism: >
+        Static rating chain: lines.ac_types type -> i_nom -> s_nom
+        (_set_lines_s_nom_from_linetypes) x lines.s_max_pu (set_line_s_max_pu).
+        The underlying PyPSA Line attribute s_max_pu accepts "static or series",
+        i.e. a time series per line is representable by the framework even though
+        this workflow only ever sets a scalar.
+      not_covered: >
+        Weather-coupled ampacity, per-line or per-season margins, any FACTS
+        device, phase-shifting transformers (Transformer components carry only x,
+        s_nom, type from the transformers config), and reactive compensation.
+      provenance: "scripts/prepare_network.py:set_line_s_max_pu"
+    levers:
+      - key: lines.s_max_pu
+        effect: "Uniform static derating of all lines — the only rating knob; raising it (e.g. 0.8) crudely mimics an average DLR uplift, at the cost of the N-1 margin it represents."
+        default: "0.7"
+        provenance: "scripts/prepare_network.py:set_line_s_max_pu"
+      - key: lines.ac_types
+        effect: "Choosing a heavier conductor type per voltage raises the static s_nom baseline."
+        default: "132..750 kV standard types"
+        provenance: "scripts/base_network.py:_set_lines_s_nom_from_linetypes"
+      - key: scenario.ll
+        effect: "Not a rating lever, but the substitute question — allowing expansion (copt/vX) is how the model currently 'creates' transfer capacity."
+        default: "[\"copt\"]"
+        provenance: "scripts/prepare_network.py:set_transmission_limit"
+    boundary:
+      - variant: "Uniform higher/lower static rating"
+        rung: L0
+        note: "lines.s_max_pu."
+      - variant: "Seasonal or per-line s_max_pu profiles (crude DLR proxy)"
+        rung: L2
+        note: "Replace the scalar assignment in set_line_s_max_pu (prepare_network.py) with a per-line time series into n.lines_t.s_max_pu — PyPSA's Line.s_max_pu is 'static or series' and its own attribute docs name weather-dependent dynamic line rating as the use case. Simple seasonal profiles need no new data (L2)."
+      - variant: "Weather-driven DLR from reanalysis (temperature/wind along line routes)"
+        rung: L4
+        note: "Needs a new snakemake rule computing per-line ampacity series from the atlite ERA5 cutout plus line geometries (all_lines_build_network.geojson from rule build_osm_network), wired into prepare_network — pypsa-eur has such a rule; pypsa-earth does not."
+      - variant: "FACTS / phase-shifter dispatch"
+        rung: L5
+        note: "No representation in the linearised LP; nearest bespoke approximation is editing line impedances or adding controllable Link shunts — genuinely out of scope."
+    where:
+      - change: "Rating assignment (scalar today; entry point for series)"
+        anchor: "scripts/prepare_network.py:set_line_s_max_pu"
+        provenance: "scripts/prepare_network.py:set_line_s_max_pu"
+      - change: "Static s_nom derivation from line types"
+        anchor: "scripts/base_network.py:_set_lines_s_nom_from_linetypes"
+        provenance: "scripts/base_network.py:_set_lines_s_nom_from_linetypes"
+      - change: "Line geometries for a weather-DLR rule"
+        anchor: "rule build_osm_network output all_lines_build_network.geojson"
+        provenance: "Snakefile:build_osm_network"
+      - change: "Weather data source for a DLR rule"
+        anchor: "rule build_cutout / atlite cutouts config (atlite.cutouts)"
+        provenance: "config.default.yaml:cutouts"
+    data_dependencies:
+      - input: "ERA5 cutout (atlite) covering the modelled region"
+        required_for: "weather-driven DLR (L4)"
+        availability: "exists by default (enable.retrieve_cutout: true) or must be built (enable.build_cutout)"
+      - input: "line route geometries (resources/.../all_lines_build_network.geojson)"
+        required_for: "mapping weather to individual lines"
+        availability: "must be built (rule build_osm_network, standard workflow)"

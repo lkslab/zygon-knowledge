@@ -1,0 +1,179 @@
+id: floating-solar
+title: Floating solar
+summary: >
+  Photovoltaic arrays floated on water bodies (reservoirs, lakes, near-shore
+  sea), often colocated with hydropower dams.
+when_to_use:
+  - "add floating solar / floatovoltaics"
+  - "solar panels on reservoirs or lakes"
+  - "FPV"
+  - "solar on hydropower dams"
+  - "offshore / marine solar"
+  - "land is scarce, put solar on water"
+  - "pypsa-eur: no floating-solar carrier exists; nearest terms: solar, solar-hsat (land PV), offwind-float (floating WIND, unrelated)"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Not covered. There is no floating-PV carrier, config block, cost row
+        or code path. Do not confuse with 'offwind-float', which is floating
+        WIND and fully covered (own recipe). The default solar eligibility
+        points away from water twice over: rule wiring sends the
+        solar/solar-hsat availability computation to ONSHORE bus regions
+        (the regions lambda in rules/build_electricity.smk assigns
+        regions_onshore only to ("onwind", "solar", "solar-hsat")), and the
+        CORINE include-list for solar (renewable.solar.corine codes 1-20,
+        26, 31, 32 out of the 44-class CORINE inventory) contains no water
+        classes. The processed technology-data costs file has no floating-
+        PV row (solar rows present: 'solar', 'solar-utility',
+        'solar-rooftop' + residential/commercial, 'solar-hsat').
+      mechanism: >
+        Absence mechanism, and what generic machinery a floating-PV
+        implementation could reuse: determine_availability_matrix builds
+        eligibility from arbitrary per-technology corine code lists (the
+        atlite pv conversion in build_renewable_profiles is agnostic to
+        what surface the eligible cells are), and attach_wind_and_solar
+        attaches any non-offwind carrier from costs.at[<carrier>,
+        'capital_cost'] — so the missing pieces are (a) water-surface
+        eligibility, (b) a costs row (injectable via data/custom_costs.csv,
+        since overwrite_costs adds unknown technologies), and (c) the
+        hardcoded onshore-routing tuple in rules/build_electricity.smk that
+        any NEW technology name must be added to.
+      not_covered: >
+        No floating-PV cost row anywhere; no water-body inventory beyond
+        CORINE raster classes (no reservoir polygons in this chain); no
+        colocation with the hydro fleet (attach_hydro plant locations are
+        not linked to any solar siting); no wave/temperature/evaporation
+        performance effects; offshore (sea-surface) PV additionally falls
+        outside the onshore region geometry entirely, so it is not
+        reachable by corine-code edits alone.
+      provenance: "config/config.default.yaml:corine; rules/build_electricity.smk:determine_availability_matrix; scripts/determine_availability_matrix.py:grid_codes; scripts/add_electricity.py:attach_wind_and_solar; scripts/process_cost_data.py:overwrite_costs"
+    levers:
+      - key: renewable.solar.corine
+        effect: "Crude proxy only: appending CORINE water-body classes lets ordinary 'solar' be sited on inland water at land-PV cost — no distinct carrier, no floating capex."
+        default: "[1..20, 26, 31, 32]"
+        provenance: "config/config.default.yaml:corine; scripts/determine_availability_matrix.py:grid_codes"
+      - key: electricity.renewable_carriers
+        effect: "Where any new floating-solar carrier must be registered."
+        default: "[solar, solar-hsat, onwind, offwind-ac, offwind-dc, offwind-float, hydro]"
+        provenance: "config/config.default.yaml:renewable_carriers; rules/build_electricity.smk:input_profile_tech"
+      - key: costs.custom_cost_fn
+        effect: "The hook for supplying a floating-PV costs row (data/custom_costs.csv can add technologies missing from the costs index)."
+        default: "data/custom_costs.csv"
+        provenance: "config/config.default.yaml:custom_cost_fn; scripts/process_cost_data.py:overwrite_costs"
+    boundary:
+      - variant: "crude screening: allow PV on inland water at land-PV cost"
+        rung: L1
+        note: "append CORINE water classes to renewable.solar.corine (and/or solar-hsat) — mind that CORINE is an include-list; costs and carrier stay plain 'solar'. Sea surfaces remain unreachable (solar is clipped to onshore regions)"
+      - variant: "distinct 'solar-float'-style carrier with own cost and potential (inland water)"
+        rung: L4
+        note: "copy the renewable.solar block restricted to water corine codes + register the carrier + add a costs row via data/custom_costs.csv (L3 part) — AND extend the hardcoded onshore-routing tuple in rules/build_electricity.smk determine_availability_matrix / build_renewable_profiles rules; note attach_wind_and_solar derives marginal cost/efficiency/lifetime from the prefix before the first '-' (supcar), so a name like 'solar-float' inherits those attributes from the 'solar' row while taking capital_cost from its own row — mirroring how solar-hsat works"
+      - variant: "reservoir-only siting / floating PV capped by reservoir surface area"
+        rung: L5
+        note: "no reservoir polygon inventory in the workflow; needs new water-body data plus custom exclusion logic in determine_availability_matrix.py"
+      - variant: "colocation with hydro dams (shared connection, inflow shading effects)"
+        rung: L5
+        note: "no link between the hydro fleet (attach_hydro) and renewable siting; bespoke"
+      - variant: "marine/offshore floating PV"
+        rung: L5
+        note: "requires routing a PV technology to offshore regions (rule edit) plus all of the above; no precedent in the code"
+    where:
+      - change: "water-surface eligibility for a PV profile"
+        anchor: "renewable.<tech>.corine include-codes -> scripts/determine_availability_matrix.py (rule determine_availability_matrix)"
+        provenance: "scripts/determine_availability_matrix.py:grid_codes"
+      - change: "onshore/offshore region routing for any new technology name"
+        anchor: "rules/build_electricity.smk (regions lambdas in determine_availability_matrix and build_renewable_profiles rules)"
+        provenance: "rules/build_electricity.smk:determine_availability_matrix; rules/build_electricity.smk:build_renewable_profiles"
+      - change: "carrier attachment and per-carrier cost lookup (supcar prefix behaviour)"
+        anchor: "scripts/add_electricity.py::attach_wind_and_solar"
+        provenance: "scripts/add_electricity.py:attach_wind_and_solar; scripts/add_electricity.py:supcar"
+      - change: "supplying a floating-PV costs row"
+        anchor: "data/custom_costs.csv via scripts/process_cost_data.py::overwrite_costs (costs.custom_cost_fn)"
+        provenance: "scripts/process_cost_data.py:overwrite_costs; config/config.default.yaml:custom_cost_fn"
+    data_dependencies:
+      - input: "CORINE land-cover raster (water-body classes)"
+        required_for: "any water-surface eligibility proxy"
+        availability: "retrieved by the workflow; Europe-only"
+      - input: "floating-PV cost row (capex/FOM/lifetime)"
+        required_for: "distinct floating-solar carrier"
+        availability: "absent — not in the technology-data costs file; must be user-authored in data/custom_costs.csv"
+      - input: "reservoir / water-body polygon inventory"
+        required_for: "reservoir-restricted or hydro-colocated siting"
+        availability: "absent from the workflow"
+      - input: "weather cutout (irradiation over water cells)"
+        required_for: "PV profile on water"
+        availability: "exists by default (same cutout as land PV)"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        NOT covered. There is no floating-solar carrier, config block, or cost wiring anywhere
+        ('floating' occurs nowhere in config.default.yaml or scripts/), and the default solar
+        eligibility mask points the other way: renewable.solar.copernicus.grid_codes
+        [20, 30, 40, 50, 60, 90, 100] are land classes — permanent water bodies (Copernicus
+        class 80) and open sea (200) are excluded from solar siting.
+      mechanism: >
+        Absence mechanism: build_renewable_profiles restricts solar to onshore regions
+        (regions_onshore.geojson in the build_renewable_profiles rule input for technology
+        'solar') and to the configured land classes via the Copernicus ExclusionContainer. The
+        atlite pv method itself is water-agnostic, so a water-sited PV profile CAN be produced by
+        config alone (a new renewable.<tech> block with method pv and water grid codes) — what is
+        genuinely missing is any floating-solar cost row read by the workflow and any
+        reservoir/colocation logic.
+      not_covered: >
+        No costs row for floating PV is read anywhere in the workflow (unlike floating offshore
+        wind, where technology-data ships offwind-float rows); no water-body inventory beyond the
+        Copernicus raster classes; no colocation with hydro reservoirs (no link between hydro
+        StorageUnits from attach_hydro and any solar siting); no evaporation/cooling effects.
+      provenance: "scripts/build_renewable_profiles.py:grid_codes"
+
+    levers:
+      - key: renewable.solar.copernicus.grid_codes
+        effect: "Crude proxy only: adding water classes (80 inland water, 200 sea) lets ordinary 'solar' be sited on water at land-PV cost — no distinct carrier."
+        default: "[20, 30, 40, 50, 60, 90, 100]"
+        provenance: "scripts/build_renewable_profiles.py:grid_codes"
+      - key: electricity.renewable_carriers
+        effect: "Where any new floating-solar carrier must be registered."
+        default: "[solar, onwind, offwind-ac, offwind-dc, hydro]"
+        provenance: "config.default.yaml:renewable_carriers"
+
+    boundary:
+      - variant: "crude screening: allow PV on water surfaces at land-PV cost"
+        rung: L1
+        note: "add Copernicus water classes to renewable.solar.copernicus.grid_codes (or a copied renewable.<name> block restricted to [80]); costs and carrier remain plain 'solar'."
+      - variant: "distinct 'floating solar' carrier with its own cost and potential"
+        rung: L4
+        note: "config gets the profile built (rule build_renewable_profiles is wildcarded over config['renewable'], atlite pv method works over water), and add_electricity auto-wires the profile input — but NO floating-PV costs row exists in the retrieved technology-data csv or the workflow's cost lookups, and a name like 'solar-floating' would need attach_wind_and_solar's costs.at[carrier, ...] lookup satisfied: requires adding a costs row (custom costs csv or technology-data fork) and, for inland-reservoir-only siting, a dedicated water-body eligibility input beyond raster class 80. Data + wiring across retrieve_cost_data makes this L4 rather than L3."
+      - variant: "colocation with hydro reservoirs (shared connection, capped by reservoir area)"
+        rung: L5
+        note: "no link between hydro plant locations (attach_hydro) and solar siting; bespoke logic."
+      - variant: "wave/temperature performance effects of water siting"
+        rung: L5
+        note: "not representable in the atlite pv pipeline as configured."
+
+    where:
+      - change: "water-surface eligibility for a PV profile"
+        anchor: "renewable.<tech>.copernicus.grid_codes + rule build_renewable_profiles -> scripts/build_renewable_profiles.py (ExclusionContainer block)"
+        provenance: "scripts/build_renewable_profiles.py:ExclusionContainer"
+      - change: "carrier attachment and per-carrier cost lookup"
+        anchor: "attach_wind_and_solar in scripts/add_electricity.py"
+        provenance: "scripts/add_electricity.py:attach_wind_and_solar"
+      - change: "supplying a floating-PV costs row"
+        anchor: "rule retrieve_cost_data output resources/costs_<year>.csv (or enable.retrieve_cost_data: false with a custom data/costs.csv)"
+        provenance: "Snakefile:rule retrieve_cost_data"
+
+    data_dependencies:
+      - input: "Copernicus land cover raster (water classes 80/200)"
+        required_for: "any water-surface eligibility proxy"
+        availability: "retrieved by databundle; global"
+      - input: "floating-PV cost row (capex/FOM/lifetime)"
+        required_for: "distinct floating-solar carrier"
+        availability: "absent — not in the retrieved technology-data costs file; must be added by the user"
+      - input: "reservoir/water-body polygon inventory"
+        required_for: "reservoir-restricted or hydro-colocated siting"
+        availability: "absent from the workflow"
+      - input: "ERA5 cutout"
+        required_for: "PV profile over water cells"
+        availability: "exists by default"

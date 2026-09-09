@@ -1,1 +1,0 @@
-../../models/pypsa-eur/resources/baseline/networks/base_s_5__168H_2050.nc
