@@ -15,13 +15,20 @@ models:
     The bread-and-butter application: pypsa-eur co-optimises generation, storage and
     transmission on validated European data (ENTSO-E demand, OSM/TYNDP grid, powerplantmatching
     fleet) and offers all three foresight modes as first-class citizens — overnight
-    snapshots, a battle-tested myopic chain, and true perfect-foresight multi-period
-    optimisation with inter-period carbon budgets. Unit commitment exists as a linearised
-    LP option with shipped start-up and min-load data, softening the pure-LP caveat.
+    snapshots, myopic chain, and true perfect-foresight during multi-period
+    optimisation with inter-period carbon budgets.
+    Can be power-sector only, but can cover sectors heat, transport, industry, biomass, agriculture.
     Constraint machinery covers the policy asks — CO2 caps and prices, carbon-budget
     pathways, per-country carrier limits (CCL) — and the config is schema-validated
-    so typos fail fast. The myopic chain is verified end-to-end here.
+    so typos fail fast.
+    Should be run at high temporal (at least 3-hourly) resolution for accurate balancing-economics.
+    Spatial resolution is also important.
   pitfalls:
+  - >-
+    If run at low spatio-temporal resolution can underestimate the cost of renewables
+  - >-
+    penny-switching; vastly different model solutions could be only marginally more expensive.
+    sensitivies can help to make sure the findings are robust
   - >-
     BAU floors and the SAFE reserve margin need user-added config keys; they are not
     on by default
@@ -29,10 +36,8 @@ models:
     builds are continuous — post-discretisation is optional and iterative-only, so
     no lumpy investment out of the box
   - >-
-    demand growth to the target year is the user's scenario input, not a model output
-  - >-
-    scope is Europe: a non-European IRP is a pypsa-earth answer, where data quality
-    rather than machinery is the gate
+    scope is Europe: a non-European IRP is a pypsa-earth answer, where data quality can
+    be lower in some regions
   - >-
     the model shipping a mode is not the same as us having proven it — the perfect-foresight
     spec is still draft on eur (blocked upstream), so a perfect-foresight pathway
