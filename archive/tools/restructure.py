@@ -57,7 +57,7 @@ MERGED_TOPICS = (
     "marginal-price-prediction",
 )
 
-# The three topics that have no executable wiring yet. Question and
+# The three topics stubbed at migration. Question and
 # when_to_use descend from the v1 cards named in `sources`; a drafted
 # question replaces the v1 one where several cards are fused.
 STUBS: dict[str, dict[str, Any]] = {
@@ -81,15 +81,25 @@ STUBS: dict[str, dict[str, Any]] = {
             "investors, from grid batteries to seasonal hydrogen."
         ),
     },
-    "procurement": {
-        "title": "Procurement",
-        "sources": ["capacity-market-design", "power-market-reform-spot-markets"],
+    "clean-procurement": {
+        "title": "Clean procurement",
+        # v1 TOPIC slugs only: build_stub resolves each through repo.v1_doc for
+        # both models. The card's real ancestor, the method essay
+        # additionality-and-24-7-matching (archive/cookbooks/methods/v1/), is
+        # not a topic and cannot be listed here; the live card is hand-written
+        # and supersedes anything build_stub would emit.
+        "sources": ["data-center-load-growth", "electrolyser-grid-flexibility"],
         "question": (
-            "How should firm capacity and energy be procured and remunerated: "
-            "energy-only spot markets, capacity markets, strategic reserves, "
-            "reliability options? What would each design procure, at what "
-            "clearing price, and with what dispatch and investment signals? "
-            "Market design as such, not least-cost planning."
+            "How can a large electricity consumer — a data centre, a hyperscale "
+            "campus, a C&I site, an electrolyser — procure clean electricity, "
+            "what does each procurement rule cost, and what does it build? The "
+            "canonical comparison: how much more expensive is it to run a data "
+            "centre on hourly-matched 98%-clean electricity than on an "
+            "annual-matched 100% renewable PPA, and which mix of wind, solar, "
+            "batteries, long-duration storage and clean firm capacity does each "
+            "rule buy. The RFNBO hourly-matching rule for green hydrogen is the "
+            "sibling case — the same constraint algebra at a different grouping, "
+            "and the only one either model ships machinery for."
         ),
     },
 }
