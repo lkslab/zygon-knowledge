@@ -42,18 +42,6 @@ models:
     the model shipping a mode is not the same as us having proven it — the perfect-foresight
     spec is still draft on eur (blocked upstream), so a perfect-foresight pathway
     is a pypsa-earth answer today
-  recipes:
-    generation_conversion:
-    - utility-scale-solar-pv
-    - onshore-wind
-    - offshore-wind
-    - gas-power-plants
-    - conventional-nuclear
-    - grid-scale-batteries
-    demand:
-    - electricity-load
-    - demand-scenarios-and-growth
-    - demand-temporal-profiles
   methods:
   - id: existing-fleet
     role: >-
@@ -95,18 +83,6 @@ models:
     results are only as good as country inputs — check the data_quality scorecard
     grades for power-fleet and electricity-demand before presenting a mix to a ministry;
     the fleet and demand baselines gate credibility more than the optimiser does
-  recipes:
-    generation_conversion:
-    - utility-scale-solar-pv
-    - onshore-wind
-    - gas-power-plants
-    - coal-power-plants
-    - conventional-hydropower
-    - grid-scale-batteries
-    demand:
-    - electricity-load
-    - demand-scenarios-and-growth
-    - demand-temporal-profiles
   methods:
   - id: existing-fleet
     role: >-

@@ -6,7 +6,7 @@ duplicated per model, a ``v1/`` shelf beside the migrated ones, methods with a
 per-model ``status``) to::
 
     topics/<slug>.yaml            one card, models[] carries the per-model part
-    recipes/<book>/<slug>.yaml    eur and earth books merged per slug
+    carriers/<book>/<slug>.yaml   eur and earth books merged per slug
     methods/                      only the specs the topic cards cite, no status
     data_quality/<model>/         scorecards, unchanged content
     baselines/<model>/            was fixtures/recipes/baseline-<model>
@@ -110,7 +110,6 @@ SECTION_KEYS = (
     "coverage",
     "approach",
     "pitfalls",
-    "recipes",
     "methods",
     "defaults",
     "plots",
@@ -157,11 +156,11 @@ TOP_LEVEL = {
     "archive",
     "baselines",
     "basemaps",
+    "carriers",
     "data_quality",
     "methods",
     "models",
     "policy",
-    "recipes",
     "topics",
 }
 
@@ -373,12 +372,7 @@ def assemble_topic(
     return doc
 
 
-def build_stub(
-    slug: str,
-    repo: Repo,
-    recipe_models: dict[tuple[str, str], set[str]],
-    date: str,
-) -> dict[str, Any]:
+def build_stub(slug: str, repo: Repo, date: str) -> dict[str, Any]:
     spec = STUBS[slug]
     sources = spec["sources"]
     v1_eur = [repo.v1_doc["pypsa-eur", s] for s in sources]
@@ -395,11 +389,7 @@ def build_stub(
         "models": [],
     }
     archived = ", ".join(sources)
-    for model, cards in (("pypsa-eur", v1_eur), ("pypsa-earth", v1_earth)):
-        recipes = {}
-        for book in BOOKS:
-            wanted = union(*[(c.get("recipes") or {}).get(book) or [] for c in cards])
-            recipes[book] = [s for s in wanted if model in recipe_models.get((book, s), set())]
+    for model in ("pypsa-eur", "pypsa-earth"):
         doc["models"].append(
             {
                 "model": model,
@@ -407,15 +397,14 @@ def build_stub(
                 "approach": (
                     f"No executable method is wired for {model} yet. This card "
                     f"descends from the v1 cards {archived} (archived under "
-                    f"archive/cookbooks/{model}/topics/v1/); the recipes below "
-                    "are the parts of those cards whose recipe pages exist in "
-                    "the merged book with a section for this model."
+                    f"archive/cookbooks/{model}/topics/v1/); the levers it can "
+                    "describe live in the carrier cards under carriers/ that "
+                    "carry a section for this model."
                 ),
                 "pitfalls": [
                     f"until a method spec is verified for {model}, the assistant "
                     "can describe levers but cannot scope a study"
                 ],
-                "recipes": recipes,
                 "methods": [],
                 "defaults": [],
                 "version_anchor": {"ref": ANCHORS[model], "date": date},
@@ -472,7 +461,6 @@ def edit_method(text: str, keep: set[str]) -> tuple[str, dict[str, Any]]:
 
 def validate(
     topics: dict[str, dict[str, Any]],
-    recipe_models: dict[tuple[str, str], set[str]],
     method_models: dict[str, set[str]],
 ) -> list[str]:
     errors: list[str] = []
@@ -498,6 +486,14 @@ def validate(
                 errors.append(f"topic {slug}/{model}: coverage {sec.get('coverage')!r}")
             if "gap_assessment" in sec:
                 errors.append(f"topic {slug}/{model}: gap_assessment is now approach + pitfalls")
+            if "recipes" in sec:
+                errors.append(
+                    f"topic {slug}/{model}: carries recipes (topics no longer name carrier cards)"
+                )
+            if "recipes" in sec:
+                errors.append(
+                    f"topic {slug}/{model}: carries recipes (topics no longer name carrier cards)"
+                )
             if not isinstance(sec.get("approach"), str) or not sec["approach"].strip():
                 errors.append(f"topic {slug}/{model}: approach missing")
             pitfalls = sec.get("pitfalls")
@@ -507,12 +503,6 @@ def validate(
                 errors.append(f"topic {slug}/{model}: pitfalls must be a list of strings")
             if (sec.get("version_anchor") or {}).get("ref") != ANCHORS[model]:
                 errors.append(f"topic {slug}/{model}: version_anchor is not the canonical ref")
-            for book in BOOKS:
-                for rslug in (sec.get("recipes") or {}).get(book) or []:
-                    if model not in recipe_models.get((book, rslug), set()):
-                        errors.append(
-                            f"topic {slug}/{model}: recipe {book}/{rslug} has no section for {model}"
-                        )
             for m in sec.get("methods") or []:
                 cited.add(m["id"])
                 if model not in method_models.get(m["id"], set()):
@@ -525,21 +515,28 @@ def validate(
     return errors
 
 
-def scan_disk() -> tuple[
-    dict[str, dict[str, Any]],
-    dict[tuple[str, str], set[str]],
-    dict[str, set[str]],
-    list[str],
-]:
+def scan_disk() -> tuple[dict[str, dict[str, Any]], dict[str, set[str]], list[str]]:
     errors: list[str] = []
     topics = {p.stem: read_yaml(p) for p in sorted((ROOT / "topics").glob("*.yaml"))}
-    recipe_models: dict[tuple[str, str], set[str]] = {}
     for book in BOOKS:
-        for p in sorted((ROOT / "recipes" / book).glob("*.yaml")):
+        for p in sorted((ROOT / "carriers" / book).glob("*.yaml")):
             doc = read_yaml(p)
+            tag = f"carrier {book}/{p.name}"
             if doc.get("id") != p.stem:
-                errors.append(f"recipe {book}/{p.name}: id is {doc.get('id')!r}")
-            recipe_models[book, p.stem] = models_of(doc)
+                errors.append(f"{tag}: id is {doc.get('id')!r}")
+            seen: set[str] = set()
+            for sec in doc.get("models") or []:
+                model = sec.get("model")
+                if model not in MODELS:
+                    errors.append(f"{tag}: unknown model {model!r}")
+                    continue
+                if model in seen:
+                    errors.append(f"{tag}: duplicate section for {model}")
+                seen.add(model)
+                if (sec.get("version_anchor") or {}).get("ref") != ANCHORS[model]:
+                    errors.append(f"{tag}/{model}: version_anchor is not the canonical ref")
+            if not seen:
+                errors.append(f"{tag}: no models[] entry")
     method_models: dict[str, set[str]] = {}
     for p in sorted((ROOT / "methods").glob("*.yaml")):
         method_models[p.stem] = models_of(read_yaml(p))
@@ -557,7 +554,7 @@ def scan_disk() -> tuple[
     tracked_top = {ln.split("/")[0] for ln in git("ls-files").split("\n") if ln}
     if tracked_top != TOP_LEVEL:
         errors.append(f"top level is {sorted(tracked_top)}, expected {sorted(TOP_LEVEL)}")
-    return topics, recipe_models, method_models, errors
+    return topics, method_models, errors
 
 
 # --------------------------------------------------------------------------
@@ -579,11 +576,11 @@ class Plan:
             if (ROOT / src).exists():
                 self.moves.append((src, f"archive/{src}"))
 
-        # recipes
+        # carriers
         for book in BOOKS:
             slugs = repo.recipe_slugs(book)
             for slug, models in sorted(slugs.items()):
-                dst = f"recipes/{book}/{slug}.yaml"
+                dst = f"carriers/{book}/{slug}.yaml"
                 eur_key = ("pypsa-eur", book, slug)
                 earth_key = ("pypsa-earth", book, slug)
                 if models == {"pypsa-eur"}:
@@ -614,7 +611,7 @@ class Plan:
             self.writes[f"topics/{slug}.yaml"] = dump(doc)
             self.topics[slug] = doc
         for slug in STUBS:
-            doc = build_stub(slug, repo, self.recipe_models, date)
+            doc = build_stub(slug, repo, date)
             self.writes[f"topics/{slug}.yaml"] = dump(doc)
             self.topics[slug] = doc
 
@@ -670,7 +667,7 @@ class Plan:
                     self.writes[f"baselines/{m}/{name}"] = new
         self.writes["README.md"] = README
 
-        self.errors = validate(self.topics, self.recipe_models, self.method_models)
+        self.errors = validate(self.topics, self.method_models)
 
     def report(self) -> None:
         print(f"moves: {len(self.moves)}  removes: {len(self.removes)}  writes: {len(self.writes)}")
@@ -719,8 +716,8 @@ below at runtime; bump the pin to ship new content.
 
 | path | what | shape |
 |---|---|---|
-| `topics/<slug>.yaml` | one card per planning question, seven of them | `id, title, question, when_to_use[], models[]` where each `models[]` entry is `{model, coverage, approach, pitfalls[], recipes{generation_conversion[], demand[]}, methods[{id, role}], defaults[], plots[], version_anchor{ref, date}}` |
-| `recipes/generation_conversion/<slug>.yaml`, `recipes/demand/<slug>.yaml` | technology and demand recipes, shared across models | `id, title, summary, when_to_use[], models[]` where each entry is `{model, version_anchor, out_of_box, levers[], boundary[{variant, rung, note}], where[], data_dependencies[]}` |
+| `topics/<slug>.yaml` | one card per planning question, seven of them | `id, title, question, when_to_use[], models[]` where each `models[]` entry is `{model, coverage, approach, pitfalls[], methods[{id, role}], defaults[], plots[], version_anchor{ref, date}}` |
+| `carriers/generation_conversion/<slug>.yaml`, `carriers/demand/<slug>.yaml` | carrier cards: one per technology or demand segment, shared across models | `id, title, summary, when_to_use[], models[]` where each entry is `{model, version_anchor, out_of_box, levers[], boundary[{variant, rung, note}], where[], data_dependencies[]}` |
 | `methods/<slug>.yaml` or `methods/<slug>/spec.yaml` + `payload/<model>/` | executable method specs, only the ones a topic cites | `id, title, family, what, when_to_use[], models[]` with `execution[]`, `invalidates[]`, `budget`, `success_metric[]` per entry |
 | `data_quality/<model>/countries/<CC>.yaml` | per-country data-quality scorecards (generated), with `datasets.yaml`, `MATRIX.csv`, `INDEX.md` | |
 | `baselines/<model>/` | the settled baseline `manifest.yaml` and its `config[.<variant>].yaml` overlays | |
@@ -738,9 +735,12 @@ before anything else: `coverage` is the one-word verdict, `approach` says how
 the model treats the question (what it represents natively and where the
 levers live), `pitfalls` lists the honesty rungs to state beside any result.
 A topic is listed for a model only when it has an entry for it.
-A model's entry names only recipes and methods that exist with an entry for
-that model; `archive/tools/restructure.py --validate` enforces that and is the
-check to run after editing. `plots[].id` refer to pypsa-app's own plot cards.
+Topics do not name carrier cards: the app lists `carriers/<book>/` and opens a
+card on demand, and every carrier card carries a section for each model it
+applies to. A topic's `methods[]` names only specs that exist with an entry for
+that model; `archive/tools/restructure.py --validate` enforces that, rejects a
+`recipes:` key on a topic, and is the check to run after editing.
+`plots[].id` refer to pypsa-app's own plot cards.
 There is no version marker: everything outside `archive/` is current.
 
 ## archive/
@@ -795,8 +795,8 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.validate:
-        topics, recipe_models, method_models, errors = scan_disk()
-        errors += validate(topics, recipe_models, method_models)
+        topics, method_models, errors = scan_disk()
+        errors += validate(topics, method_models)
         for e in errors:
             print("ERROR", e)
         print("ok" if not errors else f"{len(errors)} error(s)")
@@ -818,8 +818,8 @@ def main() -> int:
             print(f"ln  {rel} -> {target}")
         return 0
     plan.apply()
-    topics, recipe_models, method_models, errors = scan_disk()
-    errors += validate(topics, recipe_models, method_models)
+    topics, method_models, errors = scan_disk()
+    errors += validate(topics, method_models)
     for e in errors:
         print("ERROR", e)
     print(git("diff", "--cached", "-M", "--stat").strip().split("\n")[-1])

@@ -18,7 +18,7 @@ models:
   coverage: ready
   approach: >-
     One of pypsa-eur's strongest topics, and since the single-asset-cba method landed
-    the canonical study is a verified mechanical pipeline, not a recipe sketch: declare
+    the canonical study is a verified mechanical pipeline, not a sketch of steps: declare
     the asset (any component, or a composite like bus + conversion link + load), solve
     reference and perturbed variants with the model's own solver, and B1/B2/B3 fall
     out direction-signed against the reference, with real TYNDP/NEP candidates loadable
@@ -43,17 +43,6 @@ models:
   - >-
     at this ref the ATK opts token KeyErrors (use electricity.autarky for a no-interconnection
     counterfactual) and a bare EQ token crashes (always give a value)
-  recipes:
-    generation_conversion:
-    - hvdc-interconnectors
-    - hv-transmission-lines
-    - transmission-expansion-projects
-    - uhv-dc
-    demand:
-    - electricity-load
-    - demand-spatial-disaggregation
-    - steel-demand
-    - demand-scenarios-and-growth
   methods:
   - id: existing-fleet
     role: >-
@@ -87,7 +76,7 @@ models:
       pinned non-extendable by the CBA method
     note: >-
       a strict fixed-reference-grid reading wants expansion frozen — see the transmission-expansion-projects
-      recipe for the levers.
+      carrier card for the levers.
   version_anchor:
     ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
     date: '2026-08-07'
@@ -121,16 +110,6 @@ models:
     little or no native inter-zonal transmission — the interconnector case leans on
     PINT (put the candidate in) rather than TOOT of an existing corridor
   - per-country data grades gate which power pools are answerable at all
-  recipes:
-    generation_conversion:
-    - hvdc-interconnectors
-    - hv-transmission-lines
-    - uhv-dc
-    demand:
-    - electricity-load
-    - demand-spatial-disaggregation
-    - steel-demand
-    - demand-scenarios-and-growth
   methods:
   - id: existing-fleet
     role: >-

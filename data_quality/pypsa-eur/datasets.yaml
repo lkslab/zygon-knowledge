@@ -1,6 +1,6 @@
 # Dataset registry for the pypsa-eur data-quality cookbook.
-# Every country-resolved data source the workflow consumes, with the recipe
-# slugs (cookbooks/generation_conversion + cookbooks/demand) that depend on it.
+# Every country-resolved data source the workflow consumes, with the carrier
+# card slugs (carriers/generation_conversion + carriers/demand) that depend on it.
 # All consumer symbols are grep-verified against the scripts named.
 # Default scope (config/config.default.yaml countries): AL AT BA BE BG CH CZ DE
 # DK EE ES FI FR GB GR HR HU IE IT LT LU LV ME MK NL NO PL PT RO RS SE SI SK XK.

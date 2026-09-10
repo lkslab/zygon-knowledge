@@ -1,0 +1,202 @@
+id: hydrogen-fuel-cell-trucks
+title: Hydrogen fuel cell trucks (and road vehicles)
+summary: >
+  Hydrogen fuel cell electric vehicles in road transport — trucks and cars
+  consuming H2 instead of electricity or oil, coupling road freight to the
+  hydrogen system.
+when_to_use:
+  - "hydrogen trucks / fuel cell trucks / FCEV"
+  - "H2 in road transport / road freight"
+  - "fuel cell cars"
+  - "hydrogen refuelling demand"
+  - "battery vs hydrogen truck scenarios"
+  - "pypsa-eur carrier names: land transport fuel cell"
+  - "hydrogen trucks / fuel cell trucks / FCEV freight"
+  - "H2 for road freight / heavy-duty hydrogen"
+  - "fuel cell electric vehicles"
+  - "hydrogen refuelling demand for trucks"
+  - "decarbonise trucking with hydrogen"
+  - "known in pypsa-eur as: land transport fuel cell"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Covered as a fleet-wide exogenous share — with the caveat that PyPSA-Eur
+        has no truck/car split: sector.land_transport_fuel_cell_share applies
+        to the ONE land transport aggregate (all road modes + non-electric
+        rail). The share is a per-horizon dict, and its default is 0 for EVERY
+        year through 2050 — hydrogen loses the road entirely by assumption
+        (batteries win), not by optimisation. When set > 0,
+        add_fuel_cell_cars adds a pure "land transport fuel cell" Load
+        directly on the nodal H2 buses (spatial.h2.nodes — H2 is always
+        nodally resolved), converting the driven-km demand at
+        transport_fuel_cell_efficiency (30.003 [100 km/MWh]) with a
+        temperature correction that reuses the ICE degree factors
+        (ICE_lower/upper_degree_factor — NOT the EV ones), so cold weather
+        raises H2 demand like a combustion vehicle. The H2 is then supplied by
+        whatever the hydrogen system builds (electrolysis, SMR, pipelines,
+        storage — see the green-hydrogen/electrolysers carrier cards). No vehicle or
+        refuelling-station costs enter the objective; the load is rigid.
+      mechanism: >
+        rule build_transport_demand -> km demand series; rule
+        prepare_sector_network -> add_land_transport reads
+        land_transport_fuel_cell_share via get() (linear interpolation between
+        horizon keys) and calls add_fuel_cell_cars when > 0;
+        check_land_transport_shares warns (only) if electric+fuel_cell+ice
+        shares do not sum to 1.
+      not_covered: >
+        No truck-specific representation (see electric-heavy-trucks — the
+        segment columns exist unused in energy_totals.csv); no refuelling
+        stations, compression/dispensing energy or H2 distribution to pumps
+        (the load sits directly on the node's H2 bus at 700-bar-agnostic LHV
+        accounting); no vehicle capital costs; no endogenous competition
+        between battery and fuel cell drivetrains — the split is hand-set. No
+        DSM/flexibility on the H2 load (unlike the EV battery Store).
+      provenance: "scripts/prepare_sector_network.py:add_fuel_cell_cars; scripts/prepare_sector_network.py:add_land_transport; scripts/prepare_sector_network.py:get_temp_efficency; scripts/prepare_sector_network.py:check_land_transport_shares"
+    levers:
+      - key: sector.land_transport_fuel_cell_share
+        effect: "Per-horizon FCEV share of land transport km — the lever. Default 0 everywhere; set together with electric/ice shares (sum != 1 only warns and scales demand)."
+        default: "{2020: 0, 2025: 0, 2030: 0, 2035: 0, 2040: 0, 2045: 0, 2050: 0}"
+        provenance: "config/config.default.yaml:land_transport_fuel_cell_share; scripts/prepare_sector_network.py:add_land_transport"
+      - key: sector.transport_fuel_cell_efficiency
+        effect: "FCEV drivetrain efficiency [100 km/MWh_H2]; ~56% of the EV value (53.19), so each km moved from electric to fuel_cell share nearly doubles final energy."
+        default: "30.003"
+        provenance: "config/config.default.yaml:transport_fuel_cell_efficiency; scripts/prepare_sector_network.py:add_fuel_cell_cars"
+      - key: sector.ICE_lower_degree_factor
+        effect: "% extra consumption per degree below the deadband — applied to FCEVs too (with ICE_upper_degree_factor above the deadband)."
+        default: "0.375 (upper: 1.6)"
+        provenance: "config/config.default.yaml:ICE_lower_degree_factor; scripts/prepare_sector_network.py:add_fuel_cell_cars"
+      - key: sector.land_transport_electric_share
+        effect: "Complement — reduce it when raising the fuel cell share to keep total demand constant."
+        default: "{2020: 0, 2025: 0.05, 2030: 0.2, 2035: 0.45, 2040: 0.7, 2045: 0.85, 2050: 1}"
+        provenance: "config/config.default.yaml:land_transport_electric_share; scripts/prepare_sector_network.py:check_land_transport_shares"
+      - key: sector.transport
+        effect: "Master gate for all land transport demand."
+        default: "true"
+        provenance: "config/config.default.yaml:transport; scripts/prepare_sector_network.py:add_land_transport"
+    boundary:
+      - variant: "hydrogen share of road transport for a scenario/horizon"
+        rung: L1
+        note: "set sector.land_transport_fuel_cell_share (and rebalance electric/ice) — default is 0 in every year, so ANY H2 road transport requires this edit"
+      - variant: "approximate truck-only H2 by share arithmetic"
+        rung: L1
+        note: "fold (truck fraction of road energy, from the unused 'total heavy duty road freight' energy_totals column) x truck-H2-uptake into the share offline; parameters stay fleet-average"
+      - variant: "truck-specific H2 demand distinct from cars"
+        rung: L2
+        note: "same split as electric-heavy-trucks: carve the truck columns out in build_transport_demand and add a second fuel-cell load block with its own share/efficiency in add_land_transport — energy data exists, plumbing does not"
+      - variant: "refuelling-station energy overhead (compression, liquefaction at pump)"
+        rung: L2
+        note: "no station representation; crudest fix is derating transport_fuel_cell_efficiency (L1); explicit modelling means inserting a Link between the H2 bus and a new refuelling bus in add_fuel_cell_cars, costs on you (L3)"
+      - variant: "flexible refuelling timing (station storage as DSM)"
+        rung: L2
+        note: "the H2 load follows the driving profile rigidly; adding a station-level Store between H2 bus and load in add_fuel_cell_cars mirrors the EV battery pattern"
+      - variant: "endogenous battery-vs-H2 drivetrain competition"
+        rung: L5
+        note: "shares are exogenous scalars; fuel competition needs new decision variables and constraints coupling the engine-type loads"
+    where:
+      - change: "FCEV load creation (efficiency, temperature correction, H2 bus attachment)"
+        anchor: "scripts/prepare_sector_network.py::add_fuel_cell_cars (called from ::add_land_transport)"
+        provenance: "scripts/prepare_sector_network.py:add_fuel_cell_cars; scripts/prepare_sector_network.py:add_land_transport"
+      - change: "share reading and engine-type dispatch"
+        anchor: "scripts/prepare_sector_network.py::add_land_transport (engine_types loop, get())"
+        provenance: "scripts/prepare_sector_network.py:add_land_transport"
+      - change: "km demand construction feeding the load"
+        anchor: "scripts/build_transport_demand.py::build_transport_demand (rule build_transport_demand)"
+        provenance: "scripts/build_transport_demand.py:build_transport_demand"
+    data_dependencies:
+      - input: "nodal H2 buses with supply (electrolysis/SMR chain, H2 storage/pipelines)"
+        required_for: "meeting the fuel cell load"
+        availability: "exists by default in sector runs (add_h2_gas_infrastructure chain)"
+      - input: "transport_demand_s_{clusters}.csv + temp_air_total (temperature correction)"
+        required_for: "the load profile"
+        availability: "must be built (rule build_transport_demand); exists by default"
+      - input: "truck segment energy split"
+        required_for: "truck-specific H2 (beyond fleet-average)"
+        availability: "energy_totals.csv columns exist unused; profile/efficiency data absent"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        Covered ONLY as the aggregate fuel-cell share of ALL road transport, not
+        truck-specific. sector.land_transport_fuel_cell_share (keyed
+        {demand}_{planning_horizon}, e.g. AB_2030) routes that fraction of the single
+        land transport demand to a "land transport fuel cell" Load on each node's H2
+        bus, scaled by 1 / sector.transport_fuel_cell_efficiency. H2 supply comes
+        from the hydrogen system added by add_hydrogen (electrolysis, SMR, per
+        sector.hydrogen.production_technologies).
+      mechanism: >
+        add_land_transport in rule prepare_sector_network: the 'fuel_cell_share > 0'
+        block adds the H2 load (skipped when the h2_policy reference-case flags
+        remove H2 loads). The same share is also applied upstream in rule
+        prepare_energy_totals ('total road fcev' efficiency gains) when projecting
+        road demand. With sector.dynamic_transport.enable the share is instead keyed
+        by the Co2L opts wildcard.
+      not_covered: >
+        Truck-vs-car split (the share applies to cars too), refuelling-station
+        infrastructure and its costs, hydrogen distribution to stations (load sits
+        directly on the nodal H2 bus), vehicle stock and purchase costs, endogenous
+        fuel choice.
+      provenance: "scripts/prepare_sector_network.py:add_land_transport"
+
+    levers:
+      - key: sector.land_transport_fuel_cell_share
+        effect: "Fraction of aggregate road demand served by FCEVs (trucks + cars together), keyed {demand}_{planning_horizon}."
+        default: "AB_2030: 0.01 (dict per scenario/year; e.g. NZ_2050: 0.28)"
+        provenance: "scripts/prepare_sector_network.py:land_transport_fuel_cell_share"
+      - key: sector.transport_fuel_cell_efficiency
+        effect: "Tank-to-wheel FCEV efficiency; H2 demand = share / efficiency x transport demand."
+        default: "0.5"
+        provenance: "scripts/prepare_sector_network.py:transport_fuel_cell_efficiency"
+      - key: sector.dynamic_transport.enable
+        effect: "Switch to Co2L-wildcard-keyed FCEV shares (sector.dynamic_transport.land_transport_fuel_cell_share)."
+        default: "false"
+        provenance: "scripts/prepare_sector_network.py:dynamic_transport"
+      - key: sector.enable.land_transport
+        effect: "Master switch for the land transport block."
+        default: "true"
+        provenance: "Snakefile:prepare_sector_network"
+      - key: sector.hydrogen.production_technologies
+        effect: "Which H2 production routes can serve the FCEV load."
+        default: '["H2 Electrolysis", "SMR", "SMR CC"]'
+        provenance: "scripts/prepare_sector_network.py:add_hydrogen"
+
+    boundary:
+      - variant: "Add hydrogen road transport for a scenario/year"
+        rung: L1
+        note: "Set sector.land_transport_fuel_cell_share for the run's {demand}_{planning_horizons} key; must keep fuel_cell + electric shares <= 1 (asserted)."
+      - variant: "Approximate truck-only H2 by share arithmetic"
+        rung: L1
+        note: "Fold the truck fraction of road energy into the share value offline; not truck-specific in the model."
+      - variant: "Truck-specific H2 demand distinct from cars"
+        rung: L3
+        note: "Same blocker as electric-heavy-trucks: 'total road' has no truck split; needs disaggregated demand data (data/emobility/Lkw__count can shape it) plus a second share/load block in add_land_transport."
+      - variant: "Refuelling-station infrastructure and H2 trucking logistics"
+        rung: L5
+        note: "No station or distribution representation exists; bespoke components."
+      - variant: "Endogenous choice between battery and H2 trucks"
+        rung: L5
+        note: "Shares are exogenous; fuel competition would need new decision variables/constraints."
+
+    where:
+      - change: "FCEV H2 load creation (the fuel_cell_share block)"
+        anchor: "scripts/prepare_sector_network.py function add_land_transport"
+        provenance: "scripts/prepare_sector_network.py:add_land_transport"
+      - change: "H2 buses/production the load draws from"
+        anchor: "scripts/prepare_sector_network.py function add_hydrogen"
+        provenance: "scripts/prepare_sector_network.py:add_hydrogen"
+      - change: "Upstream demand projection applying the FCEV share"
+        anchor: "rule prepare_energy_totals -> scripts/prepare_energy_totals.py"
+        provenance: "scripts/prepare_energy_totals.py:land_transport_fuel_cell_share"
+
+    data_dependencies:
+      - input: "UNSD energy balances 'total road'"
+        required_for: "the aggregate demand the FCEV share applies to"
+        availability: "must be built (build_base_energy_totals)"
+      - input: "costs file rows for H2 production (electrolysis/SMR) and 'fuel cell'"
+        required_for: "supplying and pricing the H2 the load consumes"
+        availability: "exists by default (retrieve_cost_data)"
+      - input: "Truck-segment demand data"
+        required_for: "truck-specific variants (L3+)"
+        availability: "absent (only unused German Lkw traffic-count shape in data/emobility)"

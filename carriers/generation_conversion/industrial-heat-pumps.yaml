@@ -1,0 +1,246 @@
+id: industrial-heat-pumps
+title: Industrial heat pumps
+summary: >
+  High-temperature heat pumps supplying industrial process heat and steam,
+  displacing fuel-fired boilers with efficient electricity use at low and
+  medium temperatures.
+when_to_use:
+  - "industrial heat pump"
+  - "high temperature heat pump"
+  - "heat pumps for process heat / steam"
+  - "electrify industrial steam"
+  - "power-to-heat in industry"
+  - "COP for industrial heat"
+  - "industry_t heat100-200 heat_pumps"
+  - "pypsa-eur carrier name: heat100-200 industry industrial heat pump high temperature"
+  - "industrial heat pumps"
+  - "heat pump for process heat"
+  - "electrify industrial heat with heat pumps"
+  - "replace industrial gas boilers with heat pumps"
+  - "industry low temperature heat"
+  - "COP for industry heat"
+  - "known in pypsa-eur as: heat100-200 industry industrial heat pump high temperature"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Two channels, one direct and off by default. Direct: with
+        sector.industry_t.endogen true (default FALSE), the new endogenous
+        industry process-heat machinery splits industrial heat demand into
+        temperature bands, and add_t_industry100_200 adds an extendable
+        "heat100-200 industry industrial heat pump high temperature" Link at
+        every node (bus0 = AC bus, bus1 = the node's "heat100-200 industry"
+        bus) when sector.industry_t.heat100-200.heat_pumps is true (it is by
+        default). Efficiency (COP), capital cost, VOM and lifetime come from
+        the "industrial heat pump high temperature" cost row; a code comment
+        notes it "can heat up to 150°C". It competes in that band against gas
+        and biomass steam boilers (each with a CC variant) and an electric
+        boiler; all band supply links carry p_min_pu =
+        sector.industry_t.must_run (default 0.8), i.e. built capacity must run
+        near-baseload. Indirect (default): in exogenous mode the industrial
+        low-temperature heat demand is attached as a "low-temperature heat for
+        industry" Load on the urban central (or services urban decentral) heat
+        bus, where the district-heating heat pumps added in add_heat compete
+        to serve it — so heat-pump-served industrial low-T heat exists out of
+        the box, just not as a dedicated industrial technology.
+      mechanism: >
+        rule build_industry_sector_ratios_endogenous converts today's fuel use
+        of the sectors flagged in sector.industry_t.endogenise_sectors into
+        temperature-band heat demands (Fleiter et al. 2025 supplementary data);
+        rule build_industrial_energy_demand_per_node writes parallel
+        "exogenous"/"endogenous" demand blocks; prepare_sector_network::
+        add_industry selects the endogenous block iff
+        options["industry_t"]["endogen"] and calls add_t_industry100_200 /
+        add_t_industry200_500 / add_t_industry500. The heat pump branch exists
+        only in add_t_industry100_200. Band "heat<100" is folded into the
+        "low-temperature heat" column and served via the heat-bus load.
+      not_covered: >
+        No heat pump above 200 °C: the heat200-500 and heat>500 band menus
+        contain only biomass/methane/hydrogen — there is no heat-pump or
+        electric option there. The industrial heat pump COP is a static scalar
+        from the costs file, not the temperature-dependent COP time series
+        used for building heat pumps (heat_pump_cop_approximation applies only
+        to heating-sector sources). No waste-heat-source industrial heat pumps
+        (ambient source implicit in the cost row). The whole direct channel is
+        dormant by default (industry_t.endogen: false) and is brand-new at
+        this ref (HEAD commit "added industry-sector-specific endogenous
+        heat") — expect rough edges; see the industry-process-heat-endogenous
+        carrier card for the machinery's caveats. Steel is excluded from the
+        endogenous bands entirely.
+      provenance: "scripts/prepare_sector_network.py:add_t_industry100_200; scripts/prepare_sector_network.py:industrial heat pump high temperature; scripts/prepare_sector_network.py:low-temperature heat for industry; scripts/build_industry_sector_ratios_endogenous.py:Fleiter; config/config.default.yaml:industry_t"
+    levers:
+      - key: sector.industry_t.endogen
+        effect: "Master switch: true activates the temperature-band machinery and with it the industrial heat pump link; false (default) keeps industry heat as exogenous fuel loads."
+        default: "false"
+        provenance: "config/config.default.yaml:industry_t; scripts/prepare_sector_network.py:add_t_industry100_200"
+      - key: sector.industry_t.heat100-200.heat_pumps
+        effect: "Include/exclude the industrial heat pump from the 100-200 °C supply menu (only takes effect with endogen: true)."
+        default: "true"
+        provenance: "config/config.default.yaml:heat_pumps; scripts/prepare_sector_network.py:heat_pumps"
+      - key: sector.industry_t.must_run
+        effect: "p_min_pu on all band supply links including the heat pump — 0.8 forces near-baseload operation of built capacity; lower it for more operational freedom."
+        default: "0.8"
+        provenance: "config/config.default.yaml:must_run; scripts/prepare_sector_network.py:must_run"
+      - key: sector.industry_t.endogenise_sectors
+        effect: "Per-sector flags choosing which industries' heat is split into bands (and can thus pick heat pumps); sectors set false keep exogenous flat fuel loads."
+        default: "all listed sectors true (aluminium, HVC, cement, ceramics, glass, pulp/paper, food, etc.); steel not listed (never endogenised)"
+        provenance: "config/config.default.yaml:endogenise_sectors; scripts/build_industry_sector_ratios_endogenous.py:endogenise_sectors"
+      - key: costs.overwrites
+        effect: "Override the 'industrial heat pump high temperature' row (investment, efficiency=COP, VOM, lifetime) in prepare_costs."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+    boundary:
+      - variant: "let industry choose heat pumps for 100-200 °C process heat"
+        rung: L0
+        note: "sector.industry_t.endogen: true — heat pump is already in the default band menu"
+      - variant: "heat-pump-only steam supply (no gas/biomass in the band)"
+        rung: L1
+        note: "set sector.industry_t.heat100-200 methane/biomass/electric_boiler false, heat_pumps true"
+      - variant: "different COP or cost"
+        rung: L1
+        note: "costs.overwrites efficiency/investment on 'industrial heat pump high temperature' (or a data/custom_costs.csv row, L3)"
+      - variant: "relax the baseload operating pattern"
+        rung: L1
+        note: "sector.industry_t.must_run < 0.8 (applies to all band techs at once — per-tech must_run would be L2)"
+      - variant: "heat pumps in the 200-500 °C band"
+        rung: L2
+        note: "add a heat-pump branch to add_t_industry200_500 mirroring the 100-200 one, plus a config flag; needs a suitable cost row (L3) — none exists for >200 °C"
+      - variant: "temperature-dependent industrial COP time series"
+        rung: L5
+        note: "building-heat COP machinery (build_cop_profiles chain) is keyed to heat systems and sources, not industry bands; wiring a dynamic COP into the band link is bespoke"
+      - variant: "waste-heat-source industrial heat pumps"
+        rung: L5
+        note: "no industrial waste-heat source exists to draw from (see waste-heat-recovery carrier card)"
+    where:
+      - change: "industrial heat pump link creation (band 100-200 °C)"
+        anchor: "scripts/prepare_sector_network.py::add_t_industry100_200 (heat_pumps branch)"
+        provenance: "scripts/prepare_sector_network.py:add_t_industry100_200"
+      - change: "which sectors' heat enters the bands"
+        anchor: "scripts/build_industry_sector_ratios_endogenous.py (endogenise_sectors selection, process_temperature_band_mapper)"
+        provenance: "scripts/build_industry_sector_ratios_endogenous.py:process_temperature_band_mapper"
+      - change: "band demand assembly per node"
+        anchor: "scripts/build_industrial_energy_demand_per_node.py (endogenous block)"
+        provenance: "scripts/build_industrial_energy_demand_per_node.py:nodal_df_endogenous"
+      - change: "heat pump cost row processing"
+        anchor: "scripts/process_cost_data.py::prepare_costs / ::overwrite_costs"
+        provenance: "scripts/process_cost_data.py:prepare_costs"
+    data_dependencies:
+      - input: "cost row 'industrial heat pump high temperature' in the technology-data costs file"
+        required_for: "COP, capital cost, lifetime of the industrial heat pump"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "data/ente202300981-sup-0001-suppdata-s1.xlsx (Fleiter et al. 2025 process temperature bands)"
+        required_for: "splitting sector heat into temperature bands"
+        availability: "exists by default (checked into the repo, input to rule build_industry_sector_ratios_endogenous)"
+      - input: "JRC-IDEES industrial energy demand + production today"
+        required_for: "today's sector intensities the band split is applied to"
+        availability: "must be built (rules build_industrial_energy_demand_per_country_today, build_industrial_production_per_country)"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        Only the LOW-temperature slice, and only indirectly. add_industry places
+        a flat "low-temperature heat for industry" load on each node's
+        "urban central heat" bus (fallback "services urban decentral heat").
+        Those heat buses are supplied endogenously in add_heat by extendable
+        air/ground-sourced heat pumps (time-dependent COP from
+        build_cop_profiles, sink temperature sector.heat_pump_sink_T), alongside
+        resistive heaters, gas boilers, CHP, solar thermal and water-tank
+        storage — so heat pumps CAN win the low-T industrial heat supply by
+        optimisation. The size of that load comes from the UNSD "heat" carrier
+        rows in the industry totals.
+      mechanism: >
+        build_base_industry_totals maps UNSD heat commodities to the "heat"
+        carrier per industry; build_industry_demand renames it
+        "low-temperature heat" and distributes it nodally;
+        add_industry attaches the load to heat buses; add_heat adds the
+        competing heat-pump/boiler supply on those buses.
+      not_covered: >
+        No industrial high-temperature heat pump technology exists. All
+        medium/high-temperature process heat is embedded in the industry
+        gas/coal/oil/biomass fuel loads (fixed exogenous carrier mix) and is not
+        servable by any heat pump. COPs are built for sink T = 55C
+        (heat_pump_sink_T) — not process-heat temperatures.
+      provenance: "scripts/prepare_sector_network.py:add_industry"
+
+    levers:
+      - key: sector.heat_pump_sink_T
+        effect: "Sink temperature used in build_cop_profiles for the heat-pump COP time series on heat buses."
+        default: "55"
+        provenance: "config.default.yaml:heat_pump_sink_T"
+      - key: sector.time_dep_hp_cop
+        effect: "Time-dependent COP (true) vs static costs-table efficiency for the heat pumps serving heat buses."
+        default: "true"
+        provenance: "config.default.yaml:time_dep_hp_cop"
+      - key: sector.boilers
+        effect: "Adds the competing resistive heaters and gas boilers on the same heat buses."
+        default: "true"
+        provenance: "config.default.yaml:boilers"
+      - key: sector.tes
+        effect: "Water-tank thermal storage on heat buses — lets heat pumps run flexibly against the flat industrial heat load."
+        default: "true"
+        provenance: "config.default.yaml:tes"
+      - key: sector.district_heating.potential
+        effect: "Max urban-demand fraction on the central heat bus, which carries the industrial low-T heat load."
+        default: "0.3"
+        provenance: "config.default.yaml:district_heating"
+      - key: sector.enable.industry
+        effect: "Gates the low-temperature heat for industry load."
+        default: "true"
+        provenance: "config.default.yaml:industry"
+
+    boundary:
+      - variant: "let heat pumps serve industrial low-temperature heat"
+        rung: L0
+        note: "already endogenous — heat pumps compete on the heat buses carrying the load."
+      - variant: "bias towards heat pumps (COP assumptions, sink temperature)"
+        rung: L1
+        note: "sector.heat_pump_sink_T + sector.time_dep_hp_cop; disable competitors via sector.boilers/sector.chp/sector.solar_thermal."
+      - variant: "grow the low-T industrial heat share (move fuel demand into the heat carrier)"
+        rung: L3
+        note: >
+          Edit the industry totals: shift gas/oil MWh into the 'heat' carrier
+          rows via data/custom/industry_demand_{demand}_{planning_horizons}.csv
+          (custom_data.industry_demand: true) or by editing
+          industry_base_totals in build_industry_demand.
+      - variant: "high-temperature industrial heat pump replacing process fuel, exogenous"
+        rung: L3
+        note: >
+          Represent as electrification with an assumed COP: move process-fuel
+          MWh into the electricity carrier divided by the COP, in the same
+          custom industry demand file. No component needed.
+      - variant: "explicit high-T industrial heat pump technology (own link, own COP, competing endogenously)"
+        rung: L5
+        note: "needs an industrial process-heat bus (does not exist — process heat is inside fuel loads) plus a new heat-pump link; bespoke Python in prepare_sector_network."
+
+    where:
+      - change: "industrial low-T heat load placement on heat buses"
+        anchor: "add_industry — Load 'low-temperature heat for industry' on urban central heat / services urban decentral heat"
+        provenance: "scripts/prepare_sector_network.py:add_industry"
+      - change: "heat-pump supply on those buses"
+        anchor: "add_heat — Links '{name} {heat_pump_type} heat pump' with COP efficiency"
+        provenance: "scripts/prepare_sector_network.py:add_heat"
+      - change: "COP time series"
+        anchor: "rule/script build_cop_profiles (reads heat_pump_sink_T)"
+        provenance: "scripts/build_cop_profiles.py:heat_pump_sink_T"
+      - change: "size of the industrial heat carrier (per-industry heat rows)"
+        anchor: "build_industry_demand rename 'heat' -> 'low-temperature heat' (rename_sectors) and industry_base_totals"
+        provenance: "scripts/build_industry_demand.py:country_to_nodal"
+      - change: "UNSD heat-commodity mapping"
+        anchor: "aggregate_fuels('industry') heat category in _helpers"
+        provenance: "scripts/_helpers.py:aggregate_fuels"
+
+    data_dependencies:
+      - input: "data/demand/unsd/data/*.txt (UNSD energy balances)"
+        required_for: "baseline industrial heat carrier rows (often zero for many countries)"
+        availability: "must be built; region-dependent — many UNSD balances report no industrial heat"
+      - input: "temperature/cutout data for build_cop_profiles"
+        required_for: "time-dependent heat-pump COP"
+        availability: "must be built (cutout workflow)"
+      - input: "data/custom/industry_demand_{demand}_{planning_horizons}.csv"
+        required_for: "moving process fuel into heat/electricity carriers"
+        availability: "absent — user-supplied"
+      - input: "technology-data costs csv (heat pump cost/efficiency rows)"
+        required_for: "heat-pump investment costs"
+        availability: "must be built (enable.retrieve_cost_data)"

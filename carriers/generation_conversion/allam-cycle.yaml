@@ -1,0 +1,124 @@
+id: allam-cycle
+title: Allam cycle gas power plant (oxy-fuel with inherent CO2 capture)
+summary: >
+  A natural-gas power plant using supercritical-CO2 oxy-combustion (Allam or
+  NET Power cycle) whose process design captures nearly all combustion CO2 as
+  a pipeline-ready stream — modelled as a multi-output link delivering
+  electricity plus a captured CO2 stream with only a small atmospheric slip.
+when_to_use:
+  - "Allam cycle / NET Power cycle"
+  - "oxy-fuel gas power plant"
+  - "gas power with near-100% carbon capture"
+  - "clean firm gas generation"
+  - "gas CCS power plant (inherent capture, not post-combustion)"
+  - "supercritical CO2 power cycle"
+  - "pypsa-eur carrier names: allam gas (and allam methanol, covered in methanol-to-power)"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Implemented but OFF by default (sector.allam_cycle_gas: false). When
+        true, add_allam_gas adds one extendable 4-bus Link "{node} allam gas"
+        at EVERY population-layout node: bus0 = the node's gas bus (per-node
+        with sector.gas_network true), bus1 = electricity, bus2 = the node's
+        co2 stored bus, bus3 = "co2 atmosphere". Split verified in code:
+        efficiency2 = 0.98 * gas CO2 intensity and efficiency3 = 0.02 * gas CO2
+        intensity — with the "gas" row's 0.198 tCO2/MWh_th that is 0.194
+        t/MWh_gas captured and 0.004 t/MWh_gas emitted; the 0.98/0.02 factors
+        are HARDCODED literals in add_allam_gas, not data. Electric efficiency,
+        cost and lifetime from the "allam" cost row: efficiency 0.6, investment
+        1500 EUR/kW_el (capital cost and the 2 EUR/MWh_el VOM are multiplied by
+        efficiency to express them per MW of gas input, the link's p_nom unit),
+        FOM 0, lifetime 30 a. Because capture is inherent, the plant only pays
+        off if the captured stream can go somewhere: the node's co2 stored bus
+        feeds sequestration (30 EUR/tCO2 default), utilisation (methanolisation,
+        Fischer-Tropsch) or the CO2 pipeline network — so Allam economics are
+        coupled to the whole carbon-management layer (see
+        co2-transport-and-sequestration carrier card).
+      mechanism: >
+        rule prepare_sector_network runs scripts/prepare_sector_network.py; the
+        __main__ block calls add_allam_gas(n, costs, pop_layout, spatial) iff
+        options["allam_cycle_gas"] is true, after add_co2_tracking has created
+        the co2 stored buses and add_carrier_buses/add_h2_gas_infrastructure the
+        gas buses. Cost row via rule process_cost_data.
+      not_covered: >
+        The technology data is explicitly speculative: the "allam" row in the
+        technology-data costs file carries the source string "Own assumption.
+        TODO: Find better technology data and cost assumptions" for investment,
+        efficiency, VOM and lifetime — there is no real-world deployment behind
+        these numbers (NET Power's La Porte/Odessa projects are demonstrations)
+        and no year-dependent cost trajectory beyond what technology-data
+        interpolates. The oxygen side is invisible: no air separation unit,
+        its electricity demand is implicitly inside the 0.6 efficiency. The
+        98%/2% split is a code literal, not sourced data. No existing or
+        planned plants (greenfield only, no add_existing_baseyear entry), no
+        unit commitment/ramping, no minimum part load, no heat output. Not
+        available in the electricity-only workflow (sector runs only). The
+        methanol-fired Allam variant is a separate switch
+        (sector.methanol.methanol_to_power.allam, hardcoded lifetime 25 a) —
+        see the methanol-to-power carrier card.
+      provenance: "scripts/prepare_sector_network.py:add_allam_gas; scripts/prepare_sector_network.py:add_co2_tracking; scripts/process_cost_data.py:prepare_costs"
+    levers:
+      - key: sector.allam_cycle_gas
+        effect: "Master switch — true adds extendable 'allam gas' links at every node."
+        default: "false"
+        provenance: "config/config.default.yaml:allam_cycle_gas; scripts/prepare_sector_network.py:add_allam_gas"
+      - key: costs.overwrites
+        effect: "Override the own-assumption 'allam' row (investment 1500 EUR/kW, efficiency 0.6, VOM 2, lifetime 30) — the first thing to do for any serious Allam study; deprecated in favour of data/custom_costs.csv (costs.custom_cost_fn)."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+      - key: sector.co2_sequestration_cost
+        effect: "Cost of parking the captured stream underground (EUR/tCO2) — a first-order driver of Allam competitiveness vs unabated gas."
+        default: "30"
+        provenance: "config/config.default.yaml:co2_sequestration_cost; scripts/prepare_sector_network.py:add_co2_tracking"
+      - key: sector.co2_spatial
+        effect: "true (default) makes the captured CO2 land on the plant's own node, so it must be sequestered/used locally or shipped via the CO2 network; false pools capture on one EU bus (free CO2 transport)."
+        default: "true"
+        provenance: "config/config.default.yaml:co2_spatial; scripts/prepare_sector_network.py:define_spatial"
+      - key: sector.gas_network
+        effect: "true (default) means the fuel side draws from per-node gas buses with entry-point-limited supply; false collapses to one EU gas bus."
+        default: "true"
+        provenance: "config/config.default.yaml:gas_network; scripts/prepare_sector_network.py:define_spatial"
+    boundary:
+      - variant: "include Allam cycle in the technology portfolio"
+        rung: L0
+        note: "sector.allam_cycle_gas: true — extendable candidates at all nodes; nothing else needed since the CO2 and gas layers exist by default"
+      - variant: "sensitivity on Allam cost/efficiency"
+        rung: L1
+        note: "costs.overwrites (e.g. {investment: {allam: 2500}}) or a data/custom_costs.csv row — recommended given the own-assumption provenance"
+      - variant: "change the 98/2 capture split"
+        rung: L2
+        note: "edit the hardcoded 0.98/0.02 factors in add_allam_gas (and in add_methanol_to_power for the methanol twin)"
+      - variant: "restrict Allam to nodes with sequestration access"
+        rung: L2
+        note: "no config key; subset `nodes` in add_allam_gas — though with co2_spatial + regional sequestration potentials the optimizer already internalises transport/storage scarcity"
+      - variant: "Allam on methanol"
+        rung: L0
+        note: "separate switch sector.methanol.methanol_to_power.allam (see methanol-to-power carrier card)"
+      - variant: "represent a planned first-of-a-kind plant (fixed site/capacity)"
+        rung: L2
+        note: "no brownfield path; set p_nom_min on the specific link (adjustments mechanism or edit in add_allam_gas)"
+      - variant: "unit commitment / ramping on Allam"
+        rung: L5
+        note: "conventional.unit_commitment only covers electricity-workflow Generators (OCGT/CCGT/coal/nuclear); committable attributes on this sector Link need bespoke code"
+    where:
+      - change: "the plant link, its 4-bus topology and capture split"
+        anchor: "scripts/prepare_sector_network.py::add_allam_gas (gated by sector.allam_cycle_gas in the __main__ block)"
+        provenance: "scripts/prepare_sector_network.py:add_allam_gas; config/config.default.yaml:allam_cycle_gas"
+      - change: "cost assumptions"
+        anchor: "scripts/process_cost_data.py::prepare_costs / overwrite_costs ('allam' row; source string 'Own assumption')"
+        provenance: "scripts/process_cost_data.py:prepare_costs; scripts/process_cost_data.py:overwrite_costs"
+      - change: "where the captured CO2 goes (sequestration cost, potentials, pipelines)"
+        anchor: "scripts/prepare_sector_network.py::add_co2_tracking / add_co2_network (see co2-transport-and-sequestration carrier card)"
+        provenance: "scripts/prepare_sector_network.py:add_co2_tracking; scripts/prepare_sector_network.py:add_co2_network"
+    data_dependencies:
+      - input: "cost rows 'allam' and 'gas' (CO2 intensity, fuel price) in the technology-data costs file"
+        required_for: "plant economics and the carbon coefficients"
+        availability: "exists by default via retrieve_cost_data — but the allam row is flagged 'Own assumption' in its source field"
+      - input: "per-node gas buses with supply (SciGRID gas network chain)"
+        required_for: "fuel input at each node"
+        availability: "must be built (rules build_gas_network / cluster_gas_network); exists by default in the sector workflow"
+      - input: "co2 stored buses plus sequestration potentials / CO2 pipelines / utilisation sinks"
+        required_for: "an outlet for the 98% captured stream — without one the plant cannot run (co2_vent is false by default)"
+        availability: "exists by default (add_co2_tracking always runs; CO2Stop potentials via rule build_co2_sequestration_potentials)"

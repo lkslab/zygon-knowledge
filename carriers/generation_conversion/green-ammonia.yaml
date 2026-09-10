@@ -1,0 +1,251 @@
+id: green-ammonia
+title: Green ammonia (Haber-Bosch synthesis chain)
+summary: >
+  Ammonia produced from electricity and hydrogen via Haber-Bosch, its
+  storage, reconversion by cracking, and the industrial ammonia demand it
+  serves.
+when_to_use:
+  - "green ammonia"
+  - "ammonia synthesis / Haber-Bosch plant"
+  - "power-to-ammonia"
+  - "fertiliser decarbonisation"
+  - "ammonia storage"
+  - "ammonia cracking back to hydrogen"
+  - "ammonia imports"
+  - "national vs nodal ammonia balancing"
+  - "pypsa-eur carrier names: NH3, Haber-Bosch, ammonia cracker, ammonia store, import NH3"
+  - "add ammonia / NH3 production"
+  - "green ammonia from renewable hydrogen"
+  - "Haber-Bosch plant modelling"
+  - "ammonia storage or ammonia cracker"
+  - "fertiliser industry hydrogen demand"
+  - "ammonia export or ammonia shipping fuel"
+  - "known in pypsa-eur as: NH3, ammonia, ammonia store, ammonia cracker, Haber-Bosch"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        An ammonia economy is ON by default (sector.ammonia: true).
+        add_ammonia creates the "NH3" carrier on a SINGLE "EU NH3" bus
+        (copperplate ammonia; sector.ammonia: "regional" switches to nodal
+        NH3 buses via define_spatial). At every node an extendable
+        "Haber-Bosch" Link is added with bus0 = electricity, bus1 = NH3 and
+        bus2 = the nodal H2 bus as a second INPUT (negative efficiency2 =
+        hydrogen-input/electricity-input from the "Haber-Bosch" cost row;
+        capacity is denominated per MW electricity). An extendable
+        "ammonia cracker" Link converts NH3 back to nodal H2 at efficiency
+        1/industry.MWh_NH3_per_MWh_H2_cracker (1.46, i.e. ~68%), priced from
+        the "Ammonia cracker" cost row. Extendable "ammonia store" Stores
+        (cost row "NH3 (l) storage tank incl. liquefaction") sit on the NH3
+        buses. Demand: add_industry attaches an exogenous NH3 Load from the
+        industrial demand chain — today's national production tonnages come
+        from rule build_ammonia_production (USGS Minerals Yearbook,
+        ktN -> ktNH3) feeding build_industrial_production_per_country and
+        the sector ratios (industry.MWh_NH3_per_tNH3 etc.). Haber-Bosch
+        waste heat can supply district heating
+        (sector.use_haber_bosch_waste_heat, default 0.25, in
+        add_waste_heat). With sector.imports enabled, "import NH3"
+        Generators offer fixed-price ammonia (default 97 EUR/MWh) on the
+        NH3 buses. Myopic runs carry built Haber-Bosch/cracker/store
+        capacity forward via add_brownfield.
+      mechanism: >
+        rule prepare_sector_network calls add_ammonia when
+        options["ammonia"] is truthy; the NH3 industry Load is added inside
+        add_industry (also gated by options["ammonia"] — switching ammonia
+        off removes the demand along with the supply chain, it does not
+        re-materialise as H2 or gas demand). Spatial resolution is decided
+        in define_spatial (EU vs nodes + " NH3").
+      not_covered: >
+        "Green" is not distinguished: Haber-Bosch consumes whatever H2 is on
+        the H2 bus (SMR is on by default — see blue-hydrogen /
+        green-hydrogen carrier cards). No fossil ammonia route exists in the
+        network itself (no gas-to-NH3 link), so ALL model-produced ammonia
+        is electrolysis-adjacent by construction; today's fossil-based
+        production is only implicit in the demand data. Even with
+        sector.ammonia: "regional" there are NO inter-nodal NH3 transport
+        links — regional ammonia buses exchange only via local Haber-Bosch
+        and crackers (the single-EU-bus default is what makes ammonia
+        tradable). Ammonia is NOT available as a shipping fuel: add_shipping
+        splits demand over H2/methanol/oil shares only. No NH3-to-power
+        link, no existing ammonia plant fleet (all greenfield), no
+        ammonia export machinery (imports only).
+      provenance: "scripts/prepare_sector_network.py:add_ammonia; scripts/prepare_sector_network.py:Haber-Bosch; scripts/prepare_sector_network.py:ammonia cracker; scripts/prepare_sector_network.py:define_spatial; scripts/build_ammonia_production.py:ammonia_production; scripts/prepare_sector_network.py:add_import_options"
+    levers:
+      - key: sector.ammonia
+        effect: "true = ammonia chain on a single EU NH3 bus; 'regional' = nodal NH3 buses (no transport between them); false = no NH3 carrier AND no industrial ammonia demand."
+        default: "true"
+        provenance: "config/config.default.yaml:ammonia; scripts/prepare_sector_network.py:add_ammonia"
+      - key: industry.MWh_NH3_per_MWh_H2_cracker
+        effect: "Ammonia input per H2 output of the cracker (1.46 -> ~68% reconversion efficiency); also scales the cracker capital cost per MW H2."
+        default: "1.46"
+        provenance: "config/config.default.yaml:MWh_NH3_per_MWh_H2_cracker; scripts/prepare_sector_network.py:ammonia cracker"
+      - key: industry.MWh_NH3_per_tNH3
+        effect: "Energy content per tonne NH3 — converts the USGS production tonnages into the MWh-based industrial NH3 demand."
+        default: "5.166"
+        provenance: "config/config.default.yaml:MWh_NH3_per_tNH3; scripts/prepare_sector_network.py:add_waste_heat"
+      - key: sector.use_haber_bosch_waste_heat
+        effect: "Fraction of Haber-Bosch waste heat (15% of total energy input) delivered to urban central heat buses."
+        default: "0.25"
+        provenance: "config/config.default.yaml:use_haber_bosch_waste_heat; scripts/prepare_sector_network.py:add_waste_heat"
+      - key: sector.imports.enable
+        effect: "true adds 'import NH3' Generators on the NH3 buses at sector.imports.price.NH3 (97 EUR/MWh default) — skipped with a warning if sector.ammonia is false."
+        default: "false"
+        provenance: "config/config.default.yaml:imports; scripts/prepare_sector_network.py:import NH3"
+      - key: costs.overwrites
+        effect: "Override 'Haber-Bosch' / 'Ammonia cracker' investment, VOM or lifetime (electricity-input/hydrogen-input attributes need data/custom_costs.csv rows instead)."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+    boundary:
+      - variant: "ammonia synthesis, cracking, storage + industrial NH3 demand"
+        rung: L0
+        note: "default (sector.ammonia: true) — single EU NH3 bus"
+      - variant: "nodal/national ammonia balancing"
+        rung: L1
+        note: "sector.ammonia: 'regional' — but beware: NO NH3 transport links exist, so regional NH3 buses are islanded (each region must synthesise or crack locally)"
+      - variant: "remove the ammonia sector"
+        rung: L1
+        note: "sector.ammonia: false — removes supply chain AND the industrial NH3 load together"
+      - variant: "guarantee the ammonia is green"
+        rung: L1
+        note: "disable fossil H2 routes (sector.SMR/SMR_cc false, see green-hydrogen); certification-grade accounting is L5 there"
+      - variant: "ammonia imports"
+        rung: L0
+        note: "sector.imports.enable: true (green-energy-imports carrier card documents the family)"
+      - variant: "ammonia as shipping fuel"
+        rung: L5
+        note: "no NH3 shipping share exists — add_shipping only knows hydrogen/methanol/oil shares; needs a new share + load block in add_shipping (the methanol share block is the template)"
+      - variant: "custom ammonia demand (e.g. new fertiliser plant, export contract)"
+        rung: L3
+        note: "demand descends from the USGS table in rule build_ammonia_production and the industrial production/sector-ratio chain — override the ammonia_production.csv resource or add a Load on the NH3 bus (L2 in add_industry)"
+      - variant: "inter-regional ammonia transport (regional mode)"
+        rung: L2
+        note: "add NH3 transport Links in add_ammonia (create_network_topology is the template used for H2 pipelines/biomass transport)"
+      - variant: "cap Haber-Bosch build-out or represent existing plants"
+        rung: L2
+        note: "no config key — set p_nom_max / add non-extendable vintaged links in add_ammonia"
+      - variant: "fossil (gas-based) ammonia production as a network technology"
+        rung: L2
+        note: "not modelled (only demand-side sector ratios use MWh_CH4_per_tNH3_SMR); add a gas->NH3 link in add_ammonia plus a cost row (L3)"
+    where:
+      - change: "Haber-Bosch / cracker / store creation, NH3 bus resolution"
+        anchor: "scripts/prepare_sector_network.py::add_ammonia and ::define_spatial (spatial.ammonia block)"
+        provenance: "scripts/prepare_sector_network.py:add_ammonia; scripts/prepare_sector_network.py:define_spatial"
+      - change: "industrial NH3 demand load"
+        anchor: "scripts/prepare_sector_network.py::add_industry (options['ammonia'] block)"
+        provenance: "scripts/prepare_sector_network.py:add_industry"
+      - change: "today's production tonnages driving the demand"
+        anchor: "rule build_ammonia_production (USGS) -> build_industrial_production_per_country -> sector ratios"
+        provenance: "scripts/build_ammonia_production.py:ammonia_production; scripts/build_industry_sector_ratios.py:ammonia_production"
+      - change: "waste heat delivery"
+        anchor: "scripts/prepare_sector_network.py::add_waste_heat (use_haber_bosch_waste_heat branch)"
+        provenance: "scripts/prepare_sector_network.py:add_waste_heat"
+      - change: "NH3 import generators"
+        anchor: "scripts/prepare_sector_network.py::add_import_options (import NH3 block)"
+        provenance: "scripts/prepare_sector_network.py:import NH3"
+    data_dependencies:
+      - input: "USGS Minerals Yearbook ammonia statistics (rule build_ammonia_production input)"
+        required_for: "national ammonia production -> industrial NH3 demand"
+        availability: "retrieved by the workflow; European coverage via country converter"
+      - input: "cost rows 'Haber-Bosch' (electricity-input, hydrogen-input), 'Ammonia cracker', 'NH3 (l) storage tank incl. liquefaction'"
+        required_for: "synthesis/cracking/storage economics"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "nodal H2 buses with supply (electrolysis/SMR)"
+        required_for: "Haber-Bosch hydrogen input and cracker output"
+        availability: "exists by default (add_h2_gas_infrastructure)"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        With sector.ammonia.enable (default true), prepare_sector_network adds per-node (or single
+        "Earth NH3") NH3 buses, an NH3 Load from the industrial demand csv ("ammonia" column,
+        MWh/a), an extendable "Haber-Bosch" Link (bus0 = node H2 bus, bus1 = NH3 bus, bus2 = AC
+        electricity input; efficiencies from technology-data hydrogen-input/electricity-input), an
+        "ammonia cracker" Link back to H2, and an extendable cyclic "ammonia store" (NH3 (l)
+        storage tank incl. liquefaction costs). The NH3 demand itself is derived upstream:
+        build_ammonia_production geolocates plants (data/industry/ammonia_plants.csv + USGS
+        dataset) and build_industry_demand converts national production (year =
+        sector.ammonia.production_year) into nodal energy demand using
+        sector.ammonia.gas_MWh_per_tNH3 / elec_MWh_per_tNH3, splitting ammonia out of the
+        chemicals aggregate.
+      mechanism: >
+        scripts/prepare_sector_network.py:add_ammonia (called when options["ammonia"]["enable"]);
+        spatial resolution controlled by sector.ammonia.spatial_ammonia in define_spatial
+        (nodes + " NH3" vs single "Earth NH3"). "Greenness" is inherited from the H2 bus:
+        Haber-Bosch consumes whatever hydrogen the model produces, so green ammonia is achieved by
+        combining this with the green-hydrogen levers (RES matching / colours).
+      not_covered: >
+        No ammonia export bus or ship chain (export machinery is H2-only — see add_export); no
+        ammonia as shipping fuel (shipping demand goes to H2 and oil buses only); no ammonia
+        combustion/turbine for power; no dedicated brownfield conventional SMR+HB plant fleet —
+        conventional production is represented economically through the same extendable Haber-Bosch
+        link plus the model's grey/blue H2 routes. Config key sector.ammonia.co2_t_per_tNH3 exists
+        but no script consumer was found at this commit.
+      provenance: "scripts/prepare_sector_network.py:add_ammonia"
+    levers:
+      - key: sector.ammonia.enable
+        effect: Master switch for NH3 buses, Haber-Bosch, cracker, store and NH3 demand; when false, ammonia energy stays embedded in industry chemicals totals.
+        default: "true"
+        provenance: "config.default.yaml:ammonia; scripts/prepare_sector_network.py:add_ammonia"
+      - key: sector.ammonia.spatial_ammonia
+        effect: true = one NH3 bus per node; false = single "Earth NH3" copperplate bus.
+        default: "true"
+        provenance: "config.default.yaml:spatial_ammonia; scripts/prepare_sector_network.py:define_spatial"
+      - key: sector.ammonia.production_year
+        effect: Which historical year (2019-2023) of national ammonia production statistics sizes the NH3 demand.
+        default: "2019"
+        provenance: "config.default.yaml:production_year; Snakefile:build_industry_demand"
+      - key: sector.ammonia.gas_MWh_per_tNH3
+        effect: Gas-energy intensity used to carve ammonia energy out of industry chemicals demand.
+        default: "7.81"
+        provenance: "config.default.yaml:gas_MWh_per_tNH3; scripts/build_industry_demand.py:ammonia_enable"
+      - key: sector.ammonia.elec_MWh_per_tNH3
+        effect: Electricity intensity used in the same demand carve-out.
+        default: "1.278"
+        provenance: "config.default.yaml:elec_MWh_per_tNH3; scripts/build_industry_demand.py:ammonia_enable"
+      - key: sector.enable.industry
+        effect: Industry chain must be enabled for the industrial_demand csv (with its "ammonia" column) to be built and consumed.
+        default: "true"
+        provenance: "config.default.yaml:industry; Snakefile:prepare_sector_network"
+    boundary:
+      - variant: "Include ammonia production/demand"
+        rung: L0
+        note: Default on (sector.ammonia.enable).
+      - variant: "GREEN ammonia specifically"
+        rung: L1
+        note: Combine default HB chain with green-hydrogen levers (production_technologies electrolysis-only, policy_config temporal matching); no separate green-NH3 switch.
+      - variant: "National vs nodal ammonia balancing"
+        rung: L1
+        note: sector.ammonia.spatial_ammonia.
+      - variant: "Custom ammonia demand (e.g. new fertiliser plant)"
+        rung: L3
+        note: Edit the plant list data/industry/ammonia_plants.csv and/or the resulting industrial_energy_demand_per_node csv "ammonia" column; no config hook for exogenous NH3 tonnage.
+      - variant: "Ammonia export (ship out NH3 instead of H2)"
+        rung: L4
+        note: New export bus/links/load plumbing mirroring scripts/add_export.py but attached to spatial.ammonia.nodes; the wildcard/rule chain must be extended.
+      - variant: "Ammonia as shipping fuel"
+        rung: L5
+        note: Shipping demand routing (add_shipping) knows only H2 share and oil remainder; needs new demand split logic + NH3 propulsion link.
+      - variant: "Cap Haber-Bosch build-out or represent existing plants"
+        rung: L2
+        note: Add p_nom limits in the Haber-Bosch madd call in add_ammonia; no config key.
+    where:
+      - change: "HB/cracker/store component definitions, capacity bounds"
+        anchor: "scripts/prepare_sector_network.py:add_ammonia"
+        provenance: "scripts/prepare_sector_network.py:add_ammonia"
+      - change: "NH3 demand derivation from production statistics"
+        anchor: "Snakefile rule build_industry_demand (ammonia params) and rule build_ammonia_production"
+        provenance: "Snakefile:build_ammonia_production"
+      - change: "Ammonia export machinery (template)"
+        anchor: "scripts/add_export.py:add_export (H2-only pattern to mirror)"
+        provenance: "scripts/add_export.py:add_export"
+    data_dependencies:
+      - input: "data/industry/ammonia_plants.csv + data/industry/USGS_ammonia_dataset.xlsx (rule retrieve_ammonia_dataset) -> resources/ammonia_production.csv"
+        required_for: "sizing and locating NH3 demand"
+        availability: "exists / auto-retrieved; region-dependent coverage — countries with no listed production get zero explicit NH3 demand"
+      - input: "resources/<run>/demand/industrial_energy_demand_per_node_...csv (column 'ammonia')"
+        required_for: "add_ammonia Load p_set"
+        availability: "must be built (rule build_industry_demand)"
+      - input: "technology-data costs csv rows: Haber-Bosch, Ammonia cracker, NH3 (l) storage tank incl. liquefaction"
+        required_for: "all NH3 components"
+        availability: "must be built (rule retrieve_cost_data); rows confirmed in built costs file"
