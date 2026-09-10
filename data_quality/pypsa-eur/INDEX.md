@@ -86,4 +86,4 @@ native substitutes but miss the EU-scoped sources; the Western
 Balkans accumulate C/D grades; XK is the worst-covered country in
 scope.
 
-Dataset → dependent recipes: see `datasets.yaml` (`used_by`).
+Dataset → dependent carrier cards: see `datasets.yaml` (`used_by`).

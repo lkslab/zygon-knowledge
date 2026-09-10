@@ -17,31 +17,32 @@ when_to_use:
 models:
 - model: pypsa-eur
   coverage: ready
-  gap_assessment: >-
+  approach: >-
     The full Thomassen two-stage pipeline — eta-blended siting, flow-based zonal clearing,
     priced nodal redispatch — is verified end-to-end here, on real bidding-zone geometries:
     build_bidding_zones ships ENTSO-E/TYNDP zone shapes and clustering.administrative.level
     'bz' clusters straight onto them, so current-zones vs split vs nodal is configuration,
-    not a data project. Four compressed warnings that used to be an essay: one nodal
-    solve is NOT "the market after redispatch" — it is the efficient bound, and substituting
-    it (Weber's shortcut) deletes exactly the inefficiency wedge being asked about;
+    not a data project. The pipeline prices the inefficiency wedge between a zonal
+    market and the nodal optimum for whichever zone map the study chooses.
+  pitfalls:
+  - >-
+    one nodal solve is NOT 'the market after redispatch' — it is the efficient bound,
+    and substituting it (Weber's shortcut) deletes exactly the inefficiency wedge
+    being asked about
+  - >-
     the redispatch stage must minimise volume or weighted volume, never system cost,
     or stage 2 silently re-derives the nodal optimum and reports that zonal pricing
-    is free; NTC border caps are the optimistic abstraction (no loop flows) — prefer
-    the flow-based spec or state the bias direction; and the zone MAP is chosen before
-    any solving and dominates the verdict — run at least two maps unless the user
-    brings a regulatory one. The named residual gap is the welfare split: the pipeline
-    prices the wedge but does not extract who pays it — per-unit producer surplus
-    and its distributional risk-reward (Franken) and per-design consumer cost (Thomassen)
-    are post-processing on the solved stage-1/stage-2 networks, not a wired output.
-  recipes:
-    generation_conversion:
-    - hv-transmission-lines
-    - hvdc-interconnectors
-    - transmission-expansion-projects
-    demand:
-    - electricity-load
-    - demand-spatial-disaggregation
+    is free
+  - >-
+    NTC border caps are the optimistic abstraction (no loop flows) — prefer the flow-based
+    spec or state the bias direction
+  - >-
+    the zone MAP is chosen before any solving and dominates the verdict — run at least
+    two maps unless the user brings a regulatory one
+  - >-
+    the welfare split is not a wired output: per-unit producer surplus and its distributional
+    risk-reward (Franken) and per-design consumer cost (Thomassen) are post-processing
+    on the solved stage-1/stage-2 networks
   methods:
   - id: investment-geography
     role: >-
@@ -78,31 +79,30 @@ models:
     date: '2026-08-05'
 - model: pypsa-earth
   coverage: partial
-  gap_assessment: >-
+  approach: >-
     The two-stage pipeline — eta-blended siting, flow-based zonal clearing, priced
-    nodal redispatch — is verified end-to-end on earth, but two data facts bound it.
-    First, earth ships no bidding-zone dataset and has no 'bz' clustering level: every
-    market-relevant zone map is a user-authored custom busmap over GADM admin units
-    (political, not market, boundaries), so the zone map — the study's dominant assumption,
-    chosen before any solving — must be confirmed with the user, never assumed. Second,
+    nodal redispatch — is verified end-to-end on earth. Earth ships no bidding-zone
+    dataset and has no 'bz' clustering level, so every market-relevant zone map is
+    a user-authored custom busmap over GADM admin units (political, not market, boundaries),
+    and the study starts by agreeing that map with the user.
+  pitfalls:
+  - >-
+    the zone map is the study's dominant assumption, chosen before any solving — confirm
+    it with the user, never assume it
+  - >-
     osm-grid data quality bounds how much to trust nodal price geography: a sparse
     OSM topology reports little congestion for the wrong reason, so gate the nodal
-    stage on the country's data_quality scorecard. The compressed essay warnings apply
-    unchanged: one nodal solve is not "the market after redispatch" (it is the efficient
-    bound — Weber's shortcut deletes the wedge being asked about); the redispatch
-    stage must minimise volume or weighted volume, never system cost, or it silently
-    reports zonal pricing as free; NTC caps are the optimistic abstraction against
-    flow-based. The named residual gap is the welfare split: the pipeline prices the
-    wedge but does not extract who pays it — per-unit producer surplus and distributional
-    risk-reward (Franken) and per-design consumer cost (Thomassen) remain post-processing,
-    not a wired output.
-  recipes:
-    generation_conversion:
-    - hv-transmission-lines
-    - hvdc-interconnectors
-    demand:
-    - electricity-load
-    - demand-spatial-disaggregation
+    stage on the country's data_quality scorecard
+  - >-
+    one nodal solve is not 'the market after redispatch' — it is the efficient bound;
+    Weber's shortcut deletes the wedge being asked about
+  - >-
+    the redispatch stage must minimise volume or weighted volume, never system cost,
+    or it silently reports zonal pricing as free
+  - NTC caps are the optimistic abstraction against flow-based
+  - >-
+    the welfare split is not a wired output: per-unit producer surplus and distributional
+    risk-reward (Franken) and per-design consumer cost (Thomassen) remain post-processing
   methods:
   - id: investment-geography
     role: >-

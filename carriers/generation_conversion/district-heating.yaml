@@ -1,0 +1,331 @@
+id: district-heating
+title: District heating
+summary: >
+  Heat networks supplying urban heat demand from central plant (large heat
+  pumps, CHP, boilers, solar thermal, storage, waste heat), with an evolving
+  share of urban demand connected.
+when_to_use:
+  - "district heating"
+  - "heat networks"
+  - "urban central heating"
+  - "expand district heating share"
+  - "centralised vs decentralised heating"
+  - "large heat pumps / geothermal / river water / sea water for district heat"
+  - "district heating supply temperatures"
+  - "waste heat into heat networks"
+  - "district heating areas"
+  - "pypsa-eur carrier names: urban central heat, urban central air heat pump, urban central resistive heater, urban central gas boiler, urban central gas CHP, urban central water tanks, urban central water pits, urban central heat vent, urban central geothermal heat"
+  - "CHP supplying heat"
+  - "heat network losses"
+  - "large-scale heat pumps for cities"
+  - "known in pypsa-eur as: district heating, ptes heat pump, urban central ptes heat pump, river_water heat, river_water heat pump, sea_water heat, sea_water heat pump"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Covered as the fifth heat system "urban central". Demand side: the
+        historical country DH share comes from build_energy_totals::
+        build_district_heat_share (JRC-IDEES derived, conservatively taking the
+        MINIMUM of IDEES and data/district_heat_share.csv); rule
+        build_district_heat_share makes it nodal (scaled by each node's share
+        of national urban population) and expands it towards
+        urban_fraction x sector.district_heating.potential (0.6; may be a
+        per-country dict with a 'default' entry) by the per-horizon
+        sector.district_heating.progress factor (0.0 in 2020 -> 1.0 in 2050;
+        the "nodistrict" sector_opts wildcard sets progress to 0). In add_heat,
+        nodes with district fraction > 0 get an "urban central heat" bus whose
+        load is the district share of ALL heat demand (residential+services,
+        space+water) inflated by district_heating_loss (0.15). Supply at those
+        buses, all extendable: "urban central air heat pump" (COP from the
+        Jensen CentralHeatingCopApproximator against time- and country-varying
+        forward/return temperatures built by rule
+        build_central_heating_temperature_profiles — per-country
+        max_forward_temperature_baseyear (Euroheat), linear interpolation
+        against 72h-rolling ambient temperature between 0 C and 10 C
+        thresholds, and a relative_annual_temperature_reduction of 1%/a
+        towards low-temperature networks), "urban central resistive heater",
+        "urban central gas boiler", "urban central gas CHP"(+CC) and solid
+        biomass CHP (combined-heat-and-power carrier card), "urban central solar
+        thermal collector" (solar-thermal carrier card), water tanks + water pits
+        storage (thermal-storage family), optional ATES
+        (sector.district_heating.ates.enable, default false), and an "urban
+        central heat vent" dump generator. add_waste_heat additionally wires
+        Fischer-Tropsch, Sabatier, Haber-Bosch, methanolisation, electrolysis
+        and fuel cell waste heat into the urban central buses (sector.use_*
+        keys, several on by default). A machinery for LIMITED heat sources
+        exists (sector.district_heating.limited_heat_sources: geothermal at
+        constant 65 C with Fraunhofer ISI potentials via rule
+        build_geothermal_heat_potential; river_water via HERA data, rule
+        build_river_heat_potential): each such source, when listed in
+        sector.heat_pump_sources.urban central, gets a resource Generator with
+        p_nom_max from its heat_source_power CSV, a source-coupled heat pump,
+        and — if in sector.district_heating.direct_utilisation_heat_sources
+        (default [geothermal]) — a direct utilisation Link active whenever
+        source temperature exceeds the forward temperature (profiles from rule
+        build_direct_heat_source_utilisation_profiles). DH area polygons
+        (retrieve_dh_areas, rule build_dh_areas, handle_missing_countries:
+        fill) bound the ATES/river/sea potentials with a 1000 m buffer.
+      mechanism: >
+        rules build_district_heat_share -> district fraction per node ->
+        prepare_sector_network add_heat (HeatSystem.URBAN_CENTRAL branch:
+        nodes = dist_fraction.index[dist_fraction > 0]); temperature chain:
+        build_temperature_profiles -> build_central_heating_temperature_profiles
+        -> build_cop_profiles / build_ptes_operations /
+        build_direct_heat_source_utilisation_profiles; source potentials:
+        input_heat_source_power wires heat_source_power_{source} CSVs for
+        every urban central heat pump source that is also a limited heat
+        source. Waste heat is bolted onto existing links post hoc in
+        add_waste_heat.
+      not_covered: >
+        Crucially, the DH DISTRIBUTION NETWORK ITSELF carries no capital cost —
+        an explicit code comment in add_heat says costs of central heating must
+        be added afterwards (EUR 400/kWpeak, 50a, 1% FOM, Fraunhofer ISE); the
+        model only pays for plant, not pipes. No heat transport between nodes
+        (each urban central bus is an island; no inter-node heat links). The DH
+        share is an exogenous trajectory, not an optimised connection decision.
+        Geothermal/river/sea sources are DORMANT by default — urban central
+        heat_pump_sources is [air] only, so no geothermal DH appears until the
+        list is extended (sea_water has a temperature file but no potential
+        CSV, so it enters as an unlimited source). Quirk when activating a
+        limited source: add_heat first adds the source-coupled 3-bus heat pump
+        and then unconditionally re-adds a plain 2-bus heat pump under the SAME
+        name — PyPSA skips the duplicate with a warning, so the resource-
+        limited version wins, but the log noise is expected. Supply temperature
+        defaults cover only 8 countries (max_forward) and only DE
+        (min_forward/return); everything else is extrapolated by ratio or
+        filled with the mean. dh_areas affect source/storage potentials only,
+        never demand.
+      provenance: "scripts/prepare_sector_network.py:add_heat; scripts/prepare_sector_network.py:must add costs of central heating afterwards; scripts/build_district_heat_share.py:central_fraction; scripts/build_energy_totals.py:build_district_heat_share; scripts/build_central_heating_temperature_profiles/run.py:extrapolate_missing_supply_temperatures_by_country; scripts/build_dh_areas.py:handle_missing_countries; scripts/prepare_sector_network.py:add_waste_heat; rules/build_sector.smk:input_heat_source_power"
+    levers:
+      - key: sector.district_heating.potential
+        effect: "Max share of urban heat servable by DH (scalar or per-country dict with 'default'); with progress, sets each node's district fraction."
+        default: "0.6"
+        provenance: "config/config.default.yaml:district_heating; scripts/build_district_heat_share.py:central_fraction"
+      - key: sector.district_heating.progress
+        effect: "Per-horizon fraction of the gap between today's share and the potential that is closed ('nodistrict' in sector_opts sets 0)."
+        default: "{2020: 0.0, 2025: 0.1, 2030: 0.25, 2035: 0.4, 2040: 0.55, 2045: 0.75, 2050: 1.0}"
+        provenance: "config/config.default.yaml:progress; scripts/build_district_heat_share.py:progress"
+      - key: sector.district_heating.district_heating_loss
+        effect: "Network loss factor inflating the urban central heat load (x1.15 by default)."
+        default: "0.15"
+        provenance: "config/config.default.yaml:district_heating_loss; scripts/prepare_sector_network.py:district_heating_loss"
+      - key: sector.heat_pump_sources
+        effect: "The 'urban central' list selects DH heat pump sources; append geothermal / river_water / sea_water / ptes to activate those chains."
+        default: "{urban central: [air], urban decentral: [air], rural: [air, ground]}"
+        provenance: "config/config.default.yaml:heat_pump_sources; rules/build_sector.smk:input_heat_source_power"
+      - key: sector.district_heating.supply_temperature_approximation
+        effect: "Per-country max/min forward and return temperatures in the base year, ambient-temperature interpolation thresholds/window, and relative_annual_temperature_reduction (0.01/a) — drives central heat pump COP and PTES/direct-utilisation profiles."
+        default: "max_forward_temperature_baseyear for FR/DK/DE/CZ/FI/PL/SE/IT (75-130 C), min_forward and return only for DE (82/58 C), thresholds 0/10 C, rolling window 72 h"
+        provenance: "config/config.default.yaml:supply_temperature_approximation; scripts/build_central_heating_temperature_profiles/run.py:CentralHeatingTemperatureApproximator"
+      - key: sector.district_heating.limited_heat_sources
+        effect: "Declares potential-limited sources: geothermal (constant_temperature_celsius 65, ignore_missing_regions) and river_water (temperature from HERA data); membership triggers the resource-bus + potential treatment."
+        default: "{geothermal: {constant_temperature_celsius: 65, ignore_missing_regions: false}, river_water: {constant_temperature_celsius: false}}"
+        provenance: "config/config.default.yaml:limited_heat_sources; scripts/prepare_sector_network.py:limited_heat_sources"
+      - key: sector.district_heating.direct_utilisation_heat_sources
+        effect: "Sources allowed to feed the network directly (no heat pump) when their temperature exceeds the forward temperature."
+        default: "[geothermal]"
+        provenance: "config/config.default.yaml:direct_utilisation_heat_sources; scripts/prepare_sector_network.py:direct_utilisation_heat_sources"
+      - key: sector.district_heating.heat_source_cooling
+        effect: "Source-side temperature drop (K) in the central heat pump COP model."
+        default: "6"
+        provenance: "config/config.default.yaml:heat_source_cooling; scripts/build_cop_profiles/run.py:heat_source_cooling_central_heating"
+      - key: sector.district_heating.dh_areas.handle_missing_countries
+        effect: "Strategy for countries absent from the DH-areas dataset: ignore / fill (whole country becomes potential DH area) / raise."
+        default: "fill"
+        provenance: "config/config.default.yaml:handle_missing_countries; scripts/build_dh_areas.py:handle_missing_countries"
+      - key: sector.district_heating.dh_areas.buffer
+        effect: "Metre buffer around DH areas when clipping ATES/river/sea heat potentials."
+        default: "1000"
+        provenance: "config/config.default.yaml:dh_areas; rules/build_sector.smk:dh_area_buffer"
+      - key: sector.district_heating.ates.enable
+        effect: "Adds aquifer thermal energy storage at urban central nodes (potentials from rule build_ates_potentials, BGR aquifer shapes within DH areas)."
+        default: "false"
+        provenance: "config/config.default.yaml:ates; scripts/prepare_sector_network.py:enable_ates"
+      - key: sector.heat_vent
+        effect: "Per system type, allow dumping surplus heat (negative generator) at sector.marginal_cost_heat_vent — keeps must-run waste heat feasible."
+        default: "{urban central: true, urban decentral: true, rural: true} (marginal_cost_heat_vent: 0.02)"
+        provenance: "config/config.default.yaml:heat_vent; scripts/prepare_sector_network.py:heat_vent"
+      - key: sector.use_fuel_cell_waste_heat
+        effect: "Fraction of H2 fuel cell waste heat routed to urban central heat (similar keys: use_fischer_tropsch_waste_heat 0.25, use_electrolysis_waste_heat 0.25, use_methanation_waste_heat, use_haber_bosch_waste_heat, use_methanolisation_waste_heat; 'nowasteheat' wildcard zeroes all)."
+        default: "1"
+        provenance: "config/config.default.yaml:use_fuel_cell_waste_heat; scripts/prepare_sector_network.py:add_waste_heat"
+    boundary:
+      - variant: "district heating expands along the default trajectory"
+        rung: L0
+        note: "default — share grows from today's IDEES level towards potential 0.6 per the progress schedule"
+      - variant: "freeze or accelerate DH expansion"
+        rung: L1
+        note: "edit sector.district_heating.progress (or 'nodistrict' in scenario sector_opts for freeze); potential caps the end point"
+      - variant: "per-country DH ambition"
+        rung: L1
+        note: "sector.district_heating.potential as dict {DE: 0.8, default: 0.4, ...} — a 'default' entry is required for uncovered countries"
+      - variant: "correct today's DH share for a country"
+        rung: L3
+        note: "row in data/district_heat_share.csv (build_energy_totals takes the min of it and IDEES)"
+      - variant: "geothermal district heat (heat pump + direct utilisation)"
+        rung: L1
+        note: "append 'geothermal' to sector.heat_pump_sources.urban central — potential CSV auto-builds from Fraunhofer ISI data (rule build_geothermal_heat_potential); direct utilisation already in the default list; expect the harmless duplicate-link warning"
+      - variant: "river or sea water source heat pumps"
+        rung: L1
+        note: "append 'river_water' / 'sea_water' to the urban central list; needs the HERA (river) / seawater temperature datasets, retrieved per snapshot year (rules retrieve_hera_data, retrieve_seawater_temperature); sea_water has no potential cap"
+      - variant: "change supply temperatures / low-temperature network scenario"
+        rung: L1
+        note: "sector.district_heating.supply_temperature_approximation keys (per-country baseyear temps, reduction rate)"
+      - variant: "price the DH network itself (connection cost)"
+        rung: L2
+        note: "no component carries it (the add_heat NB comment flags exactly this); add capital cost to the urban central heat techs or a per-MW connection surcharge in add_heat"
+      - variant: "heat transport between neighbouring nodes / DH transmission"
+        rung: L5
+        note: "no inter-node heat links exist anywhere; requires new Link components between urban central buses plus cost data"
+      - variant: "optimise the DH connection share endogenously"
+        rung: L5
+        note: "share is data (build_district_heat_share) baked into the load split before optimisation; endogenising it means restructuring urban decentral vs central demand allocation"
+      - variant: "seasonal pit storage / ATES in the network"
+        rung: L0
+        note: "water pits are on by default at urban central; ATES via sector.district_heating.ates.enable — details in the thermal-storage / long-duration-storage family"
+    where:
+      - change: "urban central bus, load, loss, vent, and all supply-tech creation"
+        anchor: "scripts/prepare_sector_network.py::add_heat (HeatSystem.URBAN_CENTRAL branch; limited-source loop 'Add heat pumps')"
+        provenance: "scripts/prepare_sector_network.py:add_heat; scripts/prepare_sector_network.py:URBAN_CENTRAL"
+      - change: "nodal DH share and its expansion"
+        anchor: "scripts/build_district_heat_share.py (rule build_district_heat_share; dist_fraction_node)"
+        provenance: "scripts/build_district_heat_share.py:dist_fraction_node"
+      - change: "historical country share"
+        anchor: "scripts/build_energy_totals.py::build_district_heat_share (+ data/district_heat_share.csv fill)"
+        provenance: "scripts/build_energy_totals.py:build_district_heat_share"
+      - change: "forward/return temperature profiles"
+        anchor: "scripts/build_central_heating_temperature_profiles/run.py (rule build_central_heating_temperature_profiles)"
+        provenance: "scripts/build_central_heating_temperature_profiles/run.py:CentralHeatingTemperatureApproximator"
+      - change: "geothermal potential per cluster region"
+        anchor: "scripts/build_geothermal_heat_potential.py (rule build_geothermal_heat_potential; ISI potentials + LAU regions)"
+        provenance: "rules/build_sector.smk:build_geothermal_heat_potential; rules/build_sector.smk:isi_heat_potentials"
+      - change: "DH area polygons for potentials"
+        anchor: "scripts/build_dh_areas.py::handle_missing_countries (rule build_dh_areas)"
+        provenance: "scripts/build_dh_areas.py:handle_missing_countries"
+      - change: "waste heat injection into urban central buses"
+        anchor: "scripts/prepare_sector_network.py::add_waste_heat"
+        provenance: "scripts/prepare_sector_network.py:add_waste_heat"
+      - change: "direct utilisation availability profiles"
+        anchor: "scripts/build_direct_heat_source_utilisation_profiles.py (rule build_direct_heat_source_utilisation_profiles)"
+        provenance: "rules/build_sector.smk:build_direct_heat_source_utilisation_profiles"
+    data_dependencies:
+      - input: "JRC-IDEES / Eurostat energy balances + data/district_heat_share.csv"
+        required_for: "today's DH share per country"
+        availability: "retrieved by workflow / exists in repo"
+      - input: "dh_areas GeoPackage (rule retrieve_dh_areas)"
+        required_for: "ATES / river / sea potential clipping"
+        availability: "retrieved by the workflow; missing countries handled per handle_missing_countries (default fill)"
+      - input: "Fraunhofer ISI geothermal utilisation potentials + LAU region shapes"
+        required_for: "geothermal source potential (when activated)"
+        availability: "retrieved (rules retrieve_geothermal_heat_utilisation_potentials, retrieve_lau_regions)"
+      - input: "HERA river discharge/temperature and seawater temperature per snapshot year"
+        required_for: "river_water / sea_water sources (when activated)"
+        availability: "retrieved per year (rules retrieve_hera_data, retrieve_seawater_temperature)"
+      - input: "cost rows 'central air-sourced heat pump', 'central excess-heat-sourced heat pump', 'central geothermal heat source', 'central water pit storage'"
+        required_for: "DH supply and storage technologies"
+        availability: "exists by default via technology-data (a missing heat-source row falls back to zero cost with a logged warning in add_heat)"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        An "urban central" heat system per node. create_nodes_for_heat_sector computes a
+        per-node district heating fraction: today's country share comes from
+        energy_totals["district heat share"] (set in prepare_energy_totals from
+        data/demand/district_heating.csv column "current"), distributed by urban
+        population; it is then moved toward the maximum
+        sector.district_heating.potential (default 0.3 of urban demand) by
+        sector.district_heating.progress (default 1, i.e. jump straight to potential;
+        can be a dict per planning horizon). add_heat assigns that fraction of urban
+        space+water demand to the "urban central heat" bus, marked up by
+        sector.district_heating.district_heating_loss (default 0.15). Supply on the
+        urban central bus: central air-sourced heat pump, central resistive heater and
+        central gas boiler (if sector.boilers), central water tanks TES
+        (sector.tes_tau.central = 180 days), "urban central gas CHP" (+ CC variant if
+        sector.cc) when sector.chp is true, and solid-biomass CHP added in add_biomass
+        at nodes with district heating.
+      mechanism: >
+        data/demand/district_heating.csv -> rule prepare_energy_totals ("district heat
+        share" column, DEFAULT-row fallback via fill_country_data) -> rule
+        prepare_heat_data (district_heat_share csv) -> rule prepare_sector_network:
+        create_nodes_for_heat_sector (dist_fraction per node) -> add_heat (urban central
+        bus, load with loss markup, central supply technologies).
+      not_covered: >
+        No explicit pipe network: heat distribution within a node is a single loss
+        factor, there is no inter-node heat transport, no network investment cost, and
+        no temperature levels. The shipped district_heating.csv contains only DEFAULT,
+        MA and TN rows, ALL ZERO for both "current" and "potential" columns — so today's
+        DH share is zero everywhere and expansion comes purely from the config
+        potential/progress interpolation. No waste-heat or geothermal DH sources.
+      provenance: "scripts/prepare_sector_network.py:create_nodes_for_heat_sector"
+
+    levers:
+      - key: sector.district_heating.potential
+        effect: Maximum fraction of urban heat demand that district heating may reach.
+        default: "0.3"
+        provenance: "config.default.yaml:district_heating; scripts/prepare_sector_network.py:create_nodes_for_heat_sector"
+      - key: sector.district_heating.progress
+        effect: Interpolation (0=today's share, 1=full potential) between current and maximum DH share; scalar or dict by planning horizon.
+        default: "1"
+        provenance: "config.default.yaml:progress; scripts/prepare_sector_network.py:create_nodes_for_heat_sector"
+      - key: sector.district_heating.district_heating_loss
+        effect: Fractional markup on urban central heat load representing network losses.
+        default: "0.15"
+        provenance: "config.default.yaml:district_heating_loss; scripts/prepare_sector_network.py:district_heating_loss"
+      - key: sector.chp
+        effect: Adds "urban central gas CHP" (and CC variant with sector.cc) on district heating nodes.
+        default: "true"
+        provenance: "config.default.yaml:chp; scripts/prepare_sector_network.py:urban central gas CHP"
+      - key: sector.tes_tau.central
+        effect: Time constant (days) for standing losses of central water-tank storage on the DH bus.
+        default: "180"
+        provenance: "config.default.yaml:tes_tau; scripts/prepare_sector_network.py:tes_tau"
+
+    boundary:
+      - variant: "Turn district heating expansion up or down"
+        rung: L1
+        note: "sector.district_heating.potential and .progress (dict per horizon for a rollout path)."
+      - variant: "Change network loss assumption"
+        rung: L1
+        note: "sector.district_heating.district_heating_loss."
+      - variant: "Set today's actual DH share for a country"
+        rung: L3
+        note: "Add/edit the country row in data/demand/district_heating.csv (columns current, potential); DEFAULT row (all zero) is the fallback for missing countries via fill_country_data in prepare_energy_totals. Note: the shipped file only lists MA and TN besides DEFAULT, all zeros."
+      - variant: "Node-level (sub-national) DH shares instead of country shares scaled by urban population"
+        rung: L2
+        note: "Edit the dist_fraction_node construction in create_nodes_for_heat_sector."
+      - variant: "Add another central supply technology (e.g. central solar thermal exists already; waste heat, geothermal DH do not)"
+        rung: L5
+        note: "New Link/Generator logic on the urban central heat bus in add_heat, plus cost rows (L3)."
+      - variant: "Explicit heat transport between nodes / pipe investment"
+        rung: L5
+        note: "No heat network component exists; bespoke Links between heat buses and cost data required."
+
+    where:
+      - change: "DH share computation (current -> potential interpolation, urban weighting)"
+        anchor: "scripts/prepare_sector_network.py:create_nodes_for_heat_sector"
+        provenance: "scripts/prepare_sector_network.py:create_nodes_for_heat_sector"
+      - change: "Country DH share data and DEFAULT fallback"
+        anchor: "data/demand/district_heating.csv + prepare_energy_totals (fill_country_data, 'district heat share')"
+        provenance: "scripts/prepare_energy_totals.py:district heat share"
+      - change: "Urban central bus, load with loss markup, central technologies"
+        anchor: "scripts/prepare_sector_network.py:add_heat (name == 'urban central' branches)"
+        provenance: "scripts/prepare_sector_network.py:urban central"
+      - change: "Biomass CHP at DH nodes"
+        anchor: "scripts/prepare_sector_network.py:add_biomass (AC buses with district heating)"
+        provenance: "scripts/prepare_sector_network.py:add_biomass"
+
+    data_dependencies:
+      - input: "data/demand/district_heating.csv (country rows: DEFAULT, MA, TN — all zeros)"
+        required_for: "Today's district heating share per country"
+        availability: "exists by default but effectively empty; region-dependent — most countries fall back to DEFAULT=0"
+      - input: "Urban population layouts (WorldPop + UNCTAD urban percent)"
+        required_for: "Distributing the country DH share to nodes and bounding it by urban fraction"
+        availability: "must be built (build_population_layouts)"
+      - input: "UNSD energy balances (urban heat demand totals)"
+        required_for: "Magnitude of the urban central heat load"
+        availability: "must be built (build_base_energy_totals)"
+      - input: "Technology cost rows (central gas CHP, central water tank storage, central air-sourced heat pump)"
+        required_for: "Costing central supply options"
+        availability: "exists by default (retrieve_cost_data from technology-data)"

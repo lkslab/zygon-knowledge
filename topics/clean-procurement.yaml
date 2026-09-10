@@ -1,0 +1,206 @@
+id: clean-procurement
+title: Clean procurement
+question: |
+  How can a large electricity consumer — a data centre, a hyperscale campus, a C&I site, an electrolyser — procure clean electricity, what does each procurement rule cost, and what does it build? The canonical comparison: how much more expensive is it to run a data centre on hourly-matched 98%-clean electricity than on an annual-matched 100% renewable PPA, and which mix of wind, solar, batteries, long-duration storage and clean firm capacity does each rule buy. The RFNBO hourly-matching rule for green hydrogen is the sibling case — the same constraint algebra at a different grouping, and the only one either model ships machinery for.
+when_to_use:
+- >-
+  how much more expensive is 24/7 hourly-matched clean power than a 100% renewable
+  PPA
+- >-
+  run a data centre / hyperscale campus on carbon-free energy every hour, not on annual
+  average
+- CFE score / 24/7 CFE target for a large consumer
+- >-
+  hourly vs monthly vs annual matching — what does each rule cost and what does it
+  build
+- >-
+  which mix of wind, solar, batteries, long-duration storage and clean firm does a
+  procurement strategy buy
+- >-
+  additionality — must the procured supply be new capacity, and does it cut emissions
+  or move them
+- same bidding zone / deliverability / geographic correlation requirement
+- guarantees of origin, RECs or certificates vs physical hourly matching
+- RFNBO / delegated act hourly matching for an electrolyser
+- >-
+  who pays for strictness — what a matching rule does to everyone else's electricity
+  price
+- scope 2 / gCO2/kWh of a matched consumer's electricity
+- corporate PPA or hourly PPA structure for a C&I load
+models:
+- model: pypsa-eur
+  coverage: gap
+  approach: >-
+    Nothing in pypsa-eur implements a procurement rule: loads are fixed p_set profiles
+    on the zonal AC bus, no constraint ties a consumer's draw to any generator's output,
+    and greps for temporal_matching, additionality, CFE and 24/7 return nothing at
+    this ref (Riepin 2024's PyPSA-Eur study added its own components; that fork was
+    never merged). Out of the box you get the no-rule rung: add the consumer as a
+    Load at a bus (attach_load in add_electricity.py, L2 — there is no data-centre
+    load category) and the ordinary solve prices serving it on the grid mix; single-asset-cba
+    runs exactly that as a PINT demand variant against a fixed reference, and that
+    reference network is the counterfactual an additionality constraint subtracts.
+    The matching constraint itself lands in the module named by solving.options.custom_extra_functionality
+    (default '../data/custom_extra_functionality.py', a no-op stub): weighted Generator-p
+    plus StorageUnit-p_dispatch of the contracted set >= x times the consumer's weighted
+    draw, one row per window via groupby on snapshot, snapshot.month or snapshot.year.
+    Copy the bus/country groupers from add_EQ_constraints, port pypsa-earth's hydrogen_temporal_constraint
+    for the window loop, and apply n.snapshot_weightings on both sides. Today a study
+    delivers the no-rule cost and the price series; every matching regime is constraint
+    code you write.
+  pitfalls:
+  - >-
+    the snapshot resolution IS the strictness — Riepin 2024 ran 3-hourly (2920 snapshots),
+    so published hourly-matching costs are lower bounds; TSAM segmentation is worse
+    than averaging
+  - >-
+    annual matching that credits storage discharge is satisfiable by a battery charged
+    on fossil power
+  - >-
+    crediting grid imports at the grid's hourly CFE share makes the constraint bilinear
+    — Riepin 2024 fixed-point iterated from CFE_t = 0 and reports convergence in 2
+    passes; or drop the credit and keep one linear solve
+  - >-
+    additionality is a two-solve counterfactual or Schumm 2025's build-year filter
+    (RE built within 3 years before the consumer); neither exists in the model
+  - >-
+    same-zone deliverability is a grouper you write, and nothing tracks a GO or REC
+    through storage
+  - >-
+    solving.constraints.EQ is annual self-sufficiency, not matching, and a bare EQ
+    token crashes
+  - >-
+    there is no gCO2/kWh column: scope-2 numbers are post-processing over the energy
+    balance and move with average-vs-marginal and generation-vs-consumption basis
+  - >-
+    strictness redistributes cost as much as it adds it — report the price duration
+    curve and non-participating consumers' cost beside the premium
+  - verify any hook constraint by counting constraint rows against the window count
+  methods:
+  - id: single-asset-cba
+    role: >-
+      the no-rule rung and the additionality reference: PINT the consumer as a demand
+      op against the fixed reference — B1 is the grid-mix cost of serving the load,
+      and the solved reference is the counterfactual network a matching-with-additionality
+      constraint subtracts
+  - id: price-formation
+    role: >-
+      the cost to everyone else: bounded hourly prices with a declared VOLL and the
+      price duration curve per regime — strictness is a cost allocation across the
+      system, not a line item on the consumer
+  - id: multi-scenario
+    role: >-
+      the regime sweep once the constraint exists in the hook: no rule / annual /
+      monthly / hourly x CFE score as run.scenarios overrides read by your custom_extra_functionality
+      module, with harmonised cost, capacity and price collection — it fans out runs,
+      it does not supply the constraint
+  defaults:
+  - aspect: no-procurement-rule
+    is: >-
+      loads are fixed p_set profiles on the zonal AC bus and nothing constrains where
+      their electricity comes from — a default run is the no-rule counterfactual,
+      the grid-mix cost of serving the load, not a 100% renewable PPA and not a CFE
+      score
+    note: >-
+      solving.options.custom_extra_functionality defaults to '../data/custom_extra_functionality.py',
+      a no-op stub — the hook is wired, the constraint is not.
+  plots:
+  - id: price_duration
+    role: >-
+      who pays: the duration curve per matching regime, the result Schumm 2025 leads
+      with
+  - id: dispatch_weeks
+    role: 'what the rule buys: the hourly balance in the weeks where matching binds'
+  version_anchor:
+    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
+    date: '2026-09-10'
+- model: pypsa-earth
+  coverage: partial
+  approach: >-
+    The only place in the family with shipped matching machinery, built for the sibling
+    case: policy_config.hydrogen.temporal_matching takes no_temporal_matching | hour
+    | month | year, and hydrogen_temporal_constraint in scripts/solve_network.py adds
+    one RESconstraints_{label} row per window — weighted Generator-p plus StorageUnit-p_dispatch
+    over temporal_matching_carriers >= allowed_excess times the weighted Link-p of
+    matching_technologies. Annual, monthly and hourly RFNBO regimes for an electrolyser
+    are a config flip, exercised by the Morocco studies (Schumm 2025: 14 nodes, 3-hourly,
+    264 runs across the four regimes); allowed_excess at 1/x is the CFE-score sweep.
+    A data-centre consumer reaches the rule at L2: the constraint reads Link-p only,
+    so model the site as a Link off the AC bus and add its carrier to matching_technologies.
+    The reference build (is_reference plus remove_h2_load) works and is the counterfactual
+    network for an additionality reading.
+  pitfalls:
+  - >-
+    grid imports are not credited at the grid's CFE share — no bilinear term, so the
+    24/7 CFE-score form with grid crediting is not this constraint
+  - >-
+    no spatial grouper: the constraint sums over every eligible component in the network,
+    and policy_config.hydrogen.spatial_matching is a dead key with no consumer in
+    the repo, so a same-bidding-zone claim on stock earth is unenforced
+  - >-
+    additionality is cosmetic: n_ref is loaded from path_to_ref and passed in but
+    never read, so additionality true and false add the same constraint while the
+    run logs success; re_country_load is dead too
+  - >-
+    a plain Load (the electricity-load carrier card's attach_load variant) is invisible
+    to the rule — only Link-p over matching_technologies counts
+  - >-
+    the default temporal_matching_carriers list credits reservoir hydro and run-of-river
+    discharge, which most matching rules do not certify — prune it to what the rule
+    credits (Duque-Perez's annual matching without batteries is the same edit)
+  - >-
+    any annual rule crediting storage discharge is satisfiable by a battery charged
+    on fossil power
+  - 'coarse snapshots weaken the rule: keep the resolution and cut nodes instead'
+  - >-
+    the constraint is reachable from the electricity-only solve rule, where it finds
+    no electrolyser Links and adds vacuous rows — count RESconstraints_ rows against
+    |snapshots|, 12 or the year count before believing anything
+  - there is no gCO2/kWh column and no GO tracking through storage or pipelines
+  - >-
+    report the price duration curve and domestic consumer cost beside the product
+    cost: Schumm 2025 finds stricter matching lowers domestic electricity prices,
+    up to 31% — the regime is a cost allocation, not a line item
+  - >-
+    check the country's data_quality demand and renewable grades first; hourly matching
+    is only as good as the hourly profiles behind it
+  methods:
+  - id: single-asset-cba
+    role: >-
+      the no-rule rung and the additionality reference: PINT the consumer as a demand
+      op on the prepared network against the fixed reference — B1 is the grid-mix
+      cost of serving the load, and the solved reference is the network path_to_ref
+      would point at once n_ref is actually read
+  - id: price-formation
+    role: >-
+      the cost to everyone else: bounded hourly prices with a declared VOLL (never
+      the shipped 100 EUR/kWh cap) and the price duration curve per regime — the domestic-consumer
+      reading Schumm 2025 leads with
+  - id: multi-scenario
+    role: >-
+      the collection half only: temporal_matching and allowed_excess are solve-time
+      config keys, not prepared-network edits, so the declarative variants cannot
+      switch the regime — fan the regimes out as separate config-override runs and
+      point the collection at their networks for the harmonised cost, capacity and
+      price tables
+  defaults:
+  - aspect: temporal-matching-off
+    is: >-
+      policy_config.hydrogen.temporal_matching ships as "no_temporal_matching" — a
+      default run enforces no procurement rule; temporal_matching_carriers ships as
+      [csp, solar, onwind, offwind-ac, offwind-dc, ror, hydro] and matching_technologies
+      as the six electrolyser Link carriers, so no data-centre or C&I consumer is
+      under the rule until its Link carrier is added
+    note: >-
+      additionality ships false, and true changes nothing at this ref — the flag is
+      cosmetic until n_ref is read inside hydrogen_temporal_constraint.
+  plots:
+  - id: price_duration
+    role: >-
+      who pays: the duration curve per matching regime, the result Schumm 2025 leads
+      with
+  - id: dispatch_weeks
+    role: 'what the rule buys: the hourly balance in the weeks where matching binds'
+  version_anchor:
+    ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
+    date: '2026-09-10'

@@ -3,7 +3,7 @@
 `config.yaml` here is the adopted cookbook-validation config (Mexico, 4
 clusters, one week of 2013; power solve + sector prenetwork).
 `config.cr.yaml` (Costa Rica) and `config.ng.yaml` (Nigeria) are the same
-recipe verbatim with only run names, `countries:`, and (for NG) the cutout
+config verbatim with only run names, `countries:`, and (for NG) the cutout
 swapped to `cutout-2013-era5-africa`; their baselines were built 2026-07-30
 at the same submodule SHA and installed into the template alongside Mexico —
 all three settle simultaneously (dry run proposes zero jobs per config). Unlike eur,

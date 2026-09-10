@@ -1,0 +1,201 @@
+id: services-heat-demand
+title: Services / commercial buildings heat demand
+summary: Space and water heating demand of the tertiary sector (offices, shops, schools, hospitals).
+
+when_to_use:
+  - "services heating"
+  - "commercial building heat"
+  - "tertiary sector heat demand"
+  - "office/shop/school heating"
+  - "public buildings energy"
+  - "non-residential building heat"
+  - "commercial hot water"
+  - "known in pypsa-eur as: services rural heat, services urban decentral heat"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        Services space+water heat loads on 'services rural' and 'services urban decentral'
+        heat buses, plus a share of the mixed 'urban central' district-heat load. The chain is
+        identical to residential: build_heat_demand degree-day shape, prepare_heat_data
+        multiplies by BDEW 'services space/water' intraday columns and scales to
+        'total services space' / 'total services water' from UNSD 'services' consumption
+        (space/water split by sector.space_heat_share in build_base_energy_totals). add_heat
+        weights by urban fraction and district-heat share; for 'urban central' residential and
+        services demand are summed. Non-heat services fuel use is handled separately by
+        add_services (see services-electricity-demand / this book's electricity carrier cards).
+        Unlike residential, services heat loads are NOT re-scaled afterwards
+        (add_residential's net-of-fossil rebalancing applies only to residential columns;
+        add_services adds fuel loads without touching heat buses).
+      mechanism: >
+        rule build_base_energy_totals ('services' sector block) -> prepare_energy_totals ->
+        prepare_heat_data ('services space'/'services water' columns) -> add_heat in
+        prepare_sector_network (services heat systems, gated by sector.enable.heat).
+      not_covered: >
+        No services sub-branches (offices vs retail vs health), no cooling, no services-specific
+        efficiency policies; scenario electrification shares in prepare_energy_totals are
+        modelled for residential only ('electricity services space/water' are set to 0 there);
+        the space/water split scalar is shared with residential.
+      provenance: "scripts/build_base_energy_totals.py:total services space; scripts/prepare_heat_data.py:prepare_heat_data; scripts/prepare_sector_network.py:add_heat; scripts/prepare_energy_totals.py:electricity services space"
+
+    levers:
+      - key: sector.space_heat_share
+        effect: "Space share of UNSD services heat-commodity consumption (same scalar as residential)."
+        default: "0.6"
+        provenance: "config.default.yaml:space_heat_share; scripts/build_base_energy_totals.py:space_heat_share"
+      - key: sector.reduce_space_heat_exogenously
+        effect: "Scales down 'services space' together with 'residential space' (loop over both sectors)."
+        default: "false"
+        provenance: "config.default.yaml:reduce_space_heat_exogenously; scripts/prepare_sector_network.py:reduce_space_heat_exogenously"
+      - key: sector.reduce_space_heat_exogenously_factor
+        effect: "Per-unit reduction, scalar or per-horizon dict, applied to both sectors' space heat."
+        default: "0.29"
+        provenance: "config.default.yaml:reduce_space_heat_exogenously_factor; scripts/prepare_sector_network.py:reduce_space_heat_exogenously_factor"
+      - key: sector.district_heating.potential
+        effect: "Moves urban services heat demand into the mixed 'urban central' load."
+        default: "0.3"
+        provenance: "config.default.yaml:district_heating; scripts/prepare_sector_network.py:create_nodes_for_heat_sector"
+      - key: sector.enable.heat
+        effect: "Master switch for all heat loads including services."
+        default: "true"
+        provenance: "config.default.yaml:enable; scripts/prepare_sector_network.py:add_heat"
+
+    boundary:
+      - variant: "Scale services space heat"
+        rung: L0
+        note: "reduce_space_heat_exogenously(_factor) — but note it is shared with residential; a services-only factor is L2 (split the sectors loop in add_heat)."
+      - variant: "Services-only demand reduction or growth"
+        rung: L2
+        note: "The reduction loop in add_heat treats both sectors identically; a small edit can key the factor by sector."
+      - variant: "Services intraday profile change"
+        rung: L3
+        note: "Edit 'services space/water weekday/weekend' columns in data/heat_load_profile_BDEW.csv."
+      - variant: "Countries without UNSD services data"
+        rung: L3
+        note: "build_base_energy_totals writes NaN for the services columns when the UNSD 'services' slice is empty — totals must be supplied."
+      - variant: "Sub-sectoral services detail (offices/retail/health)"
+        rung: L5
+        note: "Nothing in either the data chain or the network; requires new data and new loads/carriers."
+
+    where:
+      - change: "Services annual totals"
+        anchor: "scripts/build_base_energy_totals.py:calc_sector ('services' branch)"
+        provenance: "scripts/build_base_energy_totals.py:total services space"
+      - change: "Profile and scaling"
+        anchor: "scripts/prepare_heat_data.py:prepare_heat_data (sectors = ['residential', 'services'])"
+        provenance: "scripts/prepare_heat_data.py:prepare_heat_data"
+      - change: "Heat-system placement (services rural / urban decentral / urban central)"
+        anchor: "scripts/prepare_sector_network.py:add_heat + create_nodes_for_heat_sector"
+        provenance: "scripts/prepare_sector_network.py:create_nodes_for_heat_sector"
+
+    data_dependencies:
+      - input: "UNSD 'services' energy consumption"
+        required_for: "Annual services heat level"
+        availability: "must be built (region-dependent; NaN where missing)"
+      - input: "ERA5 cutout + population layouts"
+        required_for: "Shape and spatial allocation (population is the proxy for services too)"
+        availability: "must be built"
+      - input: "data/heat_load_profile_BDEW.csv (services columns)"
+        required_for: "Intraday shape"
+        availability: "exists by default (Europe-derived)"
+
+    demand_dimensions:
+      driver: "UNSD services heat-commodity consumption x sector.space_heat_share (space) / remainder (water)"
+      spatial: "Population layouts (no services-specific proxy such as GDP or floor area)"
+      temporal: "Degree-days x BDEW services intraday profile (space); flat intraday (water)"
+      scenario: "Growth/efficiency CAGR files per country; services electrification shares are zeroed in prepare_energy_totals"
+
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+
+    out_of_box:
+      covers: >
+        Services space and water heat loads on 'services rural' and 'services urban decentral'
+        buses and inside the mixed 'urban central' load, via the HeatSystem enum
+        (SERVICES_RURAL, SERVICES_URBAN_DECENTRAL). Same pipeline as residential: daily
+        degree-days, BDEW services intraday columns, scaling to population-weighted
+        'total services space' / 'total services water' from JRC-IDEES Tertiary sheets
+        (SER_hh_fec rows 'Space heating' and 'Hot water', Eurostat fills) times services
+        heating efficiencies; electric services heating is subtracted from the base
+        electricity load. The exogenous space-heat reduction applies to services as well.
+        Endogenous retrofit covers services buildings too (retro_data indexed country x sector
+        including 'services'; 'urban central' uses the combined 'tot' weighting).
+      mechanism: >
+        rules build_daily_heat_demand / build_hourly_heat_demand -> prepare_sector_network:
+        build_heat_demand + add_heat looping over HeatSystem; totals via build_energy_totals
+        (JRC Tertiary) and build_population_weighted_energy_totals.
+      not_covered: >
+        No services sub-branches; no services cooling; residential heat DSM explicitly
+        excludes the pure services heat systems (only RESIDENTIAL_* and URBAN_CENTRAL get DSM
+        stores); population (not floor area or employment) is the spatial proxy.
+      provenance: "scripts/build_energy_totals.py:total services space; scripts/prepare_sector_network.py:build_heat_demand; scripts/definitions/heat_system.py:SERVICES_RURAL; scripts/prepare_sector_network.py:retro_endogen"
+
+    levers:
+      - key: sector.reduce_space_heat_exogenously
+        effect: "Scales services space heat together with residential."
+        default: "true"
+        provenance: "config/config.default.yaml:reduce_space_heat_exogenously; scripts/prepare_sector_network.py:reduce_space_heat_exogenously"
+      - key: sector.reduce_space_heat_exogenously_factor
+        effect: "Per-year reduction dict shared by both sectors."
+        default: "{2020: 0.1, ..., 2050: 0.29}"
+        provenance: "config/config.default.yaml:reduce_space_heat_exogenously_factor; scripts/prepare_sector_network.py:reduce_space_heat_exogenously_factor"
+      - key: sector.retrofitting.retro_endogen
+        effect: "Endogenous retrofit generators also on services heat buses."
+        default: "false"
+        provenance: "config/config.default.yaml:retro_endogen; scripts/prepare_sector_network.py:retro_endogen"
+      - key: sector.district_heating.potential
+        effect: "Shifts urban services heat into 'urban central'."
+        default: "0.6"
+        provenance: "config/config.default.yaml:district_heating; scripts/prepare_sector_network.py:heat_demand_weighting"
+      - key: energy.energy_totals_year
+        effect: "JRC/Eurostat year for services totals."
+        default: "2023"
+        provenance: "config/config.default.yaml:energy_totals_year; rules/build_sector.smk:energy_totals_year"
+
+    boundary:
+      - variant: "Scale services space heat per horizon"
+        rung: L0
+        note: "Shared reduce_space_heat_exogenously_factor dict (services-only factor is L2 — split the sectors loop)."
+      - variant: "Services-only reduction factor"
+        rung: L2
+        note: "The loop in prepare_sector_network applies one dE to both sectors; key it by sector."
+      - variant: "Different services profile"
+        rung: L3
+        note: "Edit services columns of data/heat_load_profile_BDEW.csv."
+      - variant: "Floor-area or employment-based spatial allocation"
+        rung: L3
+        note: "build_population_weighted_energy_totals distributes by population; an alternative key needs a new data layer plus a small change there (L2 code + L3 data)."
+      - variant: "Services sub-sector detail"
+        rung: L5
+        note: "JRC Tertiary sheets carry more detail than is extracted, but network-side sub-loads and carriers do not exist."
+
+    where:
+      - change: "Services annual totals (JRC 'Space heating' / 'Hot water')"
+        anchor: "scripts/build_energy_totals.py:idees_per_country (tertiary block)"
+        provenance: "scripts/build_energy_totals.py:Hot water"
+      - change: "Scaling and electric-heat subtraction"
+        anchor: "scripts/prepare_sector_network.py:build_heat_demand"
+        provenance: "scripts/prepare_sector_network.py:electric_heat_supply"
+      - change: "Heat-system placement"
+        anchor: "scripts/prepare_sector_network.py:add_heat + HeatSystem enum"
+        provenance: "scripts/definitions/heat_system.py:SERVICES_URBAN_DECENTRAL"
+      - change: "Spatial allocation key"
+        anchor: "rule build_population_weighted_energy_totals"
+        provenance: "rules/build_sector.smk:build_population_weighted_energy_totals"
+
+    data_dependencies:
+      - input: "JRC-IDEES Tertiary sheets (SER_hh_fec) + Eurostat FC_OTH_CP_E"
+        required_for: "Services heat totals and efficiencies"
+        availability: "exists by default (retrieved), Europe only"
+      - input: "Weather cutout + population layouts"
+        required_for: "Shape and allocation"
+        availability: "must be built"
+
+    demand_dimensions:
+      driver: "JRC-IDEES Tertiary 'Space heating'/'Hot water' per country x services heating efficiency"
+      spatial: "Population-weighted (no services-specific proxy); HeatSystem split by urban/district-heat fractions"
+      temporal: "Degree-days x BDEW services intraday profile (space); intraday only (water)"
+      scenario: "Shared reduce_space_heat_exogenously_factor per-year dict; retrofit optional"

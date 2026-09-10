@@ -12,33 +12,27 @@ when_to_use:
 models:
 - model: pypsa-eur
   coverage: ready
-  gap_assessment: >-
+  approach: >-
     Strong: the solved network prices every carrier bus at every snapshot for free,
     pypsa-eur's own summaries already emit correctly weighted weighted_prices and
-    market_values, a real dispatch-only rule (solve_operations_network) gives short-term
-    prices of a fixed fleet, and since the price-formation method landed, ceiling,
+    market_values, and a real dispatch-only rule (solve_operations_network) gives
+    short-term prices of a fixed fleet. Since the price-formation method landed, ceiling,
     resolution and duals are a verified mechanical setup rather than folklore. What
     stays manual, per the v1 essays: decomposing the series by price-setting regime
     (zero/storage/thermal/scarcity), KKT price-setter identification, revenue concentration
-    and per-technology cost-recovery ratios. Honesty rungs: the upper tail is a config
-    number — always report the VOLL and the hours-at-ceiling share beside any statistic;
-    expansion-run duals are not market forecasts (competitive benchmark of a cost-minimising
-    planner, no bidding, no demand elasticity, no market design); noisy_costs jitters
-    marginal costs by ~1e-2 EUR/MWh, so zero-price tests need a <0.1 tolerance; the
-    visible spatial spread is set by the clustering, and the policy instrument (cap
-    vs tax) flips the market-value trend.
-  recipes:
-    generation_conversion:
-    - gas-power-plants
-    - fossil-fuel-supply
-    - grid-scale-batteries
-    - hv-transmission-lines
-    - hvdc-interconnectors
-    - transmission-expansion-projects
-    demand:
-    - electricity-load
-    - demand-temporal-profiles
-    - demand-spatial-disaggregation
+    and per-technology cost-recovery ratios.
+  pitfalls:
+  - >-
+    the upper tail is a config number — always report the VOLL and the hours-at-ceiling
+    share beside any statistic
+  - >-
+    expansion-run duals are not market forecasts: a competitive benchmark of a cost-minimising
+    planner, with no bidding, no demand elasticity and no market design
+  - >-
+    noisy_costs jitters marginal costs by ~1e-2 EUR/MWh, so zero-price tests need
+    a <0.1 tolerance
+  - the visible spatial spread is set by the clustering
+  - the policy instrument (cap vs tax) flips the market-value trend
   methods:
   - id: price-formation
     role: >-
@@ -94,34 +88,29 @@ models:
     date: '2026-08-07'
 - model: pypsa-earth
   coverage: partial
-  gap_assessment: >-
+  approach: >-
     Workable but narrower than eur: the solved power network prices every bus at every
     snapshot, and the price-formation method makes ceiling, resolution and duals explicit
-    (the gh1 fixture runs the full weather year at native hourly resolution). The
-    gaps: there is no dispatch-only rule — short-term merit-order prices of a fixed
-    fleet mean freezing capacities by hand (extendable off) rather than flipping a
-    config key; treat make_summary's price tables with caution (they do not apply
-    snapshot weightings and there is no market_values output — compute weighted means
-    and capture prices from n.buses_t.marginal_price yourself, the plot cards do);
-    and the sector chain's shipped temporal rungs (144h sopts) destroy the scarcity
-    tail, so carrier prices beyond electricity are coarse-resolution only. Spatial
-    price claims inherit the OSM grid: line topology and capacities are OpenStreetMap-derived,
-    so check the country's data_quality scorecard before trusting nodal price geography,
-    and prefer zonal aggregates over single-node prices. The generic honesty rungs
-    apply unchanged: report VOLL and hours-at-ceiling beside every statistic, expansion
-    duals are a competitive benchmark not a market forecast, and noisy_costs (~1e-2
-    EUR/MWh) means zero-price tests need a <0.1 tolerance.
-  recipes:
-    generation_conversion:
-    - gas-power-plants
-    - fossil-fuel-supply
-    - grid-scale-batteries
-    - hv-transmission-lines
-    - hvdc-interconnectors
-    demand:
-    - electricity-load
-    - demand-temporal-profiles
-    - demand-spatial-disaggregation
+    (the gh1 fixture runs the full weather year at native hourly resolution). There
+    is no dispatch-only rule, so short-term merit-order prices of a fixed fleet mean
+    freezing capacities by hand (extendable off) rather than flipping a config key.
+  pitfalls:
+  - >-
+    make_summary's price tables do not apply snapshot weightings and there is no market_values
+    output — compute weighted means and capture prices from n.buses_t.marginal_price
+    yourself, as the plot cards do
+  - >-
+    the sector chain's shipped temporal rungs (144h sopts) destroy the scarcity tail,
+    so carrier prices beyond electricity are coarse-resolution only
+  - >-
+    spatial price claims inherit the OSM grid: check the country's data_quality scorecard
+    before trusting nodal price geography, and prefer zonal aggregates over single-node
+    prices
+  - >-
+    load shedding ships enabled at 100 EUR/kWh, so every default price series is silently
+    capped — report VOLL and hours-at-ceiling beside every statistic
+  - expansion duals are a competitive benchmark, not a market forecast
+  - noisy_costs (~1e-2 EUR/MWh) means zero-price tests need a <0.1 tolerance
   methods:
   - id: price-formation
     role: >-
