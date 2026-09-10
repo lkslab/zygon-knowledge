@@ -18,8 +18,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
-    date: '2026-08-02'
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
   baseline: config.de.yaml
   execution:
   - kind: config
@@ -49,11 +49,12 @@ models:
     note: 'redispatch_core.py + solve_redispatch.py + rules/redispatch.smk; patches
       Snakefile include + redispatch: config section. File-disjoint from the FBMC
       payload — the two compose.
+      Rebased on a6c45e5 (2026-09-10), not yet re-run against an a6c45e5 install.
 
       '
   - kind: invocation
-    note: 'extra target results/{run.name}/redispatch/base_s_{scenario.clusters}_
-      elec_{scenario.opts}_rd.nc; replace_verify_networks -> solved = that artifact
+    note: 'extra target results/{run.name}/redispatch/composed_{planning_horizons}_rd.nc;
+      replace_verify_networks -> solved = that artifact
       (post-redispatch dispatch + meta).
 
       '

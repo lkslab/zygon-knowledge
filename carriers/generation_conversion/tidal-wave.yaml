@@ -11,7 +11,7 @@ when_to_use:
   - "add a new renewable technology with a custom profile"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Nothing — grounded absence: no tidal, wave or marine-energy carrier,
@@ -27,8 +27,8 @@ models:
         per-cell capacity factor via func = getattr(cutout,
         resource.pop("method")) — a direct atlite Cutout method lookup, so only
         atlite conversion methods (wind, pv, ...) can ever be configured; it
-        writes profile_{clusters}_{technology}.nc (with a resource-class "bin"
-        dimension) plus regions_by_class_{clusters}_{technology}.geojson. rule
+        writes profile_{technology}.nc (with a resource-class "bin"
+        dimension) plus regions_by_class_{technology}.geojson. rule
         add_electricity requests profile_{tech} and class_regions_{tech} for
         every member of electricity.renewable_carriers (input_profile_tech /
         input_class_regions), and attach_wind_and_solar turns each profile
@@ -77,8 +77,8 @@ models:
         note: >-
           rule plumbing, not just data: add renewable.tidal + the carrier to
           renewable_carriers/extendable_carriers and a cost row (custom_costs
-          route), then produce profile_{clusters}_tidal.nc AND
-          regions_by_class_{clusters}_tidal.geojson in the exact formats
+          route), then produce profile_tidal.nc AND
+          regions_by_class_tidal.geojson in the exact formats
           (profile/p_nom_max per (bus, bin)) — build_renewable_profiles will
           claim the wildcard and fail on the missing atlite method, so exclude
           'tidal' in its wildcard_constraints and add a dedicated producer
@@ -103,7 +103,7 @@ models:
         anchor: "scripts/build_renewable_profiles.py (func = getattr on the cutout with resource.method)"
         provenance: "scripts/build_renewable_profiles.py:resource.pop"
       - change: "attaching the profile as Generators (incl. offshore connection costs)"
-        anchor: "scripts/add_electricity.py::attach_wind_and_solar (consumes input_profile_tech / input_class_regions of rule add_electricity)"
+        anchor: "scripts/add_electricity.py::attach_wind_and_solar (consumes input_profile_tech / input_class_regions of rule compose_network)"
         provenance: "scripts/add_electricity.py:attach_wind_and_solar; rules/build_electricity.smk:input_class_regions"
       - change: "marine-energy cost rows"
         anchor: "data/custom_costs.csv (costs.custom_cost_fn) via scripts/process_cost_data.py::overwrite_costs"
@@ -118,7 +118,7 @@ models:
       - input: "offshore region shapes, GEBCO bathymetry, ship density raster, natura/WDPA layers"
         required_for: "siting/eligibility of marine technologies"
         availability: "exists by default (retrieved/built by the workflow)"
-      - input: "profile_{clusters}_{technology}.nc + regions_by_class_{clusters}_{technology}.geojson in the shipped format"
+      - input: "profile_{technology}.nc + regions_by_class_{technology}.geojson in the shipped format"
         required_for: "the L4 external-profile variant"
         availability: "must be built by the user's new rule (format defined by build_renewable_profiles outputs)"
   - model: pypsa-earth

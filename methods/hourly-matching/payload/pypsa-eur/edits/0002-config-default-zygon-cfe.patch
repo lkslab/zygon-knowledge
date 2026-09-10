@@ -1,0 +1,48 @@
+--- a/config/config.default.yaml
++++ b/config/config.default.yaml
+@@ -1545,3 +1545,45 @@
+     project_name: "PyPSA-Eur"
+     email: "contact@pypsa.org"
+     website: "https://github.com/PyPSA/pypsa-eur"
++
++# Zygon methods payload `hourly-matching` / `annual-matching` — 24/7 clean
++# procurement (Riepin et al. 2024). Consumed by rules/zygon_cfe.smk ->
++# scripts/build_cfe_network.py (consumer + palette as new components cloned
++# from the zone's own), scripts/zygon_cfe_constraints.py (the matching rule,
++# added at solve time as the rule's own custom_extra_functionality) and
++# scripts/zygon_cfe_collect.py (premium, CFE score, capacity, scope 2).
++# Docs: methods/hourly-matching/spec.yaml, methods/annual-matching/spec.yaml.
++# Each variant is {window: none|year|month|hour, score: <0..1>}; `none` is
++# the no-rule counterfactual (consumer buys the grid mix, no palette).
++zygon_cfe:
++  consumer:
++    name: datacentre
++    bus: ""              # the zone's AC bus the consumer connects to
++    p_mw: 100            # flat draw in MW; or profile: <csv path> (one column, MW)
++    profile: flat
++    grid_capacity: 10    # import/export link size as a multiple of p_mw
++  palette: [onwind, solar, battery]   # + ldes (H2 chain) + firm (see below)
++  potential_share: 1.0   # share of the zone's remaining VRE potential the consumer may contract
++  firm:
++    from_carrier: nuclear  # clone of a zone generator; or explicit params:
++    # carrier: clean firm
++    # capital_cost: 300000   # EUR/MW/a (annualised)
++    # marginal_cost: 20      # EUR/MWh
++    # p_max_pu: 0.9
++  excess_share: 0.2      # annual export cap as a share of consumer demand (Riepin: 20%)
++  credit_storage:        # does NET storage (delivered - drawn) count towards the rule
++    hour: true
++    month: true
++    year: false          # a battery charged on fossil power satisfies an annual rule
++  charge_from_portfolio_only: false  # stricter option: storage charges from contracted generators only (credit is net anyway)
++  basis:                 # what counts as matched supply per window
++    year: available      # available generation of the contracted plants (p_max_pu x p_nom): the PPA volume, curtailed or sold
++    month: available
++    hour: dispatched     # dispatched generation + net storage - excess sold: what the consumer actually used (Riepin Eq. 2)
++  grid_cfe:
++    series: null         # csv (snapshot, cfe) crediting grid imports; null = imports uncredited (linear)
++  reference: nomatch
++  variants: {}
++  labels: []
++  networks: []
++  indicators: [procurement_cost, premium, system_cost_delta, cfe_score, procured_capacity, scope2_emissions, grid_exchange]

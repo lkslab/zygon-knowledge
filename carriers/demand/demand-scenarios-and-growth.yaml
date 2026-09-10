@@ -130,7 +130,7 @@ models:
       temporal: "Annual totals only; profiles applied downstream (see demand-temporal-profiles)"
       scenario: "{demand} wildcard (AB/AP/BU/NZ/DF) x {planning_horizons} selecting {TAG}_{year} keys of sector share dicts; CAGR tables shared across tags"
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >-
         Rule build_energy_totals compiles historical country energy balances per
@@ -140,7 +140,8 @@ models:
         weighting, shipping, transport data). Future change is NOT modelled by
         growth factors: totals stay at the base-year level, and the scenario
         dimension enters through per-year config dicts resolved against the
-        {planning_horizons} wildcard by the helper get(item, investment_year) —
+        planning_horizons list (one compose_network run per horizon) by the
+        helper get(item, investment_year) —
         e.g. sector.land_transport_electric_share {2020: 0, ..., 2050: 1} in
         add_land_transport, shipping shares, and industry transformation keys like
         industry.St_primary_fraction consumed by
@@ -165,7 +166,7 @@ models:
         effect: "Which historical year of the multi-year energy-totals table anchors sectoral demand (2013-2023 from JRC-IDEES/eurostat)."
         default: "2023"
         provenance: "config/config.default.yaml:energy_totals_year ; scripts/build_population_weighted_energy_totals.py:energy_totals_year"
-      - key: scenario.planning_horizons
+      - key: planning_horizons
         effect: "Investment years; the key against which all per-year sector/industry dicts are resolved via get()."
         default: "[2050]"
         provenance: "config/config.default.yaml:planning_horizons ; scripts/_helpers.py:investment_year"
@@ -228,4 +229,4 @@ models:
       driver: "Historical statistics (JRC-IDEES/eurostat/Swiss) frozen at energy.energy_totals_year"
       spatial: "Country level here; nodal keys downstream"
       temporal: "Annual totals; profiles downstream"
-      scenario: "Per-year config dicts resolved by get() against {planning_horizons}; named scenarios via run.scenarios config overrides — no growth-factor machinery"
+      scenario: "Per-year config dicts resolved by get() against the planning_horizons list; named scenarios via run.scenarios config overrides — no growth-factor machinery"

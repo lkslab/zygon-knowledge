@@ -152,14 +152,13 @@ models:
       scenario: "{demand} wildcard tags the scenario files; per-country CAGR columns and demand_data.base_year set the growth path"
 
   - model: pypsa-eur
-    version_anchor: { ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23" }
+    version_anchor: { ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09" }
 
     out_of_box:
       covers: >
         Pulp production, Paper production and Printing and media reproduction as three
         separate subsectors with physical production (kt), country-specific energy
-        intensities per carrier, plant-site spatial allocation, and optional
-        endogenous temperature-banded process-heat supply.
+        intensities per carrier and plant-site spatial allocation.
       mechanism: >
         build_industrial_energy_demand_per_country_today reads JRC-IDEES energy-balance
         sheets FC_IND_PPP_PU_E (Pulp production), FC_IND_PPP_PA_E (Paper production)
@@ -171,49 +170,27 @@ models:
         pulping thermal and paper-machine/product-finishing steam assigned to biomass,
         the rest electrified; no process emissions); build_industry_sector_ratios_intermediate
         blends today's ratios toward these with industry.sector_ratios_fraction_future.
-        build_industry_sector_ratios_endogenous instead splits the heat carriers into
-        temperature bands using Fleiter et al. 2025 'Paper products' rows (Chemical/
-        Mechanical pulp, Paper), with the Mechanical pulp row overridden to the
-        100-200C band. Production is unchanged into the future
+        Production is unchanged into the future
         (build_industrial_production_per_country_tomorrow only modifies steel/aluminium/HVC),
         nodally distributed by hotmaps 'Paper and printing' sites
         (sector_mapping in build_industrial_production_per_node), multiplied with
         ratios in build_industrial_energy_demand_per_node, and turned into loads in
-        add_industry: constant exogenous loads, or with sector.industry_t.endogen the
-        band demands become 'heat100-200 industry' etc. buses with competing supply
-        links (biomass, gas w/wo CC, industrial heat pump, electric boiler, hydrogen
-        depending on band) at must_run p_min_pu.
+        add_industry as constant exogenous loads.
       not_covered: >
         No explicit black-liquor byproduct credit or recovery-boiler representation —
         pulping thermal demand is simply carried as solid biomass (the string 'black
         liquor' does not occur in the code); no production growth/decline lever for
         this sector (production tomorrow = today); no route-switching key like steel's
-        primary fractions — fuel switching for process heat runs exclusively through
-        the cross-cutting sector.industry_t temperature-band machinery; loads are
+        primary fractions and no temperature-resolved process heat — fuel switching
+        is only reachable through the exogenous future ratios; loads are
         annual-constant (no intra-year profile).
-      provenance: "scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_PPP_PU_E; scripts/build_industry_sector_ratios.py:pulp_paper_printing; scripts/build_industry_sector_ratios_endogenous.py:Mechanical pulp; scripts/build_industrial_production_per_node.py:sector_mapping; scripts/prepare_sector_network.py:add_t_industry100_200"
+      provenance: "scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_PPP_PU_E; scripts/build_industry_sector_ratios.py:pulp_paper_printing; scripts/build_industrial_production_per_node.py:sector_mapping; scripts/prepare_sector_network.py:add_industry"
 
     levers:
       - key: sector.industry
         effect: "Master switch for industrial demand incl. pulp, paper & printing."
         default: "true"
         provenance: "config/config.default.yaml:industry; scripts/prepare_sector_network.py:options[\"industry\"]"
-      - key: sector.industry_t.endogen
-        effect: "Switches from fixed-carrier exogenous industry loads to temperature-banded process-heat demand with endogenous supply-technology choice."
-        default: "false"
-        provenance: "config/config.default.yaml:endogen; scripts/prepare_sector_network.py:options[\"industry_t\"][\"endogen\"]"
-      - key: sector.industry_t.endogenise_sectors.Pulp production
-        effect: "Per-sector opt-out: false keeps pulp production's heat as flat fuels (exogenous treatment) even when endogen is on; same keys exist for 'Paper production' and 'Printing and media reproduction'."
-        default: "true"
-        provenance: "config/config.default.yaml:endogenise_sectors; scripts/build_industry_sector_ratios_endogenous.py:endogenise_sectors"
-      - key: sector.industry_t.must_run
-        effect: "p_min_pu of the band supply links — how baseload the industrial heat supply must run."
-        default: "0.8"
-        provenance: "config/config.default.yaml:must_run; scripts/prepare_sector_network.py:must_run"
-      - key: sector.industry_t.heat100-200.heat_pumps
-        effect: "Allows industrial heat pumps in the 100-200C band (sibling keys: biomass, methane, electric_boiler; heat200-500 and heat>500 have biomass/methane/hydrogen sets) — this is where 'electrify paper process heat' is decided."
-        default: "true"
-        provenance: "config/config.default.yaml:heat_pumps; scripts/prepare_sector_network.py:add_t_industry100_200"
       - key: industry.sector_ratios_fraction_future
         effect: "Per-year blend between today's country energy intensities and the future best-in-class ratios (1.0 = fully transformed sector ratios)."
         default: "{2020: 0.0, 2025: 0.05, 2030: 0.2, 2035: 0.45, 2040: 0.7, 2045: 0.85, 2050: 1.0}"
@@ -229,20 +206,14 @@ models:
 
     boundary:
       - variant: "Let the model choose how paper process heat is supplied (electrify vs biomass vs gas vs H2)"
-        rung: L0
-        note: "Flip sector.industry_t.endogen: true — pulp/paper/printing are in endogenise_sectors by default; the cross-cutting band machinery, not a sector-specific key, carries this ask."
-      - variant: "Force or forbid specific band technologies (e.g. only heat pumps in 100-200C)"
-        rung: L1
-        note: "sector.industry_t.heat100-200/heat200-500/heat>500 tech flags + must_run."
+        rung: L4
+        note: "Upstream has no temperature-band process-heat machinery: the carrier split is fixed by the JRC ratios and placed by add_industry as flat loads. Needs a new ratio-splitting script plus band buses and competing supply links (reference implementation on the fork branch endogenous-industry-heat, not part of this anchor)."
       - variant: "Faster/slower efficiency transformation of the sector"
         rung: L1
         note: "industry.sector_ratios_fraction_future per-year values."
       - variant: "Change pulp/paper production trajectory (growth, decline, relocation)"
         rung: L2
         note: "No config key — build_industrial_production_per_country_tomorrow leaves these sectors untouched; add a scaling for the pulp/paper columns there (small localised edit)."
-      - variant: "Change the temperature-band split assumed for pulping or paper machines"
-        rung: L2
-        note: "Edit process_temperature_band_mapper (Fleiter rows) or the Mechanical pulp override in build_industry_sector_ratios_endogenous.py."
       - variant: "Change the exogenous future carrier assumption (e.g. steam to hydrogen instead of biomass)"
         rung: L2
         note: "Edit pulp_paper_printing() in build_industry_sector_ratios.py."
@@ -254,18 +225,15 @@ models:
       - change: "Production trajectory"
         anchor: "rule build_industrial_production_per_country_tomorrow / its script"
         provenance: "scripts/build_industrial_production_per_country_tomorrow.py:industrial_production_per_country_tomorrow"
-      - change: "Temperature-band shares"
-        anchor: "process_temperature_band_mapper + Mechanical pulp override, build_industry_sector_ratios_endogenous.py (input data/ente202300981-sup-0001-suppdata-s1.xlsx)"
-        provenance: "scripts/build_industry_sector_ratios_endogenous.py:process_temperature_band_mapper; rules/build_sector.smk:process_temperature_bands"
       - change: "Exogenous future intensities"
         anchor: "pulp_paper_printing() in build_industry_sector_ratios.py"
         provenance: "scripts/build_industry_sector_ratios.py:pulp_paper_printing"
       - change: "Spatial allocation"
         anchor: "hotmaps 'Paper and printing' Subsector keys in build_industrial_distribution_key.py; sector_mapping in build_industrial_production_per_node.py"
         provenance: "scripts/build_industrial_distribution_key.py:prepare_hotmaps_database; scripts/build_industrial_production_per_node.py:sector_mapping"
-      - change: "Band supply technologies"
-        anchor: "add_t_industry100_200 / add_t_industry200_500 / add_t_industry500 in prepare_sector_network.py"
-        provenance: "scripts/prepare_sector_network.py:add_t_industry100_200; scripts/prepare_sector_network.py:add_t_industry200_500; scripts/prepare_sector_network.py:add_t_industry500"
+      - change: "Load placement per carrier"
+        anchor: "add_industry in prepare_sector_network.py"
+        provenance: "scripts/prepare_sector_network.py:add_industry"
 
     data_dependencies:
       - input: "JRC-IDEES 2021/2023 EnergyBalance + Industry workbooks (rule retrieve_jrc_idees)"
@@ -277,14 +245,11 @@ models:
       - input: "Hotmaps Industrial_Database.csv (rule retrieve_hotmaps_industrial_sites)"
         required_for: "'Paper and printing' site-based distribution keys"
         availability: "exists by default via retrieval; population fallback where no sites"
-      - input: "data/ente202300981-sup-0001-suppdata-s1.xlsx (Fleiter et al. 2025 temperature bands)"
-        required_for: "endogenous band splitting"
-        availability: "exists by default (shipped in data/)"
 
     demand_dimensions:
       driver: "Physical production (kt pulp/paper, kt paper eq. printing) x MWh/t sector ratios per country"
       spatial: "Hotmaps 'Paper and printing' sites weighted by ETS/EPRTR emissions; population fallback"
-      temporal: "Annual-constant loads (p_set = annual/nhours); endogenous bands add constant heat demand served by dispatchable links with must_run floor"
+      temporal: "Annual-constant loads (p_set = annual/nhours)"
       scenario: "planning_horizons drives sector_ratios_fraction_future interpolation; production constant across horizons for this sector"
 
 reference_taxonomy:

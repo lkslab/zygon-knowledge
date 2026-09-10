@@ -18,7 +18,7 @@ when_to_use:
   - "known in pypsa-eur as: home battery, home battery storage, home battery charger, home battery discharger"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Sector runs build the full BTM set by default. With
@@ -37,7 +37,7 @@ models:
         bin, same p_max_pu profile) on the LV buses, priced at the
         "solar-rooftop" cost row while utility solar is re-priced to
         "solar-utility"; their p_nom_max comes from rule
-        build_clustered_solar_rooftop_potentials. A "home battery" Bus + Store
+        build_solar_rooftop_potentials. A "home battery" Bus + Store
         (cost row "home battery storage") with "home battery charger" /
         "home battery discharger" Links (cost row "home battery inverter")
         completes the set — charger and discharger sizes are tied by
@@ -56,11 +56,11 @@ models:
         existing_capacities.solar_rooftop_ratio (default 0.5) in
         add_existing_baseyear.
       mechanism: >
-        rule prepare_sector_network runs
+        rule compose_network runs
         scripts/prepare_sector_network.py::insert_electricity_distribution_grid
         (gated on options["electricity_distribution_grid"]); rooftop p_nom_max
         per (bus, resource-class bin) is built by rule
-        build_clustered_solar_rooftop_potentials from the population layout and
+        build_solar_rooftop_potentials from the population layout and
         the solar class regions — the input is only requested when "solar" is in
         electricity.renewable_carriers. insert_gas_distribution_costs adds gas
         distribution grid cost to micro CHP and decentral gas boilers
@@ -75,20 +75,19 @@ models:
         file but the home battery Store and charger/discharger are unbounded
         extendables with no adoption cap key. The rooftop potential assumption
         (0.1 kW/m2 x 20 m2/person) is HARDCODED in
-        build_clustered_solar_rooftop_potentials.py — unlike pypsa-earth there
+        build_solar_rooftop_potentials.py — unlike pypsa-earth there
         are no kW_per_m2/m2_per_person config keys and no building-footprint
         option. There is no home-battery on/off config switch either — the
         Store comes unconditionally with the LV layer.
         sector.electricity_distribution_grid_cost_factor is a DEAD KEY at this
-        ref: it exists in config, is validated, and is set by the "dist" opts
-        wildcard (update_config_from_wildcards), but no script reads it —
+        ref: it exists in config and is validated, but no script reads it —
         distribution grid cost scaling only works via adjustments.sector (the
         shipped config example is exactly this factor). No BTM assets exist in
         the electricity-only workflow; the whole block lives in
         prepare_sector_network. Rooftop generators do not receive the
         "electricity grid connection" cost adder (add_electricity_grid_connection
         only touches onwind/solar/solar-hsat).
-      provenance: "scripts/prepare_sector_network.py:insert_electricity_distribution_grid; scripts/build_clustered_solar_rooftop_potentials.py:build_clustered_solar_rooftop_potentials; scripts/solve_network.py:add_battery_constraints; scripts/prepare_sector_network.py:heat dsm; scripts/_helpers.py:electricity_distribution_grid_cost_factor; scripts/add_existing_baseyear.py:solar_rooftop_ratio"
+      provenance: "scripts/prepare_sector_network.py:insert_electricity_distribution_grid; scripts/build_solar_rooftop_potentials.py:build_solar_rooftop_potentials; scripts/solve_network.py:add_battery_constraints; scripts/prepare_sector_network.py:heat dsm; scripts/add_existing_baseyear.py:solar_rooftop_ratio"
     levers:
       - key: sector.electricity_distribution_grid
         effect: "Master switch for the LV layer; false removes the low voltage buses, the distribution Link, rooftop solar and home batteries in one flip (loads stay on the HV bus)."
@@ -101,7 +100,7 @@ models:
       - key: adjustments.sector
         effect: "Per-component/carrier attribute factor or absolute overrides applied after network assembly — the WORKING way to scale distribution grid cost (the shipped example is factor.Link.'electricity distribution grid'.capital_cost: 1.0) or to cap BTM assets (e.g. absolute.Store.'home battery'.e_nom_max)."
         default: "{factor: {Link: {electricity distribution grid: {capital_cost: 1.0}}}, absolute: false}"
-        provenance: "config/config.default.yaml:adjustments; scripts/prepare_network.py:modify_attribute; scripts/prepare_sector_network.py:maybe_adjust_costs_and_potentials"
+        provenance: "config/config.default.yaml:adjustments; scripts/prepare_network.py:modify_attribute; scripts/prepare_network.py:maybe_adjust_costs_and_potentials"
       - key: electricity.renewable_carriers
         effect: "Rooftop only exists if 'solar' is listed: the potentials input is conditional on it and the rooftop generators are clones of the utility solar generators."
         default: "[solar, solar-hsat, onwind, offwind-ac, offwind-dc, offwind-float, hydro]"
@@ -141,16 +140,16 @@ models:
         note: "sector.chp.micro_chp: true (see combined-heat-and-power carrier card)"
       - variant: "scale distribution grid cost"
         rung: L1
-        note: "adjustments.sector.factor.Link.'electricity distribution grid'.capital_cost (ships as the config example); do NOT use sector.electricity_distribution_grid_cost_factor or the 'dist' wildcard — the key is read by nothing"
+        note: "adjustments.sector.factor.Link.'electricity distribution grid'.capital_cost (ships as the config example); do NOT use sector.electricity_distribution_grid_cost_factor — the key is read by nothing"
       - variant: "cap home battery or rooftop adoption (policy scenario)"
         rung: L1
         note: "adjustments.sector absolute/factor on Store 'home battery' e_nom_max or Generator 'solar rooftop' p_nom_max; per-node caps need an edit in insert_electricity_distribution_grid (L2)"
       - variant: "change rooftop potential assumptions (kW/m2, m2/person)"
         rung: L2
-        note: "hardcoded '0.1 * 20 * pop' in build_clustered_solar_rooftop_potentials.py — no config key exists (pypsa-earth has one; eur does not)"
+        note: "hardcoded '0.1 * 20 * pop' in build_solar_rooftop_potentials.py — no config key exists (pypsa-earth has one; eur does not)"
       - variant: "rooftop potential from building footprints or an external dataset"
         rung: L3
-        note: "author resources/solar_rooftop_potentials_s_{clusters}.csv in the (bus, bin) format the rule outputs — data swap, no new components"
+        note: "author resources/solar_rooftop_potentials.csv in the (bus, bin) format the rule outputs — data swap, no new components"
       - variant: "retail tariff / net-metering behaviour"
         rung: L5
         note: "no tariff concept; needs bespoke cost/constraint logic distinguishing BTM flows from grid flows (custom_extra_functionality is the hook, see virtual-power-plants carrier card)"
@@ -162,11 +161,11 @@ models:
         note: "the whole block lives in prepare_sector_network; replicating it in add_electricity is bespoke"
     where:
       - change: "all BTM asset definitions, LV re-pointing, loss deduction, adoption caps"
-        anchor: "scripts/prepare_sector_network.py::insert_electricity_distribution_grid (rule prepare_sector_network, gated on sector.electricity_distribution_grid)"
+        anchor: "scripts/prepare_sector_network.py::insert_electricity_distribution_grid (called from rule compose_network, gated on sector.electricity_distribution_grid)"
         provenance: "scripts/prepare_sector_network.py:insert_electricity_distribution_grid"
       - change: "rooftop potential computation (hardcoded density assumptions)"
-        anchor: "scripts/build_clustered_solar_rooftop_potentials.py (rule build_clustered_solar_rooftop_potentials)"
-        provenance: "rules/build_sector.smk:build_clustered_solar_rooftop_potentials"
+        anchor: "scripts/build_solar_rooftop_potentials.py (rule build_solar_rooftop_potentials)"
+        provenance: "rules/build_sector.smk:build_solar_rooftop_potentials"
       - change: "residential heat DSM store and its profile"
         anchor: "scripts/prepare_sector_network.py::add_heat ('heat dsm' block) and scripts/build_hourly_heat_demand.py::heat_dsm_profile (rule build_hourly_heat_demand)"
         provenance: "scripts/prepare_sector_network.py:heat dsm; scripts/build_hourly_heat_demand.py:heat_dsm_profile"
@@ -176,11 +175,11 @@ models:
       - change: "existing rooftop vintages in brownfield runs"
         anchor: "scripts/add_existing_baseyear.py::add_power_capacities_installed_before_baseyear (solar_rooftop_ratio split)"
         provenance: "scripts/add_existing_baseyear.py:add_power_capacities_installed_before_baseyear"
-      - change: "dead cost-factor key and the 'dist' wildcard that sets it"
-        anchor: "scripts/_helpers.py::update_config_from_wildcards (dist opts) — repair means wiring the factor into insert_electricity_distribution_grid"
-        provenance: "scripts/_helpers.py:update_config_from_wildcards"
+      - change: "dead cost-factor key"
+        anchor: "scripts/lib/validation/config/sector.py::electricity_distribution_grid_cost_factor — repair means wiring the factor into insert_electricity_distribution_grid"
+        provenance: "scripts/lib/validation/config/sector.py:electricity_distribution_grid_cost_factor; scripts/prepare_sector_network.py:insert_electricity_distribution_grid"
     data_dependencies:
-      - input: "population layout + cutout + solar class regions (inputs of rule build_clustered_solar_rooftop_potentials)"
+      - input: "population layout + cutout + solar class regions (inputs of rule build_solar_rooftop_potentials)"
         required_for: "rooftop p_nom_max per (bus, bin)"
         availability: "exists by default (built by the workflow)"
       - input: "cost rows 'solar-rooftop', 'solar-utility', 'home battery storage', 'home battery inverter', 'battery inverter', 'battery storage', 'electricity distribution grid', 'micro CHP', 'decentral water tank storage' (standing losses for heat DSM)"

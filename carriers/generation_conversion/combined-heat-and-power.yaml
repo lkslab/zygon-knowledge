@@ -21,7 +21,7 @@ when_to_use:
   - "known in pypsa-eur as: CHP, CHP CC, CHP heat, CHP electric, urban central gas CHP, urban central gas CHP CC, urban central solid biomass CHP, urban central solid biomass CHP CC"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Sector runs build extendable greenfield CHP by default. With
@@ -52,7 +52,7 @@ models:
         — a genuine existing-CHP representation for biomass (gas/coal CHP
         plants are rebuilt power-only as OCGT/CCGT/coal links).
       mechanism: >
-        rule prepare_sector_network runs scripts/prepare_sector_network.py:
+        rule compose_network runs scripts/prepare_sector_network.py:
         add_heat creates heat buses per node (urban central buses exist where
         the district heating share from build_district_heat_share is nonzero)
         and adds the gas/other-fuel CHP and micro CHP; add_biomass adds the
@@ -188,7 +188,7 @@ models:
         availability: "exists by default (add_co2_tracking)"
       - input: "powerplantmatching Bioenergy fleet + existing_heating distribution"
         required_for: "brownfield biomass CHP in myopic runs"
-        availability: "retrieved/built by the workflow (rule add_existing_baseyear inputs)"
+        availability: "retrieved/built by the workflow (add_existing_baseyear inputs of rule compose_network)"
   - model: pypsa-earth
     version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
 

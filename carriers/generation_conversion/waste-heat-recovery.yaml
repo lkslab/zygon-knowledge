@@ -16,7 +16,7 @@ when_to_use:
   - "industrial heat integration"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Power-to-X waste heat is covered, on by default, for exactly six
@@ -35,16 +35,17 @@ models:
         freely in the district-heating merit order and effectively raises the
         donor's economics wherever DH demand exists.
       mechanism: >
-        rule prepare_sector_network calls add_waste_heat AFTER the supply
+        rule compose_network calls add_waste_heat AFTER the supply
         blocks have created the donor links; it edits n.links in place
         (bus2/bus3/bus4 = "urban central heat", efficiencyN as above) only
         for links whose node hosts an urban central heat bus — nodes without
         district heating recover nothing. The waste-heat fractions multiply
         directly into the link efficiencies.
       not_covered: >
-        No INDUSTRIAL process waste heat: cement kilns, steel, glass, the
-        "gas for industry" links and the new industry_t temperature-band
-        links have no heat byproduct output — industry only consumes heat.
+        No INDUSTRIAL process waste heat: cement kilns, steel, glass and the
+        "gas for industry" / "solid biomass for industry" links have no heat
+        byproduct output — industry only consumes heat, as flat loads with
+        no temperature resolution.
         DAC is a heat CONSUMER (add_dac draws from urban central /
         services urban decentral heat), not a donor. SMR, biogas upgrading
         and nuclear have no waste-heat hook. Process-emission capture heat is
@@ -101,13 +102,13 @@ models:
         note: "add a block in add_waste_heat assigning a spare busN + efficiencyN on that carrier's links, mirroring the Sabatier block"
       - variant: "industrial excess heat (cement/steel/glass) into district heating"
         rung: L2
-        note: "mechanically: give e.g. the 'heat>500 industry gas' links in add_t_industry500 an extra urban-central-heat output; a defensible potential-based version needs excess-heat data per site and temperature (L3), and a proper representation with recovery investment cost is L5"
+        note: "mechanically: give the 'gas for industry' / 'solid biomass for industry' links in add_industry an extra urban-central-heat output (bus/efficiency pair, mirroring add_waste_heat); a defensible potential-based version needs excess-heat data per site and temperature (L3), and a proper representation with recovery investment cost is L5"
       - variant: "waste heat as heat-pump SOURCE instead of direct use"
         rung: L5
         note: "district heating heat-pump sources are configured heat sources (heat_pump_sources) with dedicated potential rules — no industrial-excess-heat source chain exists (limited_heat_sources knows geothermal and river_water only)"
-      - variant: "on-site reuse within industry (cascading between temperature bands)"
-        rung: L2
-        note: "no such link; a band-to-band Link (heat>500 -> heat100-200 bus) in the add_t_industry functions would be a small localised edit"
+      - variant: "on-site reuse within industry (cascading between temperature levels)"
+        rung: L4
+        note: "industry has no temperature-resolved heat buses upstream, so there is nothing to cascade between; needs a banded process-heat representation first (reference implementation: fork branch endogenous-industry-heat, not part of this anchor)"
       - variant: "ORC electricity from waste heat"
         rung: L5
         note: "no ORC technology; needs new links + cost rows and a heat source to draw on"
@@ -118,9 +119,9 @@ models:
       - change: "which nodes can receive waste heat"
         anchor: "scripts/prepare_sector_network.py::add_heat (urban central heat bus creation, district heat share)"
         provenance: "scripts/prepare_sector_network.py:add_heat"
-      - change: "industrial band links that could donate heat"
-        anchor: "scripts/prepare_sector_network.py::add_t_industry200_500 / ::add_t_industry500"
-        provenance: "scripts/prepare_sector_network.py:add_t_industry500"
+      - change: "industrial fuel links that could donate heat"
+        anchor: "scripts/prepare_sector_network.py::add_industry ('gas for industry', 'solid biomass for industry' links)"
+        provenance: "scripts/prepare_sector_network.py:add_industry"
       - change: "Haber-Bosch waste-heat conversion factors"
         anchor: "config industry.MWh_H2_per_tNH3_electrolysis / MWh_elec_per_tNH3_electrolysis / MWh_NH3_per_tNH3 (cf_industry in add_waste_heat)"
         provenance: "config/config.default.yaml:MWh_NH3_per_tNH3; scripts/prepare_sector_network.py:MWh_NH3_per_tNH3"

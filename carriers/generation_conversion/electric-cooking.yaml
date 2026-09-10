@@ -16,7 +16,7 @@ when_to_use:
   - "kerosene to electric stove"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         NO cooking TECHNOLOGY exists — there is nothing to build, retire or
@@ -53,7 +53,7 @@ models:
         nothing in the network because the gas was never demanded. There is no
         equivalent of pypsa-earth's fuel_shares 'to elec' reallocation
         machinery in this model.
-      provenance: "scripts/build_energy_totals.py:total residential cooking; scripts/build_energy_totals.py:Catering; scripts/prepare_sector_network.py:build_heat_demand; scripts/build_energy_totals.py:build_co2_totals; scripts/build_swiss_energy_balances.py:electricity residential cooking"
+      provenance: "scripts/build_energy_totals.py:total residential cooking; scripts/build_energy_totals.py:Catering; scripts/prepare_sector_network.py:build_heat_demand; scripts/build_co2_totals.py:build_co2_totals; scripts/build_swiss_energy_balances.py:electricity residential cooking"
     levers:
       - key: energy.energy_totals_year
         effect: "Base year of the energy totals holding the (unused) cooking columns and of the CO2 baseline that implicitly contains cooking fuel emissions."

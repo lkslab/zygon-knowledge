@@ -17,36 +17,40 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
-    date: '2026-08-01'
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
   baseline: null
   execution:
   - kind: config
     key: foresight
     value: myopic
-    note: 'swaps solve_overnight.smk for solve_myopic.smk in the DAG — add_existing_baseyear
-      on the first horizon, add_brownfield after.
+    note: 'no separate myopic rule set at a6c45e5 (the streamlined workflow, #1838):
+      rules/compose.smk chains compose_network per horizon — add_existing_baseyear
+      seeds the first horizon, later horizons read the previous solved network
+      (input network_previous) and apply add_brownfield inside compose_network;
+      solve_network then solves solved_{horizon}.nc in sequence. Rebased on a6c45e5
+      2026-09-10, not yet re-run.
 
       '
   - kind: config
-    key: scenario.planning_horizons
+    key: planning_horizons
     value:
     - 2030
     - 2050
-    note: 'two horizons keep the job count inside the budget gate; the harness fans
+    note: 'top-level list at a6c45e5 (the old scenario.planning_horizons wildcard is
+      gone); two horizons keep the job count inside the budget gate; the harness fans
       the profile''s target templates out per horizon.
 
       '
   - kind: invocation
     note: 'no target changes needed — the baseline profile''s prepared and solved
-      templates carry {scenario.planning_horizons} and render one head per horizon;
-      artifacts land per horizon automatically.
+      templates carry {planning_horizons} and render one composed_/solved_ head per
+      horizon; artifacts land per horizon automatically.
 
       '
   invalidates:
-  - add_existing_baseyear
-  - add_brownfield
-  - solve_sector_network_myopic
+  - compose_network
+  - solve_network
   budget:
     jobs: 21
     class: hour

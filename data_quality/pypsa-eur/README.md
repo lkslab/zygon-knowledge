@@ -3,7 +3,10 @@
 Answers: *before running pypsa-eur for country X, which inputs are real data,
 which silently degrade to proxies, and which silently disappear?* Scope: the
 34 countries in `config/config.default.yaml` `countries:` (EU27 subset +
-AL BA CH GB ME MK NO RS XK). Version anchor: `849c8858` (2026-07-23).
+AL BA CH GB ME MK NO RS XK). Version anchor: `a6c45e5a` (upstream master, 2026-09-09;
+the country cards were assessed at the previous anchor `849c8858` and re-anchored on
+2026-09-10 — the dataset chain they describe is unchanged in substance, but the
+consumer scripts moved: see `datasets.yaml` for the current `consumer:` paths).
 
 ## Grading
 

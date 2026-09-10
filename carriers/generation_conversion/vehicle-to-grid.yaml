@@ -18,7 +18,7 @@ when_to_use:
   - "known in pypsa-eur as: V2G"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Covered and ON by default (sector.v2g: true), sized by the EV share. In
@@ -39,7 +39,7 @@ models:
         and its usefulness for the transmission level is limited by
         distribution capacity.
       mechanism: >
-        rule prepare_sector_network -> add_land_transport -> add_EVs: the V2G
+        rule compose_network -> add_land_transport -> add_EVs: the V2G
         n.add runs only if options["bev_dsm"] AND options["v2g"] are both true
         and the electric share > 0. Availability/DSM profiles come from rule
         build_transport_demand (bev_availability_profile, bev_dsm_profile).
@@ -121,10 +121,10 @@ models:
         anchor: "scripts/solve_network.py::extra_functionality"
         provenance: "scripts/solve_network.py:extra_functionality"
     data_dependencies:
-      - input: "transport_data_s_{clusters}.csv 'number cars' (JRC-IDEES / Swiss BFS)"
+      - input: "transport_data.csv 'number cars' (JRC-IDEES / Swiss BFS)"
         required_for: "V2G p_nom sizing"
         availability: "must be built (rules build_energy_totals -> build_transport_demand)"
-      - input: "avail_profile_s_{clusters}.csv (from BASt pkw.csv)"
+      - input: "avail_profile.csv (from BASt pkw.csv)"
         required_for: "V2G p_max_pu"
         availability: "must be built (rule build_transport_demand); German weekly pattern Europe-wide"
       - input: "EV battery Store (bev_dsm chain)"

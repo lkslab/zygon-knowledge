@@ -23,7 +23,7 @@ when_to_use:
   - "known in pypsa-eur as: land transport EV, EV battery"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Fully covered as an exogenous-share demand technology, and ON by
@@ -37,7 +37,7 @@ models:
         by the German Federal Highway Research Institute (BASt, kfz.csv = all
         motor vehicles, rule build_mobility_profiles), applied Europe-wide in
         each node's local time, with the ICE heating/cooling correction divided
-        out. In rule prepare_sector_network, add_land_transport calls add_EVs
+        out. In rule compose_network, add_land_transport calls add_EVs
         whenever the electric share > 0, which adds per node: an "EV battery"
         bus, a "land transport EV" Load whose p_set divides the km demand by a
         temperature-corrected efficiency (transport_electric_efficiency 53.19
@@ -139,7 +139,7 @@ models:
         note: "replace the kfz.csv/pkw.csv inputs of rule build_transport_demand (built from BASt zip files by rule build_mobility_profiles) with local weekly count data in the same day-hour format"
       - variant: "own transport demand series or car stock"
         rung: L3
-        note: "override transport_data.csv ('number cars', 'average fuel efficiency' from rule build_energy_totals) or the transport_demand_s_{clusters}.csv resource"
+        note: "override transport_data.csv ('number cars', 'average fuel efficiency' from rule build_energy_totals) or the transport_demand.csv resource"
       - variant: "separate car segments (trucks, buses) with own electrification"
         rung: L3
         note: "see electric-heavy-trucks / electric-buses carrier cards — the JRC-IDEES sub-segment energy columns exist in energy_totals.csv but are unused"
@@ -148,7 +148,7 @@ models:
         note: "shares are exogenous scalars multiplied into fixed Loads; making uptake a decision variable needs new component logic and constraints coupling the three engine types"
     where:
       - change: "EV bus/load/charger/store/V2G creation and all bev_* parameter consumption"
-        anchor: "scripts/prepare_sector_network.py::add_EVs (called from ::add_land_transport, rule prepare_sector_network)"
+        anchor: "scripts/prepare_sector_network.py::add_EVs (called from ::add_land_transport, rule compose_network)"
         provenance: "scripts/prepare_sector_network.py:add_EVs; scripts/prepare_sector_network.py:add_land_transport"
       - change: "km demand construction (energy totals -> driven km, weekly shape, temperature correction)"
         anchor: "scripts/build_transport_demand.py::build_transport_demand (rule build_transport_demand)"
@@ -169,7 +169,7 @@ models:
       - input: "BASt mobility profiles kfz.csv (demand shape) and pkw.csv (plug-in availability)"
         required_for: "weekly transport demand and charger availability profiles"
         availability: "retrieved or built by the workflow (rules retrieve_mobility_profiles / build_mobility_profiles); German data applied Europe-wide"
-      - input: "temp_air_total_base_s_{clusters}.nc (ambient temperature per node)"
+      - input: "temp_air_total.nc (ambient temperature per node)"
         required_for: "temperature-dependent EV efficiency"
         availability: "must be built (heat workflow temperature chain); exists by default in sector runs"
       - input: "pop_weighted_energy_totals (total road, total rail, electricity rail columns)"

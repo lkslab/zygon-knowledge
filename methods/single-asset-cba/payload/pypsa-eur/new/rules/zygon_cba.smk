@@ -2,14 +2,20 @@
 #
 # Single-asset CBA (TOOT/PINT) — zygon methods payload `single-asset-cba`
 # (pypsa-eur tree). ENTSO-E CBA-guideline project assessment: each variant is
-# the SETTLED prepared sector network with an ordered operation list applied
-# (config: zygon_cba.variants — the reference label carries an empty list and
-# is re-solved untouched; pint-*/toot-* labels put one asset in / take one
-# out, an asset possibly spanning several components). solve_cba_network
-# mirrors the model's own solve_sector_network and runs
-# scripts/solve_network.py unchanged; zygon_cba_collect computes the
-# guideline's direction-signed benefit indicators (B1 SEW / B2 CO2 / B3 RES)
-# per perturbed variant against the reference.
+# the SETTLED composed network of one planning horizon with an ordered
+# operation list applied (config: zygon_cba.variants — the reference label
+# carries an empty list and is re-solved untouched; pint-*/toot-* labels put
+# one asset in / take one out, an asset possibly spanning several
+# components). solve_cba_network mirrors the model's own solve_network rule
+# (rules/solve.smk) and runs scripts/solve_network.py unchanged;
+# zygon_cba_collect computes the guideline's direction-signed benefit
+# indicators (B1 SEW / B2 CO2 / B3 RES) per perturbed variant against the
+# reference.
+#
+# a6c45e5 streamlined workflow: networks are composed_{horizon}.nc /
+# solved_{horizon}.nc, no cluster/opts wildcards; solve_network.py reads
+# wildcards.horizon, so the {horizon} wildcard is kept on every path.
+# Rebased 2026-09-10; not yet exercised against an a6c45e5 install.
 
 
 wildcard_constraints:
@@ -21,16 +27,11 @@ rule build_cba_network:
         variant=lambda w: config["zygon_cba"]["variants"][w.zcba],
         reference=config["zygon_cba"]["reference"],
     input:
-        network=resources(
-            "networks/base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}.nc"
-        ),
+        network=resources("networks/composed_{horizon}.nc"),
     output:
-        resources(
-            "cba/{zcba}/base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}.nc"
-        ),
+        resources("cba/{zcba}/composed_{horizon}.nc"),
     log:
-        RESULTS
-        + "logs/zygon_cba/build_{zcba}_base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}.log",
+        RESULTS + "logs/zygon_cba/build_{zcba}_composed_{horizon}.log",
     threads: 1
     resources:
         mem_mb=4000,
@@ -40,32 +41,20 @@ rule build_cba_network:
 
 rule solve_cba_network:
     input:
-        network=resources(
-            "cba/{zcba}/base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}.nc"
-        ),
+        network=resources("cba/{zcba}/composed_{horizon}.nc"),
     output:
-        network=RESULTS
-        + "cba/{zcba}/base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}.nc",
-        config=RESULTS
-        + "cba/{zcba}/configs/config.base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}.yaml",
+        network=RESULTS + "cba/{zcba}/solved_{horizon}.nc",
         model=(
-            RESULTS
-            + "cba/{zcba}/models/base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}.nc"
+            RESULTS + "cba/{zcba}/models/solved_{horizon}.nc"
             if config["solving"]["options"]["store_model"]
             else []
         ),
     log:
-        solver=RESULTS
-        + "logs/zygon_cba/{zcba}_base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}_solver.log",
-        memory=RESULTS
-        + "logs/zygon_cba/{zcba}_base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}_memory.log",
-        python=RESULTS
-        + "logs/zygon_cba/{zcba}_base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}_python.log",
+        solver=normpath(RESULTS + "logs/zygon_cba/{zcba}_solver_{horizon}.log"),
+        memory=RESULTS + "logs/zygon_cba/{zcba}_memory_{horizon}.log",
+        python=RESULTS + "logs/zygon_cba/{zcba}_python_{horizon}.log",
     benchmark:
-        (
-            RESULTS
-            + "benchmarks/solve_cba_network/{zcba}_base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}"
-        )
+        (RESULTS + "benchmarks/solve_cba_network/{zcba}_{horizon}.log")
     shadow:
         shadow_config
     threads: solver_threads
@@ -75,12 +64,14 @@ rule solve_cba_network:
     params:
         solving=config_provider("solving"),
         foresight=config_provider("foresight"),
+        planning_horizons=config_provider("planning_horizons"),
+        sector=config_provider("sector"),
         co2_sequestration_potential=config_provider(
-            "sector", "co2_sequestration_potential", default=200
+            "sector", "co2_sequestration_potential"
         ),
         custom_extra_functionality=input_custom_extra_functionality,
     message:
-        "Solving CBA variant {wildcards.zcba} of the prepared sector network"
+        "Solving CBA variant {wildcards.zcba} for horizon {wildcards.horizon}"
     script:
         scripts("solve_network.py")
 

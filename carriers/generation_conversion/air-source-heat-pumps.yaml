@@ -20,7 +20,7 @@ when_to_use:
   - "known in pypsa-eur as: heat pumps, heat pump, air heat pump, residential rural air heat pump, residential urban decentral air heat pump, services rural air heat pump, services urban decentral air heat pump, urban central air heat pump, Ambient, power-to-heat"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Fully covered and on by default in sector runs. sector.heat_pump_sources
@@ -64,11 +64,11 @@ models:
         build_central_heating_temperature_profiles -> forward/return profiles;
         rule build_cop_profiles (scripts/build_cop_profiles/run.py::get_cop,
         DecentralHeatingCopApproximator / CentralHeatingCopApproximator) ->
-        cop_profiles nc; rule prepare_sector_network runs add_heat, which loops
+        cop_profiles nc; rule compose_network runs add_heat, which loops
         heat systems x params.heat_pump_sources and adds the heat pump links
         (hourly COP if sector.time_dep_hp_cop, else the static costs-table
         efficiency); insert_electricity_distribution_grid re-points the
-        electricity side. Myopic: rule add_existing_baseyear
+        electricity side. Myopic/perfect: add_existing_baseyear (called from compose_network)
         (add_heating_capacities_installed_before_baseyear) reuses the same COP
         file for the existing stock.
       not_covered: >
@@ -151,7 +151,7 @@ models:
         note: "no config hook for heat-link capacity limits; either set p_nom_max/p_nom_min on the n.add call in add_heat (L2, static) or write a custom constraint in solve_network.py extra_functionality"
       - variant: "existing heat pump stock with vintages"
         rung: L0
-        note: "automatic in myopic/perfect foresight (rule add_existing_baseyear); overnight runs are greenfield"
+        note: "automatic in myopic/perfect foresight (add_existing_baseyear inside compose_network); overnight runs are greenfield"
       - variant: "hybrid heat pump + boiler unit"
         rung: L5
         note: "not modelled; heat pumps and gas boilers exist as independent links on the same heat bus — a coupled unit needs a new component plus a linking constraint"

@@ -8,7 +8,7 @@ when_to_use:
   - "battery chemistry alternatives / lithium-free storage"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Nothing sodium-ion-specific — grounded absence. Unlike the other
@@ -69,7 +69,7 @@ models:
         note: "no hook; bespoke component logic/constraints"
     where:
       - change: "new storage carrier wiring (code half)"
-        anchor: "scripts/add_electricity.py STORE_LOOKUP + ::attach_stores / ::attach_storageunits (rule add_electricity)"
+        anchor: "scripts/add_electricity.py STORE_LOOKUP + ::attach_stores / ::attach_storageunits (rule compose_network)"
         provenance: "scripts/add_electricity.py:STORE_LOOKUP; scripts/add_electricity.py:attach_storageunits"
       - change: "cost row synthesis and custom-cost ingestion"
         anchor: "scripts/process_cost_data.py::prepare_costs / ::overwrite_costs (rule process_cost_data; costs.custom_cost_fn input)"

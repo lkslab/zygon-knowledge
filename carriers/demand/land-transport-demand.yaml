@@ -170,7 +170,7 @@ models:
       scenario: "CAGR growth/efficiency csvs compounded to the planning horizon; drivetrain share dicts keyed '{demand}_{planning_horizons}' (or Co2L opts via dynamic_transport)"
 
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Nodal hourly land-transport demand in units of driven km (100 km), split into
@@ -283,7 +283,7 @@ models:
       - input: "mobility profiles kfz.csv/pkw.csv (BASt traffic counts)"
         required_for: "weekly demand shape and plug-in availability"
         availability: "exists by default (datasets.mobility_profiles archive)"
-      - input: "temp_air_total_base_s_{clusters}.nc"
+      - input: "temp_air_total.nc"
         required_for: "temperature-corrected efficiencies"
         availability: "must be built (from cutout)"
     demand_dimensions:

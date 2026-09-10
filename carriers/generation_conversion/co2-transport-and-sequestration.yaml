@@ -18,7 +18,7 @@ when_to_use:
   - "pypsa-eur carrier names: co2, co2 stored, co2 sequestered, co2 vent, CO2 pipeline, DAC"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Fully active by default; add_co2_tracking runs UNCONDITIONALLY in every
@@ -56,11 +56,12 @@ models:
         PyPSA-native GlobalConstraint (type "operational_limit", carrier
         attribute "co2 sequestered") capping ANNUAL sequestration at
         sector.co2_sequestration_potential for the planning horizon (year dict,
-        e.g. 40 Mt/a in 2030 -> 250 Mt/a from 2045); a "seq<number>" token in
-        the sector_opts wildcard overrides that value
-        (update_config_from_wildcards). The emissions cap itself is the
-        "CO2Limit" GlobalConstraint (type "co2_atmosphere") from add_co2limit
-        (co2_budget as fraction of 1990 levels or a "cb" carbon-budget path),
+        e.g. 40 Mt/a in 2030 -> 250 Mt/a from 2045; there is no wildcard
+        override any more, the year-dict is the only handle). The emissions cap
+        itself is the "CO2Limit" GlobalConstraint (type "co2_atmosphere")
+        that apply_co2_budget_constraints -> add_co2limit builds in
+        compose_network from the top-level co2_budget block (upper/lower per
+        horizon, as fraction of 1990 levels while relative: true),
         enforced in solve_network as a limit on the final energy of non-cyclic
         stores on "co2"-carrier buses (add_co2_atmosphere_constraint; per-period
         variants add_carbon_constraint / add_carbon_budget_constraint under
@@ -75,12 +76,13 @@ models:
         arbitraged between burial (costs money, bounded by the injection
         limit) and fuel synthesis (earns fuel value).
       mechanism: >
-        rule prepare_sector_network runs scripts/prepare_sector_network.py:
+        rule compose_network runs scripts/prepare_sector_network.py:
         add_co2_tracking (always; sequestration_potential input only wired when
         regional_co2_sequestration_potential.enable), then add_dac and
-        add_co2_network on their switches; rule solve_sector_network_* applies
-        add_co2_sequestration_limit inside prepare_network/solve and the
-        co2_atmosphere constraints in extra_functionality. The potentials chain
+        add_co2_network on their switches, and finally
+        apply_co2_budget_constraints; rule solve_network applies
+        add_co2_sequestration_limit inside solve_network.py::prepare_network
+        and the co2_atmosphere constraints in extra_functionality. The potentials chain
         is rules retrieve_co2stop -> build_co2_sequestration_potentials ->
         build_clustered_co2_sequestration_potentials in rules/build_sector.smk
         and rules/retrieve.smk.
@@ -117,7 +119,7 @@ models:
         default: "1"
         provenance: "config/config.default.yaml:co2_network_cost_factor; scripts/prepare_sector_network.py:add_co2_network"
       - key: sector.co2_sequestration_potential
-        effect: "Europe-wide ANNUAL injection cap in Mt/a per planning horizon (GlobalConstraint at solve time); overridable per run with a 'seq<Mt>' token in sector_opts."
+        effect: "Europe-wide ANNUAL injection cap in Mt/a per planning horizon (GlobalConstraint at solve time, passed to solve_network as the co2_sequestration_potential param in rules/solve.smk)."
         default: "{2020: 0, 2025: 0, 2030: 40, 2035: 100, 2040: 180, 2045: 250, 2050: 250}"
         provenance: "config/config.default.yaml:co2_sequestration_potential; scripts/solve_network.py:add_co2_sequestration_limit"
       - key: sector.regional_co2_sequestration_potential.enable
@@ -159,7 +161,7 @@ models:
       - key: co2_budget
         effect: "Top-level emissions cap per horizon as fraction of 1990 levels (or 'cbXX' carbon-budget string) -> 'CO2Limit' GlobalConstraint on the atmosphere store."
         default: "{2020: 0.72, 2025: 0.648, 2030: 0.45, 2035: 0.25, 2040: 0.1, 2045: 0.05, 2050: 0.0}"
-        provenance: "config/config.default.yaml:co2_budget; scripts/prepare_sector_network.py:add_co2limit"
+        provenance: "config/config.default.yaml:co2_budget; scripts/prepare_network.py:apply_co2_budget_constraints"
       - key: costs.emission_prices
         effect: "enable: true prices the atmosphere store (marginal_cost = -co2 price): emitting pays, removing earns — an alternative/complement to the hard cap."
         default: "{enable: false, co2: 0.0, ...}"
@@ -170,7 +172,7 @@ models:
         note: "all default: co2_spatial + co2_network + regional potentials + 250 Mt/a cap by 2050"
       - variant: "tighten/relax the annual sequestration limit"
         rung: L1
-        note: "sector.co2_sequestration_potential year-dict, or 'seq<Mt>' in the sector_opts wildcard for scenario sweeps"
+        note: "sector.co2_sequestration_potential year-dict (for sweeps, vary it per scenario in run.scenarios)"
       - variant: "no CCS at all"
         rung: L1
         note: "set co2_sequestration_potential to 0 for all years — capture techs then only feed utilisation; (removing the co2 stored layer itself is not switchable)"
@@ -212,11 +214,11 @@ models:
         anchor: "rules build_co2_sequestration_potentials + build_clustered_co2_sequestration_potentials (CO2Stop via rule retrieve_co2stop)"
         provenance: "rules/build_sector.smk:build_clustered_co2_sequestration_potentials; rules/retrieve.smk:retrieve_co2stop"
       - change: "annual injection cap at solve time"
-        anchor: "scripts/solve_network.py::add_co2_sequestration_limit (params co2_sequestration_potential in the solve rules; 'seq' opts token via update_config_from_wildcards)"
-        provenance: "scripts/solve_network.py:add_co2_sequestration_limit; rules/solve_overnight.smk:co2_sequestration_potential; scripts/_helpers.py:update_config_from_wildcards"
+        anchor: "scripts/solve_network.py::add_co2_sequestration_limit (param co2_sequestration_potential in rules/solve.smk)"
+        provenance: "scripts/solve_network.py:add_co2_sequestration_limit; rules/solve.smk:co2_sequestration_potential"
       - change: "atmosphere emissions constraint"
-        anchor: "scripts/prepare_sector_network.py::add_co2limit -> scripts/solve_network.py::add_co2_atmosphere_constraint (multi-invest: add_carbon_constraint)"
-        provenance: "scripts/prepare_sector_network.py:add_co2limit; scripts/solve_network.py:add_carbon_constraint"
+        anchor: "scripts/prepare_network.py::apply_co2_budget_constraints -> scripts/solve_network.py::add_co2_atmosphere_constraint (multi-invest: add_carbon_constraint)"
+        provenance: "scripts/prepare_network.py:apply_co2_budget_constraints; scripts/solve_network.py:add_carbon_constraint"
       - change: "utilisation-side competition (CO2 as feedstock)"
         anchor: "scripts/prepare_sector_network.py::add_industry (methanolisation and Fischer-Tropsch links draw from spatial.co2.nodes)"
         provenance: "scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:methanolisation"
@@ -224,7 +226,7 @@ models:
       - input: "CO2Stop database (storage units + hydrocarbon traps tables/KML)"
         required_for: "regional sequestration potentials"
         availability: "retrieved by the workflow (rule retrieve_co2stop); European coverage only"
-      - input: "co2_sequestration_potential_base_s_{clusters}.csv"
+      - input: "resources/<run>/co2_sequestration_potential.csv"
         required_for: "per-region e_nom_max when regional_co2_sequestration_potential.enable"
         availability: "must be built (rules build_co2_sequestration_potentials -> build_clustered_co2_sequestration_potentials); automatic in the sector workflow"
       - input: "cost rows 'CO2 pipeline', 'CO2 submarine pipeline' (DEA energy-transport data) and 'CO2 storage tank'"

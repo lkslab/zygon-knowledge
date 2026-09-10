@@ -1,8 +1,8 @@
 --- a/Snakefile
 +++ b/Snakefile
-@@ -85,6 +85,7 @@
- include: "rules/build_sector.smk"
- include: "rules/solve_electricity.smk"
+@@ -97,6 +97,7 @@
+ include: "rules/compose.smk"
+ include: "rules/solve.smk"
  include: "rules/postprocess.smk"
 +include: "rules/zygon_cba.smk"
  include: "rules/development.smk"

@@ -19,7 +19,7 @@ when_to_use:
   - "known in pypsa-eur as: land transport fuel cell"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Covered as a fleet-wide exogenous share — with the caveat that PyPSA-Eur
@@ -108,7 +108,7 @@ models:
       - input: "nodal H2 buses with supply (electrolysis/SMR chain, H2 storage/pipelines)"
         required_for: "meeting the fuel cell load"
         availability: "exists by default in sector runs (add_h2_gas_infrastructure chain)"
-      - input: "transport_demand_s_{clusters}.csv + temp_air_total (temperature correction)"
+      - input: "transport_demand.csv + temp_air_total (temperature correction)"
         required_for: "the load profile"
         availability: "must be built (rule build_transport_demand); exists by default"
       - input: "truck segment energy split"

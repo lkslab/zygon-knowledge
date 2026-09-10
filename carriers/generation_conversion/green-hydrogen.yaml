@@ -24,7 +24,7 @@ when_to_use:
   - "known in pypsa-eur as: H2, hydrogen"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         The full electrolytic H2 chain is in every sector run: production via
@@ -49,15 +49,18 @@ models:
         property the model tracks: electrolysers draw from the zonal AC bus
         (any mix), and fossil H2 from "SMR" / "SMR CC" (both default true,
         see blue-hydrogen) lands on the SAME nodal H2 buses. Low-carbon H2
-        emerges endogenously from the CO2 budget (co2_budget /
-        add_co2limit), not from any hydrogen-specific rule.
+        emerges endogenously from the CO2 budget (co2_budget ->
+        apply_co2_budget_constraints -> add_co2limit), not from any
+        hydrogen-specific rule.
       mechanism: >
-        rule prepare_sector_network: add_h2_gas_infrastructure builds the H2
+        rule compose_network (prepare_sector_network.py):
+        add_h2_gas_infrastructure builds the H2
         buses, electrolysis, reconversion, storage, pipelines, SMR;
         add_industry / add_ammonia / add_shipping / add_land_transport
         attach the sinks; add_import_options adds imports if enabled. The
         only system-wide greenness driver is the CO2 accounting
-        (co2 atmosphere bus + add_co2limit / add_co2_atmosphere_constraint).
+        (co2 atmosphere bus + apply_co2_budget_constraints / add_co2limit /
+        add_co2_atmosphere_constraint).
       not_covered: >
         No certification, guarantees of origin, additionality, or
         hourly/monthly RES-matching machinery exists ANYWHERE in the
@@ -69,7 +72,7 @@ models:
         system (imports exist, exports do not). Forcing an all-electrolytic
         supply is possible by switching SMR off, but that still permits
         fossil-power-derived H2 unless the CO2 budget binds.
-      provenance: "scripts/prepare_sector_network.py:add_h2_gas_infrastructure; scripts/prepare_sector_network.py:add_fuel_cell_cars; scripts/prepare_sector_network.py:H2 liquefaction; scripts/prepare_sector_network.py:add_import_options; scripts/prepare_sector_network.py:add_co2limit; scripts/solve_network.py:add_co2_atmosphere_constraint"
+      provenance: "scripts/prepare_sector_network.py:add_h2_gas_infrastructure; scripts/prepare_sector_network.py:add_fuel_cell_cars; scripts/prepare_sector_network.py:H2 liquefaction; scripts/prepare_sector_network.py:add_import_options; scripts/prepare_network.py:apply_co2_budget_constraints; scripts/solve_network.py:add_co2_atmosphere_constraint"
     levers:
       - key: sector.SMR
         effect: "false removes the steam-methane-reforming route — with sector.SMR_cc also false, ALL hydrogen is electrolytic (grid-mix, not certified green)."

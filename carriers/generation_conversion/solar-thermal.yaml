@@ -17,7 +17,7 @@ when_to_use:
   - "known in pypsa-eur as: solar thermal, residential rural solar thermal, services rural solar thermal, residential urban decentral solar thermal, services urban decentral solar thermal, urban central solar thermal"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         On by default (sector.solar_thermal: true). Rule
@@ -42,7 +42,7 @@ models:
         urban central water pits.
       mechanism: >
         rule build_solar_thermal_profiles (input gated on
-        config sector.solar_thermal in rule prepare_sector_network) ->
+        config sector.solar_thermal in rule compose_network) ->
         solar_thermal_total nc -> prepare_sector_network add_heat
         (options["solar_thermal"] block reads the profile, applies
         solar_cf_correction, then adds one collector generator per heat
@@ -50,7 +50,7 @@ models:
       not_covered: >
         No potential/area cap of any kind: p_nom is unbounded (no p_nom_max, no
         rooftop-area link — contrast rooftop PV, which gets potentials from
-        rule build_clustered_solar_rooftop_potentials; nothing analogous is
+        rule build_solar_rooftop_potentials; nothing analogous is
         wired for solar thermal, and solar thermal does not compete with
         rooftop PV for roof space). No temperature adequacy check against the
         district heating forward temperature (the same profile feeds 55 C
@@ -105,7 +105,7 @@ models:
         note: "sector.solar_cf_correction"
       - variant: "rooftop-area or per-capita potential cap"
         rung: L2
-        note: "no key and no potential input; set p_nom_max on the collector n.add in add_heat (a data-driven cap would mirror build_clustered_solar_rooftop_potentials, L3+L4)"
+        note: "no key and no potential input; set p_nom_max on the collector n.add in add_heat (a data-driven cap would mirror build_solar_rooftop_potentials, L3+L4)"
       - variant: "only district-scale (or only building-scale) solar thermal"
         rung: L2
         note: "single global switch covers all five systems; guard the add_heat solar block by heat_system to restrict"

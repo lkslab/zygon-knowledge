@@ -102,7 +102,7 @@ models:
       scenario: "{demand} wildcard + planning_horizons via CAGR or custom csv"
 
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
 
     out_of_box:
       covers: >
@@ -111,9 +111,7 @@ models:
         explicitly sums the JRC-IDEES rows "Lighting", "Air compressors",
         "Motor drives" and "Fans and pumps" (sel list) into the sector's
         "elec" intensity, alongside electrified process end-uses. The network
-        then sees only the aggregate flat "industry electricity" load
-        (plus band electricity via heat pumps/electric boilers when
-        industry_t.endogen is on).
+        then sees only the aggregate flat "industry electricity" load.
       mechanism: >
         Per-sector MWh/t ratios x kt/a nodal production
         (build_industrial_energy_demand_per_node) become the "industry
@@ -145,7 +143,7 @@ models:
         note: "add an index entry in build_industry_sector_ratios and keep the sel sum separate from elec; plumb the new column through build_industrial_energy_demand_per_node."
       - variant: "separate network loads for motors / lighting etc."
         rung: L4
-        note: "new columns + Load blocks in add_industry; also extend the endogenous copy-over so industry_t runs keep them."
+        note: "new columns in build_industrial_energy_demand_per_node + Load blocks in add_industry."
       - variant: "endogenous motor-efficiency choice (invest in drives vs buy electricity)"
         rung: L5
         note: "demand-side efficiency investment components do not exist in the industry block; bespoke Python."

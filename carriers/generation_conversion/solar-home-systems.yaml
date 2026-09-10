@@ -11,7 +11,7 @@ when_to_use:
   - "pay-as-you-go solar"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Not covered as standalone off-grid systems (a European model has no
@@ -20,7 +20,7 @@ models:
         sector runs, inside insert_electricity_distribution_grid: (a)
         "solar rooftop" generators on each node's "low voltage" bus,
         extendable up to a potential from rule
-        build_clustered_solar_rooftop_potentials — which HARDCODES
+        build_solar_rooftop_potentials — which HARDCODES
         0.1 kW/m2 x 20 m2/person (i.e. 2 kW/person, population from the
         clustered pop layout, binned by solar resource class); rooftop
         shares the utility solar p_max_pu profile and gets the
@@ -36,10 +36,10 @@ models:
         historical solar capacity per vintage as "solar rooftop" on the LV
         side.
       mechanism: >
-        Sector workflow: rule prepare_sector_network ->
+        Sector workflow: rule compose_network (prepare_sector_network.py) ->
         insert_electricity_distribution_grid (gated by
         sector.electricity_distribution_grid), consuming
-        solar_rooftop_potentials_s_{clusters}.csv (only produced when
+        solar_rooftop_potentials.csv (only produced when
         "solar" is in electricity.renewable_carriers). Brownfield rooftop:
         scripts/add_existing_baseyear.py
         add_power_capacities_installed_before_baseyear
@@ -50,11 +50,11 @@ models:
         grid), household-level resolution (one aggregate LV bus per cluster
         region), SHS adoption/access economics, DC appliance loads. The
         rooftop potential assumptions (kW/m2, m2/person) are HARDCODED in
-        build_clustered_solar_rooftop_potentials.py — pypsa-earth exposes
+        build_solar_rooftop_potentials.py — pypsa-earth exposes
         them as config, eur does not. No rooftop in the electricity-only
         workflow (no LV layer there; all solar is utility-scale from
         build_renewable_profiles).
-      provenance: "scripts/prepare_sector_network.py:insert_electricity_distribution_grid; scripts/build_clustered_solar_rooftop_potentials.py:indicatormatrix; scripts/add_existing_baseyear.py:add_power_capacities_installed_before_baseyear"
+      provenance: "scripts/prepare_sector_network.py:insert_electricity_distribution_grid; scripts/build_solar_rooftop_potentials.py:indicatormatrix; scripts/add_existing_baseyear.py:add_power_capacities_installed_before_baseyear"
     levers:
       - key: sector.electricity_distribution_grid
         effect: "Master switch for the LV layer — prerequisite and sole gate for rooftop PV and home batteries (both added inside insert_electricity_distribution_grid)."
@@ -73,9 +73,9 @@ models:
         default: "{} (empty)"
         provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
       - key: electricity.renewable_carriers
-        effect: "'solar' must be included for the rooftop potentials input to be built at all (conditional input in rule prepare_sector_network)."
+        effect: "'solar' must be included for the rooftop potentials input to be built at all (conditional input in rule compose_network)."
         default: "[solar, solar-hsat, onwind, offwind-ac, offwind-dc, offwind-float, hydro]"
-        provenance: "config/config.default.yaml:renewable_carriers; rules/build_sector.smk:solar_rooftop_potentials"
+        provenance: "config/config.default.yaml:renewable_carriers; rules/compose.smk:solar_rooftop_potentials"
     boundary:
       - variant: "rooftop PV + home batteries at every node (grid-connected)"
         rung: L0
@@ -88,7 +88,7 @@ models:
         note: "costs.overwrites on 'solar-rooftop' / 'solar-utility' rows"
       - variant: "different rooftop potential assumptions (kW/m2, roof area per person)"
         rung: L2
-        note: "hardcoded 0.1 * 20 in scripts/build_clustered_solar_rooftop_potentials.py — edit there (no config keys, unlike pypsa-earth)"
+        note: "hardcoded 0.1 * 20 in scripts/build_solar_rooftop_potentials.py — edit there (no config keys, unlike pypsa-earth)"
       - variant: "home batteries without rooftop PV (or vice versa)"
         rung: L2
         note: "both live unconditionally inside insert_electricity_distribution_grid; comment out the respective n.add block (rooftop is skipped automatically only if the potentials input is empty)"
@@ -103,8 +103,8 @@ models:
         anchor: "scripts/prepare_sector_network.py::insert_electricity_distribution_grid (solar rooftop block, home battery block)"
         provenance: "scripts/prepare_sector_network.py:insert_electricity_distribution_grid; scripts/prepare_sector_network.py:home battery discharger"
       - change: "rooftop potential computation (hardcoded density assumptions)"
-        anchor: "scripts/build_clustered_solar_rooftop_potentials.py (rule build_clustered_solar_rooftop_potentials)"
-        provenance: "rules/build_sector.smk:build_clustered_solar_rooftop_potentials"
+        anchor: "scripts/build_solar_rooftop_potentials.py (rule build_solar_rooftop_potentials)"
+        provenance: "rules/build_sector.smk:build_solar_rooftop_potentials"
       - change: "brownfield rooftop split"
         anchor: "scripts/add_existing_baseyear.py::add_power_capacities_installed_before_baseyear (solar_rooftop_ratio branch)"
         provenance: "scripts/add_existing_baseyear.py:solar_rooftop_ratio"
@@ -112,15 +112,15 @@ models:
         anchor: "scripts/process_cost_data.py::prepare_costs (rows 'solar-rooftop', 'solar-utility', 'home battery storage', 'home battery inverter')"
         provenance: "scripts/process_cost_data.py:prepare_costs"
     data_dependencies:
-      - input: "solar_rooftop_potentials_s_{clusters}.csv (population x 2 kW/person by resource class)"
+      - input: "solar_rooftop_potentials.csv (population x 2 kW/person by resource class)"
         required_for: "rooftop p_nom_max"
-        availability: "must be built (rule build_clustered_solar_rooftop_potentials; needs pop_layout_total.nc + regions_by_class solar + cutout)"
+        availability: "must be built (rule build_solar_rooftop_potentials; needs pop_layout_total.nc + regions_by_class solar + cutout)"
       - input: "cost rows solar-rooftop / solar-utility / home battery storage / home battery inverter"
         required_for: "rooftop-vs-utility economics and battery costs"
         availability: "exists by default (technology-data via rule retrieve_cost_data)"
       - input: "IRENA capacity statistics feeding existing renewable capacities"
         required_for: "brownfield rooftop split in myopic runs"
-        availability: "retrieved by the workflow (rule add_existing_baseyear inputs)"
+        availability: "retrieved by the workflow (existing-capacity inputs of rule compose_network)"
       - input: "household off-grid demand data"
         required_for: "true standalone SHS variant"
         availability: "absent — user-provided"

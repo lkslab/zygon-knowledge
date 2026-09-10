@@ -15,7 +15,7 @@ when_to_use:
   - "non-ferrous metals demand"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Aluminium is a well-resolved exogenous demand sector, but no
@@ -33,19 +33,15 @@ models:
         tonne as a side effect. Primary-route process emissions join the
         nodal "process emissions" Load in add_industry, where they are
         vented or captured by the unconditional "process emissions CC" link.
-        With sector.industry_t.endogen, all three aluminium sectors are in
-        the default endogenise_sectors list, and their heat maps to Fleiter
-        rows ("Aluminium, primary" / "Aluminium, secondary"; Alumina uses a
-        backup share of 100% heat>500) — fuel choice for aluminium heat
-        becomes endogenous; the anode does not.
+        Aluminium and alumina heat are flat exogenous fuel loads like every
+        other sector's (no temperature bands, no fuel choice).
       mechanism: >
         rule build_industry_sector_ratios (non_ferrous_metals) -> rule
         build_industrial_production_per_country_tomorrow (Al_primary_fraction
         split) -> rule build_industrial_distribution_key (hotmaps
         "Non-ferrous metals" emission-weighted keys; no dedicated aluminium
         plant database) -> rule build_industrial_energy_demand_per_node ->
-        add_industry ("industry electricity" load, "process emissions" load,
-        band buses if endogen).
+        add_industry ("industry electricity" load, "process emissions" load).
       not_covered: >
         No anode representation of any kind: no inert-anode technology, cost
         row, or config key; no endogenous choice between carbon and inert
@@ -58,7 +54,7 @@ models:
         (aluminium electricity is part of the flat "industry electricity"
         load — no smelter demand response). Aluminium production tonnage has
         no growth/decline lever beyond the primary/secondary split.
-      provenance: "scripts/build_industry_sector_ratios.py:non_ferrous_metals; scripts/build_industry_sector_ratios.py:Aluminium electrolysis (smelting); scripts/build_industrial_production_per_country_tomorrow.py:Al_primary_fraction; scripts/prepare_sector_network.py:process emissions CC; scripts/build_industry_sector_ratios_endogenous.py:Aluminium - primary production"
+      provenance: "scripts/build_industry_sector_ratios.py:non_ferrous_metals; scripts/build_industry_sector_ratios.py:Aluminium electrolysis (smelting); scripts/build_industrial_production_per_country_tomorrow.py:Al_primary_fraction; scripts/prepare_sector_network.py:process emissions CC"
     levers:
       - key: industry.Al_primary_fraction
         effect: "Per-horizon fraction of aluminium from the primary (smelting) route — the only lever acting on anode-related process emissions (by shrinking the primary route)."
@@ -68,10 +64,6 @@ models:
         effect: "Blend of today's vs future aluminium intensities (energy and process emissions alike)."
         default: "{2020: 0.0, ..., 2050: 1.0}"
         provenance: "config/config.default.yaml:sector_ratios_fraction_future; scripts/build_industry_sector_ratios_intermediate.py:sector_ratios_fraction_future"
-      - key: sector.industry_t.endogenise_sectors
-        effect: "With industry_t.endogen true, 'Aluminium - primary production', 'Aluminium - secondary production' and 'Alumina production' heat joins the temperature bands (endogenous fuel choice for aluminium heat)."
-        default: "true for all three (inactive while industry_t.endogen is false)"
-        provenance: "config/config.default.yaml:endogenise_sectors; scripts/build_industry_sector_ratios_endogenous.py:endogenise_sectors"
       - key: sector.co2_sequestration_potential
         effect: "Cap on stored CO2 — bounds how much captured aluminium process CO2 the 'process emissions CC' route can absorb."
         default: "{2030: 40, ..., 2050: 250} (MtCO2/a; 0 before 2030)"

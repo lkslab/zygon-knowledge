@@ -13,7 +13,7 @@ when_to_use:
   - "flexibility pool / prosumer fleet dispatch"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         The EFFECT a VPP delivers — coordinated, system-optimal dispatch of all
@@ -29,9 +29,9 @@ models:
         carrier card), EV batteries with smart charging and V2G (add_EVs, with
         sector.bev_dsm_availability = 0.5 as the one native participation-rate
         knob), residential heat DSM stores (sector.residential_heat.dsm),
-        thermal storage, and — if sector.industry_t.endogen is switched on —
-        flexible industrial heat links whose p_min_pu is
-        sector.industry_t.must_run (0.8). Two eur-specific pieces of machinery
+        thermal storage, and the synthetic-fuel links with their
+        sector.min_part_load_* duty floors (industrial process heat itself is
+        a flat inflexible load). Two eur-specific pieces of machinery
         matter for VPP studies: (1) limited-foresight OPERATION is L1 —
         solving.options.rolling_horizon: true dispatches the network via
         optimize_with_rolling_horizon with solving.options.horizon/overlap
@@ -81,10 +81,6 @@ models:
         effect: "Adds building thermal inertia ('heat dsm' Stores) to the flexibility pool (see behind-the-meter-der carrier card)."
         default: "false"
         provenance: "config/config.default.yaml:residential_heat; scripts/prepare_sector_network.py:heat dsm"
-      - key: sector.industry_t.endogen
-        effect: "Endogenises industrial heat supply as links with p_min_pu = sector.industry_t.must_run (0.8) — 20% of industrial heat capacity becomes schedulable flexible load in the pool."
-        default: "false"
-        provenance: "config/config.default.yaml:industry_t; scripts/prepare_sector_network.py:add_t_industry100_200"
       - key: solving.options.rolling_horizon
         effect: "true dispatches with limited foresight in windows of solving.options.horizon snapshots (default 365) and overlap (default 0) — the L1 approximation of imperfect aggregator foresight."
         default: "false"

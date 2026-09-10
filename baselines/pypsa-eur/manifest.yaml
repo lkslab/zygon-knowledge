@@ -1,22 +1,10 @@
 # Execution profile for the pypsa-eur baseline — consumed by referee/workspace.py
-# and bin/harness. Machine-local paths are HINTS only; the env knob wins.
-# Binary resolution order: $ZYGON_SNAKEMAKE_EUR > binary_hint > $ZYGON_SNAKEMAKE
-# > snakemake on PATH.
+# and bin/harness. The app reads `invocation.targets` and `verify`; the
+# `budget` block is a zygon-era hint. Machine-local binary/interpreter hints
+# were dropped on 2026-09-10 with the re-anchor to upstream a6c45e5: the
+# binary is resolved from $ZYGON_SNAKEMAKE_EUR > $ZYGON_SNAKEMAKE > snakemake
+# on PATH, the interpreter from $ZYGON_PYTHON.
 model: pypsa-eur
-
-# the res/v1 install, NOT the enderpearl root env — only this one carries the
-# pip-installed dotenv/ruamel the eur Snakefile imports (see archive/fixtures/BASELINE.md)
-snakemake:
-  env_knob: ZYGON_SNAKEMAKE_EUR
-  binary_hint: /home/lukas/Desktop/res/v1/pypsa-eur/.pixi/envs/default/bin/snakemake
-  prepend_path: /home/lukas/Desktop/res/v1/pypsa-eur/.pixi/envs/default/bin
-  # env vars that must NOT leak into model invocations (a user profile would
-  # override our --workflow-profile none)
-  env_clean: [SNAKEMAKE_PROFILE]
-
-# interpreter with the modelling stack (pypsa) — for check_network /
-# check_extraction subprocesses; override with ZYGON_PYTHON
-python_hint: /home/lukas/Desktop/res/v1/pypsa-eur/.pixi/envs/default/bin/python
 
 invocation:
   # eur installs the baseline as config/config.yaml in the template; bundles
@@ -28,11 +16,16 @@ invocation:
   # rule crashing (a new carrier without a tech_colors entry) fails an
   # otherwise-good solve (issue #4, runs/issues/interview-evals-20260728.md).
   # Networks are everything extraction/figures consume; the baseline settles
-  # against these trivially (subset of all). Changed 2026-07-30 — smoke
-  # invalidation sets re-pinned to match.
+  # against these trivially (subset of all).
+  #
+  # a6c45e5 (streamlined workflow, #1838): no wildcards. The composed network
+  # is one file per horizon under resources/, the solved network under
+  # results/; {planning_horizons} renders from the effective config's list
+  # (single-element lists collapse, multi-element lists fan out one target
+  # per horizon).
   targets:
-  - "resources/{run.name}/networks/base_s_{scenario.clusters}_{scenario.opts}_{scenario.sector_opts}_{scenario.planning_horizons}.nc"
-  - "results/{run.name}/networks/base_s_{scenario.clusters}_{scenario.opts}_{scenario.sector_opts}_{scenario.planning_horizons}.nc"
+  - "resources/{run.name}/networks/composed_{planning_horizons}.nc"
+  - "results/{run.name}/networks/solved_{planning_horizons}.nc"
   flags: ["--workflow-profile", "none"]
 
 cores: 4
@@ -46,24 +39,32 @@ writable_subtrees:
 - "results/{run.name}"
 
 budget:
-  # with network-only targets an L0/L1 delta from prepare_sector_network down
-  # is ~2-10 jobs (was ~26 when rule all pulled the 16-job summary/plot tail);
-  # a full T3 rebuild is ~74 — 40 still separates them
+  # with network-only targets an L0/L1 delta at compose level is 2 jobs
+  # (compose_network + solve_network — a6c45e5 folded add_electricity,
+  # prepare_sector_network, prepare_network, brownfield and the CO2 budget
+  # into the single compose_network rule); a delta in the build_* chain is
+  # ~5-15 jobs; a full rebuild of the resources chain is ~80 (49 build_sector
+  # + 28 build_electricity rules, not all active). 40 still separates the
+  # classes. Job counts not re-measured on a6c45e5.
   max_jobs: 40
   timeout_s: 3600
   # the no-download hard rule, made mechanical: any proposed job matching this
-  # regex refuses execution, --force cannot override
+  # regex refuses execution, --force cannot override. Names checked against
+  # rules/retrieve.smk and rules/build_electricity.smk at a6c45e5
+  # (retrieve_*, download_copernicus_land_cover, build_cutout).
   deny_rules: "^(retrieve_|download_|build_cutout)"
-  # laptop-class envelope: job count can't see job COST — a 168H->3H bundle
+  # laptop-class envelope: job count can't see job COST — a 168h->3h bundle
   # passed a 27-job gate and ran 5x the smoke (2026-07-28). On the 5-node
   # baseline nothing finer than daily; cluster count never moves (a change
-  # rebuilds the whole resources chain)
+  # rebuilds the whole resources chain). Temporal resolution is
+  # clustering.temporal.averaging (pandas offset) at a6c45e5.
   envelope:
     temporal_floor_h: 24
-    pinned_keys: ["scenario.clusters", "snapshots"]
+    pinned_keys: ["clustering.cluster_network.n_clusters", "snapshots"]
 
 # documented prerequisite, never checked — an absent license makes the solve
-# fail loudly, which is the honest failure mode
+# fail loudly, which is the honest failure mode. The tracked overlays select
+# highs; gurobi only if a bundle switches solving.solver.name.
 requires: [gurobi-license]
 
 # path templates rendered from the EFFECTIVE config (default <- installed
@@ -72,6 +73,6 @@ requires: [gurobi-license]
 verify:
   networks:
   - stage: prepared
-    path: "resources/{run.name}/networks/base_s_{scenario.clusters}_{scenario.opts}_{scenario.sector_opts}_{scenario.planning_horizons}.nc"
+    path: "resources/{run.name}/networks/composed_{planning_horizons}.nc"
   - stage: solved
-    path: "results/{run.name}/networks/base_s_{scenario.clusters}_{scenario.opts}_{scenario.sector_opts}_{scenario.planning_horizons}.nc"
+    path: "results/{run.name}/networks/solved_{planning_horizons}.nc"

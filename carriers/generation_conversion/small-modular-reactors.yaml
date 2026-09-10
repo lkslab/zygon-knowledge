@@ -15,7 +15,7 @@ when_to_use:
   - "model SMRs"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Not covered as a generation technology. There is no SMR-reactor
@@ -117,7 +117,7 @@ models:
         note: "no nuclear-to-heat coupling exists in prepare_sector_network; would need a new multilink into the heat buses"
     where:
       - change: "carrier attachment / extendable placement (the SMR entry point)"
-        anchor: "scripts/add_electricity.py::attach_conventional_generators (rule add_electricity)"
+        anchor: "scripts/add_electricity.py::attach_conventional_generators (rule compose_network)"
         provenance: "scripts/add_electricity.py:attach_conventional_generators"
       - change: "cost row creation / overrides for the new or proxy carrier"
         anchor: "scripts/process_cost_data.py::overwrite_costs / ::prepare_costs; data/custom_costs.csv (costs.custom_cost_fn)"

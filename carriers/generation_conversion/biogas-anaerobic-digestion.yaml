@@ -20,7 +20,7 @@ when_to_use:
   - "known in pypsa-eur as: biogas, biogas to gas, biogas to gas CC"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         A regionally-resolved biogas resource whose only route to use is
@@ -53,9 +53,9 @@ models:
         rule build_biomass_potentials (scripts/build_biomass_potentials.py):
         the biomass.classes.biogas grouper sums manure+sludge into "biogas";
         add_unsustainable_potentials adds "unsustainable biogas" from the
-        Eurostat R5300 carrier. rule prepare_sector_network runs add_biomass
-        (gated by sector.biomass), which reads
-        biomass_potentials_s_{clusters}_{planning_horizons}.csv, builds the
+        Eurostat R5300 carrier. rule compose_network (prepare_sector_network.py)
+        runs add_biomass (gated by sector.biomass), which reads
+        biomass_potentials_{horizon}.csv, builds the
         biogas buses/generators and the biogas-to-gas upgrading Link(s);
         define_spatial fixes the nodal-vs-EU namespace from
         sector.gas_network. Costs come from rule process_cost_data.
@@ -91,7 +91,7 @@ models:
       - key: biomass.scenario
         effect: "ENSPRESO scenario (ENS_Low/Med/High) scaling the manure+sludge biogas potentials along with all other biomass."
         default: "ENS_Med"
-        provenance: "config/config.default.yaml:ENS_Med; scripts/build_biomass_potentials.py:enspreso_biomass_potentials"
+        provenance: "config/config.default.yaml:biomass.scenario; scripts/build_biomass_potentials.py:enspreso_biomass_potentials"
       - key: biomass.share_unsustainable_use_retained
         effect: "Per-horizon fraction of Eurostat-derived unsustainable biogas (carrier R5300) forced into the system as a non-extendable generator with e_sum_min = e_sum_max."
         default: "{2020: 1, 2025: 1, 2030: 0.66, 2035: 0.33, 2040: 0, 2045: 0, 2050: 0}"

@@ -23,7 +23,7 @@ when_to_use:
   - "known in pypsa-eur as: SMR, SMR CC"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Both routes are ON by default. add_h2_gas_infrastructure adds at
@@ -44,7 +44,7 @@ models:
         buses. In myopic runs, built SMR/SMR CC capacity is carried across
         horizons as vintaged fixed assets by add_brownfield.
       mechanism: >
-        rule prepare_sector_network -> add_h2_gas_infrastructure (SMR and
+        rule compose_network -> add_h2_gas_infrastructure (SMR and
         SMR CC blocks, after methanation/coal_cc). Cost rows "SMR" and
         "SMR CC" from rule process_cost_data. CO2 flows are plain multilink
         outputs — no dedicated capture asset; the capture premium is

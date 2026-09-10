@@ -17,7 +17,7 @@ when_to_use:
   - "known in pypsa-eur as: solar rooftop"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Two distinct rungs — distinguish them. (1) Electricity-only
@@ -37,8 +37,8 @@ models:
         'solar-rooftop' cost row, p_max_pu COPIED from the utility solar
         generator at the same bus (same weather resource, different cost
         and connection point), p_nom_max from
-        resources/solar_rooftop_potentials_s_{clusters}.csv. That potential
-        is built by rule build_clustered_solar_rooftop_potentials from the
+        resources/solar_rooftop_potentials.csv. That potential
+        is built by rule build_solar_rooftop_potentials from the
         WorldPop-style population layout with HARDCODED assumptions —
         'potentials = 0.1 * 20 * pd.Series(pop, ...)', i.e. 0.1 kW/m2 times
         20 m2/person (2 kW/person) — there are no config keys for these
@@ -53,16 +53,17 @@ models:
         solar aggregation (solving.agg_p_nom_limits.agg_solar ->
         'solar-all').
       mechanism: >
-        rule prepare_sector_network runs insert_electricity_distribution_grid
-        when options['electricity_distribution_grid'] is true; the rooftop
+        rule compose_network (prepare_sector_network.py) runs
+        insert_electricity_distribution_grid when
+        options['electricity_distribution_grid'] is true; the rooftop
         potentials input is wired only if 'solar' is in
-        electricity.renewable_carriers (rules/build_sector.smk
+        electricity.renewable_carriers (rules/compose.smk
         solar_rooftop_potentials lambda) — with the file empty the rooftop
         generator block is skipped (if len(fn) > 0). rule
-        build_clustered_solar_rooftop_potentials intersects the population
-        layout with the solar class regions (regions_by_class_{clusters}_
-        solar.geojson), so rooftop potential follows the same bus/bin
-        structure as utility solar.
+        build_solar_rooftop_potentials intersects the population
+        layout with the solar class regions (regions_by_class_solar.geojson),
+        so rooftop potential follows the same bus/bin structure as utility
+        solar.
       not_covered: >
         No rooftop in the electricity-only workflow at any rung short of
         code (no LV buses exist there). No dedicated rooftop switch: rooftop
@@ -78,11 +79,10 @@ models:
         'solar-rooftop' row is read). No net metering / retail tariff
         behaviour — rooftop is centrally optimised like any generator. The
         config key sector.electricity_distribution_grid_cost_factor exists
-        (and is settable via the 'dist' opts wildcard in _helpers.py) but is
-        READ NOWHERE at this ref — a dead key; use adjustments.sector
+        but is READ NOWHERE at this ref — a dead key; use adjustments.sector
         (factor on 'electricity distribution grid' capital_cost, present in
         the default config) instead.
-      provenance: "scripts/prepare_sector_network.py:insert_electricity_distribution_grid; scripts/build_clustered_solar_rooftop_potentials.py:potentials = 0.1 * 20; scripts/process_cost_data.py:solar-utility; scripts/add_existing_baseyear.py:solar_rooftop_ratio; rules/build_sector.smk:build_clustered_solar_rooftop_potentials; scripts/_helpers.py:electricity_distribution_grid_cost_factor"
+      provenance: "scripts/prepare_sector_network.py:insert_electricity_distribution_grid; scripts/build_solar_rooftop_potentials.py:potentials = 0.1 * 20; scripts/process_cost_data.py:solar-utility; scripts/add_existing_baseyear.py:solar_rooftop_ratio; rules/build_sector.smk:build_solar_rooftop_potentials"
     levers:
       - key: sector.electricity_distribution_grid
         effect: "Master switch for the LV layer in sector runs — adds LV buses, distribution links, home batteries AND the 'solar rooftop' generators; false removes all of them."
@@ -109,9 +109,9 @@ models:
         default: "data/custom_costs.csv"
         provenance: "config/config.default.yaml:custom_cost_fn; scripts/process_cost_data.py:overwrite_costs"
       - key: sector.electricity_distribution_grid_cost_factor
-        effect: "DEAD KEY at this ref: defined in config and set by the 'dist' opts wildcard, but consumed by no script (only the gas twin gas_distribution_grid_cost_factor is read) — do not rely on it; use adjustments.sector."
+        effect: "DEAD KEY at this ref: defined and validated in config, but consumed by no script (only the gas twin gas_distribution_grid_cost_factor is read) — do not rely on it; use adjustments.sector."
         default: "1.0"
-        provenance: "config/config.default.yaml:electricity_distribution_grid_cost_factor; scripts/_helpers.py:electricity_distribution_grid_cost_factor"
+        provenance: "config/config.default.yaml:electricity_distribution_grid_cost_factor"
     boundary:
       - variant: "rooftop as an explicit competing technology"
         rung: L0
@@ -133,10 +133,10 @@ models:
         note: "no key — comment out the rooftop n.add('Generator', ...) block in insert_electricity_distribution_grid (it is already conditional on the potentials file being non-empty, so an alternative is patching the rule input to [])"
       - variant: "different rooftop potential assumptions (kW/m2, m2/person)"
         rung: L2
-        note: "hardcoded 'potentials = 0.1 * 20 * ...' in build_clustered_solar_rooftop_potentials.py — one-line edit; no config keys (deliberate contrast to pypsa-earth)"
+        note: "hardcoded 'potentials = 0.1 * 20 * ...' in build_solar_rooftop_potentials.py — one-line edit; no config keys (deliberate contrast to pypsa-earth)"
       - variant: "building-footprint-based potentials"
         rung: L3
-        note: "no building dataset in the workflow; replace the population-based formula in build_clustered_solar_rooftop_potentials.py with a roof-area layer (new input data + the same output CSV format bus,bin,potential)"
+        note: "no building dataset in the workflow; replace the population-based formula in build_solar_rooftop_potentials.py with a roof-area layer (new input data + the same output CSV format bus,bin,potential)"
       - variant: "rooftop-specific profile (orientation/shading distinct from utility)"
         rung: L2
         note: "p_max_pu is copied from the utility solar generators (n.generators_t.p_max_pu[solar]) in insert_electricity_distribution_grid; point it at a dedicated profile instead — building that profile cleanly means a new renewable.<name> block plus the L4 rule-routing caveat (onshore tuple in rules/build_electricity.smk)"
@@ -151,11 +151,11 @@ models:
         note: "no mechanism; generators are centrally optimised"
     where:
       - change: "rooftop generator creation, LV re-pointing, home batteries, utility re-costing"
-        anchor: "scripts/prepare_sector_network.py::insert_electricity_distribution_grid (rule prepare_sector_network, options electricity_distribution_grid)"
+        anchor: "scripts/prepare_sector_network.py::insert_electricity_distribution_grid (called from rule compose_network, options electricity_distribution_grid)"
         provenance: "scripts/prepare_sector_network.py:insert_electricity_distribution_grid"
       - change: "potential formula (0.1 kW/m2 * 20 m2/person on population layout)"
-        anchor: "scripts/build_clustered_solar_rooftop_potentials.py (rule build_clustered_solar_rooftop_potentials)"
-        provenance: "scripts/build_clustered_solar_rooftop_potentials.py:potentials = 0.1 * 20; rules/build_sector.smk:build_clustered_solar_rooftop_potentials"
+        anchor: "scripts/build_solar_rooftop_potentials.py (rule build_solar_rooftop_potentials)"
+        provenance: "scripts/build_solar_rooftop_potentials.py:potentials = 0.1 * 20; rules/build_sector.smk:build_solar_rooftop_potentials"
       - change: "electricity-only 'solar' priced pure utility (no rooftop blend)"
         anchor: "scripts/process_cost_data.py::prepare_costs"
         provenance: "scripts/process_cost_data.py:prepare_costs"
@@ -166,10 +166,10 @@ models:
         anchor: "scripts/solve_network.py::add_land_use_constraint (carrier list includes 'solar rooftop')"
         provenance: "scripts/solve_network.py:add_land_use_constraint"
     data_dependencies:
-      - input: "population layout pop_layout_total.nc (rule build_clustered_solar_rooftop_potentials input)"
+      - input: "population layout pop_layout_total.nc (rule build_solar_rooftop_potentials input)"
         required_for: "rooftop potential"
         availability: "built by the sector workflow"
-      - input: "regions_by_class_{clusters}_solar.geojson (class regions from build_renewable_profiles for 'solar')"
+      - input: "regions_by_class_solar.geojson (class regions from build_renewable_profiles for 'solar')"
         required_for: "bus/bin allocation of rooftop potential"
         availability: "built whenever 'solar' is a renewable carrier"
       - input: "utility 'solar' generators + profiles in the elec network"

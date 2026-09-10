@@ -132,7 +132,7 @@
   code_convention: country-name
   coverage_class: country-listed
   consumer: "scripts/build_gas_input_locations.py:build_gem_lng_data; scripts/build_gas_input_locations.py:build_gem_prod_data; scripts/build_gas_input_locations.py:read_scigrid_gas"
-  missing_behavior: "regions containing no GEM terminal/production site and no IGGIELGN border point or storage get zero exogenous gas supply capacity in gas_input_locations_s_{clusters}.csv — their gas demand must then be met over pipelines from elsewhere, silently"
+  missing_behavior: "regions containing no GEM terminal/production site and no IGGIELGN border point or storage get zero exogenous gas supply capacity in gas_input_locations_simplified.csv — their gas demand must then be met over pipelines from elsewhere, silently"
   tier_when_missing: D
   used_by: [fossil-fuel-supply, natural-gas-pipelines]
   notes: "GEM xlsx sheets keyed by country names with lat/lon per facility; check the 'LNG terminals' and 'Gas extraction sites' sheets per country; Balkan countries appear mainly via planned (not operating) facilities"
@@ -278,8 +278,8 @@
     - data/population_count/archive/2018-11-01/ppp_2019_1km_Aggregated.tif
   code_convention: ISO2
   coverage_class: country-listed
-  consumer: "scripts/build_shapes.py:create_regions; scripts/build_shapes.py:calc_gdp_pop"
-  missing_behavior: "countries not in the ARDECO NUTS3 tables (the other_countries set BA MD UA XK, drawn as OSM adm1 shapes) get GDP/pop from the Kummu 5-arcmin GDP-p.c. raster and WorldPop count raster via calc_gdp_pop, rescaled to hardcoded World Bank national totals in build_shapes"
+  consumer: "scripts/build_nuts3_shapes.py:create_regions; scripts/build_nuts3_shapes.py:calc_gdp_pop"
+  missing_behavior: "countries not in the ARDECO NUTS3 tables (the other_countries set BA MD UA XK, drawn as OSM adm1 shapes) get GDP/pop from the Kummu 5-arcmin GDP-p.c. raster and WorldPop count raster via calc_gdp_pop, rescaled to hardcoded World Bank national totals in build_nuts3_shapes"
   tier_when_missing: C
   used_by: [demand-spatial-disaggregation, electricity-load, residential-electricity-demand, services-electricity-demand]
   notes: "ARDECO SNPTD (population) and SUVGDP (GDP) cover EU27 + AL CH IS LI ME MK NO RS TR UK at NUTS level; hardcoded totals in build_shapes: GDP bn USD BA=20.48 MD=11.74 UA=153.9 XK=7.9, pop k BA=3361 MD=2664 UA=44470 XK=1782; these keys drive load and industry disaggregation everywhere NUTS3 data is used"
@@ -369,7 +369,7 @@
   path: data/costs/archive/v0.14.0/costs_2050.csv
   code_convention: global
   coverage_class: proxy-global
-  consumer: "scripts/_helpers.py:load_costs; scripts/add_electricity.py:load_costs"
+  consumer: "scripts/_helpers.py:load_costs"
   missing_behavior: "costs carry no country dimension — a single European (mostly DEA/German) cost table is applied uniformly to all countries and planning horizons requested, so national WACC, labour and land cost differences are invisible unless costs.overwrites are set per scenario"
   tier_when_missing: C
   used_by: [electrolysers, grid-scale-batteries, onshore-wind, offshore-wind, utility-scale-solar-pv, gas-power-plants, direct-air-capture]

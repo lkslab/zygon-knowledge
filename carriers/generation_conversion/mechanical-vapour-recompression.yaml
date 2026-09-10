@@ -12,101 +12,82 @@ when_to_use:
   - "reuse process vapour"
   - "efficient evaporation / drying"
   - "cut steam demand in food or paper industry"
-  - "industry_t steam technologies"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Nothing MVR-specific — no MVR component, cost row or config key exists
-        anywhere in the workflow. The functional neighbourhood is however much
-        closer than a pure demand model: the MVR-relevant industries (food,
-        beverages and tobacco; pulp/paper; chemicals; textiles) are in the
-        default sector.industry_t.endogenise_sectors list, so with
-        sector.industry_t.endogen: true their steam demand becomes explicit
-        "heat100-200 industry" (and heat200-500) band loads per node, served
-        by competing extendable Links — including the "industrial heat pump
-        high temperature" and "electric boiler steam" options in
-        add_t_industry100_200. An industrial heat pump upgrading low-grade
-        heat with electricity is the closest in-model proxy for MVR economics
-        (electricity in, several units of steam out), though it draws ambient
-        heat rather than recompressing process vapour.
+        anywhere in the workflow, and industrial process steam is not a
+        modelled quantity: the steam raised in the MVR-relevant industries
+        (food, beverages and tobacco; pulp/paper; chemicals; textiles) is
+        indistinguishable inside the flat "gas for industry" / "solid biomass
+        for industry" / "low-temperature heat for industry" loads built by
+        the demand chain (build_industry_sector_ratios ->
+        build_industrial_energy_demand_per_node) and attached in add_industry.
+        The only electrification path is exogenous: the future best-available
+        sector ratios blended in by industry.sector_ratios_fraction_future.
       mechanism: >
-        With endogen false (default): steam is indistinguishable inside the
-        flat "gas for industry" / "solid biomass for industry" /
-        "low-temperature heat for industry" loads built by the demand chain
-        and attached in add_industry. With endogen true: rule
-        build_industry_sector_ratios_endogenous splits each endogenised
-        sector's fuel use into temperature bands (Fleiter et al. 2025 shares;
-        food is mapped via "Food, drink and tobacco" rows), and the band
-        supply menus provide the electrification hook.
+        rule build_industry_sector_ratios (per-sector fuel/electricity
+        intensities from JRC-IDEES) -> build_industry_sector_ratios_intermediate
+        (today/future blend) -> build_industrial_energy_demand_per_node ->
+        prepare_sector_network::add_industry (rule compose_network) attaches
+        flat per-carrier loads; no steam bus, no supply technology inside
+        industry.
       not_covered: >
-        No vapour stream or recompression technology; no representation of
-        avoided-steam efficiency investments; no process-level heat
-        integration or cascading. The band heat pump is thermodynamically MVR
-        adjacent but its COP is a static cost-file scalar; a true MVR (COP
-        5-10 on the recompression duty, limited to evaporation loads) would
-        overstate or understate depending on the sector unless given its own
-        link and cost row. In exogenous mode MVR can only be represented by
-        shrinking fuel rows and adding electricity in the sector-ratio
-        machinery (code/data edit, no config hook).
-      provenance: "scripts/prepare_sector_network.py:add_t_industry100_200; scripts/prepare_sector_network.py:industrial heat pump high temperature; scripts/build_industry_sector_ratios_endogenous.py:process_temperature_band_mapper; scripts/prepare_sector_network.py:add_industry"
+        No vapour stream or recompression technology; no explicit steam
+        demand, temperature bands or supply competition inside industry; no
+        representation of avoided-steam efficiency investments; no
+        process-level heat integration or cascading. MVR can only be
+        represented by shrinking fuel rows and adding electricity in the
+        sector-ratio machinery (code/data edit, no config hook), or by
+        building a steam bus with competing supply links (the fork branch
+        endogenous-industry-heat carried such a temperature-banded machinery
+        with an industrial heat pump as MVR-adjacent proxy; it is not part of
+        upstream a6c45e5).
+      provenance: "scripts/prepare_sector_network.py:add_industry; scripts/build_industry_sector_ratios.py:food_beverages_tobacco; scripts/build_industry_sector_ratios_intermediate.py:sector_ratios_fraction_future; scripts/build_industrial_energy_demand_per_node.py"
     levers:
-      - key: sector.industry_t.endogen
-        effect: "true makes process-steam demand explicit per temperature band — the precondition for representing MVR as a supply technology."
-        default: "false"
-        provenance: "config/config.default.yaml:industry_t; scripts/prepare_sector_network.py:add_t_industry100_200"
-      - key: sector.industry_t.heat100-200.heat_pumps
-        effect: "Enables the industrial high-temperature heat pump — the nearest existing proxy for MVR-style electric steam upgrading."
+      - key: industry.sector_ratios_fraction_future
+        effect: "Pace of the exogenous shift from today's fuel-based sector intensities to the future ratios — the only config-level handle on industrial steam fuel use."
+        default: "{2020: 0.0, ..., 2050: 1.0}"
+        provenance: "config/config.default.yaml:sector_ratios_fraction_future; scripts/build_industry_sector_ratios_intermediate.py:sector_ratios_fraction_future"
+      - key: sector.industry
+        effect: "Master switch for industry demand (the loads MVR would reduce)."
         default: "true"
-        provenance: "config/config.default.yaml:heat_pumps; scripts/prepare_sector_network.py:heat_pumps"
-      - key: sector.industry_t.endogenise_sectors
-        effect: "Selects which industries' steam enters the bands (food, paper, textiles etc. are the MVR candidates)."
-        default: "all listed sectors true"
-        provenance: "config/config.default.yaml:endogenise_sectors; scripts/build_industry_sector_ratios_endogenous.py:endogenise_sectors"
-      - key: sector.industry_t.must_run
-        effect: "Baseload floor (p_min_pu 0.8) any MVR-like band technology would inherit."
-        default: "0.8"
-        provenance: "config/config.default.yaml:must_run; scripts/prepare_sector_network.py:must_run"
+        provenance: "config/config.default.yaml:industry; scripts/prepare_sector_network.py:add_industry"
     boundary:
+      - variant: "exogenous MVR savings (reduced fuel, added electricity)"
+        rung: L2
+        note: "no config hook — adjust the affected sector functions in build_industry_sector_ratios.py (food_beverages_tobacco, pulp_paper_printing) or post-process industry_sector_ratios_{year}.csv (L3)"
       - variant: "electric steam upgrading competing against fuel boilers (MVR-adjacent)"
-        rung: L0
-        note: "sector.industry_t.endogen: true — the industrial heat pump and electric boiler already compete for the 100-200 °C band"
-      - variant: "approximate MVR with a more optimistic heat-pump COP"
-        rung: L1
-        note: "costs.overwrites efficiency on 'industrial heat pump high temperature' (crude: applies to the whole band, not just evaporation duties)"
-      - variant: "MVR as a distinct technology in the steam band"
-        rung: L2
-        note: "clone the heat-pump block in add_t_industry100_200 with an MVR carrier and config flag; needs an MVR cost row (L3 — none exists in technology-data, supply via data/custom_costs.csv)"
+        rung: L4
+        note: "needs an explicit process-steam bus per node split off the flat industry fuel loads (new demand rule) plus competing extendable supply links in add_industry; reference implementation on the fork branch endogenous-industry-heat, not part of this anchor"
+      - variant: "MVR as a distinct technology in that steam band"
+        rung: L4
+        note: "on top of the previous variant: an MVR link with its own carrier and config flag; needs an MVR cost row (L3 — none exists in technology-data, supply via data/custom_costs.csv)"
       - variant: "cap MVR to the evaporation/drying share of a sector's steam"
-        rung: L3
-        note: "requires an applicability split of band demand per sector — extend build_industry_sector_ratios_endogenous with an MVR-eligible sub-band (data + small code)"
-      - variant: "exogenous MVR savings (reduced fuel, added electricity) without the band machinery"
-        rung: L2
-        note: "no config hook — adjust the affected sector functions in build_industry_sector_ratios.py or post-process industry_sector_ratios_{year}.csv (L3)"
+        rung: L4
+        note: "requires an applicability split of steam demand per sector — data plus the demand-rule code"
       - variant: "true vapour-stream model (recompression of a process's own output vapour)"
         rung: L5
         note: "needs process-level mass/heat flows that do not exist in any PyPSA-Eur structure"
     where:
-      - change: "add an MVR link to the steam band menu"
-        anchor: "scripts/prepare_sector_network.py::add_t_industry100_200 (heat_pumps / electric_boiler blocks as templates)"
-        provenance: "scripts/prepare_sector_network.py:add_t_industry100_200"
-      - change: "band demand definition for MVR-candidate sectors"
-        anchor: "scripts/build_industry_sector_ratios_endogenous.py::build_industry_sector_ratios_endogenous"
-        provenance: "scripts/build_industry_sector_ratios_endogenous.py:build_industry_sector_ratios_endogenous"
       - change: "exogenous fuel/electricity rebalancing per sector"
         anchor: "scripts/build_industry_sector_ratios.py sector functions (food_beverages_tobacco, pulp_paper_printing)"
         provenance: "scripts/build_industry_sector_ratios.py:food_beverages_tobacco; scripts/build_industry_sector_ratios.py:pulp_paper_printing"
+      - change: "where a steam bus and MVR link would be added"
+        anchor: "scripts/prepare_sector_network.py::add_industry (flat fuel loads; add_EVs is the device-bus + Link template)"
+        provenance: "scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:add_EVs"
       - change: "custom MVR cost row"
         anchor: "data/custom_costs.csv (costs.custom_cost_fn) consumed by process_cost_data"
         provenance: "config/config.default.yaml:custom_cost_fn; scripts/process_cost_data.py:prepare_costs"
     data_dependencies:
-      - input: "temperature-band demand split (Fleiter et al. 2025 xlsx + backup shares)"
-        required_for: "explicit steam bands MVR would serve"
-        availability: "exists by default (data/ente202300981-sup-0001-suppdata-s1.xlsx in repo)"
       - input: "MVR cost and COP data (investment, recompression COP, applicability shares)"
         required_for: "a dedicated MVR technology"
         availability: "absent — must be sourced (e.g. DEA industrial process heat catalogue)"
+      - input: "process-steam share of each sector's fuel demand"
+        required_for: "any explicit steam representation"
+        availability: "absent from the workflow (JRC-IDEES carries fuel totals per sector, not steam)"
   - model: pypsa-earth
     version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
 

@@ -106,7 +106,7 @@ models:
       scenario: "{demand} wildcard naming different CAGR/custom-csv worlds per planning horizon"
 
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
 
     out_of_box:
       covers: >
@@ -117,9 +117,9 @@ models:
         get(sector_ratios_fraction_future, year) — intensity =
         today x (1 - f) + future x f. The route-share dicts
         (St_primary_fraction, DRI_fraction, Al_primary_fraction, HVC
-        recycling fractions) act as hand-set technology-diffusion proxies. With
-        industry_t.endogen the model chooses heat supply tech, but demand-side
-        intensity still follows the exogenous blend.
+        recycling fractions) act as hand-set technology-diffusion proxies.
+        Heat-supply technology inside industry is not an optimiser choice
+        either: the carrier split follows the same exogenous blend.
       mechanism: >
         build_industrial_energy_demand_per_country_today derives today's
         country ratios; build_industry_sector_ratios the future best-in-class
@@ -150,10 +150,6 @@ models:
         effect: "Recycling-technology adoption path for plastics (with HVC_chemical_recycling_fraction)."
         default: "0.12 (2020) rising to 0.3 (2050)"
         provenance: "config/config.default.yaml:HVC_mechanical_recycling_fraction; scripts/build_industrial_production_per_country_tomorrow.py:HVC_mechanical_recycling_fraction"
-      - key: sector.industry_t.endogen
-        effect: "Shifts heat-supply technology choice from the exogenous ratios to the optimiser — the only endogenous 'diffusion' in the industry block (capacity built per horizon, no explicit turnover)."
-        default: "false"
-        provenance: "config/config.default.yaml:industry_t; scripts/prepare_sector_network.py:add_t_industry100_200"
 
     boundary:
       - variant: "faster/slower efficiency improvement"
@@ -165,9 +161,9 @@ models:
       - variant: "different best-in-class endpoint (e.g. less electrified future ratios)"
         rung: L2
         note: "edit the electrification assumptions in the sector functions of build_industry_sector_ratios."
-      - variant: "diffusion-speed constraints on heat-tech uptake"
-        rung: L1
-        note: "in industry_t.endogen mode, sector.limit_max_growth caps per-carrier growth globally — a blunt but existing brake."
+      - variant: "endogenous heat-tech uptake in industry with a diffusion-speed brake"
+        rung: L4
+        note: "upstream has no endogenous industrial heat supply (fixed carrier ratios placed by add_industry); the fork branch endogenous-industry-heat is the reference implementation, not part of this anchor. Once such links exist, sector.limit_max_growth is the existing blunt per-carrier growth brake."
       - variant: "explicit EEM catalogue with stock turnover and vintage retirement"
         rung: L5
         note: "honest answer: not implementable by config or data — needs a vintage-tracked demand-side model (FORECAST soft-link) or bespoke myopic-foresight components per industry."
@@ -185,9 +181,9 @@ models:
       - change: "route-share diffusion proxies"
         anchor: "rule build_industrial_production_per_country_tomorrow"
         provenance: "rules/build_sector.smk:rule build_industrial_production_per_country_tomorrow"
-      - change: "endogenous heat-tech uptake and its growth brake"
-        anchor: "add_t_industry* in prepare_sector_network; sector.limit_max_growth config"
-        provenance: "scripts/prepare_sector_network.py:add_t_industry200_500; config/config.default.yaml:limit_max_growth"
+      - change: "per-carrier growth brake"
+        anchor: "sector.limit_max_growth config"
+        provenance: "config/config.default.yaml:limit_max_growth"
 
     data_dependencies:
       - input: "JRC-IDEES (today's demand and physical output for ratios)"

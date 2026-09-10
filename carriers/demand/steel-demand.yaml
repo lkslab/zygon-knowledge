@@ -137,7 +137,7 @@ models:
       scenario: "{demand} wildcard scenario + {planning_horizons} CAGR compounding; full override via custom_data.industry_demand file per scenario/horizon"
 
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Full production-tonnage chain with explicit routes: today's kton/a of
@@ -159,7 +159,9 @@ models:
         country-specific ratios toward best-case via
         sector_ratios_fraction_future; build_industrial_energy_demand_per_country_today
         uses JRC energy-balance sheets FC_IND_IS_BF_E / FC_IND_IS_EA_E and adds
-        75% of coke-oven consumption (add_coke_ovens);
+        75% of coke-oven consumption (add_coke_ovens, fed at a6c45e5 by the new rule
+        build_transformation_output_coke: transformation output of coke ovens
+        extracted from the Eurostat energy balances);
         build_industrial_distribution_key:prepare_gem_steel_database builds
         EAF/DRI+EAF/Integrated keys from GSPT nominal capacities;
         build_industrial_energy_demand_per_node multiplies nodal tonnage by
@@ -169,12 +171,11 @@ models:
         process emissions).
       not_covered: >
         Steel routes are exogenous fractions, not an optimisation choice — the
-        model cannot endogenously pick BF vs DRI vs EAF (steel is excluded from
-        the industry_t endogenous heat mechanism: "DRI + Electric arc" is in
-        sectors_copied_from_exogenous). No total-steel-demand scaling factor
+        model cannot endogenously pick BF vs DRI vs EAF; process heat is part of
+        the fixed per-route carrier ratios. No total-steel-demand scaling factor
         exists (unlike aviation/HVC demand factors). No scrap availability
         constraint.
-      provenance: "scripts/build_industrial_production_per_country.py:Integrated steelworks;scripts/build_industrial_production_per_country_tomorrow.py:dri_fraction;scripts/build_industry_sector_ratios.py:def iron_and_steel;scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_IS_BF_E;scripts/build_industrial_energy_demand_per_country_today.py:add_coke_ovens;scripts/build_industrial_distribution_key.py:prepare_gem_steel_database;scripts/build_industrial_energy_demand_per_node.py:sectors_copied_from_exogenous;scripts/prepare_sector_network.py:mwh_coal_per_mwh_coke"
+      provenance: "scripts/build_industrial_production_per_country.py:Integrated steelworks;scripts/build_industrial_production_per_country_tomorrow.py:dri_fraction;scripts/build_industry_sector_ratios.py:def iron_and_steel;scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_IS_BF_E;scripts/build_industrial_energy_demand_per_country_today.py:add_coke_ovens;scripts/build_industrial_distribution_key.py:prepare_gem_steel_database;scripts/build_industrial_energy_demand_per_node.py;scripts/prepare_sector_network.py:mwh_coal_per_mwh_coke"
     levers:
       - key: industry.St_primary_fraction
         effect: "Fraction of steel from primary (ore-based) production per planning horizon; remainder becomes secondary EAF (scrap)."
@@ -221,7 +222,7 @@ models:
         note: "status/retirement filters per process hardcoded in prepare_gem_steel_database / build_nodal_distribution_key."
       - variant: "endogenous route choice (model optimises BF vs DRI)"
         rung: L5
-        note: "steel is deliberately kept exogenous (sectors_copied_from_exogenous in build_industrial_energy_demand_per_node.py); making it a network component is bespoke logic."
+        note: "steel is exogenous production tonnage per route times fixed ratios (build_industrial_energy_demand_per_node.py); making it a network component is bespoke logic."
     where:
       - change: "route split (primary/DRI/EAF fractions)"
         anchor: "scripts/build_industrial_production_per_country_tomorrow.py"
@@ -251,8 +252,8 @@ models:
     demand_dimensions:
       driver: "kton/a crude steel per route (Integrated / DRI + Electric arc / Electric arc) times MWh/t sector ratios"
       spatial: "GEM GSPT nominal capacities per process (EAF / DRI + EAF / Integrated); population fallback where absent"
-      temporal: "annual-constant loads (p_set = annual / nhours); steel excluded from endogenous industry_t heat bands"
-      scenario: "per-planning-horizon dicts (St_primary_fraction, DRI_fraction, sector_ratios_fraction_future) resolved by the {planning_horizons} wildcard"
+      temporal: "annual-constant loads (p_set = annual / nhours)"
+      scenario: "per-planning-horizon dicts (St_primary_fraction, DRI_fraction, sector_ratios_fraction_future) resolved against the planning_horizons list (one compose_network run per horizon)"
 
 reference_taxonomy:
   framework: "FORECAST (Fraunhofer ISI)"

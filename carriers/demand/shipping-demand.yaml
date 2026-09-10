@@ -119,7 +119,7 @@ models:
       scenario: "H2 share dict keyed '{demand}_{planning_horizons}'; totals via CAGR csvs per {demand} wildcard"
 
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Nodal navigation demand split three ways per investment year into 'H2 for
@@ -219,7 +219,7 @@ models:
       - input: "JRC-IDEES + eurostat navigation energy totals"
         required_for: "demand level"
         availability: "must be built (Europe only)"
-      - input: "pop_weighted_energy_totals_s_{clusters}.csv"
+      - input: "pop_weighted_energy_totals.csv"
         required_for: "domestic navigation allocation"
         availability: "must be built"
       - input: "methanol and H2 infrastructure buses"

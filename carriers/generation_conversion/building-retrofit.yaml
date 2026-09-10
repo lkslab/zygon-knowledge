@@ -20,7 +20,7 @@ when_to_use:
   - "known in pypsa-eur as: retrofitting, building retrofitting"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Two mechanisms. (1) EXOGENOUS (on by default):
@@ -52,7 +52,7 @@ models:
         rule build_retro_cost (scripts/build_retro_cost.py:
         prepare_building_stock_data -> calculate_space_heat_savings ->
         calculate_retro_costs -> sample_dE_costs_area) -> retro_cost and
-        floor_area CSVs (inputs of rule prepare_sector_network only when
+        floor_area CSVs (inputs of rule compose_network only when
         retro_endogen) -> add_heat retrofitting block (w_space share splits
         space from water per node; urban central uses the combined "tot"
         sector). The exogenous factor is applied in add_heat BEFORE the

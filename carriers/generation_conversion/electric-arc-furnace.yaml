@@ -24,7 +24,7 @@ when_to_use:
   - "decarbonise steel production"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         EAF steel is covered on the demand side, active by default in sector
@@ -59,7 +59,7 @@ models:
         rule build_industrial_distribution_key (GEM steel tracker,
         prepare_gem_steel_database) -> rule build_industrial_production_per_node
         -> rule build_industrial_energy_demand_per_node -> rule
-        prepare_sector_network runs add_industry, which attaches the flat loads
+        compose_network runs add_industry, which attaches the flat loads
         and rescales national electricity demand downward by "current
         electricity" before re-adding "industry electricity".
       not_covered: >
@@ -69,15 +69,12 @@ models:
         availability never constrains the secondary share, which is purely the
         residual of the config ramps. Route choice is not endogenous — the model
         cannot trade EAF against blast furnace on cost or CO2. Route fractions
-        are single EU-wide scalars per horizon, not per country. Steel is
-        excluded from the new endogenous process-heat machinery: the
-        build_industry_sector_ratios_endogenous docstring states the script
-        does not cover the steel sector, and "DRI + Electric arc" is in
-        sectors_copied_from_exogenous in build_industrial_energy_demand_per_node
-        — with sector.industry_t.endogen the "Electric arc" sector keeps
-        today's country intensities as flat fuel loads (no temperature-band
-        split). No demand-side flexibility on EAF electricity.
-      provenance: "scripts/build_industry_sector_ratios.py:iron_and_steel; scripts/build_industrial_production_per_country_tomorrow.py:St_primary_fraction; scripts/build_industrial_distribution_key.py:Nominal EAF steel capacity (ttpa); scripts/build_industrial_energy_demand_per_node.py:sectors_copied_from_exogenous; scripts/prepare_sector_network.py:industry electricity"
+        are single EU-wide scalars per horizon, not per country. Steel process
+        heat has no temperature resolution and no endogenous supply choice:
+        like every other sector it arrives as flat per-carrier loads from
+        build_industrial_energy_demand_per_node. No demand-side flexibility
+        on EAF electricity.
+      provenance: "scripts/build_industry_sector_ratios.py:iron_and_steel; scripts/build_industrial_production_per_country_tomorrow.py:St_primary_fraction; scripts/build_industrial_distribution_key.py:Nominal EAF steel capacity (ttpa); scripts/build_industrial_energy_demand_per_node.py; scripts/prepare_sector_network.py:industry electricity"
     levers:
       - key: industry.St_primary_fraction
         effect: "Per-horizon fraction of total steel from primary routes; lowering it grows the scrap-EAF residual ('Electric arc' = total - DRI - Integrated)."
@@ -135,7 +132,7 @@ models:
         anchor: "scripts/build_industrial_distribution_key.py::prepare_gem_steel_database and ::build_nodal_distribution_key (steel_processes loop)"
         provenance: "scripts/build_industrial_distribution_key.py:prepare_gem_steel_database; scripts/build_industrial_distribution_key.py:steel_processes"
       - change: "attachment of steel energy as network loads"
-        anchor: "scripts/prepare_sector_network.py::add_industry (rule prepare_sector_network)"
+        anchor: "scripts/prepare_sector_network.py::add_industry (rule compose_network)"
         provenance: "scripts/prepare_sector_network.py:add_industry"
     data_dependencies:
       - input: "JRC-IDEES Iron and steel sheets (FC_IND_IS_EA_E for Electric arc)"

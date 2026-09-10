@@ -115,7 +115,7 @@ models:
       temporal: "Hourly profile taken directly from the source dataset for load_options.weather_year"
       scenario: "load_options.prediction_year picks the GEGIS projection year; no demand wildcard at the electricity-only stage"
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >-
         Rule build_electricity_demand stitches measured hourly country load
@@ -126,9 +126,12 @@ models:
         (manual_adjustment) plus template-year fills for UA/MD/AL/BA/XK/MK/CY,
         and optionally supplements remaining holes with a synthetic
         machine-learning demand series. Rule build_electricity_demand_base
-        disaggregates the country series to base bus regions (upsample_load);
-        attach_load in add_electricity.py multiplies by load.scaling_factor and
-        adds the Load components.
+        disaggregates the country series to the simplified bus regions
+        (upsample_load, electricity_demand_simplified.nc); rule
+        cluster_electricity_demand maps that onto the clustered buses
+        (electricity_demand.nc, new at a6c45e5); attach_load in add_electricity.py,
+        called from compose_network, multiplies by load.scaling_factor and adds
+        the Load components.
       mechanism: >-
         The gap-filling pipeline is driven entirely by the load: config block
         (fill_gaps.enable, fill_gaps.interpolate_limit,
@@ -185,7 +188,7 @@ models:
         note: "Replace/patch resources/electricity_demand.csv (UTC index x ISO-2 columns) between build_electricity_demand and build_electricity_demand_base."
       - variant: "Add a single large consumer (data center, desalination) at a bus"
         rung: L2
-        note: "No hook; add a Load in attach_load (add_electricity.py) or edit the nodal netCDF resources/electricity_demand_base_s.nc."
+        note: "No hook; add a Load in attach_load (add_electricity.py) or edit the nodal netCDF resources/electricity_demand_simplified.nc (rule build_electricity_demand_base) or the clustered resources/electricity_demand.nc (rule cluster_electricity_demand)."
       - variant: "Endogenous demand growth / elasticity"
         rung: L5
         note: "Load is exogenous p_set throughout; price-responsive demand needs new component logic."

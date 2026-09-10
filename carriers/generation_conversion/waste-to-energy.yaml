@@ -21,7 +21,7 @@ when_to_use:
   - "known in pypsa-eur as: municipal solid waste, waste, waste CHP, waste CHP CC"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Waste-to-energy is first-class in BOTH workflows. Electricity
@@ -52,9 +52,9 @@ models:
         carbon-neutral) feeds the same waste CHP fleet. MSW can be
         transported between nodes when sector.biomass_transport is on.
       mechanism: >
-        Electricity: rule build_powerplants + rule add_electricity
-        (attach_conventional_generators). Sector: rule prepare_sector_network
-        — add_industry creates the HVC waste stream and the waste CHP / CC
+        Electricity: rule build_powerplants + rule compose_network calling
+        add_electricity.py (attach_conventional_generators). Sector: the
+        prepare_sector_network.py part of compose_network — add_industry creates the HVC waste stream and the waste CHP / CC
         links (gated on cf_industry waste_to_energy flags, i.e. the industry:
         config chapter passed as params); add_biomass creates MSW buses,
         generators, transport links and the operational GlobalConstraint
@@ -109,7 +109,7 @@ models:
       - key: biomass.classes
         effect: "The 'municipal solid waste' class maps ENSPRESO feedstock 'Municipal waste' into the MSW potential; edit to re-scope what counts as MSW."
         default: "municipal solid waste: [Municipal waste]"
-        provenance: "config/config.default.yaml:municipal solid waste; scripts/build_biomass_potentials.py:enspreso_biomass_potentials"
+        provenance: "config/config.default.yaml:biomass.classes; scripts/build_biomass_potentials.py:enspreso_biomass_potentials"
       - key: sector.biomass_transport
         effect: "true adds inter-node MSW transport links (with biomass transport costs) so waste can move to CHP sites."
         default: "false (biomass_spatial: true gives regional MSW without transport)"

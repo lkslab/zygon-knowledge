@@ -1,0 +1,123 @@
+id: storage-economics
+title: storage economics — per-asset revenue, cost recovery, cycles and spreads
+family: storage
+what: 'Turn a solved network into the storage investor''s table: for every
+  battery, home battery, H2 store, PHS and hydro unit, the energy-arbitrage
+  revenue at the prices it actually faces (store + charger/discharger links valued
+  on the grid side; other stores at their own bus), annualised cost, the
+  cost-recovery ratio (the LP zero-profit identity puts a freely built asset at
+  ~1), energy delivered, full cycles, capture and charge price, spread, realised
+  duration, utilisation and the marginal storage value from the energy-balance
+  dual. One post-processing rule over any list of solved networks.
+
+  '
+when_to_use:
+- business case / revenue stack for a battery or long-duration store
+- does the storage the model built recover its cost
+- capture price, spread and cycles of a storage unit
+- how storage revenue shifts across scenarios or horizons
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+  baseline: config.de1.yaml
+  execution:
+  - kind: config
+    key: solving.options.load_shedding
+    value:
+      enable: true
+      default_cost: 2000
+    note: 'a declared VOLL bounds the capture-price tail; without it scarcity
+      prices are solver artefacts and the revenue table inherits them.
+
+      '
+  - kind: code
+    where: scripts/solve_network.py:assign_all_duals
+    do: 'set `solving.options.assign_all_duals: true` in the run config — read
+      via bare .get(), absent from config.default.yaml; without it
+      stores_t.mu_energy_balance is empty and msv_mean/msv_max come out NaN.
+
+      '
+  - kind: config
+    key: zygon_storage_economics
+    value:
+      networks:
+      - results/germany-2n/networks/solved_2050.nc
+      labels:
+      - base
+      carriers:
+      - battery
+      - home battery
+      - H2 Store
+      - PHS
+      - hydro
+      quantities:
+      - arbitrage_revenue
+      - annualised_cost
+      - cost_recovery
+      - discharge_energy
+      - full_cycles
+      - capture_price
+      - charge_price
+      - spread
+      - duration_h
+      - utilisation
+      - msv_mean
+      - msv_max
+    note: 'explicit solved-network paths (any set: baseline, price-formation run,
+      CBA variants, myopic horizons) and the storage carriers to value.
+
+      '
+  - kind: payload
+    note: 'rules/zygon_storage_economics.smk + scripts/zygon_storage_economics.py;
+      patches the Snakefile include list and appends the zygon_storage_economics:
+      config section. File-disjoint from every other payload.
+      Rebased on a6c45e5 (2026-09-10), not yet re-run against an a6c45e5 install.
+
+      '
+  - kind: invocation
+    note: 'extra_targets results/zygon_storage_economics/{zygon_storage_economics.quantities}.csv;
+      verify_networks: solved = {zygon_storage_economics.networks}, collected =
+      the quantity CSVs.
+
+      '
+  invalidates:
+  - solve_network
+  - zygon_storage_economics
+  budget:
+    jobs: 3
+    class: hour
+  success_metric:
+  - name: assets-covered
+    needs: solved
+    check: all(set(collected[q]['asset']) >= set(nv['base'].stores.index[nv['base'].stores.carrier.isin(['battery', 'home battery', 'H2 Store'])]) | set(nv['base'].storage_units.index[nv['base'].storage_units.carrier.isin(['PHS', 'hydro'])]) for q in collected)
+    expect: every store and storage unit of the listed carriers has a row in every quantity CSV
+  - name: revenue-identity
+    needs: solved
+    check: all(abs(float(collected['arbitrage_revenue'].set_index('asset')['value'][s]) - float((nv['base'].snapshot_weightings.objective * ((-nv['base'].links_t.p1[s + ' discharger']).clip(lower=0) * nv['base'].buses_t.marginal_price[nv['base'].links.at[s + ' discharger', 'bus1']] - nv['base'].links_t.p0[s + ' charger'].clip(lower=0) * nv['base'].buses_t.marginal_price[nv['base'].links.at[s + ' charger', 'bus0']])).sum())) <= 1e-6 * max(1.0, abs(float(collected['arbitrage_revenue'].set_index('asset')['value'][s]))) for s in nv['base'].stores.index[nv['base'].stores.carrier == 'battery'])
+    expect: 'each battery''s collected revenue equals the weighted discharge revenue minus charging cost recomputed from the network at the grid-side prices'
+  - name: zero-profit-built
+    needs: solved
+    check: all(0.85 <= float(collected['cost_recovery'].set_index('asset')['value'][s]) <= 1.15 for s in nv['base'].stores.index[nv['base'].stores.carrier.isin(['battery', 'H2 Store']) & nv['base'].stores.e_nom_extendable & (nv['base'].stores.e_nom_opt > 1.0) & (nv['base'].stores.e_nom_opt < 0.999 * nv['base'].stores.e_nom_max)])
+    expect: 'a freely built battery or H2 store recovers its annualised cost from arbitrage — the LP zero-profit identity (verified 0.997-0.9996 on the settled 3H and 168H baselines)'
+  - name: msv-present
+    needs: solved
+    check: nv['base'].stores_t.mu_energy_balance.empty or collected['msv_mean'].set_index('asset')['value'].reindex(nv['base'].stores.index[nv['base'].stores.carrier == 'battery']).notna().all()
+    expect: when the solve assigned the energy-balance dual the marginal storage value is collected; an empty dual frame means assign_all_duals was not set
+  - name: quantities-complete
+    needs: solved
+    check: set(collected) == {'arbitrage_revenue', 'annualised_cost', 'cost_recovery', 'discharge_energy', 'full_cycles', 'capture_price', 'charge_price', 'spread', 'duration_h', 'utilisation', 'msv_mean', 'msv_max'} and all({'network', 'asset', 'carrier', 'bus', 'value'} <= set(df.columns) for df in collected.values())
+    expect: one long-format CSV per declared quantity with network/asset/carrier/bus/value columns
+notes: 'Energy arbitrage is the ONLY stream: no capacity payments, no aFRR/FCR, no
+  imbalance revenue exist in the model, so cost_recovery reads as the long-run
+  energy-value share of a stack — a lower bound on a merchant case, and exactly
+  1 for what the planner built. Existing (non-extendable) PHS and hydro carry
+  their sunk capital_cost x p_nom, so their ratio is informational. Home batteries
+  report at the low-voltage bus. H2 Store is valued at the H2 bus (its
+  electrolyser and fuel cell serve other demands too); the battery composite at
+  the AC bus. Coarse snapshots flatten the spreads the numbers live on: on the
+  168h fixture batteries are unbuilt and cycle numbers are meaningless — use the
+  3h fixture or finer. Verified standalone on both settled baselines 2026-09-10 at the previous anchor; not re-run on a6c45e5.
+
+  '

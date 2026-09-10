@@ -22,7 +22,7 @@ when_to_use:
   - "known in pypsa-eur as: H2 pipeline, H2 pipeline retrofitted"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         ON by default (sector.H2_network: true). In
@@ -51,7 +51,7 @@ models:
         built pipeline capacity forward as fixed vintaged links via
         add_brownfield.
       mechanism: >
-        rule prepare_sector_network -> add_h2_gas_infrastructure (H2_network
+        rule compose_network -> add_h2_gas_infrastructure (H2_network
         block, after the retrofit block); loss/compression splitting happens
         in the __main__ transmission_efficiency loop calling
         lossy_bidirectional_links; the reversed-pair capacity coupling and

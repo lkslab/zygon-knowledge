@@ -16,7 +16,7 @@ when_to_use:
   - "shift rail freight to electric"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Rail is present only as demand accounting, split by TODAY's
@@ -44,7 +44,7 @@ models:
         ("total rail", "electricity rail", "total rail passenger",
         "electricity rail freight"); rule build_transport_demand computes
         energy_totals_transport = total road + total rail - electricity rail;
-        rule prepare_sector_network -> add_land_transport applies the engine
+        rule compose_network -> add_land_transport applies the engine
         shares to that aggregate. The base electricity Loads (containing
         actual rail traction) are built by rule build_electricity_demand and
         carried into the sector network.

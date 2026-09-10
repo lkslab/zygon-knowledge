@@ -15,7 +15,7 @@ when_to_use:
   - "pypsa-eur carrier names: OCGT methanol, CCGT methanol, CCGT methanol CC, allam methanol"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Partially ON by default: sector.methanol.methanol_to_power.ocgt is true,
@@ -42,7 +42,7 @@ models:
         net-neutral, and the CC/allam variants on such methanol are net-negative
         — the model can and does use this as a carbon-management arbitrage.
       mechanism: >
-        rule prepare_sector_network runs scripts/prepare_sector_network.py:
+        rule compose_network runs scripts/prepare_sector_network.py:
         add_methanol -> add_methanol_to_power with types =
         sector.methanol.methanol_to_power (the whole block is skipped only if
         every flag under sector.methanol is false). add_carrier_buses has

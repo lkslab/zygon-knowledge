@@ -12,7 +12,7 @@ when_to_use:
   - "firm clean generation beyond fission"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Not covered — grounded absence. "fusion" appears nowhere in
@@ -85,7 +85,7 @@ models:
           carrier (fueltype-to-carrier mapping happens in
           load_and_aggregate_powerplants via powerplantmatching's
           to_pypsa_names — verify the resulting carrier string on
-          powerplants_s_{clusters}.csv before trusting placement)
+          powerplants.csv before trusting placement)
       - variant: "availability-year gating (fusion buildable only from e.g. 2050)"
         rung: L3
         note: >
@@ -112,7 +112,7 @@ models:
         note: "no machinery exists; bespoke component logic plus constraints in solve_network.py extra_functionality"
     where:
       - change: "introducing the carrier (attachment + extendable placement)"
-        anchor: "scripts/add_electricity.py::attach_conventional_generators / ::load_and_aggregate_powerplants (rule add_electricity)"
+        anchor: "scripts/add_electricity.py::attach_conventional_generators / ::load_and_aggregate_powerplants (rule compose_network)"
         provenance: "scripts/add_electricity.py:attach_conventional_generators; scripts/add_electricity.py:load_and_aggregate_powerplants"
       - change: "cost row creation / overrides"
         anchor: "scripts/process_cost_data.py::overwrite_costs (rule process_cost_data; costs.custom_cost_fn)"

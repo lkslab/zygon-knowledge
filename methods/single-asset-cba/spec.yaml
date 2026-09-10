@@ -20,8 +20,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
-    date: '2026-08-07'
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
   baseline: null
   execution:
   - kind: config
@@ -62,10 +62,10 @@ models:
       - toot-gb0-nuclear
       - pint-gbie-demand-up
       networks:
-      - results/baseline/cba/ref/base_s_5__168H_2050.nc
-      - results/baseline/cba/pint-gbie-hvdc/base_s_5__168H_2050.nc
-      - results/baseline/cba/toot-gb0-nuclear/base_s_5__168H_2050.nc
-      - results/baseline/cba/pint-gbie-demand-up/base_s_5__168H_2050.nc
+      - results/baseline/cba/ref/solved_2050.nc
+      - results/baseline/cba/pint-gbie-hvdc/solved_2050.nc
+      - results/baseline/cba/toot-gb0-nuclear/solved_2050.nc
+      - results/baseline/cba/pint-gbie-demand-up/solved_2050.nc
       indicators:
       - b1_sew
       - b2_co2
@@ -77,8 +77,9 @@ models:
       '
   - kind: payload
     note: 'rules/zygon_cba.smk + build_cba_network.py + zygon_cba_collect.py; solve_cba_network
-      mirrors solve_sector_network, running the model''s own solve_network.py; patches
+      mirrors the model''s own solve_network rule, running the model''s own solve_network.py; patches
       Snakefile + config.
+      Rebased on a6c45e5 (2026-09-10), not yet re-run against an a6c45e5 install.
 
       '
   - kind: invocation

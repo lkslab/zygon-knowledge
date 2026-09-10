@@ -10,7 +10,7 @@ when_to_use:
   - "pypsa-eur carrier names: urban central aquifer thermal energy storage, aquifer thermal energy storage charger, aquifer thermal energy storage discharger"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Fully wired but OFF by default (sector.district_heating.ates.enable:
@@ -45,7 +45,7 @@ models:
         rule build_ates_potentials (per clusters AND planning horizon) runs
         scripts/build_ates_potentials.py: suitable_aquifers ->
         ates_potential_per_onshore_region -> ates_potentials CSV
-        (ates_potential column). rule prepare_sector_network conditionally
+        (ates_potential column). rule compose_network conditionally
         takes that CSV as input ates_potentials (only when
         sector.district_heating.ates.enable) and add_heat's enable_ates branch
         (HeatSystem.URBAN_CENTRAL only) builds the components. Charging and

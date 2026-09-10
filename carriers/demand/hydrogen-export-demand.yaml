@@ -150,7 +150,7 @@ models:
       temporal: "flat profile or ship batch cycles (fill/travel/unload/pause from export.ship.*); optional export-bus store decouples production timing"
       scenario: "h2export list sweeps volumes as separate runs; policy_config.hydrogen adds matching/additionality scenario variants"
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Nothing — pypsa-eur has no hydrogen (or other fuel) export demand mechanism.
@@ -194,8 +194,8 @@ models:
         anchor: "scripts/prepare_sector_network.py:add_import_options"
         provenance: "scripts/prepare_sector_network.py:add_import_options; config/config.default.yaml:imports"
       - change: "rule plumbing for a new export step"
-        anchor: "rules/build_sector.smk (prepare_sector_network rule inputs/params)"
-        provenance: "rules/build_sector.smk:prepare_sector_network"
+        anchor: "rules/compose.smk (compose_network rule inputs/params, which feed prepare_sector_network.py)"
+        provenance: "rules/compose.smk:compose_network"
     data_dependencies:
       - input: "export volumes and port locations (user assumption)"
         required_for: "any export-demand variant"

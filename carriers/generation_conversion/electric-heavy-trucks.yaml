@@ -16,7 +16,7 @@ when_to_use:
   - "freight transport electricity demand"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Not covered as a distinct segment. PyPSA-Eur models ONE aggregate land
@@ -40,7 +40,7 @@ models:
         rule build_energy_totals (build_transport_data + the TrRoad_ene sheet
         parsing) -> energy_totals.csv incl. unused truck columns; rule
         build_transport_demand collapses total road + total rail - electricity
-        rail into one km series; rule prepare_sector_network ->
+        rail into one km series; rule compose_network ->
         add_land_transport -> add_EVs applies the aggregate electric share.
       not_covered: >
         No truck carrier, no truck share key, no truck efficiency, battery,

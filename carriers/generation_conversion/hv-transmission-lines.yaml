@@ -18,7 +18,7 @@ when_to_use:
   - "known in pypsa-eur as: lines, transmission lines, AC, AC-AC, AC line"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Fully covered, with THREE selectable base topologies via
@@ -40,14 +40,15 @@ models:
         simplify_network then maps ALL lines onto a single 380 kV layer
         preserving capacity (simplify_network_to_380: num_parallel rescaled,
         transformers removed), removes stubs, and cluster_network aggregates to
-        {clusters} buses (line vintages kept apart via
+        clustering.cluster_network.n_clusters buses (line vintages kept apart via
         custom_line_groupers=["build_year"]). Expansion is a config key, not a
         wildcard: electricity.transmission_limit (default "vopt" = cost-optimal
         with a volume accounting basis) makes all lines extendable with
         s_nom_min = s_nom in set_transmission_limit; non-"opt" factors add a
         transmission_volume_expansion_limit / expansion_cost GlobalConstraint
         over carrier_attribute "AC, DC". Per-line growth is capped at
-        lines.max_extension (default 20000 MW, set_line_nom_max). Solving
+        lines.s_nom_max_extension (default 20000 MW, cap_transmission_capacity).
+        Solving
         applies piecewise-linearised AC losses by default
         (solving.options.transmission_losses: 2 segments) and — when
         solving.options.skip_iterations is false — sequential impedance updates
@@ -58,11 +59,12 @@ models:
         retrieve prebuilt OSM data (or rule build_tyndp_network / rules
         clean_osm_data+build_osm_network for source "build") -> rule
         base_network (networks/base.nc) -> rule add_transmission_projects_and_dlr
-        (base_extended.nc) -> rule simplify_network (base_s.nc, 380 kV layer) ->
-        rule cluster_network -> rule add_electricity (set_transmission_costs
-        with lines.length_factor) -> rule prepare_network (set_line_s_max_pu,
-        set_transmission_limit, set_line_nom_max, optional enforce_autarky) ->
-        rule solve_network. Note set_transmission_limit calls
+        (base_extended.nc) -> rule simplify_network (simplified.nc, 380 kV
+        layer) -> rule cluster_network (clustered.nc) -> rule compose_network,
+        which calls add_electricity.py (set_transmission_costs with
+        lines.length_factor) and then prepare_network.py
+        (set_transmission_limit, cap_transmission_capacity for s_max_pu and
+        the extension caps, optional enforce_autarky) -> rule solve_network. Note set_transmission_limit calls
         set_transmission_costs(n, costs) again WITHOUT length factors, so the
         final line capital cost is HVAC-overhead-cost * length with factor 1.0
         — lines.length_factor only sticks for renewable connection costing.
@@ -86,13 +88,13 @@ models:
         default: "osm"
         provenance: "config/config.default.yaml:base_network; scripts/base_network.py:base_network"
       - key: electricity.transmission_limit
-        effect: "Expansion control (replaces the old {ll} wildcard): 'vopt'/'copt' cost-optimal, 'v1.25' caps volume growth at 25%, 'v1.0' freezes today's capacity, 'c...' caps expansion cost; also settable per-run via an opts wildcard entry 'lv...'/'lc...' (update_config_from_wildcards)."
+        effect: "Expansion control: 'vopt'/'copt' cost-optimal, 'v1.25' caps volume growth at 25%, 'v1.0' freezes today's capacity, 'c...' caps expansion cost (a string like 'c1.25' or a [kind, factor] pair); config only, there is no wildcard."
         default: "vopt"
         provenance: "config/config.default.yaml:transmission_limit; scripts/prepare_network.py:set_transmission_limit"
       - key: lines.s_max_pu
-        effect: "N-1 proxy: fraction of s_nom usable in the OPF, applied to all lines (set_line_s_max_pu, logged as the N-1 security margin); also multiplied into the DLR time series."
+        effect: "N-1 proxy: fraction of s_nom usable in the OPF, applied to all lines (cap_transmission_capacity line_max_pu, logged as the N-1 security margin); also multiplied into the DLR time series."
         default: "0.7"
-        provenance: "config/config.default.yaml:s_max_pu; scripts/prepare_network.py:set_line_s_max_pu"
+        provenance: "config/config.default.yaml:s_max_pu; scripts/prepare_network.py:cap_transmission_capacity"
       - key: electricity.voltages
         effect: "Voltage window kept in the base network — buses with v_nom outside [min, max] are dropped (_load_buses); also selects which lines.types entries are used."
         default: "[220., 300., 330., 380., 400., 500., 750.]"
@@ -101,14 +103,14 @@ models:
         effect: "Map nominal voltage -> pypsa standard line type (63-750 kV entries shipped); sets impedance and thermal rating per voltage class, and the 380 kV entry is the type every line is remapped to in simplify_network."
         default: "63..750 kV mapped to Al/St conductor types (380.0: 'Al/St 240/40 4-bundle 380.0', 750.0: 'Al/St 560/50 4-bundle 750.0')"
         provenance: "config/config.default.yaml:types; scripts/base_network.py:_get_linetype_by_voltage; scripts/simplify_network.py:simplify_network_to_380"
-      - key: lines.max_extension
-        effect: "Per-line cap on capacity growth: s_nom_max = s_nom + max_extension (set_line_nom_max in prepare_network; limit_individual_line_extension in sector runs)."
+      - key: lines.s_nom_max_extension
+        effect: "Per-line cap on capacity growth: s_nom_max = s_nom + s_nom_max_extension (cap_transmission_capacity in prepare_network, run inside compose_network for both workflows)."
         default: "20000 (MW)"
-        provenance: "config/config.default.yaml:max_extension; scripts/prepare_network.py:set_line_nom_max; scripts/prepare_sector_network.py:limit_individual_line_extension"
+        provenance: "config/config.default.yaml:s_nom_max_extension; scripts/prepare_network.py:cap_transmission_capacity"
       - key: lines.s_nom_max
-        effect: "Absolute upper clip on any line's s_nom_max, applied after max_extension."
+        effect: "Absolute upper clip on any line's s_nom_max, applied after the extension cap."
         default: ".inf"
-        provenance: "config/config.default.yaml:s_nom_max; scripts/prepare_network.py:set_line_nom_max"
+        provenance: "config/config.default.yaml:s_nom_max; scripts/prepare_network.py:cap_transmission_capacity"
       - key: lines.under_construction
         effect: "Handling of lines flagged under construction in the base data: 'keep' (default — counted at full capacity), 'zero' (capacity 0), 'remove'."
         default: "keep"
@@ -143,7 +145,7 @@ models:
         note: "default — electricity.transmission_limit: vopt makes all lines extendable with s_nom_min = s_nom"
       - variant: "freeze the grid at today's capacity / allow limited growth"
         rung: L1
-        note: "electricity.transmission_limit: v1.0 (freeze) or v1.25 / c1.25 (25% volume / cost headroom); also as opts entry 'lv1.0'"
+        note: "electricity.transmission_limit: v1.0 (freeze) or v1.25 / c1.25 (25% volume / cost headroom)"
       - variant: "tighten/relax the N-1 margin"
         rung: L0
         note: "lines.s_max_pu — one scalar network-wide"
@@ -170,7 +172,7 @@ models:
         note: "data.osm.source: 'build' rebuilds the grid from raw OSM (rules clean_osm_data / build_osm_network) so upstream OSM edits flow in; for entsoegridkit, data/parameter_corrections.yaml patches attributes (_apply_parameter_corrections)"
       - variant: "per-line (not global) expansion caps or costs"
         rung: L2
-        note: "lines.max_extension / s_nom_max are uniform; individual values need a localised edit after set_line_nom_max in prepare_network.py, or an adjust_lines transmission-project CSV"
+        note: "lines.s_nom_max_extension / s_nom_max are uniform; individual values need a localised edit after cap_transmission_capacity in prepare_network.py, or an adjust_lines transmission-project CSV"
       - variant: "true N-1 security-constrained OPF"
         rung: L5
         note: "no contingency machinery; bespoke constraints via solving.options.custom_extra_functionality or extra_functionality in solve_network.py"
@@ -185,7 +187,7 @@ models:
         anchor: "scripts/prepare_network.py::set_transmission_limit (consumes electricity.transmission_limit)"
         provenance: "scripts/prepare_network.py:set_transmission_limit"
       - change: "line capital costs (HVAC overhead row)"
-        anchor: "scripts/add_electricity.py::set_transmission_costs (called from rule add_electricity AND re-called factor-less inside set_transmission_limit)"
+        anchor: "scripts/add_electricity.py::set_transmission_costs (called from add_electricity inside compose_network AND re-called factor-less inside set_transmission_limit)"
         provenance: "scripts/add_electricity.py:set_transmission_costs; scripts/prepare_network.py:set_transmission_costs"
       - change: "iterative expansion / losses / discretisation in the solve"
         anchor: "scripts/solve_network.py::collect_kwargs + n.optimize.optimize_transmission_expansion_iteratively (solving.options)"
