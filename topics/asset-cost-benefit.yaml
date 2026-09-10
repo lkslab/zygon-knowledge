@@ -16,7 +16,7 @@ when_to_use:
 models:
 - model: pypsa-eur
   coverage: ready
-  gap_assessment: >-
+  approach: >-
     One of pypsa-eur's strongest topics, and since the single-asset-cba method landed
     the canonical study is a verified mechanical pipeline, not a recipe sketch: declare
     the asset (any component, or a composite like bus + conversion link + load), solve
@@ -24,18 +24,25 @@ models:
     out direction-signed against the reference, with real TYNDP/NEP candidates loadable
     via transmission_projects when the asset is a listed project. The intervention
     is not confined to supply: a production pathway lands as a composite add and a
-    demand change as set/scale ops that reach the time-varying load series — B1 then
-    reads as the (negative) cost of serving it; system design under a whole demand
-    scenario stays the capacity-expansion topic, this card prices the delta of one
-    named intervention. What stays manual: splitting B1 into producer/consumer surplus
-    per side and congestion rent still means reading nodal prices and link duals off
-    the solved pair yourself. Honesty rungs: benefits are what a deterministic cost-minimizing
-    planner sees — no probabilistic adequacy (B6), flexibility (B7) or stability (B8)
-    indicators, no CBCA/wheeling revenue-allocation layer; under the binding net-zero
-    cap B2 is ~0 by construction; TOOT and PINT are order-dependent when several projects
-    queue, so each asset needs its own run set against the same reference. Sharp edges
-    at this ref: the ATK opts token KeyErrors (use electricity.autarky for a no-interconnection
-    counterfactual) and a bare EQ token crashes (always give a value).
+    demand change as set/scale ops that reach the time-varying load series, so B1
+    reads as the (negative) cost of serving it. System design under a whole demand
+    scenario stays the capacity-expansion topic; this card prices the delta of one
+    named intervention.
+  pitfalls:
+  - >-
+    splitting B1 into producer/consumer surplus per side and congestion rent is manual:
+    read nodal prices and link duals off the solved pair yourself
+  - >-
+    benefits are what a deterministic cost-minimising planner sees — no probabilistic
+    adequacy (B6), flexibility (B7) or stability (B8) indicators, and no CBCA/wheeling
+    revenue-allocation layer
+  - under the binding net-zero cap B2 is ~0 by construction
+  - >-
+    TOOT and PINT are order-dependent when several projects queue, so each asset needs
+    its own run set against the same reference
+  - >-
+    at this ref the ATK opts token KeyErrors (use electricity.autarky for a no-interconnection
+    counterfactual) and a bare EQ token crashes (always give a value)
   recipes:
     generation_conversion:
     - hvdc-interconnectors
@@ -86,28 +93,34 @@ models:
     date: '2026-08-07'
 - model: pypsa-earth
   coverage: ready
-  gap_assessment: >-
+  approach: >-
     A strong pypsa-earth topic, and since the single-asset-cba method landed the canonical
     study is a verified mechanical pipeline: declare the asset (any component, or
     a composite like bus + conversion link + load), solve reference and perturbed
     variants with the model's own solver, and B1/B2/B3 fall out direction-signed against
     the reference. Multi-country scope is native, so power-pool cases need no special
     assembly, and EQ adds the self-sufficiency constraint real interconnection politics
-    impose. The intervention is not confined to supply: a production pathway lands
-    as a composite add and a demand change as set/scale ops that reach the time-varying
-    load series — B1 then reads as the (negative) cost of serving it; system design
-    under a whole demand scenario stays the capacity-expansion topic, this card prices
-    the delta of one named intervention. What stays manual: splitting B1 into producer/consumer
-    surplus per side and congestion rent still means reading country-level duals off
-    the solved pair yourself. Honesty rungs: benefits are what a deterministic cost-minimizing
-    planner sees — no probabilistic adequacy (B6), flexibility (B7) or stability (B8)
-    indicators, no wheeling-charge or transmission-tariff layer for revenue allocation;
-    under a binding CO2 cap B2 is ~0 by construction; TOOT and PINT are order-dependent
-    when several projects queue, so each asset needs its own run set against the same
-    reference. Earth-specific: OSM grid completeness varies by country, and the coarse
-    settled baselines carry little or no native inter-zonal transmission — the interconnector
-    case leans on PINT (put the candidate in) rather than TOOT of an existing corridor,
-    and per-country data grades gate which power pools are answerable at all.
+    impose. A production pathway lands as a composite add and a demand change as set/scale
+    ops that reach the time-varying load series, so B1 reads as the (negative) cost
+    of serving it. System design under a whole demand scenario stays the capacity-expansion
+    topic; this card prices the delta of one named intervention.
+  pitfalls:
+  - >-
+    splitting B1 into producer/consumer surplus per side and congestion rent is manual:
+    read country-level duals off the solved pair yourself
+  - >-
+    benefits are what a deterministic cost-minimising planner sees — no probabilistic
+    adequacy (B6), flexibility (B7) or stability (B8) indicators, and no wheeling-charge
+    or transmission-tariff layer for revenue allocation
+  - under a binding CO2 cap B2 is ~0 by construction
+  - >-
+    TOOT and PINT are order-dependent when several projects queue, so each asset needs
+    its own run set against the same reference
+  - >-
+    OSM grid completeness varies by country and the coarse settled baselines carry
+    little or no native inter-zonal transmission — the interconnector case leans on
+    PINT (put the candidate in) rather than TOOT of an existing corridor
+  - per-country data grades gate which power pools are answerable at all
   recipes:
     generation_conversion:
     - hvdc-interconnectors

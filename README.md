@@ -8,7 +8,7 @@ below at runtime; bump the pin to ship new content.
 
 | path | what | shape |
 |---|---|---|
-| `topics/<slug>.yaml` | one card per planning question, seven of them | `id, title, question, when_to_use[], models[]` where each `models[]` entry is `{model, coverage, gap_assessment, recipes{generation_conversion[], demand[]}, methods[{id, role}], defaults[], plots[], version_anchor{ref, date}}` |
+| `topics/<slug>.yaml` | one card per planning question, seven of them | `id, title, question, when_to_use[], models[]` where each `models[]` entry is `{model, coverage, approach, pitfalls[], recipes{generation_conversion[], demand[]}, methods[{id, role}], defaults[], plots[], version_anchor{ref, date}}` |
 | `recipes/generation_conversion/<slug>.yaml`, `recipes/demand/<slug>.yaml` | technology and demand recipes, shared across models | `id, title, summary, when_to_use[], models[]` where each entry is `{model, version_anchor, out_of_box, levers[], boundary[{variant, rung, note}], where[], data_dependencies[]}` |
 | `methods/<slug>.yaml` or `methods/<slug>/spec.yaml` + `payload/<model>/` | executable method specs, only the ones a topic cites | `id, title, family, what, when_to_use[], models[]` with `execution[]`, `invalidates[]`, `budget`, `success_metric[]` per entry |
 | `data_quality/<model>/countries/<CC>.yaml` | per-country data-quality scorecards (generated), with `datasets.yaml`, `MATRIX.csv`, `INDEX.md` | |
@@ -22,8 +22,11 @@ below at runtime; bump the pin to ship new content.
 
 A card is written once for every model it applies to. The app opens
 `topics/<slug>.yaml`, picks the `models[]` entry whose `model` matches the
-network in front of the user, and reads `coverage` and `gap_assessment` before
-anything else. A topic is listed for a model only when it has an entry for it.
+network in front of the user, and reads `coverage`, `approach` and `pitfalls`
+before anything else: `coverage` is the one-word verdict, `approach` says how
+the model treats the question (what it represents natively and where the
+levers live), `pitfalls` lists the honesty rungs to state beside any result.
+A topic is listed for a model only when it has an entry for it.
 A model's entry names only recipes and methods that exist with an entry for
 that model; `archive/tools/restructure.py --validate` enforces that and is the
 check to run after editing. `plots[].id` refer to pypsa-app's own plot cards.

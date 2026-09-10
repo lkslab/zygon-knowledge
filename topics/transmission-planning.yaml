@@ -13,12 +13,15 @@ when_to_use:
 models:
 - model: pypsa-eur
   coverage: gap
-  gap_assessment: >-
+  approach: >-
     No executable method is wired for pypsa-eur yet. This card descends from the v1
     cards transmission-expansion-planning (archived under archive/cookbooks/pypsa-eur/topics/v1/);
     the recipes below are the parts of those cards whose recipe pages exist in the
-    merged book with a section for this model. Until a method spec is verified for
-    pypsa-eur, the assistant can describe levers but cannot scope a study.
+    merged book with a section for this model.
+  pitfalls:
+  - >-
+    until a method spec is verified for pypsa-eur, the assistant can describe levers
+    but cannot scope a study
   recipes:
     generation_conversion:
     - hv-transmission-lines
@@ -36,12 +39,15 @@ models:
     date: '2026-09-09'
 - model: pypsa-earth
   coverage: gap
-  gap_assessment: >-
+  approach: >-
     No executable method is wired for pypsa-earth yet. This card descends from the
     v1 cards transmission-expansion-planning (archived under archive/cookbooks/pypsa-earth/topics/v1/);
     the recipes below are the parts of those cards whose recipe pages exist in the
-    merged book with a section for this model. Until a method spec is verified for
-    pypsa-earth, the assistant can describe levers but cannot scope a study.
+    merged book with a section for this model.
+  pitfalls:
+  - >-
+    until a method spec is verified for pypsa-earth, the assistant can describe levers
+    but cannot scope a study
   recipes:
     generation_conversion:
     - hv-transmission-lines
