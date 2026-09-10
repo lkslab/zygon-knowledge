@@ -75,4 +75,4 @@ the DEFAULT row; ALL countries use the German traffic and BDEW heat
 profiles. These degrade silently — check a country's scorecard before
 trusting sector-demand results.
 
-Dataset → dependent recipes: see `datasets.yaml` (`used_by`).
+Dataset → dependent carrier cards: see `datasets.yaml` (`used_by`).

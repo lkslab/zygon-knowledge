@@ -33,18 +33,6 @@ models:
     a <0.1 tolerance
   - the visible spatial spread is set by the clustering
   - the policy instrument (cap vs tax) flips the market-value trend
-  recipes:
-    generation_conversion:
-    - gas-power-plants
-    - fossil-fuel-supply
-    - grid-scale-batteries
-    - hv-transmission-lines
-    - hvdc-interconnectors
-    - transmission-expansion-projects
-    demand:
-    - electricity-load
-    - demand-temporal-profiles
-    - demand-spatial-disaggregation
   methods:
   - id: price-formation
     role: >-
@@ -123,17 +111,6 @@ models:
     capped — report VOLL and hours-at-ceiling beside every statistic
   - expansion duals are a competitive benchmark, not a market forecast
   - noisy_costs (~1e-2 EUR/MWh) means zero-price tests need a <0.1 tolerance
-  recipes:
-    generation_conversion:
-    - gas-power-plants
-    - fossil-fuel-supply
-    - grid-scale-batteries
-    - hv-transmission-lines
-    - hvdc-interconnectors
-    demand:
-    - electricity-load
-    - demand-temporal-profiles
-    - demand-spatial-disaggregation
   methods:
   - id: price-formation
     role: >-

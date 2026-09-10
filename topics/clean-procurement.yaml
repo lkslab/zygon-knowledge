@@ -76,22 +76,6 @@ models:
     strictness redistributes cost as much as it adds it — report the price duration
     curve and non-participating consumers' cost beside the premium
   - verify any hook constraint by counting constraint rows against the window count
-  recipes:
-    generation_conversion:
-    - onshore-wind
-    - utility-scale-solar-pv
-    - grid-scale-batteries
-    - hydrogen-storage-salt-caverns
-    - electrolysers
-    - stationary-fuel-cells
-    - green-hydrogen
-    - small-modular-reactors
-    - gas-power-plants
-    demand:
-    - electricity-load
-    - demand-temporal-profiles
-    - demand-spatial-disaggregation
-    - hydrogen-export-demand
   methods:
   - id: single-asset-cba
     role: >-
@@ -158,7 +142,7 @@ models:
     never read, so additionality true and false add the same constraint while the
     run logs success; re_country_load is dead too
   - >-
-    a plain Load (the electricity-load recipe's attach_load variant) is invisible
+    a plain Load (the electricity-load carrier card's attach_load variant) is invisible
     to the rule — only Link-p over matching_technologies counts
   - >-
     the default temporal_matching_carriers list credits reservoir hydro and run-of-river
@@ -180,22 +164,6 @@ models:
   - >-
     check the country's data_quality demand and renewable grades first; hourly matching
     is only as good as the hourly profiles behind it
-  recipes:
-    generation_conversion:
-    - onshore-wind
-    - utility-scale-solar-pv
-    - grid-scale-batteries
-    - hydrogen-storage-salt-caverns
-    - electrolysers
-    - stationary-fuel-cells
-    - green-hydrogen
-    - small-modular-reactors
-    - gas-power-plants
-    demand:
-    - electricity-load
-    - demand-temporal-profiles
-    - demand-spatial-disaggregation
-    - hydrogen-export-demand
   methods:
   - id: single-asset-cba
     role: >-

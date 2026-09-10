@@ -43,14 +43,6 @@ models:
     the welfare split is not a wired output: per-unit producer surplus and its distributional
     risk-reward (Franken) and per-design consumer cost (Thomassen) are post-processing
     on the solved stage-1/stage-2 networks
-  recipes:
-    generation_conversion:
-    - hv-transmission-lines
-    - hvdc-interconnectors
-    - transmission-expansion-projects
-    demand:
-    - electricity-load
-    - demand-spatial-disaggregation
   methods:
   - id: investment-geography
     role: >-
@@ -111,13 +103,6 @@ models:
   - >-
     the welfare split is not a wired output: per-unit producer surplus and distributional
     risk-reward (Franken) and per-design consumer cost (Thomassen) remain post-processing
-  recipes:
-    generation_conversion:
-    - hv-transmission-lines
-    - hvdc-interconnectors
-    demand:
-    - electricity-load
-    - demand-spatial-disaggregation
   methods:
   - id: investment-geography
     role: >-

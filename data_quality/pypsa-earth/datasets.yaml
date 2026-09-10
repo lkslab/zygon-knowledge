@@ -1,6 +1,6 @@
 # Dataset registry for the pypsa-earth data-quality cookbook.
-# Every country-resolved data source the workflow consumes, with the recipe
-# slugs (cookbooks/generation_conversion + cookbooks/demand) that depend on it.
+# Every country-resolved data source the workflow consumes, with the carrier
+# card slugs (carriers/generation_conversion + carriers/demand) that depend on it.
 # All consumer symbols are grep-verified against the scripts named.
 
 - id: demand-growth-cagr

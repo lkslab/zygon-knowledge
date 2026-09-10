@@ -1,0 +1,258 @@
+id: smart-ev-chargers
+title: Smart EV chargers (managed / flexible charging)
+summary: >
+  Shifting electric-vehicle charging in time within plug-in availability and
+  battery limits — charging as a demand-side flexibility resource rather than
+  a fixed load.
+when_to_use:
+  - "smart charging / managed charging"
+  - "flexible EV charging"
+  - "EV demand-side management / EV DSM"
+  - "shift EV charging to solar hours"
+  - "uncontrolled vs controlled charging comparison"
+  - "EV plug-in availability profile"
+  - "minimum state of charge for departure"
+  - "pypsa-eur carrier names: BEV charger, EV battery (Store), land transport EV"
+  - "smart charging / managed charging of EVs"
+  - "EV demand-side management / DSM"
+  - "shift EV charging to solar hours / off-peak"
+  - "flexible EV load"
+  - "controlled charging, charging flexibility"
+  - "known in pypsa-eur as: BEV charger"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Covered and ON by default (sector.bev_dsm: true), active whenever the
+        EV share > 0. In add_EVs the driving demand is a fixed Load on the "EV
+        battery" bus, but with bev_dsm an aggregate Store is added on the same
+        bus: e_nom = number of cars x bev_energy (0.05 MWh = 50 kWh per car) x
+        bev_dsm_availability (0.5, the fraction of the fleet participating) x
+        electric share, cyclic over the year. The optimiser is free to time the
+        "BEV charger" Link (p_nom = cars x 0.011 MW x share, efficiency 0.9)
+        within its p_max_pu availability profile — built by
+        bev_availability_profile in rule build_transport_demand from German
+        BASt passenger-car counts (pkw.csv), linearly scaled so availability is
+        bev_avail_max (0.95) when traffic is lowest and bev_avail_mean (0.8) on
+        average, i.e. most cars are plugged in at night. A departure guarantee
+        comes from bev_dsm_profile: the Store's e_min_pu forces state of charge
+        >= bev_dsm_restriction_value (0.8) at hour bev_dsm_restriction_time (7
+        = 7am UTC+shift) every day. With bev_dsm: false the Store is absent and
+        charging must instantaneously track driving demand within availability
+        — the "uncontrolled" counterfactual. V2G (discharge back to grid) is a
+        separate switch layered on the same Store — see the vehicle-to-grid
+        carrier card.
+      mechanism: >
+        rule build_transport_demand (scripts/build_transport_demand.py:
+        bev_availability_profile and bev_dsm_profile) -> avail_profile.csv and
+        dsm_profile.csv; rule prepare_sector_network -> add_land_transport ->
+        add_EVs consumes them: avail_profile as p_max_pu of the BEV charger
+        Link, dsm_profile as e_min_pu of the EV battery Store (only if
+        options["bev_dsm"]). insert_electricity_distribution_grid re-points
+        the charger's bus0 to the low voltage bus.
+      not_covered: >
+        Charger hardware is not an investment: p_nom is fixed and free
+        (lifetime=1, no capital_cost, not extendable) — "smart" vs "dumb" is
+        purely the presence of the Store, not a charger technology choice. One
+        aggregate fleet battery per node — no per-vehicle or per-charger
+        granularity, no home/work/public segmentation, no charging tariffs or
+        user-behaviour response. The availability and DSM profiles are a
+        single German weekly pattern applied to every country (only shifted by
+        time zone). The DSM restriction is one SOC value at one hour of day,
+        every day of the week. No losses or degradation cost on shifting.
+      provenance: "scripts/prepare_sector_network.py:add_EVs; scripts/build_transport_demand.py:bev_availability_profile; scripts/build_transport_demand.py:bev_dsm_profile; scripts/prepare_sector_network.py:insert_electricity_distribution_grid"
+    levers:
+      - key: sector.bev_dsm
+        effect: "Master switch: true adds the EV battery Store (charging becomes shiftable); false = uncontrolled charging that must follow the driving profile within plug-in availability. Also gates V2G."
+        default: "true"
+        provenance: "config/config.default.yaml:bev_dsm; scripts/prepare_sector_network.py:add_EVs"
+      - key: sector.bev_dsm_availability
+        effect: "Fraction of the EV fleet participating in DSM — scales the Store energy AND the V2G power."
+        default: "0.5"
+        provenance: "config/config.default.yaml:bev_dsm_availability; scripts/prepare_sector_network.py:add_EVs"
+      - key: sector.bev_energy
+        effect: "Battery energy per car in MWh (0.05 = 50 kWh); scales the aggregate Store e_nom."
+        default: "0.05"
+        provenance: "config/config.default.yaml:bev_energy; scripts/prepare_sector_network.py:add_EVs"
+      - key: sector.bev_charge_rate
+        effect: "Charger power per car in MW (11 kW) — the power bound on shifting."
+        default: "0.011"
+        provenance: "config/config.default.yaml:bev_charge_rate; scripts/prepare_sector_network.py:add_EVs"
+      - key: sector.bev_charge_efficiency
+        effect: "Charger Link efficiency (losses on every shifted MWh)."
+        default: "0.9"
+        provenance: "config/config.default.yaml:bev_charge_efficiency; scripts/prepare_sector_network.py:add_EVs"
+      - key: sector.bev_avail_max
+        effect: "Plug-in availability when traffic is at its weekly minimum (night); with bev_avail_mean anchors the linear traffic-to-availability scaling."
+        default: "0.95"
+        provenance: "config/config.default.yaml:bev_avail_max; scripts/build_transport_demand.py:bev_availability_profile"
+      - key: sector.bev_avail_mean
+        effect: "Mean plug-in availability; lowering it (relative to max) deepens the daytime availability dip — too low turns weekly-peak-traffic availability negative (warned, can cause infeasibility)."
+        default: "0.8"
+        provenance: "config/config.default.yaml:bev_avail_mean; scripts/build_transport_demand.py:bev_availability_profile"
+      - key: sector.bev_dsm_restriction_value
+        effect: "Minimum state of charge (fraction of e_nom) that must be reached at the daily restriction hour — the commuter departure guarantee."
+        default: "0.8"
+        provenance: "config/config.default.yaml:bev_dsm_restriction_value; scripts/build_transport_demand.py:bev_dsm_profile"
+      - key: sector.bev_dsm_restriction_time
+        effect: "Hour of day (UTC-based weekly profile) at which the minimum SOC binds, every day."
+        default: "7"
+        provenance: "config/config.default.yaml:bev_dsm_restriction_time; scripts/build_transport_demand.py:bev_dsm_profile"
+      - key: sector.land_transport_electric_share
+        effect: "Sizes the whole resource — Store, charger and load all scale with the EV share (zero share = no smart charging at all)."
+        default: "{2020: 0, 2025: 0.05, 2030: 0.2, 2035: 0.45, 2040: 0.7, 2045: 0.85, 2050: 1}"
+        provenance: "config/config.default.yaml:land_transport_electric_share; scripts/prepare_sector_network.py:add_land_transport"
+    boundary:
+      - variant: "smart charging on (default)"
+        rung: L0
+        note: "sector.bev_dsm: true is the default; needs electric share > 0 to have any effect"
+      - variant: "uncontrolled-charging counterfactual"
+        rung: L0
+        note: "sector.bev_dsm: false (also silently disables V2G — the v2g branch is nested inside the bev_dsm block)"
+      - variant: "more/less flexible fleet (participation, battery size, SOC rule, availability)"
+        rung: L1
+        note: "bev_dsm_availability, bev_energy, bev_avail_max/mean, bev_dsm_restriction_value/time are all config"
+      - variant: "no departure-SOC restriction (fully free shifting)"
+        rung: L1
+        note: "bev_dsm_restriction_value: 0 zeroes the e_min_pu profile"
+      - variant: "different weekly plug-in availability shape (e.g. workplace charging)"
+        rung: L2
+        note: "the shape is derived from traffic counts in bev_availability_profile (rule build_transport_demand); change the computation there, or swap the pkw.csv input (L3)"
+      - variant: "priced charger infrastructure / extendable charger capacity"
+        rung: L2
+        note: "edit the BEV charger n.add in add_EVs (p_nom_extendable, capital_cost); no cost row exists (L3 for data)"
+      - variant: "country-specific measured availability profiles"
+        rung: L3
+        note: "replace the traffic_data_Pkw input (rules/build_sector.smk, BASt pkw.csv) with local weekly counts in the same day-hour format"
+      - variant: "charging tariffs, per-charger investment choice, user opt-out behaviour"
+        rung: L5
+        note: "the aggregate Store/Link representation has no per-charger or behavioural granularity; bespoke components/constraints needed"
+    where:
+      - change: "Store creation (e_nom sizing, e_min_pu DSM profile) and charger p_max_pu wiring"
+        anchor: "scripts/prepare_sector_network.py::add_EVs (bev_dsm block)"
+        provenance: "scripts/prepare_sector_network.py:add_EVs"
+      - change: "availability profile construction (traffic -> plug-in share scaling)"
+        anchor: "scripts/build_transport_demand.py::bev_availability_profile (rule build_transport_demand)"
+        provenance: "scripts/build_transport_demand.py:bev_availability_profile; rules/build_sector.smk:build_transport_demand"
+      - change: "daily minimum-SOC profile"
+        anchor: "scripts/build_transport_demand.py::bev_dsm_profile"
+        provenance: "scripts/build_transport_demand.py:bev_dsm_profile"
+      - change: "weekly passenger-car traffic input"
+        anchor: "rule build_transport_demand input traffic_data_Pkw (BASt pkw.csv from rule build_mobility_profiles)"
+        provenance: "rules/build_sector.smk:traffic_data_Pkw; scripts/build_mobility_profiles.py:Passenger cars only"
+    data_dependencies:
+      - input: "BASt pkw.csv weekly passenger-car counts"
+        required_for: "plug-in availability profile (charger p_max_pu)"
+        availability: "retrieved or built by the workflow (rule build_mobility_profiles); German data applied Europe-wide"
+      - input: "transport_data_s_{clusters}.csv 'number cars'"
+        required_for: "Store and charger sizing"
+        availability: "must be built (rules build_energy_totals -> build_transport_demand); JRC-IDEES + Swiss BFS"
+      - input: "dsm_profile_s_{clusters}.csv"
+        required_for: "the e_min_pu departure guarantee"
+        availability: "must be built (rule build_transport_demand); generated from config values, no external data"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        Smart charging is ON by default (sector.bev_dsm: true). A share
+        (sector.bev_availability, default 0.5) of the EV fleet gets an aggregate
+        "EV battery storage" Store on each node's EV battery bus, sized
+        number-of-cars x bev_energy (0.05 MWh/car) x bev_availability x
+        electric_share. The optimiser chooses when the BEV charger Link fills it,
+        limited by a plugged-in availability profile (p_max_pu from bev_avail_max /
+        bev_avail_mean shaped on German passenger-car traffic counts) and forced to a
+        minimum state of charge via the Store's e_min_pu = dsm_profile
+        (bev_dsm_restriction_value at hour bev_dsm_restriction_time every day).
+      mechanism: >
+        add_land_transport (rule prepare_sector_network) adds the Store when
+        electric_share > 0 and options["bev_dsm"] is true. The avail_profile and
+        dsm_profile time series are built in rule prepare_transport_data
+        (prepare_transport_data function): avail = bev_avail_max - (bev_avail_max -
+        bev_avail_mean) scaled by weekly Pkw traffic; dsm_week places
+        bev_dsm_restriction_value at bev_dsm_restriction_time each day.
+      not_covered: >
+        Feed-in back to the grid (that is V2G — separate toggle, see vehicle-to-grid
+        carrier card). Charger investment/tariff modelling, individual-vehicle behaviour,
+        region-specific plug-in patterns (profiles derive from German BASt counts).
+        With bev_dsm false, EV load must still pass through the charger but with no
+        Store there is no shifting.
+      provenance: "scripts/prepare_sector_network.py:add_land_transport"
+
+    levers:
+      - key: sector.bev_dsm
+        effect: "Master toggle: adds the EV battery Store enabling charging flexibility."
+        default: "true"
+        provenance: "scripts/prepare_sector_network.py:bev_dsm"
+      - key: sector.bev_availability
+        effect: "Share of EVs participating in smart charging; scales the aggregate Store energy."
+        default: "0.5"
+        provenance: "scripts/prepare_sector_network.py:bev_availability"
+      - key: sector.bev_energy
+        effect: "Average per-car battery size in MWh; scales the Store e_nom."
+        default: "0.05"
+        provenance: "scripts/prepare_sector_network.py:bev_energy"
+      - key: sector.bev_dsm_restriction_value
+        effect: "Minimum SOC (per unit) the EV battery must reach at the restriction hour; 0 removes the restriction."
+        default: "0.75"
+        provenance: "scripts/prepare_transport_data.py:bev_dsm_restriction_value"
+      - key: sector.bev_dsm_restriction_time
+        effect: "Hour of day (UTC) at which the minimum SOC is enforced (e.g. 7 = morning departure)."
+        default: "7"
+        provenance: "scripts/prepare_transport_data.py:bev_dsm_restriction_time"
+      - key: sector.bev_avail_max
+        effect: "Maximum plugged-in share (at lowest traffic); upper bound of charger p_max_pu profile."
+        default: "0.95"
+        provenance: "scripts/prepare_transport_data.py:bev_avail_max"
+      - key: sector.bev_avail_mean
+        effect: "Mean plugged-in share; anchors the availability profile at mean traffic."
+        default: "0.8"
+        provenance: "scripts/prepare_transport_data.py:bev_avail_mean"
+      - key: sector.bev_charge_efficiency
+        effect: "Charger efficiency applied when filling the EV battery."
+        default: "0.9"
+        provenance: "scripts/prepare_sector_network.py:bev_charge_efficiency"
+      - key: sector.land_transport_electric_share
+        effect: "Prerequisite: with zero electric share no EV components (and no smart charging) exist."
+        default: "AB_2030: 0.01 (dict per scenario/year)"
+        provenance: "scripts/prepare_sector_network.py:land_transport_electric_share"
+
+    boundary:
+      - variant: "Enable/disable smart charging"
+        rung: L0
+        note: "sector.bev_dsm (already true by default; needs electric_share > 0 to matter)."
+      - variant: "More/less flexible fleet, bigger batteries, different departure SOC rule"
+        rung: L1
+        note: "bev_availability, bev_energy, bev_dsm_restriction_value/_time, bev_avail_max/mean are all config."
+      - variant: "Different weekly plug-in availability shape (e.g. local commuting pattern)"
+        rung: L2
+        note: "The shape is computed from data/emobility/Pkw__count inside prepare_transport_data; change the computation or the file the rule reads."
+      - variant: "Region-specific measured charging/availability profiles"
+        rung: L3
+        note: "Replace the traffic_data_Pkw input (rule prepare_transport_data) with local count/plug-in data in the same weekly format."
+      - variant: "Charger-power tariffs, per-charger investment decisions, user-response modelling"
+        rung: L5
+        note: "Aggregate Store/Link representation has no per-charger granularity; bespoke components needed."
+
+    where:
+      - change: "EV battery Store with e_min_pu (the smart-charging component)"
+        anchor: "scripts/prepare_sector_network.py function add_land_transport (bev_dsm block)"
+        provenance: "scripts/prepare_sector_network.py:add_land_transport"
+      - change: "avail_profile / dsm_profile construction"
+        anchor: "scripts/prepare_transport_data.py function prepare_transport_data (rule prepare_transport_data)"
+        provenance: "scripts/prepare_transport_data.py:prepare_transport_data"
+      - change: "Weekly plug-in traffic input"
+        anchor: "rule prepare_transport_data input traffic_data_Pkw = data/emobility/Pkw__count"
+        provenance: "Snakefile:traffic_data_Pkw"
+
+    data_dependencies:
+      - input: "data/emobility/Pkw__count (German weekly car traffic counts)"
+        required_for: "plugged-in availability profile"
+        availability: "exists by default (repo-shipped, applied to all regions)"
+      - input: "transport_data.csv 'number cars' per country (WHO GHO + Wikipedia)"
+        required_for: "Store e_nom sizing"
+        availability: "must be built (rule prepare_transport_data_input; hard-coded fallback exists)"
+      - input: "non-zero sector.land_transport_electric_share for the run's {demand}_{planning_horizons} key"
+        required_for: "any smart-charging component to exist at all"
+        availability: "exists by default (small non-zero values for most scenario keys)"

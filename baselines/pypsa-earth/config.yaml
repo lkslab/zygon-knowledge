@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
 # SPDX-License-Identifier: CC0-1.0
 #
-# Recipe-book VALIDATION config — Mexico, deliberately coarse (4 clusters, one
+# Carrier-book VALIDATION config — Mexico, deliberately coarse (4 clusters, one
 # week of 2013 snapshots) so the runs stay RAM-light. Two targets share this file:
 #   a) solved power network      results/mexico-power/networks/elec_s_4_ec_lcopt_Co2L.nc
 #   b) sector prenetwork (unsolved)
@@ -16,7 +16,7 @@
 # prepare_sector_network.average_every_nhours), which is error-prone when the
 # resolutions don't align. A 4-bus hourly week solves in seconds anyway.
 #
-# Deliberate lever tests baked in (each validates a recipe claim):
+# Deliberate lever tests baked in (each validates a carrier-card claim):
 #   - csp added to renewable_carriers + extendable Generators  (L1 lever)
 #   - battery as StorageUnit AND as Store+Links (both representations)
 #   - sector.hydrogen.underground_storage: true with no MX row in

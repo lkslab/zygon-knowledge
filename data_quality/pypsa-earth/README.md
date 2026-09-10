@@ -10,8 +10,8 @@ country **except Europe** (covered by a different PyPSA model). ~160 countries.
   data source pypsa-earth consumes (demand CAGRs, UNSD balances, salt caverns,
   OSM, GADM, WorldPop, cutouts, plant databases, the German traffic/BDEW proxies
   applied globally, …). Each entry carries a grounded `consumer` (`file:symbol`),
-  the missing-country behavior, and `used_by` backlinks to the recipe slugs that
-  depend on it — the recipes themselves stay untouched.
+  the missing-country behavior, and `used_by` backlinks to the carrier-card slugs that
+  depend on it — the carrier cards themselves stay untouched.
 - **`countries/<ISO2>.yaml`** — GENERATED scorecards (never hand-edit): per
   dataset grade + detail, per-family rollup, and measured build evidence where a
   region containing the country has been built (grid fragmentation from
@@ -38,7 +38,7 @@ Family rollup = worst grade among the family's datasets.
 
 ## How an agent uses this with the other cookbooks
 
-1. Recipe (`generation_conversion/` or `demand/`) names a `data_dependency`.
+1. A carrier card (`carriers/generation_conversion/` or `carriers/demand/`) names a `data_dependency`.
 2. `datasets.yaml` maps it to a dataset id (`used_by` backlinks) + the consumer
    code + what happens when data is missing.
 3. `countries/<ISO2>.yaml` says what the target country actually has — check it

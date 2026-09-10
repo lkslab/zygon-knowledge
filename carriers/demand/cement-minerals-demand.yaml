@@ -1,0 +1,240 @@
+# Carrier card: cement & non-metallic minerals demand — pypsa-earth + pypsa-eur
+id: cement-minerals-demand
+title: Cement & non-metallic minerals demand (cement, lime, glass, ceramics)
+summary: >
+  Energy demand and limestone-calcination process emissions of the non-metallic
+  minerals industry — cement/clinker kilns, ceramics & bricks, glass melting —
+  sited at plant locations and dominated by high-temperature process heat.
+
+when_to_use:
+  - "add cement industry demand / clinker production"
+  - "cement process emissions, calcination CO2, limestone"
+  - "carbon capture at cement plants"
+  - "glass production energy / glass furnaces"
+  - "ceramics, bricks, lime kilns"
+  - "non-metallic minerals sector"
+  - "electrify cement kilns / high temperature process heat in minerals"
+  - "where are cement plants located"
+
+models:
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        Annual final-energy demand of the "non-metallic minerals" UNSD
+        subsector per country and carrier, grown with a per-country CAGR and
+        distributed to nodes by cement plant capacities from the SFI Global
+        Cement Database; plus a process-emissions row computed from cement
+        plant capacity x 0.542 tCO2/t x utilisation factor, fed into the
+        process-emissions bus where "process emissions CC" (cement capture
+        cost) can abate it.
+      mechanism: >
+        rule build_base_industry_totals pivots UNSD "consumption by non-metallic
+        minerals" transactions into country x carrier MWh; rule
+        build_industrial_database:create_cement_db reads
+        data/industry/SFI-Global-Cement-Database-July-2021.xlsx (operating
+        plants, capacity kt/yr, country-average fill for unknown capacities,
+        technology "Cement" mapped to industry "non-metallic minerals"); rule
+        build_industrial_distribution_key turns plant capacities into nodal
+        keys (GDP share where a country has no plants); rule
+        build_industry_demand applies CAGR growth, computes NMM_emissions from
+        plant capacities (emission_factors non-metallic minerals: 0.542,
+        industry_util_factor) and writes nodal carrier demands;
+        prepare_sector_network:add_industry places the loads and the process
+        emissions Load/Link plus the "process emissions CC" link priced at
+        cement capture costs.
+      not_covered: >
+        No production tonnage, no clinker-vs-cement or clinker-substitution
+        detail, no cement/ceramics/glass split (one aggregate NMM carrier mix),
+        no lime as separate product, no per-product energy intensities, no
+        kiln electrification lever. Glass and ceramics demand is sited by
+        cement plants or GDP since only cement plants exist in the database.
+      provenance: "data/unsd_transactions.csv:non-metallic minerals;scripts/build_industrial_database.py:create_cement_db;scripts/build_industrial_database.py:SFI-Global-Cement-Database-July-2021.xlsx;scripts/build_industry_demand.py:NMM_emissions;scripts/build_industrial_distribution_key.py:build_nodal_distribution_key;scripts/prepare_sector_network.py:process emissions CC"
+    levers:
+      - key: sector.industry_util_factor
+        effect: "Utilisation factor on cement plant capacity for the process-emission estimate."
+        default: "0.7"
+        provenance: "config.default.yaml:industry_util_factor;scripts/build_industry_demand.py:industry_util_factor"
+      - key: sector.cc
+        effect: "Enables carbon-capture variants incl. the process emissions CC link (cement capture cost) on the industry process-emission stream."
+        default: "true"
+        provenance: "config.default.yaml:cc;scripts/prepare_sector_network.py:process emissions CC"
+      - key: demand_data.base_year
+        effect: "UNSD base year for the NMM energy totals."
+        default: "2019"
+        provenance: "config.default.yaml:base_year;scripts/build_base_industry_totals.py:base_year"
+      - key: custom_data.industry_demand
+        effect: "Full override incl. the non-metallic minerals column via data/custom/industry_demand_{demand}_{planning_horizons}.csv."
+        default: "false"
+        provenance: "config.default.yaml:industry_demand;scripts/build_industry_demand.py:industry_demand"
+      - key: custom_data.industry_database
+        effect: "Custom plant list (data/custom/industrial_database.csv) replacing the SFI cement database for siting."
+        default: "false"
+        provenance: "config.default.yaml:industry_database;scripts/build_industrial_distribution_key.py:industry_database"
+    boundary:
+      - variant: "capture cement process CO2"
+        rung: L0
+        note: "sector.cc adds the process emissions CC link automatically."
+      - variant: "cement demand growth per country"
+        rung: L3
+        note: "edit the non-metallic minerals column of data/demand/industry_growth_cagr.csv."
+      - variant: "own cement plant list / new plants"
+        rung: L3
+        note: "custom_data.industry_database + data/custom/industrial_database.csv (technology Cement)."
+      - variant: "change cement process-emission factor"
+        rung: L2
+        note: "emission_factors dict in build_industry_demand.py (non-metallic minerals: 0.542, comment: taken for cement)."
+      - variant: "split glass / ceramics / lime from cement"
+        rung: L5
+        note: "single UNSD subsector; needs new subsector columns, plant data and intensity logic across the rule chain (pypsa-eur NMM functions are the template)."
+      - variant: "clinker share / kiln electrification scenarios"
+        rung: L5
+        note: "no process representation; bespoke."
+    where:
+      - change: "cement plant database"
+        anchor: "scripts/build_industrial_database.py:create_cement_db"
+        provenance: "scripts/build_industrial_database.py:create_cement_db"
+      - change: "process emissions from capacity"
+        anchor: "scripts/build_industry_demand.py (NMM_emissions)"
+        provenance: "scripts/build_industry_demand.py:NMM_emissions"
+      - change: "UNSD subsector parsing"
+        anchor: "rule build_base_industry_totals"
+        provenance: "Snakefile:rule build_base_industry_totals;scripts/build_base_industry_totals.py:create_industry_base_totals"
+      - change: "process emissions load + CC on network"
+        anchor: "scripts/prepare_sector_network.py:add_industry (process emissions section)"
+        provenance: "scripts/prepare_sector_network.py:process emissions CC"
+    data_dependencies:
+      - input: "data/industry/SFI-Global-Cement-Database-July-2021.xlsx"
+        required_for: "cement plant siting and process emissions"
+        availability: "exists by default (checked into the repo); global coverage, many plants with capacity filled by country average"
+      - input: "UNSD energy balances (data/demand/unsd/data)"
+        required_for: "base NMM energy totals"
+        availability: "must be built (downloaded); region-dependent"
+      - input: "data/demand/industry_growth_cagr.csv"
+        required_for: "growth to planning horizon"
+        availability: "exists by default; DEFAULT-row fallback for most countries"
+    demand_dimensions:
+      driver: "UNSD final energy TWh of non-metallic minerals x CAGR; process emissions from SFI plant capacity (kt/yr) x 0.542 tCO2/t x utilisation"
+      spatial: "SFI cement plant capacities per GADM region; GDP fallback"
+      temporal: "annual-constant loads (annual MWh / 8760)"
+      scenario: "{demand} + {planning_horizons} via CAGR; custom_data.industry_demand override per scenario"
+
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Cement, "Ceramics & other NMM" and Glass production as separate
+        products with kt/a tonnage per country from JRC-IDEES NMM sheet,
+        per-tonne energy intensities that keep clinker kilns on methane
+        (>1400 C) while electrifying ceramics and glass, limestone-calcination
+        process emissions per tonne, cement siting from the GEM Global Cement
+        and Concrete Tracker (clinker capacities, integrated vs grinding
+        plants), and optional endogenous temperature-banded process heat.
+      mechanism: >
+        build_industrial_production_per_country reads NMM sheet fields
+        "Cement (kt)", "Ceramics & other NMM (kt bricks eq.)",
+        "Glass production  (kt)"; build_industry_sector_ratios:
+        nonmetalic_mineral_products keeps "Cement: Clinker production (kilns)"
+        on methane/biomass and electrifies ceramics (microwave drying/electric
+        kiln) and glass (electric melting tank), with process emissions per
+        tonne from JRC emission rows (calcination CaCO3 -> CaO + CO2);
+        build_industrial_energy_demand_per_country_today uses sheets
+        FC_IND_NMM_CM_E / FC_IND_NMM_CR_E / FC_IND_NMM_GL_E;
+        build_industrial_distribution_key:prepare_gem_cement_database builds
+        cement keys from GEM GCCT clinker capacities (clinker_cement_ratio
+        0.737, grinding plants at 10%), hotmaps sectors "Glass" and
+        "Non-metallic mineral products" cover the other two;
+        build_industry_sector_ratios_endogenous maps Cement to Clinker,
+        Ceramics and Glass to Fleiter temperature bands when
+        sector.industry_t.endogen is on; prepare_sector_network:add_industry
+        places gas/biomass/electricity/heat loads, the process-emission loads
+        and the "process emissions CC" link at cement capture cost.
+      not_covered: >
+        Lime is not a separate product (inside Ceramics & other NMM);
+        clinker-substitution / SCM shares are fixed inside the distribution-key
+        ratio, not a demand lever; no cement demand scaling factor (unlike HVC/
+        aviation); production volumes are frozen at the JRC reference year —
+        no tomorrow-transformation exists for NMM products.
+      provenance: "scripts/build_industrial_production_per_country.py:Cement (kt);scripts/build_industry_sector_ratios.py:def nonmetalic_mineral_products;scripts/build_industry_sector_ratios.py:Cement: Clinker production (kilns);scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_NMM_CM_E;scripts/build_industrial_distribution_key.py:prepare_gem_cement_database;scripts/build_industrial_distribution_key.py:clinker_cement_ratio;scripts/build_industry_sector_ratios_endogenous.py:process_temperature_band_mapper;scripts/prepare_sector_network.py:process emissions CC"
+    levers:
+      - key: industry.sector_ratios_fraction_future
+        effect: "Interpolates cement/ceramics/glass MWh/t from today's country values to best-in-class future ratios per horizon."
+        default: "{2020: 0.0, ..., 2050: 1.0}"
+        provenance: "config/config.default.yaml:sector_ratios_fraction_future;scripts/build_industry_sector_ratios_intermediate.py:fraction_future"
+      - key: industry.reference_year
+        effect: "JRC year for NMM production tonnage and today's intensities."
+        default: "2023"
+        provenance: "config/config.default.yaml:reference_year;scripts/build_industrial_production_per_country.py:reference_year"
+      - key: sector.industry_t.endogen
+        effect: "Switches industry heat to endogenous temperature bands (Cement -> Clinker band shares, Ceramics, Glass) with technology choice per band."
+        default: "false"
+        provenance: "config/config.default.yaml:industry_t;scripts/prepare_sector_network.py:add_t_industry100_200"
+      - key: sector.industry_t.endogenise_sectors
+        effect: "Per-sector opt-in to the temperature-band mechanism (Cement, Ceramics & other NMM, Glass production all true by default)."
+        default: "Cement: true, Ceramics & other NMM: true, Glass production: true (among others)"
+        provenance: "config/config.default.yaml:endogenise_sectors;scripts/build_industry_sector_ratios_endogenous.py:endogenise_sectors"
+      - key: industry.hotmaps_locate_missing
+        effect: "Geocode hotmaps sites without coordinates (affects glass/NMM siting completeness)."
+        default: "false"
+        provenance: "config/config.default.yaml:hotmaps_locate_missing;scripts/build_industrial_distribution_key.py:hotmaps_locate_missing"
+    boundary:
+      - variant: "endogenous kiln fuel choice (electrify / H2 / biomass per temperature band)"
+        rung: L0
+        note: "sector.industry_t.endogen: true; band technologies configured under industry_t heat100-200/200-500/>500."
+      - variant: "faster intensity improvement"
+        rung: L0
+        note: "industry.sector_ratios_fraction_future."
+      - variant: "scale cement production volume"
+        rung: L3
+        note: "no config factor — override resources/industrial_production_per_country.csv Cement column or add a factor in code."
+      - variant: "change clinker/cement ratio or grinding-plant treatment in siting"
+        rung: L2
+        note: "clinker_cement_ratio = 0.737 and the 10% grinding proxy are hardcoded in build_industrial_distribution_key.py."
+      - variant: "change per-tonne intensity/electrification assumptions"
+        rung: L2
+        note: "nonmetalic_mineral_products() JRC slicing in build_industry_sector_ratios.py."
+      - variant: "add lime as separate product"
+        rung: L4
+        note: "new production column + sector ratios + distribution mapping through the rule chain."
+    where:
+      - change: "NMM production tonnage"
+        anchor: "scripts/build_industrial_production_per_country.py (NMM fields)"
+        provenance: "scripts/build_industrial_production_per_country.py:Ceramics & other NMM (kt bricks eq.)"
+      - change: "cement/ceramics/glass MWh/t and process emissions"
+        anchor: "scripts/build_industry_sector_ratios.py:nonmetalic_mineral_products"
+        provenance: "scripts/build_industry_sector_ratios.py:def nonmetalic_mineral_products"
+      - change: "GEM cement tracker siting"
+        anchor: "rule build_industrial_distribution_key -> prepare_gem_cement_database (input gem_gcpt)"
+        provenance: "rules/build_sector.smk:gem_gcpt;scripts/build_industrial_distribution_key.py:prepare_gem_cement_database"
+      - change: "temperature-band split for minerals"
+        anchor: "scripts/build_industry_sector_ratios_endogenous.py:process_temperature_band_mapper (Clinker / Ceramics / Glass)"
+        provenance: "scripts/build_industry_sector_ratios_endogenous.py:Clinker"
+      - change: "process emissions + cement capture on network"
+        anchor: "scripts/prepare_sector_network.py:add_industry (process emissions CC)"
+        provenance: "scripts/prepare_sector_network.py:process emissions CC"
+    data_dependencies:
+      - input: "JRC-IDEES NMM Industry + EnergyBalance sheets"
+        required_for: "tonnage and intensities"
+        availability: "must be built (retrieved); EU27 native, non-EU27 Eurostat-scaled"
+      - input: "GEM Global Cement and Concrete Tracker xlsx (rules.retrieve_gem_cement_concrete_tracker)"
+        required_for: "cement plant siting"
+        availability: "must be built (retrieved)"
+      - input: "hotmaps industrial sites (Glass, Non-metallic mineral products subsectors)"
+        required_for: "glass/ceramics siting"
+        availability: "must be built (retrieved); population fallback"
+    demand_dimensions:
+      driver: "kt/a per product (Cement, Ceramics & other NMM in bricks eq., Glass) times MWh/t and tCO2/t ratios"
+      spatial: "GEM GCCT clinker capacities for cement; hotmaps emissions for glass/NMM; population fallback"
+      temporal: "annual-constant loads; optional endogenous temperature-band heat with must_run share (sector.industry_t.must_run)"
+      scenario: "per-horizon sector_ratios_fraction_future; production tonnage constant across horizons"
+
+reference_taxonomy:
+  framework: "FORECAST (Fraunhofer ISI)"
+  concepts:
+    - "clinker is the modelled process (tonnage driver), cement follows via clinker share — matching the GCCT clinker-capacity siting in pypsa-eur"
+    - "flat glass vs container glass as separate processes with distinct intensities (both folded into one Glass production product in pypsa-eur)"
+    - "lime and bricks as own processes with calcination emissions"
+  sources:
+    - "https://www.forecast-model.eu/forecast-en/content/methodology.php"
+    - "https://www.sciencedirect.com/science/article/pii/S2211467X18300890"
+    - "https://github.com/fraunhofer-isi/forecast-sites"
