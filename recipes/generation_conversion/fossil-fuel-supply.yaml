@@ -1,0 +1,472 @@
+id: fossil-fuel-supply
+title: Fossil fuel supply (gas, oil, coal, lignite commodities)
+summary: >
+  Where fossil fuels come from in the model — fuel buses, extraction/import
+  supply, storage, refining, prices, and the switch that removes fossil
+  fuels altogether.
+when_to_use:
+  - "fossil fuel supply"
+  - "gas supply / gas imports / LNG"
+  - "oil supply and refining"
+  - "coal supply"
+  - "fuel prices"
+  - "remove fossil fuels / 100% renewable run"
+  - "finite fossil reserves"
+  - "gas storage"
+  - "fuel commodity buses"
+  - "pypsa-eur carrier names: gas, oil, oil primary, oil refining, coal, lignite"
+  - "where does gas come from in the model"
+  - "natural gas supply / gas imports / LNG"
+  - "domestic gas or oil production"
+  - "fuel imports / fuel import price"
+  - "oil price assumption / gas price assumption / coal price"
+  - "fossil fuel reserves"
+  - "refinery / oil refining / oil products (naphtha, kerosene, diesel)"
+  - "gas pipeline network for methane"
+  - "coal supply for power plants and industry"
+  - "limit or phase out fossil fuel extraction"
+  - "known in pypsa-eur as: gas, fossil gas, natural gas, methane, oil primary, oil refining, imported oil"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Sector runs: add_carrier_buses creates, per fossil carrier, buses +
+        extendable cyclic Stores (gas storage priced from the "gas storage"
+        cost row, liquid storage from "General liquid hydrocarbon storage
+        (product)") and — while sector.fossil_fuels is true — an extendable
+        supply Generator priced at the carrier's costs-row fuel price. Spatial
+        resolution differs by fuel (define_spatial): gas is per-node when
+        sector.gas_network is true; oil, coal, lignite are single EU buses
+        ("EU oil", "EU coal", "EU lignite"). Gas supply is then made REAL in
+        add_h2_gas_infrastructure: fossil gas generators are deleted at all
+        nodes that have neither LNG terminal, pipeline entry-point from
+        outside the modelled area, nor production site (data from
+        build_gas_input_locations: Global Energy Monitor gas tracker for LNG
+        and extraction, SciGRID_gas BorderPoints for entry — Russian and
+        Belarusian entries excluded), remaining generators become
+        non-extendable with p_nom equal to the summed real entry capacity,
+        and existing gas storage volumes (SciGRID Storages) set e_nom_min on
+        the gas Stores. Oil can carry refining emissions: with
+        industry.oil_refining_emissions > 0, an "oil primary" bus + "oil
+        refining" link releases process CO2 between crude supply and usable
+        oil. Electricity workflow: fuels are implicit — marginal cost = VOM +
+        fuel/efficiency from the costs file, optionally time-varying from
+        World Bank monthly commodity prices (conventional.dynamic_fuel_price,
+        rule build_fossil_fuel_prices, smoothing window
+        conventional.fuel_price_rolling_window).
+      mechanism: >
+        rule prepare_sector_network: add_generation/add_carrier_buses create
+        fuel buses on demand for each mapped conventional technology;
+        add_h2_gas_infrastructure applies the gas entry-point logic using
+        gas_input_nodes_simplified from rule build_gas_input_locations.
+        Renewable alternatives feed the same buses: biogas upgrading ("biogas
+        to gas"), Sabatier methanation into the gas buses, Fischer-Tropsch
+        and biomass-to-liquid into the EU oil bus — so "fossil" share is an
+        outcome, not an input. Emissions from burning any of these fuels flow
+        to the "co2 atmosphere" bus and are constrained by add_co2limit
+        (co2_budget). Green price-based imports of gas/oil are separate
+        links — see the green-energy-imports recipe.
+      not_covered: >
+        No finite reserves: supply generators are energy-unlimited (the
+        pypsa-earth fossil_reserves key has no counterpart here) — a fossil
+        budget must come from the CO2 constraint or a custom e_sum_max. Oil,
+        coal and lignite have NO spatial structure (single EU bus each; only
+        their demand can be regionalised via sector.regional_oil_demand /
+        regional_coal_demand) and no import/extraction geography, terminals
+        or transport costs. Fossil gas has no exogenous price scenarios per
+        supplier route (one costs-row price for all entries; entry CAPACITY
+        is differentiated, price is not). No fuel supply curves / price
+        elasticity. sector.fossil_fuels: false removes the fossil supply
+        generators but keeps the buses and stores — synfuels, biogas and
+        (if enabled) green imports must then cover demand; it does not by
+        itself forbid fossil-fired technologies. TRAP — coal has no
+        synthetic backstop: gas gets Sabatier + biogas upgrading, oil gets
+        Fischer-Tropsch + biomass-to-liquid, but NOTHING in the model
+        produces coal, and the remaining "EU coal Store" is cyclic with
+        e_initial 0, so its net annual supply is exactly zero. Any nonzero
+        "coal for industry" demand (exogenous, from the industry
+        sector-ratios; ~30 TWh/a for DE 2050 out of the box) therefore
+        makes fossil_fuels: false INFEASIBLE by construction — before any
+        renewable-potential or balancing question arises (hit 2026-08-07:
+        DE 2-node no-fossil run, solver infeasible, IIS computation OOM).
+        Pair the switch with industry assumptions that eliminate coal
+        demand (steel to H2-DRI/EAF and the other industry fuel-switching
+        keys) or zero the coal-for-industry load explicitly and say so.
+      provenance: "scripts/prepare_sector_network.py:add_carrier_buses; scripts/prepare_sector_network.py:add_h2_gas_infrastructure; scripts/prepare_sector_network.py:define_spatial; scripts/build_gas_input_locations.py:build_gas_input_locations; scripts/add_electricity.py:attach_conventional_generators"
+    levers:
+      - key: sector.fossil_fuels
+        effect: "false removes the fossil supply Generators for coal/gas/oil/lignite from add_carrier_buses — the defossilisation switch."
+        default: "true"
+        provenance: "config/config.default.yaml:fossil_fuels; scripts/prepare_sector_network.py:add_carrier_buses"
+      - key: sector.gas_network
+        effect: "true resolves the gas commodity per node with real entry-point-limited supply; false collapses gas to one EU bus with an unlimited extendable supply generator."
+        default: "true"
+        provenance: "config/config.default.yaml:gas_network; scripts/prepare_sector_network.py:define_spatial"
+      - key: industry.oil_refining_emissions
+        effect: "tCO2/MWh of refining process emissions; > 0 inserts the 'oil primary' bus and 'oil refining' link upstream of the oil bus."
+        default: "0.013"
+        provenance: "config/config.default.yaml:oil_refining_emissions; scripts/prepare_sector_network.py:add_carrier_buses"
+      - key: sector.regional_oil_demand
+        effect: "true regionalises oil demand carriers (naphtha, kerosene, shipping oil, land transport oil...) while supply stays at the EU oil bus."
+        default: "true"
+        provenance: "config/config.default.yaml:regional_oil_demand; scripts/prepare_sector_network.py:define_spatial"
+      - key: sector.regional_coal_demand
+        effect: "true regionalises 'coal for industry' demand; coal supply stays at the EU coal bus."
+        default: "false"
+        provenance: "config/config.default.yaml:regional_coal_demand; scripts/prepare_sector_network.py:define_spatial"
+      - key: conventional.dynamic_fuel_price
+        effect: "Electricity workflow: monthly World Bank fuel price series replaces static costs-row prices in conventional plant marginal costs."
+        default: "false"
+        provenance: "config/config.default.yaml:dynamic_fuel_price; scripts/add_electricity.py:attach_conventional_generators"
+      - key: conventional.fuel_price_rolling_window
+        effect: "Months of rolling-mean smoothing applied to the monthly fuel price series."
+        default: "6"
+        provenance: "config/config.default.yaml:fuel_price_rolling_window; rules/build_electricity.smk:build_fossil_fuel_prices"
+      - key: costs.overwrites
+        effect: "Static fuel price overrides per carrier ({fuel: {gas: ..., coal: ...}}) in prepare_costs; preferred route is a data/custom_costs.csv row (costs.custom_cost_fn)."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+      - key: sector.biogas_upgrading
+        effect: "true lets upgraded biogas feed the same gas buses ('biogas to gas') — the renewable competitor to fossil gas supply."
+        default: "true"
+        provenance: "config/config.default.yaml:biogas_upgrading; scripts/prepare_sector_network.py:biogas to gas"
+      - key: sector.methanation
+        effect: "true adds Sabatier links producing synthetic methane into the gas buses from H2 + captured CO2."
+        default: "true"
+        provenance: "config/config.default.yaml:methanation; scripts/prepare_sector_network.py:Sabatier"
+      - key: co2_budget
+        effect: "The per-horizon CO2 cap is the de-facto fossil fuel budget — all fossil combustion lands on the co2 atmosphere balance constrained by add_co2limit."
+        default: "0.72 (2020) ... 0.0 (2050) relative to 1990"
+        provenance: "config/config.default.yaml:co2_budget; scripts/prepare_sector_network.py:add_co2limit"
+    boundary:
+      - variant: "default fossil supply (entry-limited gas, unlimited EU oil/coal)"
+        rung: L0
+        note: "sector.fossil_fuels true, sector.gas_network true"
+      - variant: "no fossil fuel supply (forced synfuel/biogas system)"
+        rung: L0
+        note: "sector.fossil_fuels: false — buses and stores remain, supply generators are not built"
+      - variant: "change fossil fuel prices"
+        rung: L1
+        note: "costs.overwrites {fuel: {...}} (config) or data/custom_costs.csv (L3); electricity workflow can instead use conventional.dynamic_fuel_price for historical monthly prices"
+      - variant: "copperplate gas (ignore gas infrastructure)"
+        rung: L0
+        note: "sector.gas_network: false — one EU gas bus, unlimited extendable supply"
+      - variant: "cap total fossil gas offtake (volume, not CO2)"
+        rung: L2
+        note: "no key; set e_sum_max on the gas supply generators (they are plain Generators after add_h2_gas_infrastructure) or add a GlobalConstraint — in the elec workflow electricity.gaslimit_enable does this for gas plants only"
+      - variant: "finite oil/coal reserves"
+        rung: L2
+        note: "no fossil_reserves mechanism; set e_initial on the carrier Store and drop the supply generator in add_carrier_buses"
+      - variant: "differentiated gas supply prices by route (LNG premium vs pipeline)"
+        rung: L2
+        note: "entry capacities are per type in gas_input_nodes (lng/pipeline/production columns) but one price is applied; split the generator per type in add_h2_gas_infrastructure and price each"
+      - variant: "exclude specific supply origins (e.g. no Russian gas)"
+        rung: L0
+        note: "already the default — build_gas_input_locations drops entry points from RU and BY; excluding others is an L2 edit of its query"
+      - variant: "new LNG terminal or production site"
+        rung: L3
+        note: "edit/extend the Global Energy Monitor workbook input or patch gas_input_locations output (rule build_gas_input_locations inputs)"
+      - variant: "regional coal/oil supply with transport"
+        rung: L5
+        note: "requires reworking define_spatial namespaces and adding transport topology + data — nothing exists"
+    where:
+      - change: "fuel buses, stores, fossil supply generators, oil refining chain"
+        anchor: "scripts/prepare_sector_network.py::add_carrier_buses (called from add_generation and per-carrier call sites)"
+        provenance: "scripts/prepare_sector_network.py:add_carrier_buses; scripts/prepare_sector_network.py:add_generation"
+      - change: "gas entry-point capacity limits, storage e_nom_min, generator pruning"
+        anchor: "scripts/prepare_sector_network.py::add_h2_gas_infrastructure (gas_network block)"
+        provenance: "scripts/prepare_sector_network.py:add_h2_gas_infrastructure"
+      - change: "LNG/entry/production/storage locations and capacities"
+        anchor: "scripts/build_gas_input_locations.py::build_gas_input_locations (rule build_gas_input_locations; GEM workbook + SciGRID files)"
+        provenance: "scripts/build_gas_input_locations.py:build_gas_input_locations; rules/build_sector.smk:build_gas_input_locations"
+      - change: "spatial resolution of each fuel commodity"
+        anchor: "scripts/prepare_sector_network.py::define_spatial (spatial.gas / spatial.oil / spatial.coal / spatial.lignite)"
+        provenance: "scripts/prepare_sector_network.py:define_spatial"
+      - change: "monthly fuel price series"
+        anchor: "rule build_fossil_fuel_prices (scripts/build_monthly_prices.py); consumed in attach_conventional_generators"
+        provenance: "rules/build_electricity.smk:build_fossil_fuel_prices; scripts/add_electricity.py:attach_conventional_generators"
+      - change: "static fuel prices and their overrides"
+        anchor: "scripts/process_cost_data.py::prepare_costs / ::overwrite_costs; data/custom_costs.csv"
+        provenance: "scripts/process_cost_data.py:prepare_costs; scripts/process_cost_data.py:overwrite_costs"
+    data_dependencies:
+      - input: "Global Energy Monitor Europe Gas Tracker workbook (LNG terminals, gas extraction) — data/gem/Europe-Gas-Tracker-2024-05.xlsx"
+        required_for: "gas entry capacities (LNG + production)"
+        availability: "exists by default in the repo/data retrieval"
+      - input: "SciGRID_gas IGGIELGN BorderPoints and Storages geojson"
+        required_for: "pipeline entry points from outside scope; existing gas storage volumes"
+        availability: "retrieved by rule retrieve_gas_infrastructure_data"
+      - input: "cost rows 'gas', 'oil', 'coal', 'lignite' (fuel, CO2 intensity) and 'gas storage'"
+        required_for: "fuel prices, emissions, storage costs"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "World Bank commodity price workbook"
+        required_for: "conventional.dynamic_fuel_price"
+        availability: "retrieved by the workflow (rule build_fossil_fuel_prices input)"
+      - input: "biomass potentials (biogas) / CO2 chain"
+        required_for: "the renewable competitors on the gas bus (biogas upgrading, Sabatier)"
+        availability: "exists by default in sector runs"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        Power-only workflow: fossil fuel supply is entirely implicit. Fuel prices
+        come from the technology-data costs file ('fuel' attribute of the gas/oil/
+        coal/lignite rows) and are folded into each generator's marginal cost as
+        VOM + fuel/efficiency in process_cost_data.py::load_costs (OCGT/CCGT
+        inherit the 'gas' fuel price); there are no fuel buses, no supply limits
+        and no fuel infrastructure. Sector-coupled workflow
+        (prepare_sector_network): convert_conventional_generators_to_links
+        replaces fossil power generators (OCGT, CCGT, oil, coal, lignite per
+        sector.conventional_generation) with Links drawing from explicit per-node
+        fuel buses. Each fuel bus is created by add_carrier_buses with (a) an
+        extendable cyclic Store (seeded with a free initial stock if the carrier
+        appears in fossil_reserves, default oil: 100 TWh) and (b) a
+        p_nom_extendable Generator with marginal_cost = costs.at[carrier,
+        "fuel"] — i.e. unlimited primary fossil supply at the world-market fuel
+        price, available identically at every node. The oil bus is also created
+        as a fallback in add_shipping / add_land_transport with the same
+        unlimited-generator pattern. Fossil demands drawing on these buses: gas —
+        gas for industry, residential and services gas, gas boilers, gas CHPs,
+        SMR and other reforming routes (add_hydrogen); oil — naphtha for
+        industry, kerosene for aviation, shipping oil, land transport ICE,
+        residential, services, agriculture and rail oil; coal — converted coal
+        power plants and coal-gasification H2 only. Gas can additionally be
+        supplied by upgraded biogas (add_biomass, potential set by
+        sector.biogas_potential) and by Sabatier methanation of H2
+        (h2_hc_conversions). A real gas pipeline dataset (GEM GGIT, rule
+        prepare_gas_network) is retrieved and clustered to the network regions —
+        but it is only used to route repurposed H2 pipelines in add_hydrogen,
+        not to transport methane.
+      mechanism: >
+        Rule prepare_sector_network runs scripts/prepare_sector_network.py:
+        define_spatial builds per-carrier node lists (nodal buses when
+        sector.<carrier>.spatial_<carrier> is true, otherwise one global "Earth
+        <carrier>" bus); convert_conventional_generators_to_links calls
+        add_carrier_buses per fuel carrier; demand functions attach Loads to the
+        fuel buses. Fuel prices come from resources/costs_<year>_sec.csv built by
+        rule process_cost_data (prepare_costs) from the retrieved technology-data
+        file (rule retrieve_cost_data). Rule prepare_gas_network clusters the
+        GGIT pipeline data into
+        resources/gas_networks/gas_network_elec_s{simpl}_{clusters}.csv, consumed
+        as the "pipelines" input for H2 pipeline routing/repurposing.
+      not_covered: >
+        No fossil-fuel field or extraction-site locations (a deliberate
+        simplification — supply is a uniform extendable generator at every fuel
+        bus); no distinction between domestic production and imports; no LNG
+        terminals, import/export entry points or cross-border fuel trade; no
+        methane transport network between nodes (sector.gas.network is commented
+        "ALWAYS FALSE for now (NOT USED)" and no code adds gas pipeline Links —
+        the GGIT network only shapes repurposed H2 pipelines); one world price
+        per fuel, no regional price differentiation or fuel transport cost; no
+        refinery step — a single "oil" carrier serves naphtha, kerosene, diesel
+        and fuel oil demands undifferentiated; fossil_reserves only seeds a free
+        initial Store stock, it does not cap cumulative extraction; industrial
+        final coal demand is accounted only as a CO2 emissions load and is not
+        drawn from the coal bus.
+      provenance: "scripts/prepare_sector_network.py:add_carrier_buses; scripts/prepare_sector_network.py:convert_conventional_generators_to_links; scripts/process_cost_data.py:load_costs"
+    levers:
+      - key: sector.conventional_generation
+        effect: >
+          Maps power technologies to fuel carriers (OCGT/CCGT -> gas, oil ->
+          oil, coal -> coal, lignite -> lignite); determines which fossil fuel
+          buses are created and which generators become fuel-consuming Links in
+          sector runs. Removing an entry keeps that technology as a plain
+          generator with implicit fuel.
+        default: "{OCGT: gas, CCGT: gas, oil: oil, coal: coal, lignite: lignite, biomass: biomass}"
+        provenance: "config.default.yaml:conventional_generation; scripts/prepare_sector_network.py:convert_conventional_generators_to_links"
+      - key: fossil_reserves
+        effect: >
+          Carrier -> TWh mapping; seeds the fuel bus Store with a free initial
+          energy stock (e_initial, non-cyclic) in add_carrier_buses. Not a hard
+          cap — the extendable fuel generator still supplies unlimited fuel at
+          the fuel price.
+        default: "oil: 100 (TWh)"
+        provenance: "config.default.yaml:fossil_reserves; scripts/prepare_sector_network.py:add_carrier_buses; Snakefile:fossil_reserves"
+      - key: sector.gas.spatial_gas
+        effect: >
+          true -> one gas bus per node ("<node> gas"); false -> a single global
+          "Earth gas" bus (config comment says ALWAYS TRUE; industry gas demand
+          aggregation follows this flag).
+        default: "true"
+        provenance: "config.default.yaml:spatial_gas; scripts/prepare_sector_network.py:define_spatial"
+      - key: sector.oil.spatial_oil
+        effect: "Same nodal-vs-global switch for the oil bus."
+        default: "true"
+        provenance: "config.default.yaml:spatial_oil; scripts/prepare_sector_network.py:define_spatial"
+      - key: sector.coal.spatial_coal
+        effect: "Same nodal-vs-global switch for the coal bus."
+        default: "true"
+        provenance: "config.default.yaml:spatial_coal; scripts/prepare_sector_network.py:define_spatial"
+      - key: sector.lignite.spatial_lignite
+        effect: "Same nodal-vs-global switch for the lignite bus."
+        default: "false (single Earth lignite bus)"
+        provenance: "config.default.yaml:spatial_lignite; scripts/prepare_sector_network.py:define_spatial"
+      - key: sector.coal.shift_to_elec
+        effect: >
+          true shifts residential and services final coal demand to electricity
+          when building energy totals; false discards that coal demand (it is
+          never served from the coal bus either way).
+        default: "true"
+        provenance: "config.default.yaml:shift_to_elec; Snakefile:shift_coal_to_elec; scripts/build_base_energy_totals.py:shift_coal_to_elec"
+      - key: electricity.conventional_carriers
+        effect: >
+          Power-only workflow: which existing fossil fleets (oil, OCGT, CCGT,
+          coal, lignite) are attached from powerplantmatching with implicit fuel
+          in their marginal cost.
+        default: "[nuclear, oil, OCGT, CCGT, coal, lignite, geothermal, biomass]"
+        provenance: "config.default.yaml:conventional_carriers; scripts/add_electricity.py:attach_conventional_generators"
+      - key: electricity.extendable_carriers.Generator
+        effect: >
+          Adding fossil techs (OCGT is in by default) allows new fossil power
+          capacity at buses that already host that carrier; fuel remains
+          implicit in marginal cost.
+        default: "[solar, onwind, offwind-ac, offwind-dc, OCGT]"
+        provenance: "config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_conventional_generators"
+      - key: costs.year
+        effect: >
+          Selects the technology-data cost file (costs_<year>.csv) from which
+          the gas/oil/coal/lignite 'fuel' prices are taken.
+        default: "2030"
+        provenance: "config.default.yaml:technology_data_version; scripts/process_cost_data.py:load_costs"
+      - key: sector.hydrogen.production_technologies
+        effect: >
+          Which fossil-fuel-to-H2 conversion routes exist (SMR, SMR CC, Natural
+          gas steam reforming, Coal gasification, Heavy oil partial oxidation
+          ...) drawing on the gas/coal/oil buses; remove them to forbid
+          fossil-based hydrogen.
+        default: "[H2 Electrolysis, SMR, SMR CC]"
+        provenance: "config.default.yaml:production_technologies; scripts/prepare_sector_network.py:add_hydrogen"
+      - key: sector.methanation
+        effect: "Enables Sabatier links producing synthetic methane into the gas buses from H2 (a non-fossil gas supply route)."
+        default: "true"
+        provenance: "config.default.yaml:methanation; scripts/prepare_sector_network.py:h2_hc_conversions"
+      - key: sector.biogas_potential
+        effect: "TWh/a of biogas (split equally across nodes) that can be upgraded into the gas buses — the other non-fossil gas supply route."
+        default: "0.5"
+        provenance: "config.default.yaml:biogas_potential; scripts/prepare_sector_network.py:add_biomass"
+      - key: sector.gas.network_data
+        effect: >
+          Which real gas pipeline dataset prepare_gas_network retrieves and
+          clusters (GGIT global or IGGIELGN European) — note this only feeds H2
+          pipeline routing/repurposing, not methane transport.
+        default: "GGIT"
+        provenance: "config.default.yaml:network_data; scripts/prepare_gas_network.py:download_GGIT_gas_network"
+      - key: custom_data.gas_network
+        effect: >
+          true bypasses prepare_gas_network and reads a user-supplied
+          data/custom/pipelines.csv as the (H2-routing) pipeline network.
+        default: "false"
+        provenance: "config.default.yaml:gas_network; Snakefile:prepare_gas_network"
+    boundary:
+      - variant: "change gas / oil / coal price assumptions"
+        rung: L1
+        note: >
+          load_costs (elec) and prepare_costs (sec) both read per-attribute
+          overwrites from the costs config — add a costs.fuel block, e.g.
+          costs.fuel: {gas: 10.1} (the block is present but commented out in
+          config.default.yaml); alternatively costs.year selects a different
+          technology-data vintage
+      - variant: "remove fossil generation from the power mix"
+        rung: L1
+        note: >
+          drop oil/OCGT/CCGT/coal/lignite from electricity.conventional_carriers
+          (power-only) or from sector.conventional_generation (sector runs)
+      - variant: "forbid fossil-based hydrogen (SMR etc.)"
+        rung: L1
+        note: "remove SMR / SMR CC and other fossil routes from sector.hydrogen.production_technologies"
+      - variant: "single global fuel bus instead of per-node fuel buses"
+        rung: L0
+        note: >
+          set sector.<carrier>.spatial_<carrier> false (lignite already default
+          false; the spatial_gas comment says ALWAYS TRUE — industry gas demand
+          handling supports both branches)
+      - variant: "cap national fossil fuel extraction / finite reserves"
+        rung: L2
+        note: >
+          no cap exists: fossil_reserves only seeds a free Store stock while the
+          fuel Generator in add_carrier_buses stays unlimited; a small localised
+          edit is needed (e.g. set p_nom_max or an e_sum_max-style limit on the
+          fuel generators, or make the Store the only source)
+      - variant: "country- or node-specific fuel prices (import vs domestic price spreads)"
+        rung: L2
+        note: >
+          marginal_cost is the single costs.at[carrier, "fuel"] value for all
+          nodes; edit add_carrier_buses (and the oil fallback in add_shipping /
+          add_land_transport) to pass a per-node price vector
+      - variant: "methane transport through the real gas pipeline network"
+        rung: L2
+        note: >
+          the clustered GGIT network (rule prepare_gas_network ->
+          gas_network_elec_s{simpl}_{clusters}.csv) is already an input of rule
+          prepare_sector_network, but is only used to route repurposed H2
+          pipelines; add a function madd-ing gas Links between nodal gas buses
+          from that CSV (sector.gas.network is a dead flag marked NOT USED)
+      - variant: "use a custom gas pipeline dataset"
+        rung: L3
+        note: "custom_data.gas_network: true plus authoring data/custom/pipelines.csv (affects H2 routing today)"
+      - variant: "LNG import terminals or explicit fuel import/export entry points"
+        rung: L5
+        note: >
+          no import infrastructure concept exists — every node already has its
+          own unlimited fuel generator; bespoke buses/links/stores and siting
+          data would be needed
+      - variant: "locate fossil-fuel fields / production sites"
+        rung: L5
+        note: >
+          deliberately not modelled — supply is uniform at every fuel bus; would
+          need new siting data and bespoke component logic to concentrate supply
+          at field locations
+      - variant: "oil refining step / differentiated oil products (naphtha, kerosene, diesel)"
+        rung: L5
+        note: >
+          a single "oil" carrier serves naphtha for industry, kerosene for
+          aviation, shipping oil, land transport and heating oil; splitting into
+          products with a refinery conversion needs new buses/links throughout
+          the demand functions
+      - variant: "make industrial coal demand consume from the coal bus"
+        rung: L2
+        note: >
+          add_industry only books industry coal emissions on the co2 atmosphere
+          bus (spatial.coal.industry nodes are defined but unused); localised
+          edit to add a coal Load plus Link like the gas-for-industry pattern
+    where:
+      - change: "fossil fuel bus + unlimited supply generator + reserve store (sector)"
+        anchor: "scripts/prepare_sector_network.py::add_carrier_buses (called from convert_conventional_generators_to_links per sector.conventional_generation entry)"
+        provenance: "scripts/prepare_sector_network.py:add_carrier_buses"
+      - change: "oil bus fallback creation with unlimited oil generator"
+        anchor: "scripts/prepare_sector_network.py::add_shipping (also add_land_transport); guarded by 'oil' not in n.buses.carrier.unique()"
+        provenance: "scripts/prepare_sector_network.py:add_shipping; scripts/prepare_sector_network.py:add_land_transport"
+      - change: "nodal vs global fuel bus topology"
+        anchor: "scripts/prepare_sector_network.py::define_spatial (sector.<carrier>.spatial_<carrier> flags)"
+        provenance: "scripts/prepare_sector_network.py:define_spatial"
+      - change: "fuel price assumptions (elec + sector cost files)"
+        anchor: "scripts/process_cost_data.py::load_costs (elec scope) and ::prepare_costs (sec scope); rules retrieve_cost_data + process_cost_data"
+        provenance: "scripts/process_cost_data.py:load_costs; scripts/process_cost_data.py:prepare_costs; Snakefile:retrieve_cost_data"
+      - change: "real gas pipeline data retrieval and clustering"
+        anchor: "Snakefile rule prepare_gas_network -> scripts/prepare_gas_network.py::cluster_gas_network"
+        provenance: "Snakefile:prepare_gas_network; scripts/prepare_gas_network.py:cluster_gas_network"
+      - change: "where the clustered gas network is consumed (H2 repurposing only)"
+        anchor: "scripts/prepare_sector_network.py::add_hydrogen -> add_links_repurposed_H2_pipelines (sector.hydrogen.gas_network_repurposing)"
+        provenance: "scripts/prepare_sector_network.py:add_links_repurposed_H2_pipelines; config.default.yaml:gas_network_repurposing"
+      - change: "industrial coal demand accounting"
+        anchor: "scripts/prepare_sector_network.py::add_industry (industry coal emissions load)"
+        provenance: "scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:industry coal emissions"
+      - change: "fossil final-energy demand construction (which loads sit on the fuel buses)"
+        anchor: "scripts/prepare_sector_network.py::add_industry / add_aviation / add_shipping / add_land_transport / add_residential / add_services / add_agriculture / add_rail_transport"
+        provenance: "scripts/prepare_sector_network.py:add_aviation; scripts/prepare_sector_network.py:add_rail_transport"
+    data_dependencies:
+      - input: "technology-data costs file rows gas/oil/coal/lignite with 'fuel' attribute (resources/costs_<year>.csv -> costs_<year>_sec.csv)"
+        required_for: "fuel prices in both workflows"
+        availability: "exists by default via rules retrieve_cost_data + process_cost_data"
+      - input: "GEM GGIT global gas pipeline dataset (downloaded by prepare_gas_network)"
+        required_for: "gas-route-based H2 pipeline repurposing; any future methane network"
+        availability: "exists by default (downloaded); global coverage, filtered by sector.gas.network_data_GGIT_status"
+      - input: "data/custom/pipelines.csv"
+        required_for: "custom pipeline network (custom_data.gas_network: true)"
+        availability: "absent — user-authored"
+      - input: "UN energy balances (build_base_energy_totals) for residential/services/transport/industry gas-oil-coal final demand"
+        required_for: "the fossil demand loads placed on the fuel buses"
+        availability: "region-dependent — downloaded when demand_data.update_data is true; quality varies by country"
+      - input: "powerplantmatching fleet (OCGT/CCGT/oil/coal/lignite plants)"
+        required_for: "existing fossil power capacity that becomes fuel-consuming links in sector runs"
+        availability: "region-dependent — verify the fleet appears in resources/<run>/powerplants.csv"

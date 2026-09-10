@@ -1,0 +1,175 @@
+id: flow-based-market-coupling
+title: flow-based market coupling — zonal clearing inside the FB domain
+family: markets-and-prices
+what: 'Clears a zonal electricity market the way European day-ahead coupling does:
+  zonal net positions constrained by their estimated impact on every critical network
+  element (CNEC) via zonal PTDFs, built from hourly optimized GSKs (Thomassen et al.
+  2025 §3.3). Runs dispatch-only on a config-selected snapshot window of the clustered
+  electricity pre-network — NTC + autarky auxiliary runs, FB parameters, FBMC clearing,
+  nodal LMP benchmark — one small LP each. Stage 1 of the two-stage market simulation;
+  pair with [[redispatch]] for the honest total cost.
+
+  '
+when_to_use:
+- flow-based market coupling / FBMC study
+- zonal market clearing with grid-aware cross-zonal capacity
+- NTC vs flow-based domain comparison
+- generator shift key sensitivity
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
+    date: '2026-08-02'
+  baseline: config.de.yaml
+  execution:
+  - kind: config
+    key: fbmc.snapshots
+    value:
+      start: '2013-03-01'
+      end: '2013-03-02'
+    note: 'ONE day of operations — the window is sliced inside the FBMC rule, never
+      via the global snapshots key (pinned; would rebuild the profile chain).
+
+      '
+  - kind: config
+    key: fbmc.line_scaling
+    value: 0.5
+    note: 'derate that makes the test day congested: nodal LMPs spread, NTC over-trades,
+      the FB domain binds. 1.0 = uncongested DE.
+
+      '
+  - kind: config
+    key: fbmc.gsk.variant
+    value: optimized
+    note: 'the paper''s two-run GSK (NTC minus autarky participation), capacity-weighted
+      fallback below gsk.eps_mw. Alternatives: capacity | conventional | flat.
+
+      '
+  - kind: payload
+    note: 'materializes scripts/fbmc_core.py + scripts/solve_fbmc_market.py + rules/fbmc.smk,
+      patches the Snakefile include and the fbmc: config section into config.default.yaml.
+
+      '
+  - kind: invocation
+    note: 'extra target results/{run.name}/fbmc/base_s_{scenario.clusters}_ elec_{scenario.opts}_fbmc.nc;
+      replace_verify_networks -> solved = that artifact (a pypsa network carrying
+      market dispatch + meta).
+
+      '
+  invalidates:
+  - solve_fbmc_market
+  budget:
+    jobs: 2
+    class: minutes
+  success_metric:
+  - name: np-closure
+    needs: solved
+    check: n.meta['fbmc']['np_closure_max'] < 1.0
+    expect: zonal net positions close (sum over zones ~ 0 every hour)
+  - name: domain-binds
+    needs: solved
+    check: n.meta['fbmc']['binding_cnecs'] > 0
+    expect: the flow-based domain constrained the clearing (binding CNECs)
+  - name: ntc-overtrades
+    needs: solved
+    check: n.meta['fbmc']['ntc_cost'] <= n.meta['fbmc']['nodal_cost'] + 1.0
+    expect: NTC market cost at or below nodal — the over-trading signature
+  - name: fbmc-between
+    needs: solved
+    check: 'n.meta[''fbmc''][''ntc_cost''] - 1.0 <= n.meta[''fbmc''][''market_cost'']
+      <= n.meta[''fbmc''][''nodal_cost''] + 1.0
+
+      '
+    expect: FBMC market cost between NTC (too permissive) and nodal (physics)
+  - name: energy-balance
+    needs: solved
+    check: 'abs(n.generators_t.p.values.sum() - n.loads_t.p_set[list(n.meta[''fbmc''][''zones''])].values.sum())
+      < 1.0
+
+      '
+    expect: dispatch incl. load shedding covers the market buses' demand
+- model: pypsa-earth
+  version_anchor:
+    ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
+    date: '2026-08-02'
+  baseline: config.gh.yaml
+  execution:
+  - kind: config
+    key: fbmc.snapshots
+    value:
+      start: '2013-03-01'
+      end: '2013-03-02'
+    note: 'one day inside the ghana baseline''s prebuilt week (2013-03-01..07); sliced
+      in-rule, global snapshots stay pinned.
+
+      '
+  - kind: config
+    key: fbmc.line_scaling
+    value: 0.5
+    note: 'derate at which Ghana''s flow-based domain binds (19/48 CNEC constraint
+      instances on the test day); 1.0 leaves it slack.
+
+      '
+  - kind: config
+    key: fbmc.gsk.variant
+    value: optimized
+    note: the paper's two-run GSK, capacity-weighted fallback below eps_mw.
+  - kind: payload
+    note: 'earth tree of the same core: fbmc_core.py + solve_fbmc_market.py + rules/fbmc.smk
+      (included via Snakefile patch); fbmc: section into the root config.default.yaml.
+
+      '
+  - kind: invocation
+    note: 'extra target results/{run.name}/fbmc/elec_s{scenario.simpl}_ {scenario.clusters}_ec_l{scenario.ll}_{scenario.opts}_fbmc.nc;
+      replace_verify_networks -> solved = that artifact.
+
+      '
+  invalidates:
+  - solve_fbmc_market
+  budget:
+    jobs: 2
+    class: minutes
+  success_metric:
+  - name: np-closure
+    needs: solved
+    check: n.meta['fbmc']['np_closure_max'] < 1.0
+    expect: zonal net positions close (sum over zones ~ 0 every hour)
+  - name: domain-binds
+    needs: solved
+    check: n.meta['fbmc']['binding_cnecs'] > 0
+    expect: the flow-based domain constrained the clearing (binding CNECs)
+  - name: ntc-starves-radial
+    needs: solved
+    check: n.meta['fbmc']['ntc_cost'] >= n.meta['fbmc']['nodal_cost'] - 1.0
+    expect: 'on a radial grid the NTC haircut STARVES trade (no loop flows to exploit)
+      — cost at or above nodal, the mirror of eur''s over-trading
+
+      '
+  - name: fbmc-between-extremes
+    needs: solved
+    check: 'min(n.meta[''fbmc''][''ntc_cost''], n.meta[''fbmc''][''nodal_cost''])
+      - 1.0 <= n.meta[''fbmc''][''market_cost''] <= max(n.meta[''fbmc''][''ntc_cost''],
+      n.meta[''fbmc''][''nodal_cost'']) + 1.0
+
+      '
+    expect: FBMC lands between the NTC abstraction and nodal physics
+  - name: energy-balance
+    needs: solved
+    check: 'abs(n.generators_t.p.values.sum() - n.loads_t.p_set[list(n.meta[''fbmc''][''zones''])].values.sum())
+      < 1.0
+
+      '
+    expect: 'dispatch incl. load shedding covers the MARKET buses'' demand (buses
+      outside the largest synchronous component are not cleared)
+
+      '
+notes: 'The GSK never enters the clearing LP — zPTDF is a constant per-hour tensor
+  (bilinear otherwise). Artifact = sliced network with market dispatch + n.meta[''fbmc'']
+  summary; [[redispatch]] consumes it as its stage-1 schedule. line_scaling is a DECLARED
+  test derate — state it in any result. Storage frozen (v1 electricity-only, no SOC
+  in clearing); DC links enter via AHC but the DE baseline''s are p_nom=0 expansion
+  candidates, so the AHC term is inert there. minram is a numerical floor (0.1), not
+  the EU 70% rule. Uncongested windows can put FBMC cost marginally ABOVE nodal (RAM
+  floors) — fbmc-between needs the congested test config.
+
+  '

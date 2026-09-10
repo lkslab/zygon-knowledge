@@ -1,0 +1,163 @@
+id: pathway-myopic
+title: myopic pathway — sequential horizons with capacity carry-over
+family: foresight-and-pathways
+what: 'Capacity expansion with limited foresight: solve horizon t, carry its optimised
+  capacities into t+1 as fixed assets (p_nom = p_nom_opt, extendable off), retire
+  by build_year + lifetime, lock transmission (s_nom_min = prior s_nom_opt), then
+  solve t+1 with its own cost year. The first horizon seeds the real pre-existing
+  stock (add_existing_baseyear age cohorts); later horizons inherit through add_brownfield.
+  Answers WHEN capacity gets built and what retires, not just the end-state mix.
+
+  '
+when_to_use:
+- pathway to 2050 via 2030/2040 milestones
+- when must capacity be built, not just how much
+- what retires and what carries over
+- myopic vs overnight results
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
+    date: '2026-08-01'
+  baseline: null
+  execution:
+  - kind: config
+    key: foresight
+    value: myopic
+    note: 'swaps solve_overnight.smk for solve_myopic.smk in the DAG — add_existing_baseyear
+      on the first horizon, add_brownfield after.
+
+      '
+  - kind: config
+    key: scenario.planning_horizons
+    value:
+    - 2030
+    - 2050
+    note: 'two horizons keep the job count inside the budget gate; the harness fans
+      the profile''s target templates out per horizon.
+
+      '
+  - kind: invocation
+    note: 'no target changes needed — the baseline profile''s prepared and solved
+      templates carry {scenario.planning_horizons} and render one head per horizon;
+      artifacts land per horizon automatically.
+
+      '
+  invalidates:
+  - add_existing_baseyear
+  - add_brownfield
+  - solve_sector_network_myopic
+  budget:
+    jobs: 21
+    class: hour
+  success_metric:
+  - name: two-horizons-solved
+    needs: solved
+    check: len([h for h in ns if h]) == 2
+    expect: one solved network per planning horizon (2030 and 2050)
+  - name: cohort-carried
+    needs: solved
+    check: ((n.generators.build_year == 2030) & ~n.generators.p_nom_extendable).any()
+      or ((n.links.build_year == 2030) & ~n.links.p_nom_extendable).any()
+    expect: '2030-built assets present in the 2050 network as fixed (non-extendable)
+      capacity — the brownfield hand-over happened
+
+      '
+  - name: transmission-locked
+    needs: solved
+    check: (ns[2050].lines.s_nom_min >= ns[2030].lines.s_nom_opt - 1e-3).all()
+    expect: '2030''s optimised line capacity is 2050''s floor — grid expansion is
+      irreversible along the pathway
+
+      '
+- model: pypsa-earth
+  version_anchor:
+    ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
+    date: '2026-08-01'
+  baseline: null
+  execution:
+  - kind: config
+    key: foresight
+    value: myopic
+    note: 'activates the Snakefile''s myopic branch: add_existing_baseyear (first
+      horizon) and add_brownfield ride the SECTOR chain — only it carries the {planning_horizons}
+      wildcard on earth.
+
+      '
+  - kind: config
+    key: scenario.planning_horizons
+    value:
+    - 2030
+    - 2050
+    note: '2030 sector prenetwork is prebuilt in the baseline; the 2050 prenetwork
+      chain (energy totals, demand, cops) is pure compute from cached data.
+
+      '
+  - kind: config
+    key: sector.land_transport_fuel_cell_share
+    value:
+      AB_2030: 0.01
+      AB_2050: 0.05
+    note: prepare_energy_totals/prepare_sector_network index these dicts by demand+horizon
+      (AB_2050) — defaults stop at 2030 (KeyError otherwise).
+  - kind: config
+    key: sector.land_transport_electric_share
+    value:
+      AB_2030: 0.01
+      AB_2050: 0.4
+    note: EV share rising 1% -> 40% across the pathway — visible in the capacity-expansion
+      ledger.
+  - kind: config
+    key: sector.shipping_hydrogen_share
+    value:
+      AB_2030: 0.05
+      AB_2050: 0.3
+  - kind: code
+    where: scripts/solve_network.py:prepare_network
+    do: 'guard the myopic branch: call add_land_use_constraint(n) only when "location"
+      is in n.buses.columns — under foresight myopic the POWER re-solve runs this
+      same script without bus locations or a planning_horizons wildcard and crashes
+      otherwise (issue #11). Sector postnetworks keep the constraint.
+
+      '
+  - kind: invocation
+    note: 'bundle invocation: extra_targets + verify_networks (stage solved) = the
+      profile''s prenetworks template, prenetworks -> postnetworks, _{export.h2export}export
+      appended before .nc.
+
+      '
+  invalidates:
+  - add_existing_baseyear
+  - add_brownfield
+  - solve_network_myopic
+  budget:
+    jobs: 55
+    class: hours
+  success_metric:
+  - name: two-horizons-solved
+    needs: solved
+    check: len([h for h in ns if h]) == 2
+    expect: one solved sector postnetwork per horizon (2030 and 2050)
+  - name: cohort-carried
+    needs: solved
+    check: ((n.generators.build_year == 2030) & ~n.generators.p_nom_extendable & (n.generators.p_nom
+      > 0)).any() or ((n.links.build_year == 2030) & ~n.links.p_nom_extendable & (n.links.p_nom
+      > 0)).any()
+    expect: '2030-optimised assets fixed into the 2050 network by add_brownfield
+
+      '
+  - name: transmission-locked
+    needs: solved
+    check: (ns[2050].lines.s_nom_min >= ns[2030].lines.s_nom_opt - 1e-3).all()
+    expect: 2030's line build is 2050's floor
+notes: 'Substrate: [[existing-fleet]] ingestion feeds the baseyear cohorts. Earth
+  caveat (negative knowledge): add_heating_capacities_installed_before_ baseyear is
+  defined but its call is commented out in add_existing_baseyear''s __main__ — the
+  earth pathway carries POWER cohorts only; do not promise heating-stock aging on
+  earth. Cost files are per horizon (retrieve_ rules are deny-gated): eur pre-caches
+  data/costs/archive/v0.14.0/costs_{2025..2050 in 5y steps}.csv — any such milestone
+  is a legal horizon; earth has resources/mexico-power/costs_2050.csv only
+  (ceremonies 2026-08-01/04). Each horizon solves with its OWN cost year; only add_existing_baseyear
+  values existing stock at first-horizon costs. Perfect-foresight counterpart: [[pathway-perfect]].
+
+  '

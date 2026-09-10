@@ -1,0 +1,137 @@
+id: locational-electricity-markets
+title: Locational electricity markets
+question: |
+  Should electricity be priced by node, by zone, or nationally — and what does the current zone map cost? The live EU bidding-zone-review / GB zonal-pricing question: how a reconfiguration would change prices, congestion rent, redispatch bills, siting and investment signals, and who wins or loses.
+when_to_use:
+- nodal vs zonal vs national pricing comparison
+- bidding-zone split / reconfiguration study
+- what does redispatch / congestion management cost under the current zones
+- flow-based market coupling / FBMC vs NTC study
+- locational price spreads, congestion rent, investment-signal distortion
+- would zone X face higher prices under nodal pricing
+- market-zone split / reconfiguration study
+- how much redispatch does the current single zone cause
+- flow-based vs NTC cross-zonal capacity comparison
+- locational price spreads and congestion rent
+- investment-signal distortion from zonal averaging
+models:
+- model: pypsa-eur
+  coverage: ready
+  gap_assessment: >-
+    The full Thomassen two-stage pipeline — eta-blended siting, flow-based zonal clearing,
+    priced nodal redispatch — is verified end-to-end here, on real bidding-zone geometries:
+    build_bidding_zones ships ENTSO-E/TYNDP zone shapes and clustering.administrative.level
+    'bz' clusters straight onto them, so current-zones vs split vs nodal is configuration,
+    not a data project. Four compressed warnings that used to be an essay: one nodal
+    solve is NOT "the market after redispatch" — it is the efficient bound, and substituting
+    it (Weber's shortcut) deletes exactly the inefficiency wedge being asked about;
+    the redispatch stage must minimise volume or weighted volume, never system cost,
+    or stage 2 silently re-derives the nodal optimum and reports that zonal pricing
+    is free; NTC border caps are the optimistic abstraction (no loop flows) — prefer
+    the flow-based spec or state the bias direction; and the zone MAP is chosen before
+    any solving and dominates the verdict — run at least two maps unless the user
+    brings a regulatory one. The named residual gap is the welfare split: the pipeline
+    prices the wedge but does not extract who pays it — per-unit producer surplus
+    and its distributional risk-reward (Franken) and per-design consumer cost (Thomassen)
+    are post-processing on the solved stage-1/stage-2 networks, not a wired output.
+  recipes:
+    generation_conversion:
+    - hv-transmission-lines
+    - hvdc-interconnectors
+    - transmission-expansion-projects
+    demand:
+    - electricity-load
+    - demand-spatial-disaggregation
+  methods:
+  - id: investment-geography
+    role: >-
+      where auctioned capacity lands WITHOUT locational signals — eta-blended sub-market
+      siting of fixed country targets (cost-optimal vs even spread, Thomassen §3.2);
+      run per market design so siting answers to the design
+  - id: flow-based-market-coupling
+    role: >-
+      stage 1 — zonal clearing the way European day-ahead coupling works: zonal PTDFs
+      on CNECs, hourly optimized GSKs (Thomassen §3.3), with NTC and autarky auxiliary
+      runs bracketing it; the nodal/LMP design skips straight past this — it needs
+      no stage 2
+  - id: redispatch
+    role: >-
+      stage 2 — nodal repair of the FIXED zonal schedule, minimising remedial cost
+      plus a volume penalty, cross-zonal countertrading capped at 30% (Thomassen §3.4).
+      The stage-1/stage-2 wedge IS the answer: redispatch volume and cost are what
+      the zonal design costs
+  - id: pathway-myopic
+    role: >-
+      the timing dimension — sequential horizons with capacity carry-over, so a zone
+      map decided for 2030 is judged against the 2040 system it builds
+  defaults:
+  - aspect: nodal-lmp-duals
+    is: >-
+      LMPs and congestion rent fall out of any solved network's duals — bus marginal
+      prices ARE locational prices at whatever resolution the network was clustered
+      to
+    note: >-
+      no spec needed: nothing to change, so nothing to cite. The nodal benchmark of
+      every comparison is a plain solve read through its duals
+  version_anchor:
+    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
+    date: '2026-08-05'
+- model: pypsa-earth
+  coverage: partial
+  gap_assessment: >-
+    The two-stage pipeline — eta-blended siting, flow-based zonal clearing, priced
+    nodal redispatch — is verified end-to-end on earth, but two data facts bound it.
+    First, earth ships no bidding-zone dataset and has no 'bz' clustering level: every
+    market-relevant zone map is a user-authored custom busmap over GADM admin units
+    (political, not market, boundaries), so the zone map — the study's dominant assumption,
+    chosen before any solving — must be confirmed with the user, never assumed. Second,
+    osm-grid data quality bounds how much to trust nodal price geography: a sparse
+    OSM topology reports little congestion for the wrong reason, so gate the nodal
+    stage on the country's data_quality scorecard. The compressed essay warnings apply
+    unchanged: one nodal solve is not "the market after redispatch" (it is the efficient
+    bound — Weber's shortcut deletes the wedge being asked about); the redispatch
+    stage must minimise volume or weighted volume, never system cost, or it silently
+    reports zonal pricing as free; NTC caps are the optimistic abstraction against
+    flow-based. The named residual gap is the welfare split: the pipeline prices the
+    wedge but does not extract who pays it — per-unit producer surplus and distributional
+    risk-reward (Franken) and per-design consumer cost (Thomassen) remain post-processing,
+    not a wired output.
+  recipes:
+    generation_conversion:
+    - hv-transmission-lines
+    - hvdc-interconnectors
+    demand:
+    - electricity-load
+    - demand-spatial-disaggregation
+  methods:
+  - id: investment-geography
+    role: >-
+      where auctioned capacity lands WITHOUT locational signals — eta-blended sub-market
+      siting of fixed country targets (cost-optimal vs even spread, Thomassen §3.2);
+      run per market design so siting answers to the design
+  - id: flow-based-market-coupling
+    role: >-
+      stage 1 — zonal clearing with zonal PTDFs on CNECs and hourly optimized GSKs
+      (Thomassen §3.3), NTC and autarky runs bracketing it; the nodal/LMP design needs
+      no stage 2
+  - id: redispatch
+    role: >-
+      stage 2 — nodal repair of the FIXED zonal schedule, minimising remedial cost
+      plus a volume penalty, cross-zonal countertrading capped at 30% (Thomassen §3.4).
+      The stage-1/stage-2 wedge IS the answer to what the zonal design costs
+  - id: pathway-myopic
+    role: >-
+      the timing dimension — sequential horizons with capacity carry-over, so market-design
+      verdicts are made on the system the pathway builds, not on today's fleet
+  defaults:
+  - aspect: nodal-lmp-duals
+    is: >-
+      LMPs and congestion rent fall out of any solved network's duals — bus marginal
+      prices ARE locational prices at whatever resolution the network was clustered
+      to
+    note: >-
+      no spec needed: nothing to change, so nothing to cite. The nodal benchmark of
+      every comparison is a plain solve read through its duals
+  version_anchor:
+    ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
+    date: '2026-08-05'

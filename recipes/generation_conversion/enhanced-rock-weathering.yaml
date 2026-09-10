@@ -1,0 +1,161 @@
+id: enhanced-rock-weathering
+title: Enhanced rock weathering
+summary: >
+  Spreading crushed silicate rock (e.g. basalt) on land so it reacts with
+  atmospheric CO2 — an open-system carbon removal pathway whose energy demand
+  is mostly grinding and transport.
+when_to_use:
+  - "enhanced weathering / enhanced rock weathering"
+  - "ERW"
+  - "basalt spreading for carbon removal"
+  - "mineral carbonation on farmland"
+  - "olivine carbon removal"
+  - "negative emissions beyond DAC"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Nothing — "weathering", "basalt" and "olivine" appear nowhere in
+        scripts/, rules/, config/ or the retrieved technology-data cost file
+        (checked v0.14.0 costs_2050). Grounded absence. The CDR machinery it
+        is absent from exists: add_co2_tracking builds the "co2 atmosphere"
+        store with e_min_pu = -1 (net removal representable, and it EARNS
+        costs.emission_prices via marginal_cost = -co2_price), the per-node
+        "co2 stored" tank buses and the "co2 sequestered" stores whose flow
+        is capped by sector.co2_sequestration_potential
+        (solve_network.py::add_co2_sequestration_limit); add_dac is the only
+        atmosphere-withdrawal Link and the pattern any new removal
+        technology copies (note the eur convention: DAC links are sized in
+        MW of ELECTRICITY at bus0, with the CO2 flows expressed as
+        1/electricity_input efficiencies).
+      mechanism: >
+        None. Structurally, ERW is an electricity-consuming link withdrawing
+        from "co2 atmosphere" like DAC (grinding + logistics as
+        electricity-input, no heat term), but its carbon does NOT belong in
+        the geological chain: removal is permanent-by-dispersal, so a
+        faithful implementation sinks into a new dedicated store carrier —
+        which automatically escapes the sequestration cap, because
+        add_co2_sequestration_limit keys its GlobalConstraint on
+        carrier_attribute "co2 sequestered" only — leaving
+        sector.co2_sequestration_potential to geological storage. A crude
+        stand-in instead delivers into the local "co2 stored" bus and rides
+        the existing sequestration chain and budget.
+      not_covered: >
+        Everything: no grinding/transport energy demand, no application-rate
+        or land limits, no weathering-rate dynamics, no MRV/permanence
+        discount, no cost row (unlike biochar, technology-data ships
+        nothing for ERW).
+      provenance: "scripts/prepare_sector_network.py:add_co2_tracking; scripts/prepare_sector_network.py:add_dac; scripts/solve_network.py:add_co2_sequestration_limit"
+    levers:
+      - key: sector.dac
+        effect: "Not ERW, but the closest existing removal option a study could use as a cost-tuned stand-in; toggles the only atmosphere-withdrawal links in the model."
+        default: "true"
+        provenance: "config/config.default.yaml:dac; scripts/prepare_sector_network.py:add_dac"
+      - key: sector.co2_sequestration_potential
+        effect: "Bounds removals only if ERW carbon is (crudely) routed into the co2 stored -> co2 sequestered chain; a faithful ERW store sits outside this cap."
+        default: "{2020: 0, ..., 2050: 250}"
+        provenance: "config/config.default.yaml:co2_sequestration_potential; scripts/solve_network.py:add_co2_sequestration_limit"
+      - key: costs.emission_prices
+        effect: "enable: true prices the atmosphere store — any authored removal link (including an ERW stand-in) then earns the CO2 price per tonne withdrawn."
+        default: "{enable: false, co2: 0.0, ...}"
+        provenance: "config/config.default.yaml:emission_prices; scripts/prepare_sector_network.py:add_co2_tracking"
+      - key: costs.custom_cost_fn
+        effect: "data/custom_costs.csv can introduce a brand-new 'enhanced rock weathering' technology row (overwrite_costs concatenates unknown technologies) — the L3 half of any implementation."
+        default: "data/custom_costs.csv"
+        provenance: "config/config.default.yaml:custom_cost_fn; scripts/process_cost_data.py:overwrite_costs"
+    boundary:
+      - variant: "crude stand-in: ERW as a cost-tuned DAC-like backstop inside the geological budget"
+        rung: L2
+        note: >-
+          Clone the add_dac link with electricity-only input and ERW
+          cost/energy numbers (authored rows in data/custom_costs.csv, L3),
+          delivering into the local co2 stored bus — acceptable only if
+          lumping ERW into sector.co2_sequestration_potential is tolerable.
+      - variant: "faithful ERW: own sink, own annual-rate/total cap outside geological storage"
+        rung: L5
+        note: >-
+          New removal link from "co2 atmosphere" plus a new store carrier
+          (escapes the co2 sequestered GlobalConstraint automatically) with
+          its own e_nom_max or a new constraint in
+          solve_network.py::prepare_network alongside
+          add_co2_sequestration_limit; needs a regional deployment-potential
+          estimate (data absent).
+      - variant: "ERW techno-economics"
+        rung: L3
+        note: "no cost row exists anywhere in technology-data v0.14.0 — author rows (EUR per tCO2/h investment, electricity-input) in data/custom_costs.csv"
+    where:
+      - change: "new removal link / dedicated ERW store"
+        anchor: "scripts/prepare_sector_network.py::add_dac (link template) and ::add_co2_tracking (bus/store patterns)"
+        provenance: "scripts/prepare_sector_network.py:add_dac; scripts/prepare_sector_network.py:add_co2_tracking"
+      - change: "annual removal-rate constraint"
+        anchor: "scripts/solve_network.py::prepare_network (alongside ::add_co2_sequestration_limit)"
+        provenance: "scripts/solve_network.py:prepare_network; scripts/solve_network.py:add_co2_sequestration_limit"
+      - change: "authored ERW cost rows"
+        anchor: "data/custom_costs.csv via scripts/process_cost_data.py::overwrite_costs (costs.custom_cost_fn)"
+        provenance: "scripts/process_cost_data.py:overwrite_costs; config/config.default.yaml:custom_cost_fn"
+    data_dependencies:
+      - input: "ERW techno-economics (EUR/tCO2, kWh electricity per tCO2 for grinding/logistics)"
+        required_for: "the L2/L5 pathway"
+        availability: "absent — must be supplied (no technology-data row)"
+      - input: "regional deployment potential (suitable cropland, basalt availability)"
+        required_for: "a defensible removal cap on the faithful variant"
+        availability: "absent — must be supplied"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >-
+        Nothing — no mention of weathering, basalt, or mineralisation anywhere in the
+        workflow, config, or cost data. Grounded absence. The CO2/CDR machinery it is
+        absent from exists: add_co2 ("co2 atmosphere" Bus+Store that may go negative,
+        "co2 stored" Buses/Stores under the sequestration budget) and add_dac (the
+        only atmosphere-removal Link in the model, and the pattern to copy).
+      mechanism: >-
+        None. Structurally, ERW is an electricity-consuming Link from
+        "co2 atmosphere" like DAC, but its carbon does NOT belong in the geological
+        "co2 stored" budget — removal is permanent-by-dispersal, so a faithful
+        implementation sinks the CO2 into a new dedicated store (or directly retires
+        it), leaving sector.co2_sequestration_potential to geological storage.
+      not_covered: >-
+        Everything: no grinding/transport energy demand, no application-rate or land
+        limits, no weathering-rate dynamics, no MRV discount, no cost row.
+      provenance: "scripts/prepare_sector_network.py:add_co2"
+    levers:
+      - key: sector.dac
+        effect: "Not ERW, but the closest existing removal option a study could use as a stand-in; toggles the only atmosphere-removal links in the model."
+        default: "true"
+        provenance: "config.default.yaml:dac ; scripts/prepare_sector_network.py:add_dac"
+      - key: sector.co2_sequestration_potential
+        effect: "Bounds removals only if ERW carbon is (crudely) routed into 'co2 stored'; a faithful ERW store sits outside this cap."
+        default: "200"
+        provenance: "config.default.yaml:co2_sequestration_potential ; scripts/solve_network.py:add_co2_sequestration_limit"
+    boundary:
+      - variant: "Any ERW representation at all"
+        rung: L5
+        note: >-
+          Bespoke Python: a new Link in prepare_sector_network with bus0
+          "co2 atmosphere" and electricity input (grinding/logistics), sinking into a
+          new ERW store with its own annual-rate cap (new e_nom / p_nom bound —
+          possibly a new constraint in solve_network extra_functionality). Nearest
+          template: the add_dac Link. Plus an L3 cost row (none exists) and a
+          removal-potential estimate for the target region.
+      - variant: "Crude stand-in: generic removal backstop at a fixed cost"
+        rung: L2
+        note: >-
+          Small localised edit: clone the add_dac link with ERW cost/energy numbers
+          and no heat input — acceptable only if lumping ERW into the geological
+          storage budget is tolerable.
+    where:
+      - change: "New removal link / dedicated ERW store"
+        anchor: "scripts/prepare_sector_network.py functions add_dac (link template) and add_co2 (bus/store patterns)"
+        provenance: "scripts/prepare_sector_network.py:add_dac"
+      - change: "Annual removal-rate constraint"
+        anchor: "scripts/solve_network.py function extra_functionality (alongside add_co2_sequestration_limit)"
+        provenance: "scripts/solve_network.py:extra_functionality"
+    data_dependencies:
+      - input: "ERW techno-economics (EUR/tCO2, kWh electricity per tCO2, rock logistics)"
+        required_for: "The L5/L2 pathway"
+        availability: "absent — must be supplied"
+      - input: "Regional deployment potential (suitable cropland, basalt availability)"
+        required_for: "A defensible removal cap"
+        availability: "absent — must be supplied"

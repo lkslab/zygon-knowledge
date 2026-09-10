@@ -1,0 +1,83 @@
+id: storage-dispatch
+title: Storage dispatch
+question: >-
+  How much storage does the system need, of what duration and where, how is it dispatched
+  against prices and constraints, and what does it earn across arbitrage, capacity
+  and ancillary revenues? Sizing for planners, dispatch and the business case for
+  developers and investors, from grid batteries to seasonal hydrogen.
+when_to_use:
+- how much battery storage does [system] need
+- optimal battery power vs energy (duration) split
+- where to site grid-scale batteries
+- battery value / arbitrage revenue at a node
+- storage vs grid vs peakers as substitutes
+- how much long-duration / seasonal storage do we need
+- hydrogen caverns vs pumped hydro vs iron-air for multi-day gaps
+- storage duration mix at high VRE shares
+- seasonal storage gap under deep decarbonization
+- storage vs grid vs flexible demand as substitutes
+- business case / revenue stack for a battery
+- storage earnings beyond energy arbitrage
+- capacity market plus ancillary revenue for storage
+- merchant storage investment case
+- how storage revenue shifts as VRE share rises
+models:
+- model: pypsa-eur
+  coverage: gap
+  gap_assessment: >-
+    No executable method is wired for pypsa-eur yet. This card descends from the v1
+    cards battery-storage-sizing, long-duration-storage-ldes, storage-revenue-stacking
+    (archived under archive/cookbooks/pypsa-eur/topics/v1/); the recipes below are
+    the parts of those cards whose recipe pages exist in the merged book with a section
+    for this model. Until a method spec is verified for pypsa-eur, the assistant can
+    describe levers but cannot scope a study.
+  recipes:
+    generation_conversion:
+    - grid-scale-batteries
+    - sodium-ion-batteries
+    - flow-batteries
+    - iron-air-batteries
+    - pumped-hydro-storage
+    - long-duration-storage
+    - hydrogen-storage-salt-caverns
+    - compressed-air-storage
+    - thermal-storage
+    - aquifer-thermal-storage
+    demand:
+    - electricity-load
+    - demand-temporal-profiles
+    - residential-space-heating-demand
+  methods: []
+  defaults: []
+  version_anchor:
+    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
+    date: '2026-09-09'
+- model: pypsa-earth
+  coverage: gap
+  gap_assessment: >-
+    No executable method is wired for pypsa-earth yet. This card descends from the
+    v1 cards battery-storage-sizing, long-duration-storage-ldes, storage-revenue-stacking
+    (archived under archive/cookbooks/pypsa-earth/topics/v1/); the recipes below are
+    the parts of those cards whose recipe pages exist in the merged book with a section
+    for this model. Until a method spec is verified for pypsa-earth, the assistant
+    can describe levers but cannot scope a study.
+  recipes:
+    generation_conversion:
+    - grid-scale-batteries
+    - sodium-ion-batteries
+    - flow-batteries
+    - iron-air-batteries
+    - pumped-hydro-storage
+    - long-duration-storage
+    - hydrogen-storage-salt-caverns
+    - compressed-air-storage
+    - thermal-storage
+    demand:
+    - electricity-load
+    - demand-temporal-profiles
+    - residential-space-heating-demand
+  methods: []
+  defaults: []
+  version_anchor:
+    ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
+    date: '2026-09-09'

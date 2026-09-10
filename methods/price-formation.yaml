@@ -1,0 +1,142 @@
+id: price-formation
+title: price-formation — marginal prices as a first-class bounded output
+family: markets-and-prices
+what: 'Make the marginal price series itself the deliverable: solve on the finest
+  affordable temporal rung with an explicit VOLL price ceiling (load shedding at 2000
+  EUR/MWh) and all duals written, so duration curves, zero-price shares, spike frequencies
+  and storage marginal value are chosen system properties, not solver artefacts. Prices
+  come out bounded above by a number you can defend, at every carrier bus (electricity,
+  H2, heat), ready for weighted aggregation and the price plot cards.
+
+  '
+when_to_use:
+- what will electricity (or H2/heat) prices look like in this scenario
+- price duration curve / zero-price and scarcity hours
+- capture price or market value of a technology
+- when and where do prices spike, and to what level
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
+    date: '2026-08-07'
+  baseline: config.de1.yaml
+  execution:
+  - kind: config
+    key: solving.options.load_shedding.enable
+    value: true
+    note: 'adds a sign=1 ''load'' carrier generator at EVERY bus (all_carriers default)
+      — the explicit price ceiling; without it scarcity prices are solver artefacts
+      or infeasibility.
+
+      '
+  - kind: config
+    key: solving.options.load_shedding.default_cost
+    value: 2000
+    note: 'VOLL in EUR/MWh — the price-study benchmark, not the shipped 1e5; the upper
+      tail of every statistic IS this number, report it beside results.
+
+      '
+  - kind: code
+    where: scripts/solve_network.py:assign_all_duals
+    do: 'set `solving.options.assign_all_duals: true` in the run config — read via
+      bare .get(), the key is absent from config.default.yaml; without it storage
+      energy-balance duals (marginal storage value) are lost.
+
+      '
+  invalidates:
+  - solve_sector_network
+  budget:
+    jobs: 2
+    class: hour
+  success_metric:
+  - name: prices-populated
+    needs: solved
+    check: not n.buses_t.marginal_price.empty and n.buses_t.marginal_price.abs().sum().sum()
+      > 0
+    expect: nodal duals written for every bus and snapshot — the price series exists
+  - name: ceiling-respected
+    needs: solved
+    check: n.buses_t.marginal_price.max().max() <= 2000 * 1.01
+    expect: 'no price above the declared VOLL — the scarcity tail ends at the chosen
+      ceiling, p_nom=inf makes it hard
+
+      '
+  - name: shedding-present
+    needs: solved
+    check: (n.generators.carrier == 'load').any()
+    expect: the load-shedding generators actually entered the network
+  - name: fine-resolution
+    needs: solved
+    check: (n.snapshot_weightings.objective <= 3).all() and n.snapshot_weightings.objective.nunique()
+      == 1
+    expect: 'uniform snapshot weightings at <= 3h — no segmentation, the scarcity
+      tail is resolved
+
+      '
+  - name: msv-written
+    needs: solved
+    check: n.storage_units.empty or not n.storage_units_t.mu_energy_balance.empty
+    expect: storage energy-balance duals (marginal storage value) assigned via assign_all_duals
+- model: pypsa-earth
+  version_anchor:
+    ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
+    date: '2026-08-07'
+  baseline: config.gh1.yaml
+  execution:
+  - kind: config
+    key: solving.options.load_shedding
+    value: 2
+    note: 'UNIT TRAP: scalar willingness-to-pay in EUR/kWh (x1000 in prepare_network)
+      — 2 = 2000 EUR/MWh. The shipped 100 silently caps every default earth price
+      series at 1e5 EUR/MWh.
+
+      '
+  - kind: code
+    where: scripts/solve_network.py:solve_network
+    do: 'pass assign_all_duals=True into the n.optimize(**kwargs) call — earth has
+      no config hook for duals; needed for storage mu_energy_balance (marginal storage
+      value).
+
+      '
+  invalidates:
+  - solve_network
+  budget:
+    jobs: 29
+    class: hours
+  success_metric:
+  - name: prices-populated
+    needs: solved
+    check: not n.buses_t.marginal_price.empty and n.buses_t.marginal_price.abs().sum().sum()
+      > 0
+    expect: nodal duals written for every bus and snapshot — the price series exists
+  - name: ceiling-approx
+    needs: solved
+    check: n.buses_t.marginal_price.max().max() <= 2000 * 1.05
+    expect: 'prices end at the declared VOLL — SOFT cap: earth shedding p_nom is finite
+      (1.2x max bus load), a bound bus can price above it
+
+      '
+  - name: shedding-present
+    needs: solved
+    check: (n.generators.carrier == 'load shedding').any()
+    expect: the load-shedding generators actually entered the network
+  - name: hourly-resolution
+    needs: solved
+    check: (n.snapshot_weightings.objective == 1).all()
+    expect: native hourly snapshots over the full year — the gh1 fixture's rung
+  - name: msv-written
+    needs: solved
+    check: n.storage_units.empty or not n.storage_units_t.mu_energy_balance.empty
+    expect: storage energy-balance duals (marginal storage value) assigned via assign_all_duals
+notes: 'Interpretive references (v1 essays, not linkable): shadow-prices-and-marginal-values
+  (aggregate with snapshot weightings, never plain means; EXPANSION duals are not
+  market prices — they carry investment pressure and satisfy zero-profit) and price-formation-and-scarcity-rents
+  (regime decomposition, price-setter ID, cost recovery — post-processing, not spec''d
+  here). ST fork: eur''s solve_operations_network rule re-solves dispatch at fixed
+  capacities for market-comparable merit-order prices; earth has no such rule (freeze
+  capacities by hand). noisy_costs (~1e-2 EUR/MWh, on by default) → zero-price tests
+  need a <0.1 tolerance. The baselines are the finest-rung fixtures (de1: 3H year;
+  gh1: hourly year); coarser rungs flatten the scarcity tail this method exists to
+  expose.
+
+  '

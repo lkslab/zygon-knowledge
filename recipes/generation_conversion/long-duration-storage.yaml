@@ -1,0 +1,251 @@
+id: long-duration-storage
+title: Long-duration storage (LDES)
+summary: Electricity storage with durations from tens of hours to seasonal, used to shift energy across days, weeks, or seasons.
+when_to_use:
+  - "long-duration energy storage / LDES"
+  - "seasonal storage"
+  - "multi-day storage / week-long storage"
+  - "100-hour battery"
+  - "inter-seasonal balancing of renewables"
+  - "storage duration assumptions"
+  - "what covers windless weeks (dunkelflaute)"
+  - "pypsa-eur config tokens: H2, iron-air, pair, lair, vanadium"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        No tech labelled "LDES", but the model ships a whole duration ladder.
+        Electricity workflow, on by default: the Store+Links representation
+        (extendable_carriers.Store: [battery, H2]) optimises energy and power
+        independently, so duration is endogenous and unbounded — and the H2
+        chain (Electrolysis -> Store priced at "hydrogen storage underground"
+        -> Fuel Cell) is the de-facto seasonal option, with cavern-cheap energy
+        capacity at every bus. Exogenous fixed durations come via the
+        StorageUnit representation (off by default, extendable_carriers.
+        StorageUnit: []) whose electricity.max_hours dict doubles as the wired
+        LDES menu: H2: 168 (a week), iron-air: 100, pair: 24 (adiabatic CAES),
+        lair: 12, vanadium: 10, plus battery/li-ion/lfp: 6 — each token maps
+        through STORE_LOOKUP to real technology-data cost rows and activates
+        with one config-list edit (see the per-technology recipes). Sector
+        chain: geologically capped salt-cavern H2 stores plus tank fallback
+        (sector.hydrogen_underground_storage, see hydrogen-storage-salt-caverns
+        recipe), H2 turbine / fuel cell re-electrification, and long-duration
+        HEAT storage — urban central water pits (PTES) and, optionally, ATES
+        with an annual recovery factor (thermal-storage and
+        aquifer-thermal-storage recipes). Off-by-default flexible enhanced
+        geothermal adds a 240 h reservoir store
+        (sector.enhanced_geothermal.max_hours).
+      mechanism: >
+        rule add_electricity runs scripts/add_electricity.py: attach_stores
+        (endogenous duration) and attach_storageunits (fixed max_hours), both
+        filtered through get_available_storage_carriers / STORE_LOOKUP; rule
+        process_cost_data (scripts/process_cost_data.py::prepare_costs, helper
+        costs_for_storage) synthesises one combined capital-cost row per
+        electricity.max_hours key. Sector: rule prepare_sector_network runs
+        add_h2_gas_infrastructure (H2 stores + re-electrification) and add_heat
+        (PTES/ATES). Solve-time couplings: add_battery_constraints (battery
+        charger=discharger) and the TES constraints in
+        scripts/solve_network.py.
+      not_covered: >
+        No minimum-duration or duration-band constraint, and no constraint
+        forcing storage to behave seasonally beyond cyclic state of charge
+        (e_cyclic / cyclic_state_of_charge). StorageUnit durations are fixed
+        parameters, never optimised. None of the chemistry tokens beyond
+        battery and H2 are active by default, and NONE of them survive into
+        sector-coupled runs (patch_electricity_network strips all elec-network
+        Stores; prepare_sector_network re-adds only H2, home battery and EV
+        battery on the electricity side) — multi-day electricity storage in a
+        default sector run is H2-only. For bicharger tokens (vanadium, pair,
+        lfp) the Store representation has a free, uncoupled discharger link
+        (see flow-batteries recipe). No pan-storage duration reporting or LDES
+        target/mandate machinery.
+      provenance: "scripts/add_electricity.py:attach_stores; scripts/add_electricity.py:attach_storageunits; scripts/add_electricity.py:STORE_LOOKUP; scripts/process_cost_data.py:costs_for_storage; scripts/prepare_sector_network.py:add_h2_gas_infrastructure; scripts/prepare_sector_network.py:remove_elec_base_techs"
+    levers:
+      - key: electricity.extendable_carriers.Store
+        effect: "Tokens getting the endogenous-duration Store+Links representation — the default LDES-capable setup (battery + H2)."
+        default: "[battery, H2]"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_stores"
+      - key: electricity.extendable_carriers.StorageUnit
+        effect: "Tokens getting fixed-duration StorageUnits; combine with electricity.max_hours to prescribe LDES durations exogenously."
+        default: "[] (empty)"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_storageunits"
+      - key: electricity.max_hours.H2
+        effect: "Duration of the H2 StorageUnit representation and its synthesised cost row; 168 h = weekly storage."
+        default: "168"
+        provenance: "config/config.default.yaml:max_hours; scripts/process_cost_data.py:costs_for_storage"
+      - key: electricity.max_hours.iron-air
+        effect: "Duration of the wired 100-hour iron-air token (see iron-air-batteries recipe)."
+        default: "100"
+        provenance: "config/config.default.yaml:max_hours; scripts/add_electricity.py:iron-air battery"
+      - key: electricity.max_hours.battery
+        effect: "Duration of the battery StorageUnit — set e.g. 100 to fake a 100-hour unit with battery cost structure (prefer the wired iron-air token instead)."
+        default: "6"
+        provenance: "config/config.default.yaml:max_hours; scripts/process_cost_data.py:costs_for_storage"
+      - key: sector.hydrogen_underground_storage
+        effect: "Sector runs: cavern-priced, potential-capped seasonal H2 stores (the main sector-side LDES upgrade; on by default)."
+        default: "true"
+        provenance: "config/config.default.yaml:hydrogen_underground_storage; scripts/prepare_sector_network.py:add_h2_gas_infrastructure"
+      - key: sector.hydrogen_turbine
+        effect: "H2 turbine re-electrification link in sector runs — the discharge half of seasonal H2 power storage (alongside sector.hydrogen_fuel_cell)."
+        default: "true"
+        provenance: "config/config.default.yaml:hydrogen_turbine; scripts/prepare_sector_network.py:add_h2_gas_infrastructure"
+      - key: sector.enhanced_geothermal.enable
+        effect: "With .flexible (default true when enabled) adds geothermal reservoir StorageUnits of sector.enhanced_geothermal.max_hours (240 h) — an off-by-default dispatchable-LDES analogue."
+        default: "false"
+        provenance: "config/config.default.yaml:enhanced_geothermal; scripts/prepare_sector_network.py:add_enhanced_geothermal"
+      - key: sector.district_heating.ates.enable
+        effect: "Seasonal-scale heat storage in aquifers (annual recovery factor; see aquifer-thermal-storage recipe)."
+        default: "false"
+        provenance: "config/config.default.yaml:ates; scripts/prepare_sector_network.py:enable_ates"
+    boundary:
+      - variant: "let the model build storage of any duration endogenously"
+        rung: L0
+        note: "default — Store+Links for battery and H2; nothing bounds the energy/power ratio"
+      - variant: "weekly H2 storage as a single-variable StorageUnit"
+        rung: L1
+        note: "add 'H2' to extendable_carriers.StorageUnit (max_hours.H2 already 168)"
+      - variant: "100-hour iron-air storage"
+        rung: L1
+        note: "add 'iron-air' to extendable_carriers.StorageUnit or .Store — fully wired, unlike pypsa-earth where this is a code edit"
+      - variant: "24h/12h/10h mid-duration technologies (CAES, LAES, flow)"
+        rung: L1
+        note: "add 'pair'/'lair'/'vanadium' to the extendable carrier lists (see their recipes for caveats)"
+      - variant: "seasonal H2 at cavern cost with geological caps (sector run)"
+        rung: L0
+        note: "default via sector.hydrogen_underground_storage"
+      - variant: "multi-day chemistry storage inside sector-coupled runs"
+        rung: L2
+        note: "elec-workflow chemistry stores are stripped; add the technology as a Bus/Store/Links block in prepare_sector_network (home battery block is the template)"
+      - variant: "a new named LDES technology as its own token"
+        rung: L2
+        note: "add a STORE_LOOKUP entry + electricity.max_hours key + carrier-list entry; +L3 (rows in data/custom_costs.csv) if technology-data lacks the cost rows — see sodium-ion-batteries/gravity-storage recipes for worked examples"
+      - variant: "minimum-duration or duration-window constraint on storage builds"
+        rung: L5
+        note: "no hook; custom constraint in solve_network extra_functionality (e.g. tie Store-e_nom to Link-p_nom like add_TES_energy_to_power_ratio_constraints does for heat)"
+    where:
+      - change: "endogenous-duration machinery and the token menu"
+        anchor: "scripts/add_electricity.py::attach_stores / ::attach_storageunits + STORE_LOOKUP (rule add_electricity)"
+        provenance: "scripts/add_electricity.py:attach_stores; scripts/add_electricity.py:STORE_LOOKUP"
+      - change: "fixed-duration cost synthesis per token"
+        anchor: "scripts/process_cost_data.py::prepare_costs (costs_for_storage loop over electricity.max_hours)"
+        provenance: "scripts/process_cost_data.py:costs_for_storage"
+      - change: "sector-chain seasonal H2 (caverns, tanks, re-electrification)"
+        anchor: "scripts/prepare_sector_network.py::add_h2_gas_infrastructure (rule prepare_sector_network)"
+        provenance: "scripts/prepare_sector_network.py:add_h2_gas_infrastructure"
+      - change: "custom duration constraints"
+        anchor: "scripts/solve_network.py::extra_functionality (add_TES_energy_to_power_ratio_constraints is the pattern for e_nom-to-p_nom coupling)"
+        provenance: "scripts/solve_network.py:extra_functionality; scripts/solve_network.py:add_TES_energy_to_power_ratio_constraints"
+    data_dependencies:
+      - input: "cost rows for the wired tokens: 'hydrogen storage underground', 'electrolysis', 'fuel cell', 'iron-air battery' (+charge/discharge), 'Compressed-Air-Adiabatic-*', 'Liquid-Air-*', 'Vanadium-Redox-Flow-*', 'battery storage'/'battery inverter'"
+        required_for: "the whole duration ladder"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data (verified in a locally built processed costs file)"
+      - input: "salt_cavern_potentials_s_{clusters}.csv"
+        required_for: "geologically capped seasonal H2 in sector runs"
+        availability: "must be built (rule build_salt_cavern_potentials; automatic in the sector workflow)"
+      - input: "EGS potential inputs (rule prepare_sector_network egs inputs)"
+        required_for: "flexible enhanced geothermal (240 h reservoir)"
+        availability: "must be built; only when sector.enhanced_geothermal.enable"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        No tech labelled "LDES", but the mechanism fully exists and is on by default:
+        in the power-only chain, both default Store carriers (battery, H2) are added
+        as Store + charger/discharger Links with independently optimised e_nom and
+        link p_nom — duration is endogenous and unbounded, so the optimiser can build
+        any-duration storage. Hydrogen (electrolysis -> H2 tank Store -> fuel cell)
+        is the de-facto LDES: cheap energy capacity, expensive power conversion. The
+        alternative StorageUnit representation gives exogenous fixed durations via
+        electricity.max_hours (H2: 168 h — a week — by default; battery: 6 h). The
+        sector chain adds nodal H2 tank stores ("H2 Store Tank"), optional
+        underground salt-cavern H2 storage ("H2 UHS"), and seasonal heat storage
+        (central water tanks with a 180-day loss time constant).
+      mechanism: >
+        attach_stores (scripts/add_extra_components.py, rule add_extra_components)
+        builds the H2 chain per bus: H2 Bus, Store with costs row "hydrogen storage
+        tank", Electrolysis and Fuel Cell Links — e_nom_extendable and
+        p_nom_extendable are independent, so duration is an optimisation outcome.
+        attach_storageunits builds fixed-ratio StorageUnits with
+        max_hours=electricity.max_hours[carrier]; the combined capital cost row per
+        carrier ("H2", "battery") is synthesised by costs_for_storage in load_costs
+        (scripts/process_cost_data.py) using the same max_hours. In the sector chain
+        add_hydrogen (scripts/prepare_sector_network.py) adds "H2 Store Tank" at
+        every node and, when sector.hydrogen.underground_storage is true, potential-
+        limited "H2 UHS" cavern stores; add_heat adds water-tank Stores whose
+        standing_loss follows sector.tes_tau (180-day central default = seasonal
+        heat storage).
+      not_covered: >
+        No named LDES technologies (iron-air, CAES, LAES, flow, gravity — see their
+        recipes; all are grounded absences requiring a carrier + code branch). No
+        minimum-duration or duration-band constraints. StorageUnit durations are
+        fixed parameters, not optimised. No dedicated seasonal-storage constraint
+        beyond cyclic state of charge (e_cyclic / cyclic_state_of_charge).
+      provenance: scripts/add_extra_components.py:attach_stores
+    levers:
+      - key: electricity.extendable_carriers.Store
+        effect: Keeps battery/H2 as Store+Links with endogenous (any) duration — the default LDES-capable representation.
+        default: "[battery, H2]"
+        provenance: scripts/add_extra_components.py:attach_stores
+      - key: electricity.extendable_carriers.StorageUnit
+        effect: Adds fixed-duration StorageUnits instead; combine with electricity.max_hours to prescribe an LDES duration exogenously.
+        default: "[]"
+        provenance: scripts/add_extra_components.py:attach_storageunits
+      - key: electricity.max_hours.H2
+        effect: Duration (h) of the H2 StorageUnit representation and of the synthetic combined "H2" costs row; 168 h = weekly storage.
+        default: "168"
+        provenance: scripts/process_cost_data.py:costs_for_storage
+      - key: electricity.max_hours.battery
+        effect: Duration (h) of the battery StorageUnit representation — set e.g. 100 to model a 100-hour storage unit with battery cost structure.
+        default: "6"
+        provenance: scripts/process_cost_data.py:costs_for_storage
+      - key: sector.hydrogen.underground_storage
+        effect: Enables cheap salt-cavern H2 stores ("H2 UHS") in the sector chain — the main seasonal-scale electricity-storage upgrade (see hydrogen-storage-salt-caverns recipe).
+        default: "false"
+        provenance: scripts/prepare_sector_network.py:underground_storage
+      - key: sector.tes_tau.central
+        effect: Loss time constant (days) of central water-tank heat Stores — 180 d makes them de-facto seasonal thermal storage.
+        default: "180"
+        provenance: scripts/prepare_sector_network.py:tes_tau
+    boundary:
+      - variant: Let the model build storage of any duration endogenously
+        rung: L0
+        note: Default — Store+Links representation for battery and H2; no fixed energy/power ratio exists to bind.
+      - variant: Weekly H2 storage as a single-variable StorageUnit
+        rung: L1
+        note: Add "H2" to electricity.extendable_carriers.StorageUnit (max_hours.H2 already 168).
+      - variant: 100-hour "battery-like" LDES unit
+        rung: L1
+        note: Add "battery" to extendable_carriers.StorageUnit and set electricity.max_hours.battery to 100; override its costs via the costs section to match the intended technology.
+      - variant: Seasonal H2 storage at cavern cost
+        rung: L0
+        note: Flip sector.hydrogen.underground_storage (sector chain only; potential data covers DZ, MA, TN, NG, BJ — see hydrogen-storage-salt-caverns recipe).
+      - variant: A named LDES technology as its own carrier (iron-air, CAES, LAES, ...)
+        rung: L2
+        note: attach_stores hardcodes only "H2" and "battery" branches and attach_storageunits hardcodes lookup dicts {"H2","battery"} — a new carrier needs a small code branch plus matching costs rows (several exist in technology-data v0.13.2; see the per-technology recipes).
+      - variant: Minimum-duration or duration-window constraint on storage builds
+        rung: L5
+        note: No hook; custom constraint at solve time (alongside add_battery_constraints in scripts/solve_network.py).
+    where:
+      - change: Endogenous-duration storage machinery (Store+Links) and new carriers
+        anchor: scripts/add_extra_components.py, functions attach_stores / attach_storageunits (rule add_extra_components)
+        provenance: scripts/add_extra_components.py:attach_storageunits
+      - change: Fixed-duration cost synthesis per carrier
+        anchor: scripts/process_cost_data.py, function load_costs (helper costs_for_storage)
+        provenance: scripts/process_cost_data.py:costs_for_storage
+      - change: Sector-chain H2 stores (tank and cavern)
+        anchor: scripts/prepare_sector_network.py, function add_hydrogen (rule prepare_sector_network)
+        provenance: scripts/prepare_sector_network.py:add_hydrogen
+      - change: Seasonal thermal storage time constant
+        anchor: config path sector.tes_tau, consumed in scripts/prepare_sector_network.py add_heat
+        provenance: scripts/prepare_sector_network.py:add_heat
+      - change: Custom duration constraints
+        anchor: scripts/solve_network.py, extra-functionality constraints (pattern add_battery_constraints)
+        provenance: scripts/solve_network.py:add_battery_constraints
+    data_dependencies:
+      - input: technology-data costs rows "hydrogen storage tank", "electrolysis", "fuel cell" (rule retrieve_cost_data, costs.technology_data_version v0.13.2)
+        required_for: H2 chain as de-facto LDES in the power-only chain
+        availability: exists by default (also in offline fallback data/costs.csv)
+      - input: data/hydrogen_salt_cavern_potentials.csv (country-level TWh)
+        required_for: Salt-cavern seasonal H2 storage in the sector chain
+        availability: region-dependent — only DZ, MA, TN, NG, BJ have rows

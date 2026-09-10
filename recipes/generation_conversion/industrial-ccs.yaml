@@ -1,0 +1,292 @@
+id: industrial-ccs
+title: Industrial carbon capture (CCS/CCU in industry)
+summary: >
+  Capturing CO2 at industrial sources — calcination/chemical process
+  emissions, industrial fuel combustion (gas, biomass) and waste incineration
+  — for geological storage or utilisation.
+when_to_use:
+  - "industrial CCS / CCU"
+  - "carbon capture in industry"
+  - "cement carbon capture"
+  - "process emissions CC"
+  - "capture CO2 from industrial gas or biomass use"
+  - "waste-to-energy with capture"
+  - "CO2 storage limits for industry"
+  - "pypsa-eur carriers: process emissions CC, gas for industry CC, solid biomass for industry CC, waste CHP CC"
+  - "industrial carbon capture"
+  - "CCS for cement / steel / industry"
+  - "capture process emissions"
+  - "post-combustion capture in industry"
+  - "CO2 storage and pipelines for industry"
+  - "CCUS"
+  - "carbon capture retrofits"
+  - "known in pypsa-eur as: CC, CCS, CO2 sequestration, co2, co2 stored, co2 sequestered, co2 vent, CO2 pipeline, gas for industry CC, gas for industry co2 to atmosphere, gas for industry co2 to stored, solid biomass for industry CC, solid biomass for industry co2 from atmosphere, solid biomass for industry co2 to stored"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Broadly covered and mostly UNCONDITIONAL in sector runs. add_industry
+        always adds, per CO2 node: (1) "process emissions CC" — an extendable
+        Link taking the "process emissions" load (calcination + chemical
+        process CO2 collected from the sector-ratio chain) to "co2 stored",
+        priced from the "cement capture" cost row with its capture_rate, the
+        remainder vented; (2) "gas for industry CC" and (3) "solid biomass
+        for industry CC" — capture variants of the industrial fuel links
+        (cement capture capital cost per tCO2, hardcoded energy penalty
+        efficiency 0.9 with a TODO to make it configurable; the biomass
+        variant makes NEGATIVE emissions via bus2 "co2 atmosphere" at
+        -CO2_intensity*capture_rate). With sector.industry_t.endogen, every
+        temperature-band fuel technology gets an unconditional CC twin
+        ("heat100-200 industry gas CC", "heat200-500 industry solid biomass
+        CC", "heat>500 industry gas CC", ...) using "biomass CHP capture"
+        energetics. Waste incineration capture ("waste CHP CC") exists behind
+        industry.waste_to_energy_cc (default false). Captured CO2 enters the
+        "co2 stored" buses (co2_spatial true), can move through the CO2
+        pipeline network (co2_network true), be sequestered ("co2
+        sequestered" stores, capped per horizon by
+        sector.co2_sequestration_potential — 0 until 2030, 40 Mt in 2030,
+        250 Mt from 2045 — at sector.co2_sequestration_cost, default 30) or
+        be USED (methanolisation, Fischer-Tropsch draw from co2 stored), so
+        industrial CCU is endogenous.
+      mechanism: >
+        rule prepare_sector_network: add_co2_tracking builds "co2 stored" /
+        "co2 sequestered" buses and stores (regional potentials from CO2StoP
+        via sector.regional_co2_sequestration_potential); add_industry adds
+        the industry capture links; add_t_industry* add the band CC twins;
+        solve_network::add_co2_sequestration_limit enforces the per-horizon
+        cap as an extra_functionality constraint.
+      not_covered: >
+        No capture on industrial coal/coke: the "coal for industry" link
+        (integrated steelworks' coke and coal) vents all CO2 with no CC
+        variant — blast-furnace CCS is not representable without code. No
+        capture on the naphtha/oil feedstock chain (only the downstream "HVC
+        to air" / waste routes). Capture heat/steam demand is not modelled
+        for process emissions ("assume enough local waste heat for CC"). No
+        switch exists to DISABLE industrial capture: the process-emission and
+        fuel CC links are added unconditionally — removing them is a code
+        edit (contrast waste_to_energy_cc, which has a flag). Capture is
+        node-level and technology-generic (one "cement capture" cost row
+        serves process emissions, gas and biomass industry capture alike) —
+        no per-plant retrofit, no sector-specific capture costs beyond that
+        row, no capture-rate config key (comes from the cost row /
+        sector.cc_fraction only for waste CHP CC).
+      provenance: "scripts/prepare_sector_network.py:process emissions CC; scripts/prepare_sector_network.py:gas for industry CC; scripts/prepare_sector_network.py:solid biomass for industry CC; scripts/prepare_sector_network.py:add_co2_tracking; scripts/solve_network.py:add_co2_sequestration_limit; scripts/prepare_sector_network.py:waste CHP CC"
+    levers:
+      - key: sector.co2_sequestration_potential
+        effect: "Per-horizon cap (MtCO2/a) on total sequestered CO2 — the binding scarcity industrial capture competes under (with BECCS, DAC etc.)."
+        default: "{2020: 0, 2025: 0, 2030: 40, 2035: 100, 2040: 180, 2045: 250, 2050: 250}"
+        provenance: "config/config.default.yaml:co2_sequestration_potential; scripts/solve_network.py:add_co2_sequestration_limit"
+      - key: sector.co2_sequestration_cost
+        effect: "Cost per tCO2 of geological sequestration (capital_cost of the co2 sequestered store link)."
+        default: "30"
+        provenance: "config/config.default.yaml:co2_sequestration_cost; scripts/prepare_sector_network.py:co2_sequestration_cost"
+      - key: sector.regional_co2_sequestration_potential
+        effect: "enable: true distributes storage potential regionally from the CO2StoP dataset (attributes, min/max size, years_of_storage)."
+        default: "enable: true"
+        provenance: "config/config.default.yaml:regional_co2_sequestration_potential; scripts/prepare_sector_network.py:regional_co2_sequestration_potential"
+      - key: sector.co2_spatial
+        effect: "Resolve co2 stored (and process emissions) per node instead of one EU bus — required for meaningful capture siting."
+        default: "true"
+        provenance: "config/config.default.yaml:co2_spatial; scripts/prepare_sector_network.py:co2_spatial"
+      - key: sector.co2_network
+        effect: "Enable CO2 pipeline transport between nodes (with co2_network_cost_factor scaling)."
+        default: "true"
+        provenance: "config/config.default.yaml:co2_network; scripts/prepare_sector_network.py:add_co2_network"
+      - key: industry.waste_to_energy_cc
+        effect: "Adds the 'waste CHP CC' link burning non-sequestered HVC waste with capture at sector.cc_fraction."
+        default: "false"
+        provenance: "config/config.default.yaml:waste_to_energy_cc; scripts/prepare_sector_network.py:waste CHP CC"
+      - key: sector.cc_fraction
+        effect: "Capture rate applied in the waste CHP CC link (other industry capture uses the cost rows' capture_rate)."
+        default: "0.9"
+        provenance: "config/config.default.yaml:cc_fraction; scripts/prepare_sector_network.py:cc_fraction"
+      - key: sector.industry_t.endogen
+        effect: "true activates the temperature-band industry heat links, each fuel option paired with an unconditional CC twin."
+        default: "false"
+        provenance: "config/config.default.yaml:industry_t; scripts/prepare_sector_network.py:add_t_industry100_200"
+      - key: costs.overwrites
+        effect: "Override 'cement capture' / 'biomass CHP capture' rows (investment, capture_rate is NOT in the overwrite list — needs data/custom_costs.csv)."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+    boundary:
+      - variant: "industrial capture competing for limited storage"
+        rung: L0
+        note: "default — capture links always present, sequestration capped per horizon"
+      - variant: "more/less CO2 storage or different storage cost"
+        rung: L1
+        note: "sector.co2_sequestration_potential / co2_sequestration_cost"
+      - variant: "waste-to-energy with capture"
+        rung: L1
+        note: "industry.waste_to_energy_cc: true (waste_to_energy for the unabated variant)"
+      - variant: "no industrial CCS scenario"
+        rung: L2
+        note: "no flag — comment out the CC link adds in add_industry (and the CC twins in the add_t_industry functions if endogen); setting co2_sequestration_potential to 0 only blocks STORAGE, capture-for-utilisation remains"
+      - variant: "different capture cost or capture rate for industry"
+        rung: L1
+        note: "costs.overwrites investment on 'cement capture'; capture_rate itself needs a data/custom_costs.csv row (L3)"
+      - variant: "capture on the coal/coke steel route (blast furnace CCS)"
+        rung: L2
+        note: "clone the 'gas for industry CC' pattern onto the 'coal for industry' link in add_industry (coal CO2 intensity, cement capture costs)"
+      - variant: "model capture heat/steam demand for process-emission capture"
+        rung: L2
+        note: "replace the free-waste-heat assumption: add a heat input bus to the 'process emissions CC' link (the band gas CC links already deduct capture heat via the biomass CHP capture heat-input attribute — use as template)"
+      - variant: "per-plant capture retrofits with site data"
+        rung: L5
+        note: "industry is nodal aggregate demand; plant-level retrofit decisions need site-resolved structure that does not exist"
+    where:
+      - change: "industry capture links (process emissions, gas, solid biomass)"
+        anchor: "scripts/prepare_sector_network.py::add_industry (CC blocks)"
+        provenance: "scripts/prepare_sector_network.py:add_industry"
+      - change: "band fuel CC twins"
+        anchor: "scripts/prepare_sector_network.py::add_t_industry100_200 / ::add_t_industry200_500 / ::add_t_industry500"
+        provenance: "scripts/prepare_sector_network.py:add_t_industry200_500"
+      - change: "CO2 storage buses, sequestration stores, regional potentials"
+        anchor: "scripts/prepare_sector_network.py::add_co2_tracking"
+        provenance: "scripts/prepare_sector_network.py:add_co2_tracking"
+      - change: "sequestration cap constraint"
+        anchor: "scripts/solve_network.py::add_co2_sequestration_limit (extra_functionality)"
+        provenance: "scripts/solve_network.py:add_co2_sequestration_limit; scripts/solve_network.py:extra_functionality"
+      - change: "CO2 pipeline network"
+        anchor: "scripts/prepare_sector_network.py::add_co2_network"
+        provenance: "scripts/prepare_sector_network.py:add_co2_network"
+    data_dependencies:
+      - input: "cost rows 'cement capture' and 'biomass CHP capture' (capital cost, capture_rate, heat-input)"
+        required_for: "all industrial capture links"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "CO2StoP-derived regional sequestration potentials"
+        required_for: "regional_co2_sequestration_potential.enable"
+        availability: "exists by default (data/co2stop, processed in add_co2_tracking inputs)"
+      - input: "process emission columns from the industry demand chain"
+        required_for: "sizing the capturable process-emission load"
+        availability: "must be built (rules build_industry_sector_ratios* -> build_industrial_energy_demand_per_node)"
+      - input: "non-sequestered HVC waste chain (naphtha accounting, municipal solid waste optional)"
+        required_for: "waste CHP CC"
+        availability: "exists by default in sector runs; msw needs sector.municipal_solid_waste: true"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        Endogenous industrial CCS — the one industry decarbonisation choice the
+        model optimises. When sector.cc is true, add_industry adds extendable
+        capture Links in parallel to the uncaptured routes:
+        "gas for industry CC" and "solid biomass for industry CC" (fuel
+        delivered to the industry bus at efficiency 0.9 — hardcoded, marked
+        'TODO: make config option' — with CO2 split between "co2 atmosphere"
+        and the "co2 stored" buses by costs.at["cement capture",
+        "capture_rate"], capex = "cement capture" fixed x fuel CO2 intensity),
+        plus "process emissions CC" capturing the plant-capacity-derived
+        process emissions (cement/steel/aluminium/refineries) at the same
+        capture_rate, assuming free waste heat. Captured CO2 flows into the
+        "co2 stored" buses built by add_co2: extendable Stores priced at
+        sector.co2_sequestration_cost, "co2 vent" links back to atmosphere, an
+        optional CO2 pipeline network (sector.co2_network), and a total
+        sequestration cap enforced in solve_network
+        (sector.co2_sequestration_potential).
+      mechanism: >
+        add_industry CC links + process emissions bus/Load ->
+        add_co2 ("co2 stored" buses, vents, CO2 pipeline links) ->
+        solve_network.add_co2_sequestration_limit global constraint. Process
+        emission magnitudes come from build_industry_demand (emission_factors x
+        plant capacities x sector.industry_util_factor; aluminium from
+        AL_production.csv).
+      not_covered: >
+        No capture on industrial COAL or OIL use — coal/naphtha emissions are
+        fixed atmosphere loads with no CC alternative. Capture rate and the 0.9
+        fuel-delivery efficiency are not config keys (sector.cc_fraction exists
+        but is applied to the H2-production CC chains — SMR CC, gasification CC
+        — not to the industry CC links, which read "cement capture"
+        capture_rate from the costs table). No retrofit vs newbuild
+        distinction, no CO2 utilisation beyond the existing methanation /
+        Fischer-Tropsch drawing from "co2 stored".
+      provenance: "scripts/prepare_sector_network.py:add_industry"
+
+    levers:
+      - key: sector.cc
+        effect: "Master switch adding all industry CC links (gas/biomass for industry CC, process emissions CC) and other CC variants."
+        default: "true"
+        provenance: "config.default.yaml:cc"
+      - key: sector.cc_fraction
+        effect: "Capture fraction for H2-production CC technologies (SMR CC, gasification CC) — NOT the industry CC links."
+        default: "0.9"
+        provenance: "config.default.yaml:cc_fraction"
+      - key: sector.co2_network
+        effect: "Adds CO2 pipeline links between 'co2 stored' buses (create_network_topology in add_co2)."
+        default: "true"
+        provenance: "config.default.yaml:co2_network"
+      - key: sector.co2_sequestration_cost
+        effect: "EUR/tCO2 capital cost on the 'co2 stored' Stores."
+        default: "10"
+        provenance: "config.default.yaml:co2_sequestration_cost"
+      - key: sector.co2_sequestration_potential
+        effect: "MtCO2/a cap on total end-of-horizon stored CO2 (global constraint in solve_network)."
+        default: "200"
+        provenance: "config.default.yaml:co2_sequestration_potential"
+      - key: sector.industry_util_factor
+        effect: "Scales the capturable process-emission volumes derived from plant capacities."
+        default: "0.7"
+        provenance: "config.default.yaml:industry_util_factor"
+
+    boundary:
+      - variant: "enable/disable industrial CCS"
+        rung: L0
+        note: "sector.cc."
+      - variant: "tighten/relax storage economics and limits"
+        rung: L0
+        note: "sector.co2_sequestration_cost / sector.co2_sequestration_potential / sector.co2_network."
+      - variant: "change the industrial capture rate or capture cost"
+        rung: L3
+        note: >
+          They live in the costs table rows 'cement capture' (capture_rate,
+          fixed, lifetime), fetched from technology-data
+          (costs.technology_data_version); override by setting
+          enable.retrieve_cost_data: false and editing data/costs.csv, or via
+          the retrieved resources costs csv. sector.cc_fraction will NOT do it.
+      - variant: "make the 0.9 fuel-delivery efficiency of industry CC links configurable"
+        rung: L2
+        note: "hardcoded efficiency=0.9 with 'TODO: make config option' in add_industry — small localised edit."
+      - variant: "add capture on industrial coal (or oil) use"
+        rung: L2
+        note: >
+          Coal is currently a pure 'industry coal emissions' atmosphere load in
+          add_industry; mirroring the gas-for-industry pattern (bus/Load/Link +
+          CC link against spatial.coal.nodes) is a localised edit in
+          add_industry.
+      - variant: "sector-specific capture (only cement, not steel)"
+        rung: L2
+        note: "process emissions are pooled onto one 'process emissions' bus per location; separating requires splitting the bus/loads by industry in add_industry (per-industry columns exist upstream in build_industry_demand)."
+      - variant: "geologically resolved storage potentials per region"
+        rung: L3
+        note: "Stores use e_nom_max=inf + a single global cap; regional caps need potential data wired into add_co2 (data + localised edit)."
+
+    where:
+      - change: "industry CC links (fuel combustion capture)"
+        anchor: "add_industry — 'gas for industry CC' and 'solid biomass for industry CC' madd blocks gated by snakemake.params.sector_options['cc']"
+        provenance: "scripts/prepare_sector_network.py:add_industry"
+      - change: "process emissions capture"
+        anchor: "add_industry — 'process emissions' bus/Load/Link and 'process emissions CC' link"
+        provenance: "scripts/prepare_sector_network.py:add_industry"
+      - change: "CO2 storage, venting, pipeline network"
+        anchor: "add_co2 in prepare_sector_network ('co2 stored' buses per define_spatial)"
+        provenance: "scripts/prepare_sector_network.py:add_co2"
+      - change: "total sequestration cap"
+        anchor: "add_co2_sequestration_limit in solve_network"
+        provenance: "scripts/solve_network.py:add_co2_sequestration_limit"
+      - change: "capturable process-emission volumes"
+        anchor: "build_industry_demand — emission_factors x plant capacities x industry_util_factor"
+        provenance: "scripts/build_industry_demand.py:emission_factors"
+      - change: "capture technology cost rows"
+        anchor: "costs table 'cement capture' (technology-data via costs.technology_data_version; fallback data/costs.csv when enable.retrieve_cost_data is false)"
+        provenance: "config.default.yaml:retrieve_cost_data"
+
+    data_dependencies:
+      - input: "technology-data costs csv rows 'cement capture', 'CO2 pipeline', 'CO2 submarine pipeline'"
+        required_for: "capture and transport costs"
+        availability: "must be built (enable.retrieve_cost_data true; version costs.technology_data_version)"
+      - input: "resources/industrial_database.csv + data/AL_production.csv"
+        required_for: "process-emission volumes available for capture"
+        availability: "must be built / region-dependent (AL_production ~41 countries)"
+      - input: "data/demand/unsd/data/*.txt (UNSD energy balances)"
+        required_for: "industrial gas/biomass demand hosting combustion capture"
+        availability: "must be built; region-dependent"

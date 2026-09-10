@@ -1,0 +1,196 @@
+id: flow-batteries
+title: Flow batteries
+summary: Redox flow batteries (e.g. vanadium) — electrochemical storage with independently sized power stack and energy tanks.
+when_to_use:
+  - "flow battery / redox flow"
+  - "vanadium battery / VRFB"
+  - "storage with independent power and energy sizing"
+  - "medium-duration storage (8-24h) alternatives to Li-ion"
+  - "pypsa-eur config token: vanadium"
+  - "known in pypsa-eur as: vanadium, vanadium charger, vanadium discharger"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Wired but dormant — unlike pypsa-earth, pypsa-eur has a first-class
+        "vanadium" storage token: STORE_LOOKUP in scripts/add_electricity.py
+        maps it to the "Vanadium-Redox-Flow-store" and
+        "Vanadium-Redox-Flow-bicharger" cost rows, and electricity.max_hours
+        ships vanadium: 10. It is NOT in either default extendable-carriers
+        list, so no flow battery appears in a default run; adding "vanadium" to
+        electricity.extendable_carriers.StorageUnit yields a fixed-10h
+        StorageUnit at every bus (combined capital cost synthesised in
+        prepare_costs as 10 * store + bicharger), and adding it to
+        .Store yields a Bus + Store + "vanadium charger"/"vanadium discharger"
+        Links with independently optimised energy and power — the natural
+        flow-battery representation.
+      mechanism: >
+        rule add_electricity runs scripts/add_electricity.py:
+        attach_storageunits / attach_stores loop over the configured carrier
+        lists filtered through get_available_storage_carriers (intersection
+        with STORE_LOOKUP); rule process_cost_data
+        (scripts/process_cost_data.py::prepare_costs, helper costs_for_storage)
+        builds the combined "vanadium" cost row from the loop over
+        electricity.max_hours.
+      not_covered: >
+        Caveat on the Store representation: for bicharger technologies
+        attach_stores charges the full bicharger cost on the charger link and
+        sets discharge_capital_cost = 0.0, and add_battery_constraints in
+        solve_network.py only couples links whose names contain "battery
+        charger"/"battery discharger" — so a "vanadium discharger" link is free
+        AND unconstrained (its p_nom can grow without cost). Prefer the
+        StorageUnit representation, or add a coupling constraint (L2). No
+        presence in sector-coupled runs: patch_electricity_network strips all
+        elec-network Stores (pypsa_eur keep-list Store: []) and
+        prepare_sector_network re-adds no chemistry storage. No electrolyte
+        degradation, self-discharge, or stack/tank cost split beyond the two
+        cost rows.
+      provenance: "scripts/add_electricity.py:STORE_LOOKUP; scripts/add_electricity.py:Vanadium-Redox-Flow-store; scripts/add_electricity.py:attach_storageunits; scripts/process_cost_data.py:costs_for_storage; scripts/solve_network.py:add_battery_constraints; scripts/prepare_sector_network.py:remove_elec_base_techs"
+    levers:
+      - key: electricity.extendable_carriers.StorageUnit
+        effect: "Add 'vanadium' for a fixed-duration (max_hours.vanadium) flow-battery StorageUnit at every bus — the recommended activation."
+        default: "[] (empty)"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_storageunits"
+      - key: electricity.extendable_carriers.Store
+        effect: "Add 'vanadium' for the Store+Links representation with endogenous energy/power ratio (see the free-discharger caveat in not_covered)."
+        default: "[battery, H2]"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_stores"
+      - key: electricity.max_hours.vanadium
+        effect: "Duration (h) of the vanadium StorageUnit and of its synthesised combined cost row."
+        default: "10"
+        provenance: "config/config.default.yaml:max_hours; scripts/process_cost_data.py:costs_for_storage"
+      - key: costs.overwrites
+        effect: "Override the Vanadium-Redox-Flow-store/-bicharger rows' investment/efficiency/lifetime (or rows in data/custom_costs.csv via costs.custom_cost_fn)."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+    boundary:
+      - variant: "vanadium flow battery as fixed-duration StorageUnit at every bus"
+        rung: L1
+        note: "add 'vanadium' to electricity.extendable_carriers.StorageUnit (max_hours.vanadium: 10 already set)"
+      - variant: "flow battery with endogenous energy/power ratio"
+        rung: L1
+        note: "add 'vanadium' to extendable_carriers.Store — economically sound only after fixing the uncoupled free discharger (next variant)"
+      - variant: "couple vanadium charger and discharger sizing (fix the free discharger)"
+        rung: L2
+        note: "generalise the name filter in add_battery_constraints (currently 'battery charger'/'battery discharger') to also match the other bicharger chemistries, or add a parallel constraint"
+      - variant: "different duration or costs"
+        rung: L1
+        note: "electricity.max_hours.vanadium + costs.overwrites / data/custom_costs.csv"
+      - variant: "other flow chemistries (Zn-Br etc.) as separate carriers"
+        rung: L2
+        note: "add a STORE_LOOKUP entry + electricity.max_hours key; needs matching cost rows — none beyond vanadium ship for flow chemistries (Ni-Zn rows exist but that is not a flow battery), so likely +L3 rows in data/custom_costs.csv"
+      - variant: "flow battery in sector-coupled runs"
+        rung: L2
+        note: "add a Bus/Store/charger/discharger block in prepare_sector_network (the 'home battery' block in insert_electricity_distribution_grid is the closest template); elec-workflow chemistry storage does not survive into sector networks"
+      - variant: "electrolyte degradation / cycle behaviour"
+        rung: L5
+        note: "no hook; custom constraint or component logic at solve time"
+    where:
+      - change: "carrier activation and component creation"
+        anchor: "scripts/add_electricity.py::attach_storageunits / ::attach_stores + STORE_LOOKUP 'vanadium' entry (rule add_electricity)"
+        provenance: "scripts/add_electricity.py:attach_stores; scripts/add_electricity.py:STORE_LOOKUP"
+      - change: "combined cost row synthesis"
+        anchor: "scripts/process_cost_data.py::prepare_costs (costs_for_storage loop over electricity.max_hours)"
+        provenance: "scripts/process_cost_data.py:costs_for_storage"
+      - change: "charger/discharger coupling constraint"
+        anchor: "scripts/solve_network.py::add_battery_constraints (name filter to generalise)"
+        provenance: "scripts/solve_network.py:add_battery_constraints"
+      - change: "sector-run storage additions"
+        anchor: "scripts/prepare_sector_network.py (no chemistry-storage block exists; insert_electricity_distribution_grid home battery block as template)"
+        provenance: "scripts/prepare_sector_network.py:insert_electricity_distribution_grid"
+    data_dependencies:
+      - input: "cost rows 'Vanadium-Redox-Flow-store' and 'Vanadium-Redox-Flow-bicharger' in the technology-data costs file"
+        required_for: "both vanadium representations"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data (verified in a locally built processed costs file)"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        Nothing flow-battery-specific — grounded absence: no flow/vanadium/redox
+        carrier, config key, or code branch exists anywhere in scripts/ or
+        config.default.yaml. The generic storage machinery is, however, structurally
+        a perfect fit: the Store + charger/discharger Links representation in
+        attach_stores optimises energy (e_nom) and power (link p_nom) independently,
+        which is exactly the flow-battery value proposition — but only for the
+        hardcoded "battery" (Li-ion costs) and "H2" carriers.
+      mechanism: >
+        Not built by any rule. The entry points for adding it are attach_stores /
+        attach_storageunits in scripts/add_extra_components.py (rule
+        add_extra_components), which read carrier lists from
+        electricity.extendable_carriers; attach_stores hardcodes 'if "H2" in
+        carriers' / 'if "battery" in carriers' branches, and attach_storageunits
+        hardcodes lookup_store / lookup_dispatch dicts containing only H2 and
+        battery — any new carrier name raises KeyError or is silently skipped.
+      not_covered: >
+        Everything technology-specific: no flow-battery carrier, costs mapping,
+        electrolyte degradation, or self-discharge. Note the retrieved
+        technology-data v0.13.2 costs file already ships "Vanadium-Redox-Flow-store"
+        and "Vanadium-Redox-Flow-bicharger" rows (verified in a locally built
+        costs_2030_elec.csv), so the cost data exists upstream; only the model code
+        does not consume it.
+      provenance: scripts/add_extra_components.py:attach_stores
+    levers:
+      - key: electricity.extendable_carriers.Store
+        effect: Carrier list read by attach_stores — the config-side half of adding a distinct flow-battery carrier (needs the matching code branch, see boundary).
+        default: "[battery, H2]"
+        provenance: scripts/add_extra_components.py:attach_stores
+      - key: electricity.extendable_carriers.StorageUnit
+        effect: Carrier list read by attach_storageunits — the config-side half of a fixed-duration flow-battery StorageUnit.
+        default: "[]"
+        provenance: scripts/add_extra_components.py:attach_storageunits
+      - key: electricity.max_hours.battery
+        effect: Proxy route — set a flow-battery-like duration (e.g. 10 h) on the generic battery StorageUnit and override its costs.
+        default: "6"
+        provenance: scripts/process_cost_data.py:costs_for_storage
+    boundary:
+      - variant: Flow battery as a re-costed generic battery (proxy)
+        rung: L1
+        note: >
+          Use the battery carrier with flow-battery numbers: set
+          electricity.max_hours.battery and add costs-section overrides (load_costs
+          reads config.get("investment")/("FOM")/... maps; the investment map is
+          present only as a comment in config.default.yaml). Loses the Li-ion battery
+          in the same run.
+      - variant: Distinct "vanadium" Store+Link carrier alongside battery
+        rung: L2
+        note: >
+          Add a new branch in attach_stores (copy the battery branch; point the
+          Store at "Vanadium-Redox-Flow-store" and both Links at
+          "Vanadium-Redox-Flow-bicharger" cost rows) and add the carrier to
+          electricity.extendable_carriers.Store. Costs rows exist in retrieved
+          technology-data v0.13.2, so no data work.
+      - variant: Distinct fixed-duration flow-battery StorageUnit
+        rung: L2
+        note: >
+          Extend lookup_store/lookup_dispatch in attach_storageunits, add the
+          carrier to extendable_carriers.StorageUnit and electricity.max_hours, and
+          synthesise a combined capital-cost row for the carrier name in load_costs
+          (mirror the costs_for_storage calls for "battery"/"H2") — attach_storageunits
+          reads costs.at[carrier, "capital_cost"] by carrier name.
+      - variant: Flow battery in the sector chain
+        rung: L2
+        note: add_storage in scripts/prepare_sector_network.py hardcodes the battery carrier; add a parallel block there.
+      - variant: Electrolyte degradation / cycle behaviour
+        rung: L5
+        note: No hook; custom constraint or component logic at solve time.
+    where:
+      - change: New Store+Link storage carrier (main entry point)
+        anchor: scripts/add_extra_components.py, function attach_stores (rule add_extra_components)
+        provenance: scripts/add_extra_components.py:attach_stores
+      - change: New StorageUnit carrier (cost lookup dicts)
+        anchor: scripts/add_extra_components.py, function attach_storageunits (lookup_store / lookup_dispatch)
+        provenance: scripts/add_extra_components.py:lookup_store
+      - change: Combined capital-cost row for a new StorageUnit carrier
+        anchor: scripts/process_cost_data.py, function load_costs (helper costs_for_storage)
+        provenance: scripts/process_cost_data.py:costs_for_storage
+      - change: Sector-chain storage block
+        anchor: scripts/prepare_sector_network.py, function add_storage (rule prepare_sector_network)
+        provenance: scripts/prepare_sector_network.py:add_storage
+    data_dependencies:
+      - input: technology-data costs rows "Vanadium-Redox-Flow-store" / "Vanadium-Redox-Flow-bicharger" (rule retrieve_cost_data, costs.technology_data_version v0.13.2)
+        required_for: Distinct flow-battery carrier
+        availability: exists by default in the retrieved costs file; absent from the offline fallback data/costs.csv
+      - input: costs rows "battery storage" / "battery inverter" (to be overridden)
+        required_for: Proxy route
+        availability: exists by default

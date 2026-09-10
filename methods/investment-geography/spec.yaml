@@ -1,0 +1,165 @@
+id: investment-geography
+title: investment geography — auction targets, eta-blended sub-market siting
+family: markets-and-prices
+what: 'Distributes FIXED per-country/technology renewable capacity targets (auction
+  volumes) to buses the way Thomassen et al. (2025) §3.2 models investment without
+  locational signals: a blend of cost-optimal siting (copperplate-per-country expansion
+  LP — no intra-zonal grid) and an even spread over available land (same share of
+  each cell''s potential), mixed by the auction effectiveness eta (0.6, calibrated
+  on German zip-code deployment). Not extrapolation — a calibrated allocative-efficiency
+  heuristic. Output: network with the blended capacities as fixed generators.
+
+  '
+when_to_use:
+- where does auctioned capacity land without locational signals
+- sub-zonal siting of country-level capacity targets
+- auction effectiveness / capacity concentration sensitivity
+- disaggregate zonal investment to grid buses
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
+    date: '2026-08-02'
+  baseline: config.de.yaml
+  execution:
+  - kind: config
+    key: investment_geography.targets
+    value:
+      DE:
+        onwind: 20000
+        solar: 15000
+    note: 'the auction volumes — new-build MW per country and technology; totals are
+      FIXED, only the geography is modelled.
+
+      '
+  - kind: config
+    key: investment_geography.auction_effectiveness
+    value: 0.6
+    note: 'eta: 1 = pure cost-optimal concentration, 0 = pure even land spread; 0.6
+      is the paper''s German-deployment calibration.
+
+      '
+  - kind: config
+    key: investment_geography.snapshots
+    value:
+      start: '2013-03-01'
+      end: '2013-03-02'
+    note: 'the CF sample window for the auction LP — one day keeps it laptop-sized;
+      longer windows sharpen the cost-optimal side.
+
+      '
+  - kind: payload
+    note: 'distribute_investment.py + rules/investment_geography.smk; patches Snakefile
+      include + investment_geography: config section. Composes with the market payloads.
+
+      '
+  - kind: invocation
+    note: 'extra target results/{run.name}/invgeo/base_s_{scenario.clusters}_ elec_{scenario.opts}_invgeo.nc;
+      replace_verify_networks -> solved = that artifact.
+
+      '
+  invalidates:
+  - distribute_investment
+  budget:
+    jobs: 2
+    class: minutes
+  success_metric:
+  - name: targets-met
+    needs: solved
+    check: n.meta['investment_geography']['target_error_mw'] < 1.0
+    expect: every country/technology auction volume is placed exactly
+  - name: blend-affine
+    needs: solved
+    check: n.meta['investment_geography']['blend_affine_error_mw'] < 1.0
+    expect: final siting is exactly eta*auction + (1-eta)*even, per bus
+  - name: concentration-ordering
+    needs: solved
+    check: 'n.meta[''investment_geography''][''hhi_even''] - 1e-9 <= n.meta[''investment_geography''][''hhi_blend'']
+      <= n.meta[''investment_geography''][''hhi_auction''] + 1e-9
+
+      '
+    expect: 'auction concentrates on best sites, even spread disperses, the blend
+      sits between (capacity-share HHI ordering)
+
+      '
+  - name: capacity-in-artifact
+    needs: solved
+    check: 'abs(n.generators.p_nom[n.generators.index.str.endswith(''invgeo'')].sum()
+      - sum(n.meta[''investment_geography''][''targets''].values())) < 1.0
+
+      '
+    expect: the blended capacities are written as fixed generators
+- model: pypsa-earth
+  version_anchor:
+    ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
+    date: '2026-08-02'
+  baseline: config.gh.yaml
+  execution:
+  - kind: config
+    key: investment_geography.targets
+    value:
+      GH:
+        onwind: 2000
+        solar: 1500
+    note: 'auction volumes for Ghana — well inside the bus-level p_nom_max potentials
+      of the solved baseline network.
+
+      '
+  - kind: config
+    key: investment_geography.auction_effectiveness
+    value: 0.6
+    note: eta as calibrated in the paper; sensitivity-swept, not re-calibrated.
+  - kind: config
+    key: investment_geography.snapshots
+    value:
+      start: '2013-03-01'
+      end: '2013-03-02'
+    note: one day inside the ghana baseline's prebuilt week.
+  - kind: payload
+    note: 'earth tree of the same script + rules/investment_geography.smk (Snakefile
+      include patch); investment_geography: section into the root config.default.yaml.
+
+      '
+  - kind: invocation
+    note: 'extra target results/{run.name}/invgeo/elec_s{scenario.simpl}_ {scenario.clusters}_ec_l{scenario.ll}_{scenario.opts}_invgeo.nc;
+      replace_verify_networks -> solved = that artifact.
+
+      '
+  invalidates:
+  - distribute_investment
+  budget:
+    jobs: 2
+    class: minutes
+  success_metric:
+  - name: targets-met
+    needs: solved
+    check: n.meta['investment_geography']['target_error_mw'] < 1.0
+    expect: every country/technology auction volume is placed exactly
+  - name: blend-affine
+    needs: solved
+    check: n.meta['investment_geography']['blend_affine_error_mw'] < 1.0
+    expect: final siting is exactly eta*auction + (1-eta)*even, per bus
+  - name: concentration-ordering
+    needs: solved
+    check: 'n.meta[''investment_geography''][''hhi_even''] - 1e-9 <= n.meta[''investment_geography''][''hhi_blend'']
+      <= n.meta[''investment_geography''][''hhi_auction''] + 1e-9
+
+      '
+    expect: auction concentrates, even spread disperses, blend between
+  - name: capacity-in-artifact
+    needs: solved
+    check: 'abs(n.generators.p_nom[n.generators.index.str.endswith(''invgeo'')].sum()
+      - sum(n.meta[''investment_geography''][''targets''].values())) < 1.0
+
+      '
+    expect: the blended capacities are written as fixed generators
+notes: 'The auction LP is copperplate-per-country BY DESIGN — investment without locational
+  signals must not see the intra-zonal grid; give it the grid and you are modelling
+  the Locational scenario instead. Even spread weights by p_nom_max (availability
+  x area at fixed MW/km2) = "same share of available land per cell" at bus resolution.
+  eta''s 0.6 default is the paper''s German calibration — a stated assumption elsewhere.
+  The one-day CF sample is a declared test economy; production runs should widen investment_geography.snapshots.
+  Candidates are the network''s extendable renewable generators (per bus-bin, finite
+  p_nom_max).
+
+  '

@@ -1,0 +1,166 @@
+id: liquid-air-storage
+title: Liquid-air storage (LAES)
+summary: Liquid-air (cryogenic) energy storage — electricity stored by liquefying air, siting-free with asymmetric charge/discharge plants.
+when_to_use:
+  - "liquid air energy storage / LAES"
+  - "cryogenic energy storage"
+  - "Highview-style storage"
+  - "siting-free long-duration storage without geology"
+  - "pypsa-eur config token: lair"
+  - "known in pypsa-eur as: lair, lair charger, lair discharger"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Wired but dormant — unlike pypsa-earth, pypsa-eur ships a first-class
+        LAES token spelled "lair": STORE_LOOKUP in scripts/add_electricity.py
+        maps it to "Liquid-Air-store" with SEPARATE "Liquid-Air-charger" and
+        "Liquid-Air-discharger" cost rows (liquefier and power-recovery train
+        priced independently — efficiencies 0.99 / 0.55 in the current costs
+        file), and electricity.max_hours ships lair: 12. It is NOT in either
+        default extendable-carriers list, so no LAES appears in a default run:
+        adding "lair" to electricity.extendable_carriers.StorageUnit yields a
+        fixed-12h StorageUnit at every bus (combined capital cost = 12 * store
+        + charger + discharger, synthesised in prepare_costs); adding it to
+        .Store yields Bus + Store + "lair charger"/"lair discharger" Links
+        with all three capacities optimised independently — the natural LAES
+        representation, and because both links carry their own capital cost the
+        free-discharger caveat of the bicharger chemistries does not apply.
+      mechanism: >
+        rule add_electricity runs scripts/add_electricity.py:
+        attach_storageunits / attach_stores loop over the configured carrier
+        lists filtered through get_available_storage_carriers (intersection
+        with STORE_LOOKUP); the lair entry uses the charger/discharger (not
+        bicharger) branch, so each link is priced from its own row. rule
+        process_cost_data (scripts/process_cost_data.py::prepare_costs, helper
+        costs_for_storage) builds the combined "lair" row from the
+        electricity.max_hours loop.
+      not_covered: >
+        Not present in any default run (must be switched on, L1). No coupling
+        between charger and discharger sizing (add_battery_constraints only
+        matches battery names) — acceptable here since both links are costed,
+        but nothing enforces a joint plant. No cold-recycle efficiency
+        coupling (discharge efficiency does not depend on recent charging) and
+        no waste-heat integration. No presence in sector-coupled runs:
+        elec-network chemistry stores are stripped by
+        patch_electricity_network and prepare_sector_network re-adds none.
+      provenance: "scripts/add_electricity.py:STORE_LOOKUP; scripts/add_electricity.py:Liquid-Air-store; scripts/add_electricity.py:attach_stores; scripts/process_cost_data.py:costs_for_storage; scripts/prepare_sector_network.py:remove_elec_base_techs"
+    levers:
+      - key: electricity.extendable_carriers.StorageUnit
+        effect: "Add 'lair' for a fixed-duration (max_hours.lair = 12 h) LAES StorageUnit at every bus."
+        default: "[] (empty)"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_storageunits"
+      - key: electricity.extendable_carriers.Store
+        effect: "Add 'lair' for the Store+Links representation with endogenous duration and independently sized liquefier/recovery plants."
+        default: "[battery, H2]"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_stores"
+      - key: electricity.max_hours.lair
+        effect: "Duration (h) of the LAES StorageUnit and of its synthesised combined cost row."
+        default: "12"
+        provenance: "config/config.default.yaml:max_hours; scripts/process_cost_data.py:costs_for_storage"
+      - key: costs.overwrites
+        effect: "Override the Liquid-Air rows' investment/efficiency/lifetime (or rows in data/custom_costs.csv via costs.custom_cost_fn)."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+    boundary:
+      - variant: "LAES as a 12h StorageUnit at every bus"
+        rung: L1
+        note: "add 'lair' to electricity.extendable_carriers.StorageUnit — max_hours and cost rows already wired"
+      - variant: "LAES with endogenous duration and asymmetric plants (Store+Links)"
+        rung: L1
+        note: "add 'lair' to extendable_carriers.Store — the cleanest wired representation among the chemistries (both links costed)"
+      - variant: "change duration, costs or efficiencies"
+        rung: L1
+        note: "electricity.max_hours.lair + costs.overwrites / data/custom_costs.csv (charge and discharge efficiency live on their own rows)"
+      - variant: "LAES in sector-coupled runs"
+        rung: L2
+        note: "add a Bus/Store/charger/discharger block in prepare_sector_network (home battery block is the template)"
+      - variant: "cold-store recycling / waste-heat boosted discharge"
+        rung: L5
+        note: "efficiency coupling between charge and discharge states has no PyPSA component analogue here; bespoke logic"
+    where:
+      - change: "carrier activation and component creation"
+        anchor: "scripts/add_electricity.py::attach_storageunits / ::attach_stores + STORE_LOOKUP 'lair' entry (rule add_electricity)"
+        provenance: "scripts/add_electricity.py:attach_stores; scripts/add_electricity.py:STORE_LOOKUP"
+      - change: "combined cost row synthesis"
+        anchor: "scripts/process_cost_data.py::prepare_costs (costs_for_storage loop over electricity.max_hours)"
+        provenance: "scripts/process_cost_data.py:costs_for_storage"
+      - change: "sector-run storage additions"
+        anchor: "scripts/prepare_sector_network.py (insert_electricity_distribution_grid home battery block as template)"
+        provenance: "scripts/prepare_sector_network.py:insert_electricity_distribution_grid"
+    data_dependencies:
+      - input: "cost rows 'Liquid-Air-store', 'Liquid-Air-charger', 'Liquid-Air-discharger' in the technology-data costs file"
+        required_for: "both LAES representations"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data (verified in a locally built processed costs file)"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+    out_of_box:
+      covers: >
+        Nothing LAES-specific — grounded absence: no liquid-air/cryogenic carrier,
+        config key, or code branch exists in scripts/ or config.default.yaml. The
+        generic Store + separate charger/discharger Links machinery in attach_stores
+        matches LAES structure (independent liquefier, tank, and power-recovery
+        sizing), but only "H2" and "battery" branches exist in code.
+      mechanism: >
+        Not built by any rule. Entry points are attach_stores / attach_storageunits
+        in scripts/add_extra_components.py (rule add_extra_components), with
+        hardcoded carrier branches and lookup_store / lookup_dispatch dicts limited
+        to H2 and battery. The retrieved technology-data v0.13.2 costs file ships
+        "Liquid-Air-store", "Liquid-Air-charger" and "Liquid-Air-discharger" rows
+        (verified in a locally built costs_2030_elec.csv) — separate charger and
+        discharger cost rows map one-to-one onto the H2-branch pattern
+        (electrolysis/fuel-cell-style distinct links).
+      not_covered: >
+        Everything technology-specific: carrier, cost mapping, cold-recycle
+        efficiency coupling, waste-heat integration.
+      provenance: scripts/add_extra_components.py:attach_stores
+    levers:
+      - key: electricity.extendable_carriers.Store
+        effect: Carrier list read by attach_stores — config-side half of a distinct LAES carrier (needs code branch).
+        default: "[battery, H2]"
+        provenance: scripts/add_extra_components.py:attach_stores
+      - key: electricity.extendable_carriers.StorageUnit
+        effect: Carrier list read by attach_storageunits — config-side half of a fixed-duration LAES StorageUnit (lookup dicts support distinct store/dispatch technologies, matching LAES asymmetry).
+        default: "[]"
+        provenance: scripts/add_extra_components.py:attach_storageunits
+      - key: electricity.max_hours.battery
+        effect: Proxy route — generic battery StorageUnit with LAES-like duration and overridden costs.
+        default: "6"
+        provenance: scripts/process_cost_data.py:costs_for_storage
+    boundary:
+      - variant: LAES as a re-costed generic storage (proxy)
+        rung: L1
+        note: Battery carrier with LAES duration (electricity.max_hours.battery) and cost/efficiency overrides via the costs section (load_costs override maps; investment map present only as comment in config.default.yaml). Replaces Li-ion in the run.
+      - variant: Distinct LAES Store+Link carrier
+        rung: L2
+        note: >
+          New branch in attach_stores modelled on the H2 branch (separate charger
+          and discharger Links): Store from "Liquid-Air-store", charging Link from
+          "Liquid-Air-charger", discharging Link from "Liquid-Air-discharger", plus
+          the carrier in electricity.extendable_carriers.Store. Costs rows exist in
+          retrieved technology-data v0.13.2 — no data work. LAES needs no geological
+          potential, so no e_nom_max data is required.
+      - variant: Distinct fixed-duration LAES StorageUnit
+        rung: L2
+        note: Extend lookup_store/lookup_dispatch in attach_storageunits (they already support different store/dispatch technologies per carrier, like H2's electrolysis/fuel cell), add carrier to extendable_carriers.StorageUnit + electricity.max_hours, and synthesise its combined capital-cost row in load_costs.
+      - variant: Cold-store recycling / waste-heat boosted discharge efficiency
+        rung: L5
+        note: Efficiency coupling between charge and discharge states has no PyPSA component analogue here; bespoke logic.
+    where:
+      - change: New Store+Link storage carrier (H2 branch is the template for asymmetric charger/discharger)
+        anchor: scripts/add_extra_components.py, function attach_stores (rule add_extra_components)
+        provenance: scripts/add_extra_components.py:attach_stores
+      - change: New StorageUnit carrier (cost lookup dicts)
+        anchor: scripts/add_extra_components.py, function attach_storageunits (lookup_store / lookup_dispatch)
+        provenance: scripts/add_extra_components.py:lookup_store
+      - change: Combined capital-cost row for a new StorageUnit carrier
+        anchor: scripts/process_cost_data.py, function load_costs (helper costs_for_storage)
+        provenance: scripts/process_cost_data.py:costs_for_storage
+    data_dependencies:
+      - input: technology-data costs rows "Liquid-Air-store" / "Liquid-Air-charger" / "Liquid-Air-discharger" (rule retrieve_cost_data, costs.technology_data_version v0.13.2)
+        required_for: Distinct LAES carrier
+        availability: exists by default in the retrieved costs file; absent from the offline fallback data/costs.csv
+      - input: costs rows "battery storage" / "battery inverter" (to be overridden)
+        required_for: Proxy route
+        availability: exists by default

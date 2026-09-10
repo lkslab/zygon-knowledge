@@ -1,0 +1,379 @@
+id: utility-scale-solar-pv
+title: Utility-scale solar PV
+summary: >
+  Ground-mounted photovoltaic generation sited on eligible land, with
+  weather-driven hourly output and land-availability-limited expansion
+  potential, including fixed-tilt and single-axis-tracking variants.
+when_to_use:
+  - "add solar power"
+  - "solar farms / solar parks"
+  - "utility-scale PV"
+  - "ground-mounted photovoltaics"
+  - "single-axis tracking solar"
+  - "increase / limit solar potential"
+  - "change panel type or orientation"
+  - "solar capacity factors look wrong"
+  - "exclude protected areas or land classes from solar siting"
+  - "how much solar can a country build"
+  - "existing solar fleet / installed PV capacity"
+  - "pypsa-eur carrier names: solar, solar-hsat"
+  - "add solar farms / solar parks"
+  - "change solar panel type or orientation"
+  - "exclude protected areas or cities from solar siting"
+  - "how much solar can this country build"
+  - "known in pypsa-eur as: solar, solar PV, solar-hsat"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    out_of_box:
+      covers: >
+        Fully covered with TWO competing utility-scale carriers by default:
+        'solar' (fixed-tilt, resource.orientation slope 35 / azimuth 180) and
+        'solar-hsat' (horizontal single-axis tracking, resource.tracking:
+        horizontal), both in electricity.renewable_carriers AND
+        electricity.extendable_carriers.Generator. Land eligibility is
+        computed by rule determine_availability_matrix (CORINE land-cover
+        grid codes — an explicit include-list of classes; natura protected
+        areas excluded when renewable.<tech>.natura is true; optional LUISA
+        50m land-cover alternative via renewable.<tech>.luisa) at
+        excluder_resolution 100 m. rule build_renewable_profiles then turns
+        the availability matrix into per-cluster-region hourly profiles and
+        p_nom_max with atlite (pv method), at capacity_per_sqkm 5.1 (solar) /
+        4.43 (solar-hsat) MW/km2, optionally split into several capacity-
+        factor resource classes per region (resource_classes, default 1;
+        generators are then indexed "bus bin"). attach_wind_and_solar in
+        scripts/add_electricity.py adds one Generator per bus(+bin) and
+        carrier with p_max_pu, p_nom_max and capital_cost =
+        costs.at[carrier, 'capital_cost']. IMPORTANT cost detail: prepare_
+        costs in scripts/process_cost_data.py sets the 'solar' row's
+        capital_cost to the 'solar-utility' row's value — the 'solar'
+        carrier is priced PURE utility-scale (no rooftop blend, unlike
+        pypsa-earth) — and renames 'solar-utility single-axis tracking' to
+        'solar-hsat'. Existing PV capacity: with electricity.estimate_
+        renewable_capacities.from_powerplantmatching true (default),
+        attach_renewable_powerplants spatially joins powerplantmatching PV
+        plants into the class regions and sets p_nom AND p_nom_min (existing
+        capacity is forced into the extendable generators); an IRENASTAT
+        country-total alternative exists (from_irenastat, default false,
+        via estimate_renewable_capacities). Because fixed and tracking PV
+        compete for the same land, extra_functionality in solve_network.py
+        ALWAYS adds add_solar_potential_constraints when both carriers are
+        active: solar_p_nom + solar_hsat_p_nom * (5.1/4.43) <= joint region
+        potential. Myopic runs: add_existing_renewables in
+        add_existing_baseyear.py builds IRENA-based vintage generators
+        (existing solar split rooftop/utility by existing_capacities.
+        solar_rooftop_ratio, see rooftop recipe), add_land_use_constraint
+        subtracts existing capacity from p_nom_max per horizon, and
+        multi-year panel models (resource.panel given as a {year: model}
+        dict) are consumed by adjust_renewable_profiles in add_brownfield.py.
+      mechanism: >
+        rule determine_availability_matrix (per-technology atlite
+        ExclusionContainer over CORINE/LUISA/natura) -> rule
+        build_renewable_profiles (profile_{clusters}_{technology}.nc with
+        profile, p_nom_max, average_distance per bus and resource-class bin;
+        low-CF/low-potential buses dropped via min_p_max_pu / min_p_nom_max
+        code defaults) -> rule add_electricity (attach_wind_and_solar;
+        attach_renewable_powerplants for the existing fleet; update_p_nom_max).
+        Profiles are built directly at clustered-region resolution
+        (clustering happens upstream in rules simplify_network /
+        cluster_network), so no renewable re-aggregation step exists.
+        Costs come from rule process_cost_data (prepare_costs). The joint
+        solar/solar-hsat land constraint is applied in solve_network.py::
+        extra_functionality without any config switch whenever both carriers
+        are in renewable_carriers and extendable_carriers.
+      not_covered: >
+        No rooftop carrier in the electricity-only workflow (rooftop enters
+        only in sector runs, see rooftop-distributed-solar recipe; the
+        'solar' carrier here is utility-priced). No vertical/east-west or
+        dual-axis tracking carrier out of the box (only fixed and hsat
+        blocks exist; a further variant needs a new renewable.<name> block —
+        but note the onshore-region routing for availability/profiles is
+        hardcoded to the technology names ("onwind", "solar", "solar-hsat")
+        in rules/build_electricity.smk, so a NEW carrier name needs a rule
+        edit). No agrivoltaics or dual-land-use logic. No sub-region siting
+        detail beyond the resource-class bins. The min_p_max_pu /
+        min_p_nom_max bus-dropping thresholds are read with params.get in
+        build_renewable_profiles.py but are NOT present in
+        config.default.yaml (code-default 0.0 — dormant hooks).
+      provenance: "scripts/add_electricity.py:attach_wind_and_solar; scripts/determine_availability_matrix.py:ExclusionContainer; scripts/build_renewable_profiles.py:capacity_per_sqkm; scripts/process_cost_data.py:solar-utility; scripts/solve_network.py:add_solar_potential_constraints; scripts/add_electricity.py:attach_renewable_powerplants; scripts/add_brownfield.py:adjust_renewable_profiles"
+    levers:
+      - key: electricity.renewable_carriers
+        effect: "Include/exclude 'solar' and 'solar-hsat' as modelled carriers; controls which profile files are built and attached."
+        default: "[solar, solar-hsat, onwind, offwind-ac, offwind-dc, offwind-float, hydro]"
+        provenance: "config/config.default.yaml:renewable_carriers; rules/build_electricity.smk:input_profile_tech"
+      - key: electricity.extendable_carriers.Generator
+        effect: "Whether solar / solar-hsat capacity is optimisable (p_nom_extendable) beyond the existing fleet."
+        default: "[solar, solar-hsat, onwind, offwind-ac, offwind-dc, offwind-float, OCGT, CCGT]"
+        provenance: "config/config.default.yaml:extendable_carriers; scripts/add_electricity.py:attach_wind_and_solar"
+      - key: renewable.solar.capacity_per_sqkm
+        effect: "MW installable per km2 of eligible land; linearly scales p_nom_max (solar-hsat has its own key, default 4.43; their ratio also sets the land_use_factor in the joint solar potential constraint)."
+        default: "5.1"
+        provenance: "config/config.default.yaml:capacity_per_sqkm; scripts/build_renewable_profiles.py:capacity_per_sqkm"
+      - key: renewable.solar.corine
+        effect: "CORINE land-cover classes eligible for PV (plain include-list; same key under solar-hsat). Fewer classes = less potential."
+        default: "[1..20, 26, 31, 32]"
+        provenance: "config/config.default.yaml:corine; scripts/determine_availability_matrix.py:grid_codes"
+      - key: renewable.solar.natura
+        effect: "true excludes the natura protected-area raster from siting."
+        default: "true"
+        provenance: "config/config.default.yaml:natura; scripts/determine_availability_matrix.py:natura"
+      - key: renewable.solar.luisa
+        effect: "Alternative 50m LUISA land-cover exclusion (list of codes or false); can be combined with corine."
+        default: "false"
+        provenance: "config/config.default.yaml:luisa; scripts/determine_availability_matrix.py:luisa"
+      - key: renewable.solar.resource.orientation
+        effect: "Panel slope/azimuth for the atlite pv conversion (fixed tilt for 'solar')."
+        default: "{slope: 35.0, azimuth: 180.0}"
+        provenance: "config/config.default.yaml:orientation; scripts/build_renewable_profiles.py:resource"
+      - key: renewable.solar-hsat.resource.tracking
+        effect: "atlite tracking mode of the hsat carrier ('horizontal' by default; the plain solar block has tracking: null)."
+        default: "horizontal"
+        provenance: "config/config.default.yaml:tracking; scripts/build_renewable_profiles.py:resource"
+      - key: renewable.solar.resource_classes
+        effect: "Number of capacity-factor bins per region — splits each region's potential into separate generators ('bus bin carrier') for better resource differentiation."
+        default: "1"
+        provenance: "config/config.default.yaml:resource_classes; scripts/build_renewable_profiles.py:resource_classes"
+      - key: renewable.solar.correction_factor
+        effect: "Multiplier on the raw atlite capacity factor time series."
+        default: "1.0"
+        provenance: "config/config.default.yaml:correction_factor; scripts/build_renewable_profiles.py:correction_factor"
+      - key: renewable.solar.clip_p_max_pu
+        effect: "Capacity factors below this are set to 0 (numerical clean-up)."
+        default: "0.01"
+        provenance: "config/config.default.yaml:clip_p_max_pu; scripts/build_renewable_profiles.py:clip_p_max_pu"
+      - key: renewable.solar.cutout
+        effect: "Which atlite cutout supplies weather data; 'default' resolves to atlite.default_cutout (europe-2013-sarah3-era5)."
+        default: "default"
+        provenance: "config/config.default.yaml:default_cutout; rules/common.smk:input_cutout"
+      - key: electricity.estimate_renewable_capacities
+        effect: "Existing-fleet attachment: from_powerplantmatching (default true, plant-level sjoin into class regions) or from_irenastat (country totals distributed by CF-weighted potential); expansion_limit can cap p_nom_max relative to installed; skipped for myopic (handled in add_existing_baseyear)."
+        default: "{enable: true, from_powerplantmatching: true, from_irenastat: false, year: 2024, expansion_limit: false}"
+        provenance: "config/config.default.yaml:estimate_renewable_capacities; scripts/add_electricity.py:attach_renewable_powerplants"
+      - key: solving.constraints.CCL
+        effect: "true activates per-country per-carrier capacity min/max from solving.agg_p_nom_limits.file (data/agg_p_nom_minmax.csv); agg_solar: true lumps solar, solar-hsat and solar rooftop into one 'solar-all' limit."
+        default: "false"
+        provenance: "config/config.default.yaml:CCL; scripts/solve_network.py:add_CCL_constraints"
+      - key: adjustments.electricity
+        effect: "Generic factor/absolute overrides on component attributes per carrier in prepare_network (e.g. scale solar capital_cost or p_nom_max) — maybe_adjust_costs_and_potentials."
+        default: "false"
+        provenance: "config/config.default.yaml:adjustments; scripts/prepare_network.py:maybe_adjust_costs_and_potentials"
+      - key: costs.overwrites
+        effect: "Deprecated config hook to override investment/FOM/lifetime etc. per technology in prepare_costs; preferred: rows in data/custom_costs.csv (costs.custom_cost_fn)."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
+    boundary:
+      - variant: "run with fixed-tilt + tracking solar competing under a joint land budget"
+        rung: L0
+        note: "default — both carriers active, add_solar_potential_constraints applied automatically in extra_functionality (no switch to turn the joint constraint off short of removing one carrier)"
+      - variant: "solar-only or hsat-only (drop one variant)"
+        rung: L1
+        note: "remove the other carrier from electricity.renewable_carriers and extendable_carriers.Generator; the joint constraint then deactivates itself (it requires both)"
+      - variant: "stricter/looser siting (land classes, protected areas, density)"
+        rung: L1
+        note: "renewable.solar.corine / natura / luisa / capacity_per_sqkm (repeat for solar-hsat)"
+      - variant: "resource-quality-differentiated solar within a region"
+        rung: L1
+        note: "renewable.solar.resource_classes > 1 — bins each region's potential by capacity factor into separate generators"
+      - variant: "different weather year"
+        rung: L1
+        note: "set atlite.default_cutout to 'europe-1940-2024-era5' (in atlite.cutouts, ERA5-only) and move snapshots; the default sarah3-era5 cutout is 2013-only. A year outside archived cutouts needs data.cutout.source: build + CDS API (L3)"
+      - variant: "cap or force solar per country"
+        rung: L1
+        note: "solving.constraints.CCL: true + rows in data/agg_p_nom_minmax.csv (agg_solar to treat all solar carriers as one); BAU_mincapacities (solving.constraints.BAU) gives an EU-wide floor per carrier"
+      - variant: "override solar investment cost or lifetime"
+        rung: L1
+        note: "row in data/custom_costs.csv (costs.custom_cost_fn) or costs.overwrites (deprecated); note prepare_costs overwrites the 'solar' capital_cost with 'solar-utility' AFTER raw-attribute overwrites — target 'solar-utility' (or use the prepared-attribute capital_cost column, applied last)"
+      - variant: "evolving panel/efficiency per planning horizon (myopic)"
+        rung: L1
+        note: "give renewable.solar.resource.panel as a {year: model} dict — build_renewable_profiles emits one profile per year, add_brownfield::adjust_renewable_profiles picks the closest year <= horizon"
+      - variant: "correct existing PV fleet (add missing plants)"
+        rung: L3
+        note: "data/custom_powerplants.csv + electricity.custom_powerplants (rule build_powerplants), or switch to from_irenastat country totals (L1)"
+      - variant: "third PV variant (e.g. east-west vertical, agrivoltaics) as a competing carrier"
+        rung: L4
+        note: "a new renewable.<name> block alone is NOT enough: the onshore-regions routing in rules/build_electricity.smk hardcodes the tuple (onwind, solar, solar-hsat) in both determine_availability_matrix and build_renewable_profiles rule inputs — extend those lambdas, add the carrier to renewable_carriers/extendable_carriers, supply a costs row (data/custom_costs.csv can ADD new technology rows via overwrite_costs), and extend land_use_factors in add_solar_potential_constraints if it should share the land budget"
+      - variant: "bespoke sub-region siting rules beyond raster criteria"
+        rung: L5
+        note: "no hook; custom exclusion logic in determine_availability_matrix.py"
+    where:
+      - change: "land eligibility (corine/luisa/natura exclusions, resolution)"
+        anchor: "scripts/determine_availability_matrix.py (rule determine_availability_matrix; per-tech params from config renewable)"
+        provenance: "scripts/determine_availability_matrix.py:ExclusionContainer; rules/build_electricity.smk:determine_availability_matrix"
+      - change: "profile/p_nom_max computation, resource classes, panel model per year"
+        anchor: "scripts/build_renewable_profiles.py (rule build_renewable_profiles)"
+        provenance: "scripts/build_renewable_profiles.py:resource_classes; rules/build_electricity.smk:build_renewable_profiles"
+      - change: "generator attachment + existing-fleet forcing"
+        anchor: "scripts/add_electricity.py::attach_wind_and_solar / ::attach_renewable_powerplants / ::estimate_renewable_capacities (rule add_electricity)"
+        provenance: "scripts/add_electricity.py:attach_wind_and_solar; scripts/add_electricity.py:estimate_renewable_capacities"
+      - change: "solar cost rows: 'solar' aliased to solar-utility, hsat renamed from 'solar-utility single-axis tracking'"
+        anchor: "scripts/process_cost_data.py::prepare_costs (rule process_cost_data)"
+        provenance: "scripts/process_cost_data.py:prepare_costs"
+      - change: "joint solar/solar-hsat land budget; myopic land-use bookkeeping"
+        anchor: "scripts/solve_network.py::add_solar_potential_constraints (called from ::extra_functionality) and ::add_land_use_constraint"
+        provenance: "scripts/solve_network.py:add_solar_potential_constraints; scripts/solve_network.py:add_land_use_constraint"
+      - change: "myopic vintages of existing solar"
+        anchor: "scripts/add_existing_baseyear.py::add_existing_renewables (IRENA year-by-year capacity diffs distributed by p_nom_max)"
+        provenance: "scripts/add_existing_baseyear.py:add_existing_renewables"
+    data_dependencies:
+      - input: "weather cutout (atlite.default_cutout europe-2013-sarah3-era5; europe-1940-2024-era5 available in atlite.cutouts)"
+        required_for: "all PV profiles"
+        availability: "retrieved from archive by default (data.cutout.source: archive, rule retrieve_cutout); building other years needs source: build + CDS API"
+      - input: "CORINE land-cover raster (retrieve_corine) / optional LUISA basemap"
+        required_for: "land eligibility"
+        availability: "retrieved by the workflow; Europe-only (MD/UA handled by determine_availability_matrix_MD_UA)"
+      - input: "natura.tiff protected-area raster"
+        required_for: "natura exclusion"
+        availability: "retrieved by the workflow (NATURA_DATASET)"
+      - input: "powerplantmatching database (Fueltype PV) via rule build_powerplants"
+        required_for: "existing solar fleet (from_powerplantmatching)"
+        availability: "retrieved by the workflow; good European coverage"
+      - input: "technology-data cost rows 'solar-utility', 'solar-utility single-axis tracking', 'solar-rooftop'"
+        required_for: "capital costs ('solar' capital_cost = solar-utility; hsat renamed)"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "IRENASTAT statistics (via powerplantmatching)"
+        required_for: "from_irenastat gap filling and myopic add_existing_renewables vintages"
+        availability: "exists by default (pm.data.IRENASTAT)"
+  - model: pypsa-earth
+    version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
+
+    out_of_box:
+      covers: >
+        Solar PV is a default renewable carrier ('solar' in electricity.renewable_carriers) and
+        default extendable. Hourly per-bus capacity-factor profiles and installable potentials
+        (p_nom_max) are computed by rule build_renewable_profiles from the ERA5 cutout with atlite,
+        excluding land by Copernicus land-cover class and natura protected areas. Generators are
+        attached per bus in add_electricity with existing capacity from powerplants.csv and
+        country capacity gaps filled to IRENA statistics.
+      mechanism: >
+        rule build_renewable_profiles (technology wildcard 'solar', atlite pv method with
+        panel/orientation from renewable.solar.resource, ExclusionContainer over copernicus
+        grid codes + natura raster) writes profile_solar.nc with profile, p_nom_max, weight;
+        attach_wind_and_solar in scripts/add_electricity.py then does n.madd("Generator", ...)
+        with p_max_pu from the profile, p_nom_max from the potential, p_nom_extendable if
+        'solar' is in electricity.extendable_carriers.Generator, and capital_cost from the
+        technology-data costs file. NOTE: the default 'solar' capital cost is a blend of
+        solar-rooftop and solar-utility weighted by costs.rooftop_share (load_costs in
+        scripts/process_cost_data.py) — for pure utility-scale costing set rooftop_share to 0.
+      not_covered: >
+        No distinct rooftop vs utility split in the power-only chain (single blended 'solar'
+        carrier; see rooftop-distributed-solar recipe); no tracking-type choice beyond the atlite
+        panel/orientation settings; no sub-bus siting decisions (one aggregated generator per bus).
+      provenance: "scripts/add_electricity.py:attach_wind_and_solar"
+
+    levers:
+      - key: electricity.renewable_carriers
+        effect: "Include/exclude 'solar' as a modelled carrier; controls which profile files are built and attached."
+        default: "[solar, onwind, offwind-ac, offwind-dc, hydro]"
+        provenance: "config.default.yaml:renewable_carriers"
+      - key: electricity.extendable_carriers.Generator
+        effect: "Whether solar capacity is optimisable (p_nom_extendable) beyond existing plants."
+        default: "[solar, onwind, offwind-ac, offwind-dc, OCGT]"
+        provenance: "config.default.yaml:extendable_carriers"
+      - key: renewable.solar.capacity_per_sqkm
+        effect: "MW installable per km2 of eligible land; linearly scales p_nom_max."
+        default: "4.6"
+        provenance: "scripts/build_renewable_profiles.py:capacity_per_sqkm"
+      - key: renewable.solar.correction_factor
+        effect: "Multiplier on the raw atlite capacity factor time series (calibration to observed full-load hours)."
+        default: "0.854337"
+        provenance: "scripts/build_renewable_profiles.py:correction_factor"
+      - key: renewable.solar.copernicus.grid_codes
+        effect: "Copernicus land-cover classes counted as eligible land for PV."
+        default: "[20, 30, 40, 50, 60, 90, 100]"
+        provenance: "scripts/build_renewable_profiles.py:grid_codes"
+      - key: renewable.solar.natura
+        effect: "If true, exclude natura protected-area raster cells from siting."
+        default: "true"
+        provenance: "scripts/build_renewable_profiles.py:natura"
+      - key: renewable.solar.potential
+        effect: "'simple' sums cell potentials; 'conservative' divides by max capacity factor — method for p_nom_max."
+        default: "simple"
+        provenance: "scripts/build_renewable_profiles.py:potential"
+      - key: renewable.solar.resource.panel
+        effect: "atlite panel model used for PV conversion."
+        default: "CSi"
+        provenance: "config.default.yaml:panel"
+      - key: renewable.solar.resource.orientation
+        effect: "Panel orientation; 'latitude_optimal' or explicit slope/azimuth."
+        default: "latitude_optimal"
+        provenance: "config.default.yaml:latitude_optimal"
+      - key: renewable.solar.clip_p_max_pu
+        effect: "Capacity factors below this are set to 0 (numerical clean-up)."
+        default: "1.e-2"
+        provenance: "scripts/build_renewable_profiles.py:clip_p_max_pu"
+      - key: renewable.solar.cutout
+        effect: "Which atlite cutout supplies weather data; 'auto' resolves to atlite.default."
+        default: "auto"
+        provenance: "scripts/_helpers.py:update_cutout_config"
+      - key: costs.rooftop_share
+        effect: "Weight of solar-rooftop vs solar-utility cost in the blended 'solar' capital cost; 0 = pure utility-scale cost."
+        default: "0.14"
+        provenance: "scripts/process_cost_data.py:rooftop_share"
+      - key: costs.marginal_cost.solar
+        effect: "Overwrites the marginal cost of solar in the costs table."
+        default: "0.01"
+        provenance: "scripts/process_cost_data.py:load_costs"
+      - key: electricity.estimate_renewable_capacities
+        effect: "Controls IRENA-based existing-capacity gap filling (stats/year/p_nom_min/p_nom_max) for solar."
+        default: "stats: irena, year: 2023, p_nom_min: 1, p_nom_max: false"
+        provenance: "scripts/add_electricity.py:get_irena_targets_for_carrier"
+
+    boundary:
+      - variant: "enable/disable solar or make it non-extendable"
+        rung: L0
+        note: "electricity.renewable_carriers and electricity.extendable_carriers.Generator."
+      - variant: "change land-use density, eligible land classes, or protected-area exclusion"
+        rung: L0
+        note: "renewable.solar.capacity_per_sqkm / copernicus.grid_codes / natura."
+      - variant: "fixed-tilt vs latitude-optimal panels, different panel technology"
+        rung: L1
+        note: "renewable.solar.resource.orientation (slope/azimuth dict) and resource.panel — atlite pv method options."
+      - variant: "pure utility-scale cost basis (no rooftop blend)"
+        rung: L1
+        note: "set costs.rooftop_share: 0; capital cost becomes solar-utility only (load_costs)."
+      - variant: "different weather year"
+        rung: L3
+        note: "needs a new ERA5 cutout: change snapshots and enable.build_cutout (CDS API) or retrieve a matching cutout; atlite.cutouts config."
+      - variant: "country/region-specific max build limits"
+        rung: L1
+        note: "electricity.agg_p_nom_limits points to data/agg_p_nom_minmax.csv — config key plus editing that csv."
+      - variant: "single-axis tracking as a separate competing carrier alongside fixed PV"
+        rung: L3
+        note: "add a new renewable.<name> block (atlite pv supports tracking via resource options) — the build_renewable_profiles rule is wildcarded over config['renewable'] keys and add_electricity auto-wires profile inputs for carriers in renewable_carriers; needs a costs row for the new carrier name in the costs csv (or costs overwrite)."
+      - variant: "bespoke sub-bus siting or exclusion beyond raster criteria"
+        rung: L5
+        note: "no hook; would require custom logic in build_renewable_profiles."
+
+    where:
+      - change: "profile and potential computation (exclusions, resource method)"
+        anchor: "rule build_renewable_profiles -> scripts/build_renewable_profiles.py"
+        provenance: "Snakefile:rule build_renewable_profiles"
+      - change: "generator attachment, costs, IRENA gap filling"
+        anchor: "attach_wind_and_solar in scripts/add_electricity.py"
+        provenance: "scripts/add_electricity.py:attach_wind_and_solar"
+      - change: "capital-cost blending / cost overwrites"
+        anchor: "load_costs in scripts/process_cost_data.py"
+        provenance: "scripts/process_cost_data.py:load_costs"
+      - change: "new cutout for a different weather year"
+        anchor: "rule build_cutout + atlite.cutouts config"
+        provenance: "Snakefile:rule build_cutout"
+
+    data_dependencies:
+      - input: "ERA5 cutout (cutouts/<name>.nc, default cutout-2013-era5)"
+        required_for: "all solar profiles"
+        availability: "retrieved via enable.retrieve_cutout for supported regions; must be built via build_cutout (CDS API key) for other weather years"
+      - input: "Copernicus land cover raster data/copernicus/PROBAV_LC100_global_v3.0.1_2019-nrt_Discrete-Classification-map_EPSG-4326.tif"
+        required_for: "land eligibility exclusion"
+        availability: "retrieved by databundle (enable.retrieve_databundle); global"
+      - input: "natura.tiff exclusion raster"
+        required_for: "protected-area exclusion (renewable.solar.natura)"
+        availability: "pregenerated by default; rebuild via enable.build_natura_raster"
+      - input: "powerplants.csv (powerplantmatching + OSM)"
+        required_for: "existing solar capacity per bus"
+        availability: "built by rule build_powerplants; coverage region-dependent"
+      - input: "technology-data costs file resources/costs_<year>.csv (solar-utility, solar-rooftop rows)"
+        required_for: "capital and marginal costs"
+        availability: "retrieved by rule retrieve_cost_data (exists by default)"
+      - input: "IRENA capacity statistics (via powerplantmatching)"
+        required_for: "electricity.estimate_renewable_capacities gap filling"
+        availability: "exists by default, years 2000-2023"
