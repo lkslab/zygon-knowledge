@@ -43,6 +43,8 @@ def submodule_gitlink(path: str) -> str | None:
 def main() -> int:
     r = load_restructure()
     r.ANCHORS["pypsa-eur"] = EUR_ANCHOR
+    # CLAUDE.md and tools/ postdate the frozen TOP_LEVEL set.
+    r.TOP_LEVEL |= {"CLAUDE.md", "tools"}
     errors: list[str] = []
 
     staged = subprocess.run(

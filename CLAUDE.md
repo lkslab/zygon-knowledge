@@ -11,19 +11,28 @@ repos currently disagree.
 
 ## How the app gets this repo
 
-- **Pinned clone.** `pypsa-app/src/agent/knowledge.py` holds `KNOWLEDGE_REPO_URL`
-  (`lkslab/zygon-knowledge`) and `KNOWLEDGE_REV`, a full commit sha. On the first knowledge
-  tool call of a process, `ensure_knowledge` inits a repo at `settings.knowledge_path`
-  (`KNOWLEDGE_DIR`, else `<data_dir>/knowledge`), fetches every branch head, checks out the
-  pin detached, and runs `git clean -fdx`. Submodules under `models/` are never initialised.
-- **Any pushed commit is pinnable.** The fetch pulls `refs/heads/*`, so a sha only has to be on
-  some branch of origin, not on main. Today the pin sits on a feature branch (see below).
-- **Working-copy mode.** `KNOWLEDGE_DIR=<this checkout> KNOWLEDGE_PINNED=false` makes the app
-  read this directory as-is, never fetched or reset. That is the way to test card edits before
-  bumping the pin. The only readiness check in that mode is that `topics/` exists.
-- **Shipping content** means committing here, pushing, and bumping `KNOWLEDGE_REV` in the app.
-  The app's test suite runs against `pypsa-app/tests/fixtures/knowledge/`, a miniature of this
-  layout, so a shape change needs the fixture updated in the same app commit.
+- **Git submodule, shipped as package data.** `pypsa-app` carries this repo as the submodule
+  `src/pypsa_app/knowledge` (`.gitmodules`, url `lkslab/zygon-knowledge`). The gitlink is the
+  version pin: `backend/settings.py` hard-codes `KNOWLEDGE_ROOT` to that directory and
+  `settings.knowledge_path` returns it. There is no runtime fetch, no `KNOWLEDGE_REV`,
+  `KNOWLEDGE_DIR` or `KNOWLEDGE_PINNED` (removed in app commit `8c504f6`, 2026-09-10). The
+  Docker image and the wheel refuse to build without `topics/` under that path (`make knowledge`
+  initialises it). Submodules under `models/` are never initialised there.
+- **Content edits are live.** Every dev container bind-mounts `src/` (`compose/compose.yaml`),
+  cards are parsed on every call and the one cache (`registry.py`) is mtime-keyed, so an edit
+  under the mounted directory is visible on the next tool call, no restart needed.
+- **Local work happens in this checkout.** The app's gitignored `compose/compose.local.yaml`
+  (layered onto `make dev` by the Makefile when present) bind-mounts `../zygon-knowledge` over
+  the submodule path in the `api`, `prefect-worker`, `snakedispatch` and `agent` containers.
+  Changing that file needs one `make dev`; card edits afterwards need nothing.
+- **Branches.** This repo works on `main` only: commit here, push `main`. The app works on
+  `main` plus a long-running `dev` branch (one PR onto `main`, rebased now and then).
+- **Shipping content** means pushing `main` here, then on the app's `dev`:
+  `git -C src/pypsa_app/knowledge fetch && git -C src/pypsa_app/knowledge checkout <sha>`,
+  `git add src/pypsa_app/knowledge`, commit. The sha must be on `origin/main` of this repo or
+  CI's submodule checkout fails. The app's test suite runs against
+  `pypsa-app/tests/fixtures/knowledge/`, a miniature of this layout, so a shape change needs
+  the fixture updated in the same app commit.
 
 ## Who reads what
 
@@ -100,11 +109,11 @@ industry cards re-rung those asks as L4 code changes naming the fork branch).
 
 ## Current state of the link (as of 2026-09-10)
 
-- **Pin and main are aligned.** `main` is at `5ab3fa2` (PR #5), which carries the `carriers/`
-  rename, and the app's `KNOWLEDGE_REV` points at that sha. Between app commit `32f57ae`
-  (readers switched to `carriers/`) and that bump, the pin sat at `8809a8c`, a commit that still
-  had `recipes/`, so any deployment built from that window saw no carrier cards. When changing a
-  directory name or card shape again, bump the pin in the same app commit that changes the reader.
+- **Pins.** The app's `origin/main` gitlink points at `ffb1d8e`, its `dev` branch at
+  `499ccfd`; both are on `main` here. Between app commit `32f57ae` (readers switched to
+  `carriers/`) and `24af385` the pin sat at `8809a8c`, a commit that still had `recipes/`, so
+  any deployment built from that window saw no carrier cards. When changing a directory name
+  or card shape again, bump the gitlink in the same app commit that changes the reader.
 - **Eur content re-anchored to upstream a6c45e5 on 2026-09-10, nothing re-run.** Every
   pypsa-eur section (146 carrier cards, 7 topics, 12 method docs, data_quality, baselines, the
   seven payloads) was rewritten against the streamlined workflow and passes
@@ -145,10 +154,6 @@ python3 tools/resolve_eur_citations.py   # every eur citation resolves in models
 current eur anchor; `tools/validate.py` wraps it. The resolver needs the eur submodule checked
 out (`git submodule update --init models/pypsa-eur`).
 
-Then, to see the app read the working copy:
-
-```
-cd ../pypsa-app && KNOWLEDGE_DIR=$PWD/../zygon-knowledge KNOWLEDGE_PINNED=false <run the app or its tests>
-```
-
-Note `KNOWLEDGE_PINNED=false` is refused without `KNOWLEDGE_DIR`.
+To see the app read the working copy: nothing, if the stack is up with
+`compose/compose.local.yaml` in place (cards are re-read per call). Otherwise
+`cd ../pypsa-app && make dev`.
