@@ -16,7 +16,6 @@ when_to_use:
 - investment-signal distortion from zonal averaging
 models:
 - model: pypsa-eur
-  coverage: ready
   approach: >-
     The full Thomassen two-stage pipeline — eta-blended siting, flow-based zonal clearing,
     priced nodal redispatch — is verified end-to-end here, on real bidding-zone geometries:
@@ -84,7 +83,6 @@ models:
     ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
     date: '2026-09-09'
 - model: pypsa-earth
-  coverage: partial
   approach: >-
     The two-stage pipeline — eta-blended siting, flow-based zonal clearing, priced
     nodal redispatch — is verified end-to-end on earth. Earth ships no bidding-zone

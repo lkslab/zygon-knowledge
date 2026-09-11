@@ -107,7 +107,6 @@ STUBS: dict[str, dict[str, Any]] = {
 TOPIC_SLUGS = MERGED_TOPICS + tuple(STUBS)
 
 SECTION_KEYS = (
-    "coverage",
     "approach",
     "pitfalls",
     "methods",
@@ -393,7 +392,6 @@ def build_stub(slug: str, repo: Repo, date: str) -> dict[str, Any]:
         doc["models"].append(
             {
                 "model": model,
-                "coverage": "gap",
                 "approach": (
                     f"No executable method is wired for {model} yet. This card "
                     f"descends from the v1 cards {archived} (archived under "
@@ -482,8 +480,11 @@ def validate(
             if model not in MODELS:
                 errors.append(f"topic {slug}: unknown model {model!r}")
                 continue
-            if sec.get("coverage") not in ("ready", "partial", "gap"):
-                errors.append(f"topic {slug}/{model}: coverage {sec.get('coverage')!r}")
+            if "coverage" in sec:
+                errors.append(
+                    f"topic {slug}/{model}: carries coverage "
+                    "(every topic can be modelled; limitations live in pitfalls)"
+                )
             if "gap_assessment" in sec:
                 errors.append(f"topic {slug}/{model}: gap_assessment is now approach + pitfalls")
             if "recipes" in sec:

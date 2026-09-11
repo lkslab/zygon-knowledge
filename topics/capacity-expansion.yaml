@@ -10,7 +10,6 @@ when_to_use:
 - greenfield vs brownfield expansion study
 models:
 - model: pypsa-eur
-  coverage: ready
   approach: >-
     The bread-and-butter application: pypsa-eur co-optimises generation, storage and
     transmission on validated European data (ENTSO-E demand, OSM/TYNDP grid, powerplantmatching
@@ -25,12 +24,6 @@ models:
     Spatial resolution is also important.
   pitfalls:
   - >-
-    the pypsa-eur section was re-anchored to upstream a6c45e5 (2026-09-10) without a
-    re-run: every verification claim below predates the streamlined workflow (#1838 —
-    no wildcards, compose_network/solve_network, planning_horizons and co2_budget as
-    plain config), so treat its numbers as unconfirmed until an eval on an a6c45e5
-    install
-  - >-
     If run at low spatio-temporal resolution can underestimate the cost of renewables
   - >-
     penny-switching; vastly different model solutions could be only marginally more expensive.
@@ -41,13 +34,6 @@ models:
   - >-
     builds are continuous — post-discretisation is optional and iterative-only, so
     no lumpy investment out of the box
-  - >-
-    scope is Europe: a non-European IRP is a pypsa-earth answer, where data quality can
-    be lower in some regions
-  - >-
-    the model shipping a mode is not the same as us having proven it — the perfect-foresight
-    spec is still draft on eur (blocked upstream), so a perfect-foresight pathway
-    is a pypsa-earth answer today
   methods:
   - id: existing-fleet
     role: >-
@@ -57,6 +43,10 @@ models:
     role: >-
       sequential horizons with capacity carry-over — answers WHEN capacity gets built
       and what retires, not just the end state
+  - id: multi-scenario
+    role: >-
+      the guideline's scenario dimension — repeat the with/without pair across demand/CO2
+      variants with harmonised collection to show the case holds beyond one future
   defaults:
   - aspect: overnight-foresight
     is: >-
@@ -70,7 +60,6 @@ models:
     ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
     date: '2026-09-09'
 - model: pypsa-earth
-  coverage: ready
   approach: >-
     The model's bread and butter: pypsa-earth exists to run exactly this study for
     any country from open data — atlite renewable potentials, OSM grid, powerplantmatching

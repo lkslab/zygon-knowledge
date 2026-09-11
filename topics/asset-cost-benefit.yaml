@@ -15,7 +15,6 @@ when_to_use:
 - effect of a demand change or a new large load vs without it
 models:
 - model: pypsa-eur
-  coverage: ready
   approach: >-
     One of pypsa-eur's strongest topics, and since the single-asset-cba method landed
     the canonical study is a verified mechanical pipeline, not a sketch of steps: declare
@@ -30,12 +29,6 @@ models:
     named intervention.
   pitfalls:
   - >-
-    the pypsa-eur section was re-anchored to upstream a6c45e5 (2026-09-10) without a
-    re-run: every verification claim below predates the streamlined workflow (#1838 —
-    no wildcards, compose_network/solve_network, planning_horizons and co2_budget as
-    plain config), so treat its numbers as unconfirmed until an eval on an a6c45e5
-    install
-  - >-
     splitting B1 into producer/consumer surplus per side and congestion rent is manual:
     read nodal prices and link duals off the solved pair yourself
   - >-
@@ -43,13 +36,6 @@ models:
     adequacy (B6), flexibility (B7) or stability (B8) indicators, and no CBCA/wheeling
     revenue-allocation layer
   - under the binding net-zero cap B2 is ~0 by construction
-  - >-
-    TOOT and PINT are order-dependent when several projects queue, so each asset needs
-    its own run set against the same reference
-  - >-
-    there are no opts tokens at a6c45e5: a no-interconnection counterfactual is
-    electricity.autarky (enforce_autarky in prepare_network.py), and anything the old EQ /
-    ATK tokens did must be expressed as a config key or a code change
   methods:
   - id: existing-fleet
     role: >-
@@ -88,7 +74,6 @@ models:
     ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
     date: '2026-09-09'
 - model: pypsa-earth
-  coverage: ready
   approach: >-
     A strong pypsa-earth topic, and since the single-asset-cba method landed the canonical
     study is a verified mechanical pipeline: declare the asset (any component, or

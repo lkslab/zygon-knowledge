@@ -23,7 +23,6 @@ when_to_use:
 - how storage revenue shifts as VRE share rises
 models:
 - model: pypsa-eur
-  coverage: partial
   approach: >-
     Both halves of the question are wired. Sizing: the electricity workflow builds
     battery and H2 as Store + charger/discharger Links at every bus
@@ -154,15 +153,15 @@ models:
     ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
     date: '2026-09-09'
 - model: pypsa-earth
-  coverage: gap
   approach: >-
-    No executable method is wired for pypsa-earth yet. This card descends from the
+    The study runs on the carrier levers and the default config; no method spec is
+    verified for pypsa-earth yet. This card descends from the
     v1 cards battery-storage-sizing, long-duration-storage-ldes, storage-revenue-stacking
     (archived under archive/cookbooks/pypsa-earth/topics/v1/); the levers it can describe live in the carrier cards under carriers/ that carry a section for this model.
   pitfalls:
   - >-
-    until a method spec is verified for pypsa-earth, the assistant can describe levers
-    but cannot scope a study
+    no method spec is verified for pypsa-earth yet: the study runs on carrier levers
+    and default config, and its results are unverified for this model
   methods: []
   defaults: []
   version_anchor:

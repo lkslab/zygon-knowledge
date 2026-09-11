@@ -12,7 +12,6 @@ when_to_use:
 - co-optimize generation and transmission
 models:
 - model: pypsa-eur
-  coverage: partial
   approach: >-
     The strongest platform in the family for this topic, and the co-optimisation is
     the shipped default: electricity.transmission_limit: vopt makes every AC line and
@@ -138,15 +137,15 @@ models:
     ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
     date: '2026-09-09'
 - model: pypsa-earth
-  coverage: gap
   approach: >-
-    No executable method is wired for pypsa-earth yet. This card descends from the
+    The study runs on the carrier levers and the default config; no method spec is
+    verified for pypsa-earth yet. This card descends from the
     v1 cards transmission-expansion-planning (archived under archive/cookbooks/pypsa-earth/topics/v1/);
     the levers it can describe live in the carrier cards under carriers/ that carry a section for this model.
   pitfalls:
   - >-
-    until a method spec is verified for pypsa-earth, the assistant can describe levers
-    but cannot scope a study
+    no method spec is verified for pypsa-earth yet: the study runs on carrier levers
+    and default config, and its results are unverified for this model
   methods: []
   defaults: []
   version_anchor:

@@ -8,7 +8,7 @@ below at runtime; bump the pin to ship new content.
 
 | path | what | shape |
 |---|---|---|
-| `topics/<slug>.yaml` | one card per planning question, seven of them | `id, title, question, when_to_use[], models[]` where each `models[]` entry is `{model, coverage, approach, pitfalls[], methods[{id, role}], defaults[], plots[], version_anchor{ref, date}}` |
+| `topics/<slug>.yaml` | one card per planning question, seven of them | `id, title, question, when_to_use[], models[]` where each `models[]` entry is `{model, approach, pitfalls[], methods[{id, role}], defaults[], plots[], version_anchor{ref, date}}` |
 | `carriers/generation_conversion/<slug>.yaml`, `carriers/demand/<slug>.yaml` | carrier cards: one per technology or demand segment, shared across models | `id, title, summary, when_to_use[], models[]` where each entry is `{model, version_anchor, out_of_box, levers[], boundary[{variant, rung, note}], where[], data_dependencies[]}` |
 | `methods/<slug>.yaml` or `methods/<slug>/spec.yaml` + `payload/<model>/` | executable method specs, only the ones a topic cites | `id, title, family, what, when_to_use[], models[]` with `execution[]`, `invalidates[]`, `budget`, `success_metric[]` per entry |
 | `data_quality/<model>/countries/<CC>.yaml` | per-country data-quality scorecards (generated), with `datasets.yaml`, `MATRIX.csv`, `INDEX.md` | |
@@ -22,11 +22,12 @@ below at runtime; bump the pin to ship new content.
 
 A card is written once for every model it applies to. The app opens
 `topics/<slug>.yaml`, picks the `models[]` entry whose `model` matches the
-network in front of the user, and reads `coverage`, `approach` and `pitfalls`
-before anything else: `coverage` is the one-word verdict, `approach` says how
-the model treats the question (what it represents natively and where the
-levers live), `pitfalls` lists the honesty rungs to state beside any result.
-A topic is listed for a model only when it has an entry for it.
+network in front of the user, and reads `approach` and `pitfalls` before
+anything else: `approach` says how the model treats the question (what it
+represents natively and where the levers live), `pitfalls` lists the
+limitations to design a study around and to state beside any result. There
+is no coverage verdict: every topic with an entry for a model can be
+modelled on it, and a topic is listed for a model only when it has one.
 Topics do not name carrier cards: the app lists `carriers/<book>/` and opens a
 card on demand, and every carrier card carries a section for each model it
 applies to. A topic's `methods[]` names only specs that exist with an entry for
