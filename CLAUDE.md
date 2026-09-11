@@ -18,13 +18,15 @@ repos currently disagree.
   `KNOWLEDGE_DIR` or `KNOWLEDGE_PINNED` (removed in app commit `8c504f6`, 2026-09-10). The
   Docker image and the wheel refuse to build without `topics/` under that path (`make knowledge`
   initialises it). Submodules under `models/` are never initialised there.
-- **Content edits are live.** Every dev container bind-mounts `src/` (`compose/compose.yaml`),
-  cards are parsed on every call and the one cache (`registry.py`) is mtime-keyed, so an edit
-  under the mounted directory is visible on the next tool call, no restart needed.
-- **Local work happens in this checkout.** The app's gitignored `compose/compose.local.yaml`
-  (layered onto `make dev` by the Makefile when present) bind-mounts `../zygon-knowledge` over
-  the submodule path in the `api`, `prefect-worker`, `snakedispatch` and `agent` containers.
-  Changing that file needs one `make dev`; card edits afterwards need nothing.
+- **Content edits are live.** Cards are parsed on every call and the one cache
+  (`registry.py`) is mtime-keyed, so an edit under the resolved root is visible on the next
+  tool call, no restart needed. Only changing *which* directory is the root needs a restart.
+- **Local work happens in this checkout.** Two ways to point the app here, both gitignored on
+  the app side. Local mode (`uv run pypsa-app ...`, what this machine runs): `KNOWLEDGE_DIR=`
+  `/home/lukas/Desktop/zygon-knowledge` in `pypsa-app/.env`, read by `settings.knowledge_dir`
+  on the next start. Docker dev stack (`make dev`): `compose/compose.local.yaml` bind-mounts
+  `../zygon-knowledge` over the submodule path in the `api`, `prefect-worker`,
+  `snakedispatch` and `agent` containers; the Makefile layers it on when present.
 - **Branches.** This repo works on `main` only: commit here, push `main`. The app works on
   `main` plus a long-running `dev` branch (one PR onto `main`, rebased now and then).
 - **Shipping content** means pushing `main` here, then on the app's `dev`:
@@ -154,6 +156,7 @@ python3 tools/resolve_eur_citations.py   # every eur citation resolves in models
 current eur anchor; `tools/validate.py` wraps it. The resolver needs the eur submodule checked
 out (`git submodule update --init models/pypsa-eur`).
 
-To see the app read the working copy: nothing, if the stack is up with
-`compose/compose.local.yaml` in place (cards are re-read per call). Otherwise
-`cd ../pypsa-app && make dev`.
+To see the app read the working copy: nothing, if the server is already up with
+`KNOWLEDGE_DIR` (local mode) or `compose/compose.local.yaml` (Docker) pointing here, since
+cards are re-read per call. Otherwise restart it: `cd ../pypsa-app && uv run pypsa-app ...`
+or `make dev`.
