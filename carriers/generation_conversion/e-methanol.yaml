@@ -21,7 +21,7 @@ when_to_use:
   - "known in pypsa-eur as: methanol, methanol transport, methanolisation, biomass-to-methanol, biomass-to-methanol CC, Methanol steam reforming, Methanol steam reforming CC, methanol-to-olefins/aromatics, allam methanol, CCGT methanol, CCGT methanol CC, OCGT methanol"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         The synthesis route is ON by default, but it lives inside
@@ -51,7 +51,7 @@ models:
         that draw the combustion CO2 from "co2 atmosphere" so imported
         e-methanol is carbon-accounted as climate-neutral.
       mechanism: >
-        rule prepare_sector_network: add_methanol builds the EU methanol
+        rule compose_network: add_methanol builds the EU methanol
         bus/store (plus the OTHER methanol-chain technologies — see
         not_covered); the methanolisation synthesis link and the industry
         methanol demand are built inside add_industry (so sector.industry

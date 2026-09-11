@@ -155,15 +155,15 @@ models:
       scenario: "{demand} wildcard tags the scenario files; 'mining and quarrying' and 'construction' CAGR columns and demand_data.base_year set the growth path"
 
   - model: pypsa-eur
-    version_anchor: { ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23" }
+    version_anchor: { ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09" }
 
     out_of_box:
       covers: >
         Mining & quarrying and construction energy is included, but NOT as separate
         subsectors: their JRC-IDEES energy balances are read and then folded together
         with 'Non-specified' into the aggregate 'Other industrial sectors', which
-        carries an output index, country energy intensities, population-based spatial
-        allocation and optional endogenous temperature-banded process heat.
+        carries an output index, country energy intensities and population-based
+        spatial allocation.
       mechanism: >
         build_industrial_energy_demand_per_country_today reads JRC-IDEES sheets
         FC_IND_MQ_E (Mining and quarrying) and FC_IND_CON_E (Construction), then sums
@@ -174,40 +174,25 @@ models:
         build_industry_sector_ratios.other_industrial_sectors builds the future
         best-in-class intensity (process heating, drying, cooling and diesel motors
         electrified, steam to biomass); build_industry_sector_ratios_intermediate
-        blends via industry.sector_ratios_fraction_future;
-        build_industry_sector_ratios_endogenous splits OIS heat into temperature
-        bands via backup_temperature_band_shares (10/65/25% in <100/100-200/200-500C).
+        blends via industry.sector_ratios_fraction_future.
         Production is unchanged into the future. OIS is not in the hotmaps
         sector_mapping, so it is population-distributed, and add_industry turns it
-        into constant loads or, with sector.industry_t.endogen, band demands with
-        competing supply links at must_run p_min_pu.
+        into constant exogenous loads.
       not_covered: >
         Mining and construction cannot be steered individually — no per-subsector
         production, growth, intensity or spatial handle exists once they are folded
         into 'Other industrial sectors'; no mine-site or commodity representation;
         diesel motors are only visible inside the future OIS ratio (electrified by
-        assumption); no route-switching key — fuel switching runs through the
-        cross-cutting sector.industry_t machinery at OIS granularity; loads are
-        annual-constant.
-      provenance: "scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_MQ_E; scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_CON_E; scripts/build_industrial_energy_demand_per_country_today.py:Other industrial sectors; scripts/build_industry_sector_ratios.py:other_industrial_sectors; scripts/build_industry_sector_ratios_endogenous.py:backup_temperature_band_shares"
+        assumption); no route-switching key and no temperature-resolved process
+        heat — fuel switching is only reachable through the exogenous future OIS
+        ratio; loads are annual-constant.
+      provenance: "scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_MQ_E; scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_CON_E; scripts/build_industrial_energy_demand_per_country_today.py:Other industrial sectors; scripts/build_industry_sector_ratios.py:other_industrial_sectors; scripts/prepare_sector_network.py:add_industry"
 
     levers:
       - key: sector.industry
         effect: "Master switch for industrial demand incl. the OIS aggregate holding mining & construction."
         default: "true"
         provenance: "config/config.default.yaml:industry; scripts/prepare_sector_network.py:options[\"industry\"]"
-      - key: sector.industry_t.endogen
-        effect: "Switches from fixed-carrier exogenous industry loads to temperature-banded process-heat demand with endogenous supply-technology choice (applies to mining/construction only at OIS granularity)."
-        default: "false"
-        provenance: "config/config.default.yaml:endogen; scripts/prepare_sector_network.py:options[\"industry_t\"][\"endogen\"]"
-      - key: sector.industry_t.endogenise_sectors.Other industrial sectors
-        effect: "Per-sector opt-out for the OIS aggregate: false keeps its heat as flat fuels even when endogen is on."
-        default: "true"
-        provenance: "config/config.default.yaml:endogenise_sectors; scripts/build_industry_sector_ratios_endogenous.py:endogenise_sectors"
-      - key: sector.industry_t.must_run
-        effect: "p_min_pu of the band supply links."
-        default: "0.8"
-        provenance: "config/config.default.yaml:must_run; scripts/prepare_sector_network.py:must_run"
       - key: industry.sector_ratios_fraction_future
         effect: "Per-year blend between today's OIS energy intensities and the electrified best-in-class ratio (which already electrifies diesel motors)."
         default: "{2020: 0.0, 2025: 0.05, 2030: 0.2, 2035: 0.45, 2040: 0.7, 2045: 0.85, 2050: 1.0}"
@@ -219,11 +204,11 @@ models:
 
     boundary:
       - variant: "Endogenise process-heat supply of the OIS aggregate (incl. mining & construction share)"
-        rung: L0
-        note: "Flip sector.industry_t.endogen: true — 'Other industrial sectors' is in endogenise_sectors by default; only at aggregate granularity."
-      - variant: "Tune band technologies / must_run / transformation speed"
+        rung: L4
+        note: "Upstream has no temperature-band process-heat machinery: the OIS carrier split is fixed by the JRC ratios and placed by add_industry as flat loads. Needs a new ratio-splitting script plus band buses and competing supply links (reference implementation on the fork branch endogenous-industry-heat, not part of this anchor)."
+      - variant: "Tune transformation speed"
         rung: L1
-        note: "sector.industry_t band tech flags, must_run, industry.sector_ratios_fraction_future."
+        note: "industry.sector_ratios_fraction_future."
       - variant: "Scale the OIS aggregate (rough proxy for mining/construction growth)"
         rung: L2
         note: "No config key — add a scaling for the 'Other industrial sectors' column in build_industrial_production_per_country_tomorrow.py; mining cannot be scaled separately from construction and non-specified."
@@ -233,12 +218,8 @@ models:
           The fold happens in build_industrial_energy_demand_per_country_today (sel =
           Mining and quarrying + Construction + Non-specified summed into Other
           industrial sectors and dropped); undoing it means carrying the new
-          subsector names through production (sect2sub/fields), sector ratios (both
-          exogenous and endogenous incl. band shares), endogenise_sectors config, and
+          subsector names through production (sect2sub/fields), sector ratios and
           the nodal scripts — multi-script plumbing, not a localised edit.
-      - variant: "Change the OIS temperature-band shares"
-        rung: L2
-        note: "Edit the 'Other industrial sectors' entry of backup_temperature_band_shares in build_industry_sector_ratios_endogenous.py."
       - variant: "Mine-site spatial allocation or commodity-linked mining demand"
         rung: L5
         note: "Absent at any granularity; needs new data plus new subsector plumbing (see L4 entry) — no anchor exists today."
@@ -253,9 +234,6 @@ models:
       - change: "OIS future intensity (incl. diesel-motor electrification assumption)"
         anchor: "other_industrial_sectors() in build_industry_sector_ratios.py"
         provenance: "scripts/build_industry_sector_ratios.py:other_industrial_sectors"
-      - change: "OIS temperature-band shares"
-        anchor: "backup_temperature_band_shares in build_industry_sector_ratios_endogenous.py"
-        provenance: "scripts/build_industry_sector_ratios_endogenous.py:backup_temperature_band_shares"
       - change: "Spatial allocation"
         anchor: "sector_mapping fallback to 'population' in build_industrial_production_per_node.py and build_industrial_energy_demand_per_node_today.py"
         provenance: "scripts/build_industrial_production_per_node.py:sector_mapping; scripts/build_industrial_energy_demand_per_node_today.py:population"
@@ -277,7 +255,7 @@ models:
     demand_dimensions:
       driver: "OIS physical output index x MWh/t OIS ratio (mining & construction energy embedded in the aggregate)"
       spatial: "Population key (OIS absent from hotmaps sector_mapping)"
-      temporal: "Annual-constant loads (p_set = annual/nhours); endogenous bands add constant heat demand served by dispatchable links with must_run floor"
+      temporal: "Annual-constant loads (p_set = annual/nhours)"
       scenario: "planning_horizons drives sector_ratios_fraction_future interpolation; OIS production constant across horizons"
 
 reference_taxonomy:

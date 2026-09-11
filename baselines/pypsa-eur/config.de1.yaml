@@ -1,20 +1,21 @@
 # Germany TWO-NODE, 3-hourly baseline — the high-temporal-resolution
-# variant (prepared 2026-07-31). Purpose: temporal questions (storage
-# sizing, LDES, wind-drought bridging, heat-pump winter peaks, EV cycling,
-# marginal prices) that weekly averaging on the 5-node baselines destroys.
-# The trade: near-zero spatial structure (one internal corridor, no real
-# siting or regional curtailment) and storage answers are close to
-# copper-plate-optimistic — the interview must say so. 2 nodes x 2920
-# snapshots (3H year) ≈ 2x the ~1M-row LP class measured at ~25 min on
-# this laptop (168H->3H battery eval); hourly (x3) is a later rung.
+# variant (prepared 2026-07-31, re-expressed for a6c45e5 2026-09-10).
+# Purpose: temporal questions (storage sizing, LDES, wind-drought bridging,
+# heat-pump winter peaks, EV cycling, marginal prices) that weekly averaging
+# on the 5-node baselines destroys. The trade: near-zero spatial structure
+# (one internal corridor, no real siting or regional curtailment) and
+# storage answers are close to copper-plate-optimistic — the interview must
+# say so. 2 nodes x 2920 snapshots (3h year) ≈ 2x the ~1M-row LP class
+# measured at ~25 min on this laptop (168H->3H battery eval); hourly (x3) is
+# a later rung.
 #
-# WHY 2 NODES, NOT 1: clusters=1 crashes prepare_sector_network's add_heat
-# — `cop_heat_pump.squeeze()` collapses the single-node DataFrame to a
-# snapshot-indexed Series that n.add cannot align (hit 2026-07-31 at job
-# 66/67; same single-element partial-scope class as the PT hotmaps and
-# GB-alone IDEES crashes). Two nodes dodges the whole class the way GB+IE
-# does. Filename stays config.de1.yaml (the DE resolution-variant
-# selector); the run is named honestly.
+# WHY 2 NODES, NOT 1: clusters=1 crashed prepare_sector_network's add_heat
+# at the previous anchor — `cop_heat_pump.squeeze()` collapses the
+# single-node DataFrame to a snapshot-indexed Series that n.add cannot align
+# (hit 2026-07-31; same single-element partial-scope class as the PT hotmaps
+# and GB-alone IDEES crashes). Two nodes dodges the whole class the way GB+IE
+# does. Not re-verified on a6c45e5. Filename stays config.de1.yaml (the DE
+# resolution-variant selector); the run is named honestly.
 #
 # Overlay on the installed GB config; deliberately overrides ONLY keys that
 # already exist there — new nested keys reorder the baked dict and fire
@@ -26,13 +27,14 @@ run:
 countries:
 - DE
 
-scenario:
-  clusters:
-  - 2
-  sector_opts:
-  - 3H
-  planning_horizons:
-  - 2050
+planning_horizons:
+- 2050
+
+clustering:
+  cluster_network:
+    n_clusters: 2
+  temporal:
+    averaging: 3h
 
 solving:
   solver:

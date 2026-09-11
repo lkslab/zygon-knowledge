@@ -28,7 +28,7 @@ when_to_use:
   - "known in pypsa-eur as: biomass, solid biomass, solid biomass import, solid biomass transport, unsustainable solid biomass, solid biomass to hydrogen, biomass boiler, residential rural biomass boiler, residential urban decentral biomass boiler, services rural biomass boiler, services urban decentral biomass boiler"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Sector runs carry a fully spatial, data-driven biomass resource.
@@ -87,10 +87,10 @@ models:
         enspreso_biomass_potentials -> disaggregate_nuts0 ->
         convert_nuts2_to_regions -> classes groupby ->
         add_unsustainable_potentials) writes
-        biomass_potentials_s_{clusters}_{planning_horizons}.csv in MWh/a;
+        biomass_potentials_{horizon}.csv in MWh/a;
         rule build_biomass_transport_costs derives per-country EUR/MWh/km
-        from two JRC supply-chain CSVs; rule prepare_sector_network calls
-        add_biomass (gated by sector.biomass) which reads both and creates
+        from two JRC supply-chain CSVs; rule compose_network
+        (prepare_sector_network.py) calls add_biomass (gated by sector.biomass) which reads both and creates
         buses, generators, transport, CHP/boiler/BtX links; define_spatial
         decides nodal vs EU-pooled namespaces from sector.biomass_spatial /
         biomass_transport (and gas_network for biogas). Electricity
@@ -128,7 +128,7 @@ models:
       - key: biomass.scenario
         effect: "ENSPRESO scenario for all potentials: ENS_Low / ENS_Med / ENS_High — the one-key handle on how much biomass Europe has."
         default: "ENS_Med"
-        provenance: "config/config.default.yaml:ENS_Med; scripts/build_biomass_potentials.py:enspreso_biomass_potentials"
+        provenance: "config/config.default.yaml:biomass.scenario; scripts/build_biomass_potentials.py:enspreso_biomass_potentials"
       - key: biomass.year
         effect: "ENSPRESO potential year used in overnight runs (myopic/perfect use the planning horizon instead, interpolating between the decades 2010-2050)."
         default: "2030"
@@ -217,7 +217,7 @@ models:
         anchor: "scripts/build_biomass_potentials.py (rule build_biomass_potentials; functions enspreso_biomass_potentials, add_unsustainable_potentials; grouper from biomass.classes)"
         provenance: "scripts/build_biomass_potentials.py:add_unsustainable_potentials; rules/build_sector.smk:build_biomass_potentials"
       - change: "biomass supply buses/generators, transport, boilers, CHP, BtX links"
-        anchor: "scripts/prepare_sector_network.py::add_biomass (rule prepare_sector_network, gated by sector.biomass)"
+        anchor: "scripts/prepare_sector_network.py::add_biomass (called from rule compose_network, gated by sector.biomass)"
         provenance: "scripts/prepare_sector_network.py:add_biomass"
       - change: "nodal vs EU-pooled namespaces for biomass/biogas/MSW"
         anchor: "scripts/prepare_sector_network.py::define_spatial (sector.biomass_spatial / biomass_transport / gas_network)"

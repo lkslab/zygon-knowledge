@@ -21,7 +21,7 @@ when_to_use:
   - "known in pypsa-eur as: BEV charger"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Covered and ON by default (sector.bev_dsm: true), active whenever the
@@ -46,7 +46,7 @@ models:
       mechanism: >
         rule build_transport_demand (scripts/build_transport_demand.py:
         bev_availability_profile and bev_dsm_profile) -> avail_profile.csv and
-        dsm_profile.csv; rule prepare_sector_network -> add_land_transport ->
+        dsm_profile.csv; rule compose_network -> add_land_transport ->
         add_EVs consumes them: avail_profile as p_max_pu of the BEV charger
         Link, dsm_profile as e_min_pu of the EV battery Store (only if
         options["bev_dsm"]). insert_electricity_distribution_grid re-points
@@ -145,10 +145,10 @@ models:
       - input: "BASt pkw.csv weekly passenger-car counts"
         required_for: "plug-in availability profile (charger p_max_pu)"
         availability: "retrieved or built by the workflow (rule build_mobility_profiles); German data applied Europe-wide"
-      - input: "transport_data_s_{clusters}.csv 'number cars'"
+      - input: "transport_data.csv 'number cars'"
         required_for: "Store and charger sizing"
         availability: "must be built (rules build_energy_totals -> build_transport_demand); JRC-IDEES + Swiss BFS"
-      - input: "dsm_profile_s_{clusters}.csv"
+      - input: "dsm_profile.csv"
         required_for: "the e_min_pu departure guarantee"
         availability: "must be built (rule build_transport_demand); generated from config values, no external data"
   - model: pypsa-earth

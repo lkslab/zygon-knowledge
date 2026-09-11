@@ -14,7 +14,7 @@ when_to_use:
   - "pypsa-eur carrier names: H2 pipeline retrofitted, gas pipeline"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Fully wired but OPT-IN (sector.H2_retrofit: false by default; the
@@ -53,8 +53,10 @@ models:
         H2_retrofit branch. Solver: scripts/solve_network.py::
         add_pipe_retrofit_constraint using
         n.config sector H2_retrofit_capacity_per_CH4. Myopic:
-        scripts/add_brownfield.py::add_brownfield (h2_retrofit branch,
-        params H2_retrofit / H2_retrofit_capacity_per_CH4).
+        scripts/add_brownfield.py::add_brownfield (h2_retrofit branch, fed
+        the h2_retrofit / h2_retrofit_capacity_per_ch4 parameters from
+        sector.H2_retrofit / sector.H2_retrofit_capacity_per_CH4 by rule
+        compose_network).
       not_covered: >
         Retrofitting exists ONLY where a clustered SciGRID gas pipe exists —
         no retrofit of distribution grids or of corridors absent from the
@@ -84,7 +86,7 @@ models:
       - key: sector.H2_retrofit_capacity_per_CH4
         effect: "MW H2 obtainable per MW CH4 relinquished — sets both the candidates' p_nom_max and the coupling coefficient in the solver constraint (and its inverse in the myopic carry-over)."
         default: "0.6"
-        provenance: "config/config.default.yaml:H2_retrofit_capacity_per_CH4; scripts/solve_network.py:add_pipe_retrofit_constraint; scripts/add_brownfield.py:H2_retrofit_capacity_per_CH4"
+        provenance: "config/config.default.yaml:H2_retrofit_capacity_per_CH4; scripts/solve_network.py:add_pipe_retrofit_constraint; scripts/add_brownfield.py:h2_retrofit_capacity_per_ch4"
       - key: sector.H2_network
         effect: "Must stay true for retrofitting to survive — false triggers remove_h2_network, which strips retrofitted pipes along with greenfield ones."
         default: "true"

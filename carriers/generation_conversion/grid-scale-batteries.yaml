@@ -16,7 +16,7 @@ when_to_use:
   - "known in pypsa-eur as: battery, battery storage, battery charger, battery discharger, li-ion, li-ion charger, li-ion discharger, lfp, lfp charger, lfp discharger"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Electricity workflow: extendable greenfield batteries at every bus, on by
@@ -39,7 +39,7 @@ models:
         attach_existing_batteries adds the powerplantmatching rows with carrier
         "battery" as fixed StorageUnits (max_hours from the data, median-filled).
       mechanism: >
-        rule add_electricity runs scripts/add_electricity.py: attach_stores /
+        rule compose_network runs scripts/add_electricity.py: attach_stores /
         attach_storageunits iterate over the extendable carrier lists filtered
         through get_available_storage_carriers (intersection with the hardcoded
         STORE_LOOKUP dict, which maps each config token to technology-data cost
@@ -134,7 +134,7 @@ models:
         note: "no hook; custom constraint in solve_network extra_functionality (add_battery_constraints is the pattern)"
     where:
       - change: "greenfield Store+Links and StorageUnit creation; chemistry token wiring"
-        anchor: "scripts/add_electricity.py::attach_stores / ::attach_storageunits / STORE_LOOKUP (rule add_electricity)"
+        anchor: "scripts/add_electricity.py::attach_stores / ::attach_storageunits / STORE_LOOKUP (rule compose_network)"
         provenance: "scripts/add_electricity.py:attach_stores; scripts/add_electricity.py:STORE_LOOKUP"
       - change: "existing fleet attachment"
         anchor: "scripts/add_electricity.py::attach_existing_batteries (gate electricity.estimate_battery_capacities)"

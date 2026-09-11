@@ -1,0 +1,10 @@
+--- a/Snakefile
++++ b/Snakefile
+@@ -97,6 +97,7 @@
+ include: "rules/compose.smk"
+ include: "rules/solve.smk"
+ include: "rules/postprocess.smk"
++include: "rules/zygon_cfe.smk"
+ include: "rules/development.smk"
+ 
+ 

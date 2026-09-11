@@ -1,6 +1,6 @@
 --- a/config/config.default.yaml
 +++ b/config/config.default.yaml
-@@ -1506,3 +1506,17 @@
+@@ -1545,3 +1545,17 @@
      project_name: "PyPSA-Eur"
      email: "contact@pypsa.org"
      website: "https://github.com/PyPSA/pypsa-eur"
@@ -12,7 +12,7 @@
 +# paths — ANY solvable network set composes: this method's scenario runs,
 +# another method's horizon networks) and writes one long-format CSV per
 +# quantity under results/zygon_collect/. Docs in
-+# cookbooks/methods/multi-scenario/spec.yaml.
++# methods/multi-scenario/spec.yaml.
 +zygon_collect:
 +  networks: []
 +  labels: []

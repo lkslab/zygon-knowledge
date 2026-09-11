@@ -1,12 +1,12 @@
---- a/config/config.default.yaml	2026-08-02 15:23:28.414258732 +0200
-+++ b/config/config.default.yaml	2026-08-02 15:23:28.429070682 +0200
-@@ -1104,6 +1104,16 @@
+--- a/config/config.default.yaml
++++ b/config/config.default.yaml
+@@ -1124,6 +1124,16 @@
+   reference_year: 2023
    oil_refining_emissions: 0.013
  
- # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#costs
 +# Investment geography (zygon methods payload: investment-geography)
 +# Consumed by rules/investment_geography.smk -> scripts/distribute_investment.py;
-+# docs in the method spec cookbooks/methods/investment-geography/spec.yaml.
++# docs in the method spec methods/investment-geography/spec.yaml.
 +investment_geography:
 +  snapshots:
 +    start: "2013-03-01"
@@ -14,6 +14,6 @@
 +  targets: {}            # {country: {technology: MW of new capacity}}
 +  auction_effectiveness: 0.6  # eta: 1 = pure cost-optimal, 0 = even land spread
 +
+ # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#costs
  costs:
-   year: 2050
-   social_discountrate: 0.02
+   year:

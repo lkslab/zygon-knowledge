@@ -18,7 +18,7 @@ when_to_use:
   - "known in pypsa-eur as: shipping methanol"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Fully covered and the DEFAULT deep-decarbonisation shipping fuel:
@@ -45,7 +45,7 @@ models:
         (nodal "shipping methanol" buses instead of one EU bus).
       mechanism: >
         rule build_shipping_demand -> port-weighted international navigation;
-        rule prepare_sector_network: add_methanol creates the methanol
+        rule compose_network: add_methanol creates the methanol
         carrier/bus/store (add_carrier_buses), add_industry adds the
         methanolisation Link, add_shipping (gated by sector.shipping) reads
         shipping_methanol_share via get() (linear interpolation between

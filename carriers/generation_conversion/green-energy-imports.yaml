@@ -27,7 +27,7 @@ when_to_use:
   - "known in pypsa-eur as: import H2, import gas, import NH3, import oil, import methanol"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         First-class but OFF by default. With sector.imports.enable: true,
@@ -55,7 +55,7 @@ models:
         biomass nodes with an upstream_emissions_factor share of biomass CO2
         intensity emitted to the atmosphere.
       mechanism: >
-        rule prepare_sector_network calls add_import_options when
+        rule compose_network calls add_import_options when
         sector.imports.enable is true (gas_input_nodes from rule
         build_gas_input_locations supply the entry geography);
         add_biomass handles solid biomass import. solve_network.py::

@@ -24,7 +24,7 @@ when_to_use:
   - "known in pypsa-eur as: solar, solar PV, solar-hsat"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Fully covered with TWO competing utility-scale carriers by default:
@@ -69,10 +69,10 @@ models:
       mechanism: >
         rule determine_availability_matrix (per-technology atlite
         ExclusionContainer over CORINE/LUISA/natura) -> rule
-        build_renewable_profiles (profile_{clusters}_{technology}.nc with
+        build_renewable_profiles (profile_{technology}.nc with
         profile, p_nom_max, average_distance per bus and resource-class bin;
         low-CF/low-potential buses dropped via min_p_max_pu / min_p_nom_max
-        code defaults) -> rule add_electricity (attach_wind_and_solar;
+        code defaults) -> rule compose_network (attach_wind_and_solar;
         attach_renewable_powerplants for the existing fleet; update_p_nom_max).
         Profiles are built directly at clustered-region resolution
         (clustering happens upstream in rules simplify_network /
@@ -203,7 +203,7 @@ models:
         anchor: "scripts/build_renewable_profiles.py (rule build_renewable_profiles)"
         provenance: "scripts/build_renewable_profiles.py:resource_classes; rules/build_electricity.smk:build_renewable_profiles"
       - change: "generator attachment + existing-fleet forcing"
-        anchor: "scripts/add_electricity.py::attach_wind_and_solar / ::attach_renewable_powerplants / ::estimate_renewable_capacities (rule add_electricity)"
+        anchor: "scripts/add_electricity.py::attach_wind_and_solar / ::attach_renewable_powerplants / ::estimate_renewable_capacities (rule compose_network)"
         provenance: "scripts/add_electricity.py:attach_wind_and_solar; scripts/add_electricity.py:estimate_renewable_capacities"
       - change: "solar cost rows: 'solar' aliased to solar-utility, hsat renamed from 'solar-utility single-axis tracking'"
         anchor: "scripts/process_cost_data.py::prepare_costs (rule process_cost_data)"

@@ -16,7 +16,7 @@ when_to_use:
   - "known in pypsa-eur as: agriculture machinery electric"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Agriculture machinery is a first-class, tunable split — unlike the
@@ -44,7 +44,7 @@ models:
         idees_per_country) extracts "total agriculture machinery" per country
         from JRC-IDEES (filled from Eurostat FC_OTH_AF_E for missing
         countries); rule build_population_weighted_energy_totals distributes
-        it to nodes; rule prepare_sector_network runs add_agriculture (gated
+        it to nodes; rule compose_network runs add_agriculture (gated
         by sector.agriculture) which reads the four
         agriculture_machinery_* options and creates the electric Load, the
         oil Load and the oil combustion Link. All loads are flat (annual
@@ -116,7 +116,7 @@ models:
         note: "no such category in the energy-totals data or the network; needs new demand rows (build_energy_totals) plus new load logic in add_agriculture"
     where:
       - change: "machinery electric/oil split, efficiency gain, load creation"
-        anchor: "scripts/prepare_sector_network.py::add_agriculture (rule prepare_sector_network, gated by sector.agriculture; reads the agriculture_machinery_* options)"
+        anchor: "scripts/prepare_sector_network.py::add_agriculture (rule compose_network, gated by sector.agriculture; reads the agriculture_machinery_* options)"
         provenance: "scripts/prepare_sector_network.py:add_agriculture"
       - change: "the machinery energy total this split is applied to"
         anchor: "scripts/build_energy_totals.py::idees_per_country ('total agriculture machinery' from IDEES AGR_fec rows), rule build_energy_totals"

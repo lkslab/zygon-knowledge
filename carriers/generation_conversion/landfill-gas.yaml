@@ -13,7 +13,7 @@ when_to_use:
   - "ENSPRESO biogas as a proxy for landfill gas"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Nothing as a distinct source. "landfill" does not appear anywhere in
@@ -85,7 +85,7 @@ models:
         note: "the co2 atmosphere accounting has no CH4/GWP term; crediting capture requires bespoke emission terms on the new links (cf. methane-abatement carrier card)"
     where:
       - change: "fold LFG into the biogas potential (data route)"
-        anchor: "biomass_potentials_s_{clusters}_{planning_horizons}.csv 'biogas' column, produced by rule build_biomass_potentials (scripts/build_biomass_potentials.py)"
+        anchor: "biomass_potentials_{horizon}.csv 'biogas' column, produced by rule build_biomass_potentials (scripts/build_biomass_potentials.py)"
         provenance: "rules/build_sector.smk:build_biomass_potentials; scripts/build_biomass_potentials.py:enspreso_biomass_potentials"
       - change: "new LFG carrier / per-site capacities / direct-use engine"
         anchor: "scripts/prepare_sector_network.py::add_biomass (biogas Store and 'biogas to gas' Link as the template)"

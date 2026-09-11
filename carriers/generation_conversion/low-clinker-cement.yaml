@@ -21,7 +21,7 @@ when_to_use:
   - "cement kiln fuel switching"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Nothing clinker-substitution-specific. Cement exists as an exogenous
@@ -35,12 +35,9 @@ models:
         emissions become part of the "process emissions" Load in add_industry,
         which can be vented or captured by the always-present "process
         emissions CC" Link (cement capture cost row) — capture, not clinker
-        reduction, is the model's only endogenous cement-CO2 measure. With
-        sector.industry_t.endogen, Cement is endogenised by default: its kiln
-        fuel is mapped to the Fleiter "Clinker" temperature rows (mostly the
-        heat>500 band, where the menu is methane or hydrogen, each gas variant
-        with CC), so the KILN FUEL choice becomes endogenous — the clinker
-        share still does not. Spatially, cement is distributed by the GEM
+        reduction, is the model's only endogenous cement-CO2 measure. Kiln
+        fuel is a flat exogenous load (no temperature bands, no fuel choice).
+        Spatially, cement is distributed by the GEM
         cement tracker with a hardcoded clinker_cement_ratio = 0.737 (used
         only as a capacity conversion in the distribution key, not as a
         modelling lever).
@@ -52,7 +49,7 @@ models:
         build_industrial_distribution_key (prepare_gem_cement_database,
         clinker/integrated/grinding capacity logic) -> rule
         build_industrial_energy_demand_per_node -> add_industry ("process
-        emissions" load + fuel/electricity loads; band buses if endogen).
+        emissions" load + fuel/electricity loads).
       not_covered: >
         No clinker-share parameter anywhere in config — neither production
         tonnage nor the process-emission intensity (tCO2/t cement) can be
@@ -63,16 +60,12 @@ models:
         clinker substitution and capture — capture is available, substitution
         is not representable without edits. Cement demand is not
         price-elastic.
-      provenance: "scripts/build_industry_sector_ratios.py:nonmetalic_mineral_products; scripts/build_industrial_production_per_country_tomorrow.py:HVC_primary_fraction; scripts/prepare_sector_network.py:process emissions CC; scripts/build_industrial_distribution_key.py:clinker_cement_ratio; scripts/build_industry_sector_ratios_endogenous.py:Clinker"
+      provenance: "scripts/build_industry_sector_ratios.py:nonmetalic_mineral_products; scripts/build_industrial_production_per_country_tomorrow.py:HVC_primary_fraction; scripts/prepare_sector_network.py:process emissions CC; scripts/build_industrial_distribution_key.py:clinker_cement_ratio"
     levers:
       - key: industry.sector_ratios_fraction_future
         effect: "Blends today's cement intensities towards the future ratios (fuel-switching to methane/biomass, electrified grinding) — affects energy, not the calcination emission factor path."
         default: "{2020: 0.0, ..., 2050: 1.0}"
         provenance: "config/config.default.yaml:sector_ratios_fraction_future; scripts/build_industry_sector_ratios_intermediate.py:sector_ratios_fraction_future"
-      - key: sector.industry_t.endogenise_sectors.Cement
-        effect: "With industry_t.endogen true, moves cement kiln heat into the temperature bands so the fuel (gas vs hydrogen at >500 °C, plus CC variants) is chosen endogenously."
-        default: "true (inactive while industry_t.endogen is false)"
-        provenance: "config/config.default.yaml:endogenise_sectors; scripts/build_industry_sector_ratios_endogenous.py:Cement"
       - key: sector.co2_sequestration_potential
         effect: "Per-horizon cap on sequestered CO2 — governs how much captured cement process CO2 can actually be stored."
         default: "{2020: 0, 2025: 0, 2030: 40, 2035: 100, 2040: 180, 2045: 250, 2050: 250} (MtCO2/a)"
@@ -86,8 +79,8 @@ models:
         rung: L0
         note: "already endogenous — the 'process emissions CC' link (cement capture cost row) is always added; sequestration limits and CO2 network govern uptake (see industrial-ccs carrier card)"
       - variant: "endogenous kiln fuel choice (gas vs hydrogen vs CC)"
-        rung: L0
-        note: "sector.industry_t.endogen: true with the default Cement flag — heat>500 band menu"
+        rung: L4
+        note: "upstream has no temperature-band industrial heat machinery — kiln fuel is a flat load from the Cement block of nonmetalic_mineral_products; a kiln-heat bus with competing gas/hydrogen (+CC) links needs new demand rules and supply links in add_industry (reference implementation: fork branch endogenous-industry-heat, not part of this anchor)"
       - variant: "lower clinker ratio: cut cement process emissions per tonne by X%"
         rung: L2
         note: "no config key — scale the 'process emission' entry of the Cement block in build_industry_sector_ratios.py (future ratios) and note today's country ratios blend in via fraction_future; alternatively post-process the industry_sector_ratios_{year} resource (L3)"
@@ -116,9 +109,6 @@ models:
       - change: "cement siting from GEM tracker"
         anchor: "scripts/build_industrial_distribution_key.py::prepare_gem_cement_database and the cement key block"
         provenance: "scripts/build_industrial_distribution_key.py:prepare_gem_cement_database"
-      - change: "cement temperature-band mapping"
-        anchor: "scripts/build_industry_sector_ratios_endogenous.py::process_temperature_band_mapper (Cement -> Clinker rows)"
-        provenance: "scripts/build_industry_sector_ratios_endogenous.py:process_temperature_band_mapper"
     data_dependencies:
       - input: "JRC-IDEES Non-metallic mineral products sheets"
         required_for: "cement intensities and calcination emissions"

@@ -16,7 +16,7 @@ when_to_use:
   - "known in pypsa-eur as: offwind-float, offshore wind (Float), offshore wind float"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Fully covered as a first-class default carrier (in contrast to
@@ -41,9 +41,9 @@ models:
         '-underground' rows and lines.length_factor. All four
         offwind-float* rows exist in the processed technology-data costs
         file. Sector runs keep the carrier (pypsa_eur Generator keep-list
-        includes offwind-float) and update_wind_solar_costs in
-        prepare_sector_network.py re-applies the same float-specific branch
-        at planning-year costs. Myopic land-use bookkeeping
+        includes offwind-float); since compose_network calls
+        attach_wind_and_solar per planning horizon with that horizon's costs,
+        there is no separate sector-run re-costing step any more. Myopic land-use bookkeeping
         (add_land_use_constraint) and CCL aggregation
         (agg_offwind -> 'offwind-all') both include offwind-float.
       mechanism: >
@@ -67,7 +67,7 @@ models:
         scaling within the 60-1000 m band (one capex for the whole band).
         The AC/DC connection distinction does not exist for float — one set
         of float connection rows regardless of distance.
-      provenance: "scripts/add_electricity.py:attach_wind_and_solar; scripts/determine_availability_matrix.py:min_depth; config/config.default.yaml:offwind-float; scripts/prepare_sector_network.py:update_wind_solar_costs; scripts/add_existing_baseyear.py:add_existing_renewables"
+      provenance: "scripts/add_electricity.py:attach_wind_and_solar; scripts/determine_availability_matrix.py:min_depth; config/config.default.yaml:offwind-float; scripts/add_existing_baseyear.py:add_existing_renewables"
     levers:
       - key: electricity.renewable_carriers
         effect: "Include/exclude 'offwind-float'."
@@ -152,9 +152,6 @@ models:
       - change: "float-specific capital cost branch"
         anchor: "scripts/add_electricity.py::attach_wind_and_solar (midcar == 'float' branch)"
         provenance: "scripts/add_electricity.py:midcar"
-      - change: "sector-run re-costing (same float branch)"
-        anchor: "scripts/prepare_sector_network.py::update_wind_solar_costs (midtech == 'float')"
-        provenance: "scripts/prepare_sector_network.py:midtech"
       - change: "existing/planned float fleet attachment"
         anchor: "scripts/add_electricity.py::attach_renewable_powerplants + electricity.estimate_renewable_capacities.technology_mapping; myopic: scripts/add_existing_baseyear.py::add_existing_renewables tech_map"
         provenance: "scripts/add_electricity.py:attach_renewable_powerplants; scripts/add_existing_baseyear.py:tech_map"

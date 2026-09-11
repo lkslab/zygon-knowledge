@@ -22,7 +22,7 @@ when_to_use:
   - "known in pypsa-eur as: methanol-to-kerosene"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Aviation demand is exogenous and ON by default (sector.aviation:
@@ -50,7 +50,7 @@ models:
         CO2 budget the optimiser endogenously shifts the pool towards
         synthetic supply — that emergent share is what "SAF" means here.
       mechanism: >
-        rule prepare_sector_network -> add_aviation (kerosene buses, loads
+        rule compose_network -> add_aviation (kerosene buses, loads
         and the oil->kerosene links; plus the optional methanol-to-kerosene
         block); supply routes are built in add_industry (Fischer-Tropsch),
         add_biomass (BtL/electrobiofuels/bioliquids) and add_carrier_buses

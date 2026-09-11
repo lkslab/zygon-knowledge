@@ -12,19 +12,130 @@ when_to_use:
 - co-optimize generation and transmission
 models:
 - model: pypsa-eur
-  coverage: gap
+  coverage: partial
   approach: >-
-    No executable method is wired for pypsa-eur yet. This card descends from the v1
-    cards transmission-expansion-planning (archived under archive/cookbooks/pypsa-eur/topics/v1/);
-    the levers it can describe live in the carrier cards under carriers/ that carry a section for this model.
+    The strongest platform in the family for this topic, and the co-optimisation is
+    the shipped default: electricity.transmission_limit: vopt makes every AC line and
+    DC link extendable with s_nom_min pinned at today's capacity, priced per MWkm with
+    HVDC carrying converter-pair and submarine costs, bounded per branch by
+    lines.s_nom_max_extension / links.p_nom_max_extension (cap_transmission_capacity in
+    prepare_network.py), with piecewise-linear losses on; a volume or cost cap is one
+    string in electricity.transmission_limit (v1.25, c1.25, v1.0 to freeze) landing
+    as the lv_limit / lc_limit GlobalConstraint whose dual is the EUR/MWkm value of
+    more grid; transmission_projects overlays the TYNDP2020, German NEP and manual
+    candidate lists filtered by permitting status, new links starting at zero so a
+    project must pay for itself; iterative impedance updates and post-discretisation
+    are one non-default combination. Two study shapes, both wired: cost-optimal
+    expansion is capacity-expansion's methods (existing-fleet for the fleet the grid
+    is sized around, pathway-myopic for when to build), and a pre-scoped corridor or
+    project is asset-cost-benefit's methods (single-asset-cba PINT/TOOT against the
+    fixed reference, multi-scenario for the TYNDP scenario dimension and the cap
+    sweep). Bidding-zone clustering (clustering.administrative.level bz) puts the
+    corridors on real market geometry.
   pitfalls:
   - >-
-    until a method spec is verified for pypsa-eur, the assistant can describe levers
-    but cannot scope a study
-  methods: []
-  defaults: []
+    the pypsa-eur section was re-anchored to upstream a6c45e5 (2026-09-10) without a
+    re-run: every verification claim below predates the streamlined workflow (#1838 —
+    no wildcards, compose_network/solve_network, planning_horizons and co2_budget as
+    plain config), so treat its numbers as unconfirmed until an eval on an a6c45e5
+    install
+  - >-
+    reliability is a static 0.7 derating (lines.s_max_pu), not N-1 — no SCOPF, which
+    is what TSO planning legally requires; raising s_max_pu cuts the MWkm the model
+    must buy for the same flow
+  - >-
+    post_discretization is read ONLY in the iterative branch: enabling it with
+    skip_iterations left true is a silent no-op that returns fractional circuits;
+    and max_iterations 3 is below the 4-5 the literature needs, so set
+    track_iterations true to tell a converged loop from one that hit the cap
+  - >-
+    set_transmission_limit re-prices lines through set_transmission_costs WITHOUT the
+    length factor, so the +25% detour markup is discarded and a 'c' cost cap moves
+    with that bug — repair it when transmission cost is load-bearing
+  - >-
+    the cap's shadow price (the lv_limit / lc_limit dual, the corpus's most
+    decision-relevant number) is extracted by no rule; read n.global_constraints.mu
+    yourself and check the cap binds before attributing the volume to it
+  - >-
+    corridor detail dies with the cluster count — the 5-node baselines resolve one or
+    two corridors and the 2-node fixture none; a siting answer needs the cluster count
+    pinned by the question, and results are not comparable across counts
+  - >-
+    a global cap is not a per-corridor limit: without lines.s_nom_max_extension / links.p_nom_max_extension a 125%
+    study can put 4x on one interconnector; the JRC per-country budget shape needs a
+    new GlobalConstraint per region (L4)
+  - >-
+    the cost-benefit knee of a cap sweep is assembled by hand from total cost and
+    volume per run; nothing locates it, and robustness beyond scenario sweeps (MGA,
+    Monte Carlo) is absent here
+  - >-
+    new project LINES enter at full type-derived capacity regardless of build_year in
+    an overnight run — only links are zero-started by new_link_capacity
+  - >-
+    TOOT and PINT are order-dependent when several corridors queue — each needs its
+    own run set against the same reference; eur DC links carry '-reversed' twins in
+    sector runs, TOOT both
+  - 'scope is Europe: a non-European grid plan is a pypsa-earth answer'
+  methods:
+  - id: existing-fleet
+    role: >-
+      the fleet the grid is sized around — control which pre-built capacity the
+      expansion sees before trusting a corridor, the first check when the model
+      builds implausible transmission
+  - id: pathway-myopic
+    role: >-
+      when to build: sequential horizons with capacity carry-over and the transmission
+      lock (s_nom_min = prior s_nom_opt), so a corridor decided for 2030 is judged
+      against the 2040 system it enables
+  - id: single-asset-cba
+    role: >-
+      a pre-scoped corridor or listed project: PINT it in (or TOOT an existing one)
+      against the fixed reference grid — B1 system-cost, B2 CO2 and B3 RES deltas
+      monetise it, its own capex compared off-model
+  - id: multi-scenario
+    role: >-
+      the TYNDP scenario dimension and the cap sweep: demand/CO2 variants or
+      transmission_limit values as run.scenarios overrides with harmonised collection of
+      total cost and built volume — the robustness the guideline asks for
+  defaults:
+  - aspect: transmission-expansion
+    is: >-
+      electricity.transmission_limit: vopt — every line and DC link extendable from
+      today's capacity, cost-optimal and unbounded except per-branch s_nom_max_extension / p_nom_max_extension
+      (20 GW lines, 30 GW links), losses on at 2 tangents
+    note: >-
+      v1.0 freezes the grid, v1.25 / c1.25 cap added volume / cost at 25% of today's;
+      the no-build counterfactual of a value-of-grid study is v1.0, not a removed line.
+  - aspect: transmission-projects
+    is: >-
+      transmission_projects.enable true with tyndp2020, nep and manual included at
+      status confirmed-or-better and new_link_capacity zero — candidates are present
+      and must be bought
+    note: >-
+      a user corridor is a row in data/transmission_projects/manual (L3); admitting
+      less mature projects is the status list (L1).
+  - aspect: n-1-margin
+    is: 'lines.s_max_pu 0.7 — one scalar derating network-wide, the only security representation'
+  - aspect: single-pass-impedances
+    is: >-
+      solving.options.skip_iterations true — one LP with today's impedances; the
+      expansion changes the flows the model computed it from
+    note: >-
+      skip_iterations false + max_iterations >= 5 + track_iterations true is the
+      defensible expansion setting, and the gate for post_discretization.
+  plots:
+  - id: network_map
+    role: 'where: the grid with built capacity per corridor'
+  - id: flow_map
+    role: 'how it is used: flows and congestion on the corridors'
+  - id: region_map
+    role: 'the locational signal: regional mean price as a choropleth'
+    params:
+      quantity: price
+  - id: compare_system_cost
+    role: 'the cost of not building: total cost across cap values or with/without'
   version_anchor:
-    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
     date: '2026-09-09'
 - model: pypsa-earth
   coverage: gap

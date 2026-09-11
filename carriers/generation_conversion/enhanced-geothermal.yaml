@@ -15,7 +15,7 @@ when_to_use:
   - "pypsa-eur carrier names: geothermal heat, geothermal organic rankine cycle, geothermal district heat"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         A full EGS chain exists for SECTOR runs, disabled by default
@@ -45,7 +45,7 @@ models:
       mechanism: >
         rule build_egs_potentials (scripts/build_egs_potentials.py:
         prepare_egs_data -> prepare_capex -> get_capacity_factors) ->
-        resources/egs_potentials_{clusters}.csv etc.; rule
+        resources/egs_potentials.csv etc.; rule
         prepare_sector_network conditionally takes them as inputs and its main
         block calls add_enhanced_geothermal when
         options["enhanced_geothermal"].get("enable"); solve_network.py wires
@@ -152,7 +152,7 @@ models:
       - input: "cost rows 'geothermal' (lifetime, FOM, district heat surcharge, district heat-input) and 'organic rankine cycle'"
         required_for: "annuitisation, ORC link, district heat link"
         availability: "exists by default via retrieve_cost_data + rule process_cost_data"
-      - input: "temp_air_total_base_s_{clusters}.nc (clustered air temperature)"
+      - input: "temp_air_total.nc (clustered air temperature)"
         required_for: "var_cf capacity factors (rule input only requested when var_cf is true)"
         availability: "must be built (heat workflow builds it by default in sector runs)"
       - input: "urban central heat buses (district heating footprint)"

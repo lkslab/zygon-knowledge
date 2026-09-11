@@ -21,7 +21,7 @@ when_to_use:
   - "known in pypsa-eur as: district heating, ptes heat pump, urban central ptes heat pump, river_water heat, river_water heat pump, sea_water heat, sea_water heat pump"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Covered as the fifth heat system "urban central". Demand side: the
@@ -33,7 +33,7 @@ models:
         urban_fraction x sector.district_heating.potential (0.6; may be a
         per-country dict with a 'default' entry) by the per-horizon
         sector.district_heating.progress factor (0.0 in 2020 -> 1.0 in 2050;
-        the "nodistrict" sector_opts wildcard sets progress to 0). In add_heat,
+        setting every year to 0 freezes the share). In add_heat,
         nodes with district fraction > 0 get an "urban central heat" bus whose
         load is the district share of ALL heat demand (residential+services,
         space+water) inflated by district_heating_loss (0.15). Supply at those
@@ -103,7 +103,7 @@ models:
         default: "0.6"
         provenance: "config/config.default.yaml:district_heating; scripts/build_district_heat_share.py:central_fraction"
       - key: sector.district_heating.progress
-        effect: "Per-horizon fraction of the gap between today's share and the potential that is closed ('nodistrict' in sector_opts sets 0)."
+        effect: "Per-horizon fraction of the gap between today's share and the potential that is closed (all-zero dict freezes today's share)."
         default: "{2020: 0.0, 2025: 0.1, 2030: 0.25, 2035: 0.4, 2040: 0.55, 2045: 0.75, 2050: 1.0}"
         provenance: "config/config.default.yaml:progress; scripts/build_district_heat_share.py:progress"
       - key: sector.district_heating.district_heating_loss
@@ -156,7 +156,7 @@ models:
         note: "default — share grows from today's IDEES level towards potential 0.6 per the progress schedule"
       - variant: "freeze or accelerate DH expansion"
         rung: L1
-        note: "edit sector.district_heating.progress (or 'nodistrict' in scenario sector_opts for freeze); potential caps the end point"
+        note: "edit sector.district_heating.progress (all years 0.0 for a freeze); potential caps the end point"
       - variant: "per-country DH ambition"
         rung: L1
         note: "sector.district_heating.potential as dict {DE: 0.8, default: 0.4, ...} — a 'default' entry is required for uncovered countries"

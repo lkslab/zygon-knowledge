@@ -16,7 +16,7 @@ when_to_use:
   - "known in pypsa-eur as: hydro, hydro reservoir, hydroelectricity"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Existing fleet fully covered, expansion not. 'hydro' is in
@@ -173,7 +173,7 @@ models:
         anchor: "scripts/build_hydro_profile.py (rule build_hydro_profile; params renewable.hydro)"
         provenance: "scripts/build_hydro_profile.py:get_eia_annual_hydro_generation; rules/build_electricity.smk:build_hydro_profile"
       - change: "component creation (ror/PHS/hydro), max_hours logic, inflow distribution to plants"
-        anchor: "scripts/add_electricity.py::attach_hydro (rule add_electricity)"
+        anchor: "scripts/add_electricity.py::attach_hydro (rule compose_network)"
         provenance: "scripts/add_electricity.py:attach_hydro; scripts/add_electricity.py:dist_key"
       - change: "fleet data (plants, technologies, capacities) incl. tech_dict carrier mapping"
         anchor: "rule build_powerplants + scripts/add_electricity.py::load_and_aggregate_powerplants (tech_dict)"

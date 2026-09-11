@@ -18,7 +18,7 @@ when_to_use:
   - "known in pypsa-eur as: ror, run of river"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Fully covered on the existing-fleet side, in both workflows. "hydro" is
@@ -146,7 +146,7 @@ models:
         note: "no site-potential logic for ror; bespoke resource assessment plus rule plumbing to feed candidate plants and inflows into attach_hydro"
     where:
       - change: "ror attachment, capacity-weighted country-inflow disaggregation, p_max_pu construction"
-        anchor: "scripts/add_electricity.py::attach_hydro (rule add_electricity; helpers normed, tech_dict in load_and_aggregate_powerplants)"
+        anchor: "scripts/add_electricity.py::attach_hydro (rule compose_network; helpers normed, tech_dict in load_and_aggregate_powerplants)"
         provenance: "scripts/add_electricity.py:attach_hydro; scripts/add_electricity.py:normed"
       - change: "country inflow computation, EIA normalisation options, clipping"
         anchor: "scripts/build_hydro_profile.py (main block; get_eia_annual_hydro_generation / correct_eia_stats_by_capacity / approximate_missing_eia_stats)"

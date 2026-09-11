@@ -116,7 +116,7 @@ models:
       scenario: "{demand} + {planning_horizons} via CAGR; demand_data.aluminium_year for the emissions base"
 
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Four separate non-ferrous products with kt/a tonnage per country from
@@ -125,8 +125,7 @@ models:
         a future primary/secondary aluminium reallocation via
         Al_primary_fraction per horizon, per-tonne intensities (alumina
         high-enthalpy heat on methane, smelting electrolysis electricity,
-        secondary route fully electrified, primary-route process emissions),
-        and optional endogenous temperature-banded process heat.
+        secondary route fully electrified, primary-route process emissions).
       mechanism: >
         build_industrial_production_per_country reads NFM fields "Alumina
         production (kt)", "Aluminium - primary production", "Aluminium -
@@ -140,17 +139,16 @@ models:
         JRC energy-balance sheets FC_IND_NFM_AM_E / FC_IND_NFM_PA_E /
         FC_IND_NFM_SA_E / FC_IND_NFM_OM_E; siting via the hotmaps
         "Non-ferrous metals" subsector (sector_mapping in
-        build_industrial_production_per_node); all four products are in
-        industry_t.endogenise_sectors so their heat can be split into Fleiter
-        temperature bands; prepare_sector_network:add_industry places the
-        electricity/gas/heat loads and process emissions.
+        build_industrial_production_per_node); prepare_sector_network:add_industry
+        places the electricity/gas/heat loads and process emissions as
+        annual-constant exogenous carrier demands.
       not_covered: >
         Alumina and other-NFM production volumes are frozen at the reference
         year (only the aluminium primary/secondary split has a tomorrow
         transformation); no scrap availability constraint; no inert-anode or
         smelter-flexibility representation (loads are constant); no dedicated
         aluminium plant tracker — hotmaps emissions decide siting.
-      provenance: "scripts/build_industrial_production_per_country.py:Alumina production (kt);scripts/build_industrial_production_per_country_tomorrow.py:al_primary_fraction;scripts/build_industry_sector_ratios.py:def non_ferrous_metals;scripts/build_industry_sector_ratios.py:Aluminium electrolysis (smelting);scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_NFM_PA_E;scripts/build_industrial_production_per_node.py:sector_mapping;scripts/build_industry_sector_ratios_endogenous.py:process_temperature_band_mapper;scripts/prepare_sector_network.py:def add_industry"
+      provenance: "scripts/build_industrial_production_per_country.py:Alumina production (kt);scripts/build_industrial_production_per_country_tomorrow.py:al_primary_fraction;scripts/build_industry_sector_ratios.py:def non_ferrous_metals;scripts/build_industry_sector_ratios.py:Aluminium electrolysis (smelting);scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_NFM_PA_E;scripts/build_industrial_production_per_node.py:sector_mapping;scripts/prepare_sector_network.py:def add_industry"
     levers:
       - key: industry.Al_primary_fraction
         effect: "Fraction of aluminium from primary smelting per planning horizon; remainder becomes secondary (recycled) production."
@@ -164,10 +162,6 @@ models:
         effect: "JRC year for NFM tonnage and today's intensities."
         default: "2023"
         provenance: "config/config.default.yaml:reference_year;scripts/build_industrial_production_per_country.py:reference_year"
-      - key: sector.industry_t.endogen
-        effect: "Endogenous temperature-band process heat; aluminium primary/secondary, alumina and other NFM are all in the default endogenise_sectors."
-        default: "false"
-        provenance: "config/config.default.yaml:industry_t;scripts/build_industry_sector_ratios_endogenous.py:endogenise_sectors"
       - key: industry.hotmaps_locate_missing
         effect: "Geocode hotmaps sites lacking coordinates — improves non-ferrous siting completeness."
         default: "false"
@@ -180,8 +174,8 @@ models:
         rung: L0
         note: "industry.sector_ratios_fraction_future."
       - variant: "endogenous fuel choice for NFM process heat"
-        rung: L0
-        note: "sector.industry_t.endogen: true (bands from Fleiter Aluminium primary/secondary shares)."
+        rung: L4
+        note: "upstream has no temperature-band process-heat machinery: NFM heat is a fixed methane/electricity split from the JRC ratios placed by add_industry; a band-resolved supply choice needs a new ratio-splitting script plus band buses and supply links (reference implementation on the fork branch endogenous-industry-heat, not part of this anchor)."
       - variant: "scale total aluminium production volume"
         rung: L3
         note: "no config factor — override resources/industrial_production_per_country.csv aluminium columns."
@@ -207,9 +201,6 @@ models:
       - change: "siting (hotmaps Non-ferrous metals)"
         anchor: "scripts/build_industrial_production_per_node.py:sector_mapping + build_industrial_distribution_key"
         provenance: "scripts/build_industrial_production_per_node.py:sector_mapping;rules/build_sector.smk:rule build_industrial_distribution_key"
-      - change: "temperature-band split for NFM"
-        anchor: "scripts/build_industry_sector_ratios_endogenous.py:process_temperature_band_mapper"
-        provenance: "scripts/build_industry_sector_ratios_endogenous.py:Aluminium, primary"
     data_dependencies:
       - input: "JRC-IDEES NFM Industry + EnergyBalance sheets"
         required_for: "tonnage and intensities per product"
@@ -217,13 +208,10 @@ models:
       - input: "hotmaps industrial sites (Non-ferrous metals subsector)"
         required_for: "nodal distribution"
         availability: "must be built (retrieved); population fallback"
-      - input: "Fleiter et al. temperature-band shares (bundled with build_industry_sector_ratios_endogenous inputs)"
-        required_for: "endogenous heat bands"
-        availability: "exists by default in workflow inputs"
     demand_dimensions:
       driver: "kt/a per product (alumina, Al primary, Al secondary, other NFM in lead eq.) times MWh/t ratios"
       spatial: "hotmaps Non-ferrous metals emission keys; population fallback"
-      temporal: "annual-constant loads; optional endogenous temperature bands with industry_t.must_run"
+      temporal: "annual-constant loads"
       scenario: "Al_primary_fraction and sector_ratios_fraction_future per-horizon dicts via {planning_horizons}"
 
 reference_taxonomy:

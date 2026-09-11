@@ -17,8 +17,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
-    date: '2026-08-01'
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
   baseline: null
   execution:
   - kind: config
@@ -26,12 +26,12 @@ models:
     value: false
     note: 'switch off PPM-derived existing solar/onwind/offwind anchoring — renewable
       generators lose their p_nom_min floors; conventional fleet attachment is untouched.
+      Rebased on a6c45e5 (2026-09-10), not yet re-run against an a6c45e5 install.
 
       '
   invalidates:
-  - add_electricity
-  - prepare_sector_network
-  - solve_sector_network
+  - compose_network
+  - solve_network
   budget:
     jobs: 12
     class: minutes

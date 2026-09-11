@@ -1,12 +1,12 @@
---- a/config/config.default.yaml	2026-08-02 14:44:18.108667007 +0200
-+++ b/config/config.default.yaml	2026-08-02 14:55:37.671437781 +0200
-@@ -1497,6 +1497,30 @@
+--- a/config/config.default.yaml
++++ b/config/config.default.yaml
+@@ -1536,6 +1536,30 @@
      source: archive
      version: latest
  
 +# Flow-based market coupling (zygon methods payload: flow-based-market-coupling)
 +# Consumed by rules/fbmc.smk -> scripts/solve_fbmc_market.py; docs in the
-+# method spec cookbooks/methods/flow-based-market-coupling/spec.yaml.
++# method spec methods/flow-based-market-coupling/spec.yaml.
 +fbmc:
 +  snapshots:
 +    start: "2013-03-01"

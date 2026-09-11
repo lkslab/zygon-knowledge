@@ -25,6 +25,12 @@ models:
     Spatial resolution is also important.
   pitfalls:
   - >-
+    the pypsa-eur section was re-anchored to upstream a6c45e5 (2026-09-10) without a
+    re-run: every verification claim below predates the streamlined workflow (#1838 —
+    no wildcards, compose_network/solve_network, planning_horizons and co2_budget as
+    plain config), so treat its numbers as unconfirmed until an eval on an a6c45e5
+    install
+  - >-
     If run at low spatio-temporal resolution can underestimate the cost of renewables
   - >-
     penny-switching; vastly different model solutions could be only marginally more expensive.
@@ -61,8 +67,8 @@ models:
       Reach for a pathway method only when the question is about timing; an end-state
       mix does not need one.
   version_anchor:
-    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
-    date: '2026-07-23'
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
 - model: pypsa-earth
   coverage: ready
   approach: >-

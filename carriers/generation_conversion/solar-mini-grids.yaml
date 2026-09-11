@@ -13,7 +13,7 @@ when_to_use:
   - "isolated networks in the model"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Not covered — and, unlike pypsa-earth, there is no electrification-gap
@@ -110,7 +110,7 @@ models:
         availability: "absent — not part of a European workflow; user-provided"
       - input: "solar rooftop potentials + population layouts"
         required_for: "the LV solar/battery stand-in"
-        availability: "must be built (rules build_clustered_solar_rooftop_potentials, build_clustered_population_layouts)"
+        availability: "must be built (rules build_solar_rooftop_potentials, build_clustered_population_layouts)"
   - model: pypsa-earth
     version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
     out_of_box:

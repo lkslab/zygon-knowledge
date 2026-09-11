@@ -21,7 +21,7 @@ when_to_use:
   - "known in pypsa-eur as: Nuclear, Nuclear marginal, nuclear, uranium"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Existing fleet fully covered. "nuclear" is in
@@ -48,20 +48,21 @@ models:
         bus (rename_fuel Nuclear -> nuclear, carrier map nuclear -> uranium;
         existing_capacities.conventional_carriers includes uranium so
         add_carrier_buses creates the EU uranium bus and Store), retiring by
-        DateOut/lifetime; prepare_perfect_foresight additionally applies
-        HARDCODED national nuclear phase-out years in set_all_phase_outs
-        (DE 2022, BE 2025, ES 2027) — a Python table, not config, and it acts
-        on Links only, so the keep-list nuclear Generators are not touched by
-        it.
+        DateOut/lifetime; under perfect foresight compose_network additionally
+        applies the national nuclear phase-out years configured in
+        existing_capacities.phase_outs (default rows DE 2022, BE 2025,
+        ES 2027) via apply_phase_outs in prepare_perfect_foresight.py, which
+        caps lifetimes of both Generators and Links of the listed carriers;
+        for overnight/myopic runs the list is ignored with a warning.
       mechanism: >
-        rule build_powerplants -> powerplants_s_{clusters}.csv; rule
-        add_electricity runs attach_conventional_generators (fleet + any
+        rule build_powerplants -> resources/<run>/powerplants.csv; rule
+        compose_network calls add_electricity.py:attach_conventional_generators (fleet + any
         extendable conventional carriers; the conventional_nuclear_p_max_pu
         input generated from the conventional config block applies the
         per-country derating); costs from rule process_cost_data. Sector:
         remove_elec_base_techs keeps carriers listed under pypsa_eur; myopic
-        brownfield nuclear enters via rule add_existing_baseyear
-        (add_power_capacities_installed_before_baseyear).
+        brownfield nuclear enters via add_existing_baseyear.py, called from
+        rule compose_network (add_power_capacities_installed_before_baseyear).
       not_covered: >
         No expansion by default ("nuclear" not in
         electricity.extendable_carriers.Generator); when added there,
@@ -83,7 +84,7 @@ models:
         runs (and adding "nuclear: uranium" there hits the same missing
         uranium supply). No SMR or fusion technology exists (see the
         small-modular-reactors and nuclear-fusion carrier cards).
-      provenance: "scripts/add_electricity.py:attach_conventional_generators; config/config.default.yaml:nuclear; scripts/prepare_sector_network.py:remove_elec_base_techs; scripts/prepare_sector_network.py:add_carrier_buses; scripts/add_existing_baseyear.py:rename_fuel; scripts/prepare_perfect_foresight.py:set_all_phase_outs"
+      provenance: "scripts/add_electricity.py:attach_conventional_generators; config/config.default.yaml:nuclear; scripts/prepare_sector_network.py:remove_elec_base_techs; scripts/prepare_sector_network.py:add_carrier_buses; scripts/add_existing_baseyear.py:rename_fuel; scripts/prepare_perfect_foresight.py:apply_phase_outs"
     levers:
       - key: electricity.conventional_carriers
         effect: "Include/exclude the existing nuclear fleet (remove 'nuclear' to phase out existing plants in the electricity workflow)."
@@ -167,9 +168,9 @@ models:
       - variant: "fix/trust nuclear in myopic-foresight sector runs"
         rung: L2
         note: "two reconciliations needed at this ref: the fuel-starved EU uranium bus (as above) and the double representation of the existing fleet (keep-list Generators + brownfield Links) — drop 'nuclear' from pypsa_eur.Generator or the Nuclear row from rename_fuel in add_existing_baseyear"
-      - variant: "change the hardcoded national phase-out years (perfect foresight)"
-        rung: L2
-        note: "the planned list in set_all_phase_outs (prepare_perfect_foresight.py) is a Python table, not config; note it adjusts Link lifetimes only"
+      - variant: "change the national phase-out years (perfect foresight)"
+        rung: L1
+        note: "edit the existing_capacities.phase_outs list ({carriers, countries, year} rows); applied by apply_phase_outs only when foresight is perfect — overnight and myopic runs ignore it"
       - variant: "time-varying outage schedules per plant"
         rung: L5
         note: "no outage-profile machinery; the derating hook is static per country — a p_max_pu time series would need bespoke code in attach_conventional_generators plus data"
@@ -178,7 +179,7 @@ models:
         note: "costs.overwrites (config, deprecated) or a row in data/custom_costs.csv (costs.custom_cost_fn)"
     where:
       - change: "fleet attachment + extendable candidates + per-country p_max_pu derating + UC attributes"
-        anchor: "scripts/add_electricity.py::attach_conventional_generators (rule add_electricity; conventional_params/conventional_inputs from the conventional config block and input_conventional in rules/build_electricity.smk)"
+        anchor: "scripts/add_electricity.py::attach_conventional_generators (called from rule compose_network; conventional_params/conventional_inputs from the conventional config block and input_conventional in rules/build_electricity.smk)"
         provenance: "scripts/add_electricity.py:attach_conventional_generators; rules/build_electricity.smk:input_conventional"
       - change: "greenfield seeding at all substations / custom reactors"
         anchor: "scripts/build_powerplants.py::add_everywhere_powerplants / ::add_custom_powerplants (rule build_powerplants)"
@@ -192,9 +193,9 @@ models:
       - change: "brownfield nuclear Links in myopic/perfect foresight"
         anchor: "scripts/add_existing_baseyear.py::add_power_capacities_installed_before_baseyear (rename_fuel, carrier map nuclear->uranium)"
         provenance: "scripts/add_existing_baseyear.py:add_power_capacities_installed_before_baseyear"
-      - change: "hardcoded national nuclear phase-out years"
-        anchor: "scripts/prepare_perfect_foresight.py::set_all_phase_outs / ::set_phase_out"
-        provenance: "scripts/prepare_perfect_foresight.py:set_all_phase_outs; scripts/prepare_perfect_foresight.py:set_phase_out"
+      - change: "national nuclear phase-out years from config (perfect foresight only)"
+        anchor: "scripts/prepare_perfect_foresight.py::apply_phase_outs (config existing_capacities.phase_outs)"
+        provenance: "scripts/prepare_perfect_foresight.py:apply_phase_outs; config/config.default.yaml:phase_outs"
       - change: "country-wise capacity limits"
         anchor: "scripts/solve_network.py::add_CCL_constraints (solving.constraints.CCL)"
         provenance: "scripts/solve_network.py:add_CCL_constraints"

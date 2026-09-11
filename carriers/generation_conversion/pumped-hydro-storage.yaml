@@ -12,7 +12,7 @@ when_to_use:
   - "known in pypsa-eur as: PHS, hydro+PHS"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         The EXISTING pumped-hydro fleet, on by default. Plants with technology
@@ -31,7 +31,7 @@ models:
       mechanism: >
         rule build_powerplants creates the plant table (amendable via
         data/custom_powerplants.csv + electricity.custom_powerplants and
-        filterable via electricity.powerplants_filter); rule add_electricity
+        filterable via electricity.powerplants_filter); rule compose_network
         runs scripts/add_electricity.py where attach_hydro splits the hydro
         fleet into ror/PHS/hydro by carrier and adds the PHS block
         (p_nom fixed, not extendable — no p_nom_extendable argument is set).
@@ -107,7 +107,7 @@ models:
         note: "the PHS block sets no inflow; the reservoir-hydro block directly below it in attach_hydro (inflow_t from profile_hydro) is the template"
     where:
       - change: "existing PHS fleet attachment (duration fill, efficiency, extendability)"
-        anchor: "scripts/add_electricity.py::attach_hydro PHS block (rule add_electricity)"
+        anchor: "scripts/add_electricity.py::attach_hydro PHS block (rule compose_network)"
         provenance: "scripts/add_electricity.py:attach_hydro"
       - change: "new-build PHS as extendable StorageUnit"
         anchor: "scripts/add_electricity.py STORE_LOOKUP + ::attach_storageunits"

@@ -16,7 +16,7 @@ when_to_use:
   - "known in pypsa-eur as: ground heat pump, geothermal heat pump, urban central geothermal heat pump, residential rural ground heat pump, services rural ground heat pump"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Covered by default at RURAL nodes only: sector.heat_pump_sources.rural
@@ -45,7 +45,7 @@ models:
       mechanism: >
         rule build_temperature_profiles -> temp_soil_total nc -> rule
         build_cop_profiles (DecentralHeatingCopApproximator with
-        source_type "ground") -> cop_profiles nc -> rule prepare_sector_network
+        source_type "ground") -> cop_profiles nc -> rule compose_network
         add_heat (heat pump loop over params.heat_pump_sources per
         heat_system.system_type). Because heat_pump_sources is read per system
         type, adding "ground" to the urban decentral or urban central lists is

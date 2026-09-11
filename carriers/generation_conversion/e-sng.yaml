@@ -20,7 +20,7 @@ when_to_use:
   - "known in pypsa-eur as: BioSNG, BioSNG CC, Sabatier, methanation, power-to-gas"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         ON by default (sector.methanation: true). add_h2_gas_infrastructure
@@ -41,7 +41,7 @@ models:
         Myopic runs carry built Sabatier capacity forward via
         add_brownfield.
       mechanism: >
-        rule prepare_sector_network -> add_h2_gas_infrastructure (methanation
+        rule compose_network -> add_h2_gas_infrastructure (methanation
         block, before coal_cc/SMR); CO2 feedstock from the co2 stored buses;
         gas destination nodes resolved by define_spatial (nodal with
         gas_network, otherwise a single EU gas bus). Sabatier is the ONLY

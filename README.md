@@ -47,12 +47,23 @@ file, the generated data-quality maps, the old per-model READMEs and indexes,
 ## Checks
 
 ```
-python3 archive/tools/restructure.py --validate
+python3 tools/validate.py              # schema check (archive validator logic, current anchors)
+python3 tools/resolve_eur_citations.py # every pypsa-eur citation resolves in models/pypsa-eur
 ```
+
+`archive/tools/restructure.py --validate` is the original schema validator; `archive/` is
+frozen and its `ANCHORS` constant still names the pre-2026-09 eur anchor, so
+`tools/validate.py` imports it unchanged and overrides that one value. The resolver walks
+the pypsa-eur section of every card and checks each `scripts/…:symbol`, `rules/…:rule` and
+`config/config.default.yaml:key` citation against the submodule checkout; it needs
+`git submodule update --init models/pypsa-eur`.
 
 ## Anchors
 
-Earth cards cite the `models/pypsa-earth` submodule commit. Eur cards cite
-`849c8858`, a fork branch commit that is not in any public remote; the
-`models/pypsa-eur` submodule pin points at upstream. See
-`archive/fixtures/BASELINE.md`.
+Both models' cards cite their `models/<model>` submodule commit. Eur cards cite
+`a6c45e5a` (upstream `PyPSA/pypsa-eur` master, "Streamline workflow" #1838, 2026-09-09):
+no `scenario` block or wildcards, `compose_network` -> `solve_network`, networks
+`composed_<horizon>.nc` / `solved_<horizon>.nc`. Earth cards cite `8435f4c8`. Until
+2026-09-10 the eur anchor was `849c8858`, a fork branch (`endogenous-industry-heat`) that
+is not in any public remote; its endogenous industrial process-heat content was dropped
+from the cards with the re-anchor. See `archive/fixtures/BASELINE.md` for the older history.

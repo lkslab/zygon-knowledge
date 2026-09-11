@@ -16,7 +16,7 @@ when_to_use:
   - "temperature bands / temperature levels of industry heat"
   - "decarbonise process heat"
   - "industrial heat demand split"
-  - "known in pypsa-eur as: gas for industry, coal for industry, solid biomass for industry, low-temperature heat for industry, process heat, heat100-200 industry, heat200-500 industry, heat>500 industry, heat100-200 industry gas, heat200-500 industry gas, heat>500 industry gas, heat100-200 industry gas CC, heat200-500 industry gas CC, heat>500 industry gas CC, heat100-200 industry solid biomass, heat200-500 industry solid biomass, heat100-200 industry solid biomass CC, heat200-500 industry solid biomass CC, heat100-200 industry hydrogen, heat200-500 industry hydrogen, heat>500 industry hydrogen"
+  - "known in pypsa-eur as: gas for industry, coal for industry, solid biomass for industry, H2 for industry, industry electricity, low-temperature heat for industry, process heat"
 
 reference_taxonomy:
   framework: "FORECAST (Fraunhofer ISI)"
@@ -131,114 +131,89 @@ models:
       scenario: "{demand} wildcard + planning_horizons pick the growth path via industry_growth_cagr.csv or the custom csv per horizon"
 
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
 
     out_of_box:
       covers: >
-        Covered, optionally endogenous. With sector.industry_t.endogen: true the
-        industrial heat demand of selected sectors is split into temperature
-        bands heat100-200, heat200-500 and heat>500 (heat<100 is folded into
-        the "low-temperature heat" district-heat-served load), each band a
-        nodal bus + load with a configurable list of competing supply links:
-        100-200C biomass (+CC), gas (+CC), high-temperature industrial heat
-        pumps, electric boiler steam; 200-500C biomass, gas, hydrogen; >500C
-        gas (+CC), hydrogen. With endogen: false (default) heat stays inside
-        the exogenous per-carrier sector ratios.
+        No temperature bands. Industrial process heat is exogenous fuel demand
+        per sector: the JRC-IDEES sector ratios assign each process to a carrier
+        (gas, coal, solid biomass, hydrogen, electricity, naphtha), and
+        prepare_sector_network.add_industry attaches the summed nodal totals as
+        flat loads ("gas for industry", "coal for industry", "solid biomass for
+        industry", "H2 for industry", "industry electricity"). Only heat below
+        roughly 100C is a heat carrier at all: the "low-temperature heat for
+        industry" load on the urban central / services decentral heat bus. The
+        model never knows what temperature a fuel delivers, so no supply
+        technology competes for a band.
       mechanism: >
-        build_industry_sector_ratios_endogenous translates fuel-based JRC-IDEES
-        sector ratios into temperature bands using per-process splits from
-        Fleiter et al. 2025 (process_temperature_band_mapper); steel is
-        excluded and DRI + Electric arc / HVC recycling are copied from the
-        exogenous block (sectors_copied_from_exogenous).
-        build_industrial_energy_demand_per_node emits both an "exogenous" and
-        an "endogenous" column block; prepare_sector_network.add_industry picks
-        one, and in the endogenous case calls add_t_industry100_200,
-        add_t_industry200_500 and add_t_industry500 with a must_run floor on
-        the supply links.
+        build_industry_sector_ratios derives future best-in-class MWh/t per
+        carrier and sector (electrifying or biomass-shifting individual
+        processes by assumption); build_industry_sector_ratios_intermediate
+        blends today's country ratios toward them with
+        industry.sector_ratios_fraction_future; build_industrial_energy_demand_per_node
+        multiplies ratios with nodal production; add_industry places one load per
+        carrier and node. Decarbonising process heat therefore happens only
+        through the exogenous ratio trajectory, never through the optimiser.
       not_covered: >
-        Steel process heat is not band-endogenised (handled via exogenous
-        production routes); band splits are hardcoded literature values, not
-        per-country data; no heat storage or waste-heat cascading between
-        bands; supply-technology lists are fixed per band (no CSP, no plasma).
-      provenance: "scripts/prepare_sector_network.py:add_t_industry100_200; scripts/prepare_sector_network.py:add_t_industry200_500; scripts/prepare_sector_network.py:add_t_industry500; scripts/build_industry_sector_ratios_endogenous.py:process_temperature_band_mapper; scripts/build_industrial_energy_demand_per_node.py:sectors_copied_from_exogenous"
+        No band-resolved heat demand, no industrial heat pumps, electric boilers
+        or hydrogen firing as competing supply options, no must-run or storage
+        behaviour of process heat, no per-process temperature data. The
+        temperature-band machinery that existed on the fork branch
+        endogenous-industry-heat (band buses heat100-200 / heat200-500 / heat>500
+        with per-band supply links) is not part of upstream at this anchor.
+      provenance: "scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:low-temperature heat for industry; scripts/build_industry_sector_ratios.py:load_idees_data; scripts/build_industry_sector_ratios_intermediate.py:build_industry_sector_ratios_intermediate; scripts/build_industrial_energy_demand_per_node.py"
 
     levers:
-      - key: sector.industry_t.endogen
-        effect: "Master flip: false = exogenous carrier mix, true = temperature-banded heat demand with endogenous supply choice."
-        default: "false"
-        provenance: "config/config.default.yaml:industry_t; scripts/prepare_sector_network.py:add_t_industry100_200"
-      - key: sector.industry_t.must_run
-        effect: "p_min_pu floor on band supply links — forces industrial heat supply to run near-baseload."
-        default: "0.8"
-        provenance: "config/config.default.yaml:must_run; scripts/prepare_sector_network.py:add_t_industry500"
-      - key: sector.industry_t.endogenise_sectors
-        effect: "Per-sector booleans selecting which industries get their heat translated into temperature bands."
-        default: "all listed sectors true (steel absent by design)"
-        provenance: "config/config.default.yaml:endogenise_sectors; scripts/build_industry_sector_ratios_endogenous.py:endogenise_sectors"
-      - key: sector.industry_t.heat100-200.heat_pumps
-        effect: "Enable/disable industrial high-temperature heat pumps as a 100-200C supply option (siblings: biomass, methane, electric_boiler)."
-        default: "true"
-        provenance: "config/config.default.yaml:heat100-200; scripts/prepare_sector_network.py:add_t_industry100_200"
-      - key: sector.industry_t.heat200-500.hydrogen
-        effect: "Enable/disable hydrogen firing in the 200-500C band (siblings: biomass, methane)."
-        default: "true"
-        provenance: "config/config.default.yaml:heat200-500; scripts/prepare_sector_network.py:add_t_industry200_500"
-      - key: sector.industry_t.heat>500.hydrogen
-        effect: "Enable/disable hydrogen direct firing >500C (sibling: methane; H2 combustion cost set to 10x gas as placeholder)."
-        default: "true"
-        provenance: "config/config.default.yaml:heat>500; scripts/prepare_sector_network.py:add_t_industry500"
       - key: industry.sector_ratios_fraction_future
-        effect: "In the exogenous path, per-year interpolation weight between today's country sector ratios and future best-in-class (electrified) ratios — the non-banded way heat demand decarbonises."
+        effect: "Per-year interpolation weight between today's country sector ratios and future best-in-class (electrified / biomass) ratios — the only way process-heat carriers decarbonise."
         default: "0.0 (2020) rising to 1.0 (2050)"
-        provenance: "config/config.default.yaml:sector_ratios_fraction_future; scripts/build_industry_sector_ratios_intermediate.py:sector_ratios_fraction_future"
+        provenance: "config/config.default.yaml:sector_ratios_fraction_future; scripts/build_industry_sector_ratios_intermediate.py:build_industry_sector_ratios_intermediate"
+      - key: sector.industry
+        effect: "Master switch for all industrial loads including the process-heat fuels."
+        default: "true"
+        provenance: "config/config.default.yaml:industry; scripts/prepare_sector_network.py:add_industry"
 
     boundary:
-      - variant: "switch on temperature-banded industrial heat"
+      - variant: "faster or slower exogenous fuel switching of process heat"
         rung: L0
-        note: "sector.industry_t.endogen: true."
-      - variant: "restrict which technologies may serve a band / which sectors are banded"
-        rung: L1
-        note: "per-band tech booleans and endogenise_sectors map."
-      - variant: "add a new supply technology to an existing band (e.g. electric boiler >500C)"
+        note: "industry.sector_ratios_fraction_future per-year values."
+      - variant: "change which carrier a process is assumed to use in the future (e.g. steam to hydrogen instead of biomass)"
         rung: L2
-        note: "add a Link block in the relevant add_t_industry* function plus a config boolean; costs row must exist in technology-data."
-      - variant: "change the per-process temperature splits"
-        rung: L2
-        note: "edit the hardcoded Fleiter-based split dicts / process_temperature_band_mapper in build_industry_sector_ratios_endogenous."
+        note: "edit the per-sector functions in build_industry_sector_ratios.py (iron_and_steel, chemicals_industry, nonmetalic_mineral_products, pulp_paper_printing, food_beverages_tobacco, non_ferrous_metals, ...)."
+      - variant: "introduce temperature bands with competing supply technologies (heat pumps, e-boilers, H2, biomass, gas per band)"
+        rung: L4
+        note: "not in upstream: needs a new ratio-splitting script (fuel-to-band translation per process), band buses and loads, and per-band supply links plus config; the fork branch endogenous-industry-heat is the reference implementation, not part of this anchor."
       - variant: "band-endogenise steel process heat"
         rung: L5
-        note: "explicitly excluded (script docstring); steel runs through exogenous production routes — needs bespoke process modelling."
+        note: "steel runs through exogenous production routes (BF-BOF / DRI / EAF fractions); process modelling is bespoke on top of the L4 variant."
       - variant: "country-specific temperature splits from national data"
-        rung: L3
-        note: "replace the literature split dicts with a data input; small code change to read it, then it is a data problem."
+        rung: L5
+        note: "presupposes the L4 band machinery; then a data problem."
 
     where:
-      - change: "band buses, loads and supply links"
-        anchor: "add_t_industry100_200 / add_t_industry200_500 / add_t_industry500 in prepare_sector_network, called from add_industry when industry_t.endogen"
-        provenance: "scripts/prepare_sector_network.py:add_t_industry100_200; scripts/prepare_sector_network.py:add_industry"
-      - change: "fuel-to-band translation of sector ratios"
-        anchor: "rule build_industry_sector_ratios_endogenous"
-        provenance: "scripts/build_industry_sector_ratios_endogenous.py:build_industry_sector_ratios_endogenous; rules/build_sector.smk:rule build_industry_sector_ratios_endogenous"
-      - change: "exogenous/endogenous demand column blocks per node"
-        anchor: "rule build_industrial_energy_demand_per_node"
-        provenance: "scripts/build_industrial_energy_demand_per_node.py:sectors_copied_from_exogenous; rules/build_sector.smk:rule build_industrial_energy_demand_per_node"
+      - change: "per-carrier industry loads"
+        anchor: "add_industry in prepare_sector_network.py"
+        provenance: "scripts/prepare_sector_network.py:add_industry"
+      - change: "future carrier assumptions per process"
+        anchor: "sector functions in build_industry_sector_ratios.py"
+        provenance: "scripts/build_industry_sector_ratios.py:iron_and_steel; scripts/build_industry_sector_ratios.py:nonmetalic_mineral_products"
       - change: "exogenous future ratios interpolation"
         anchor: "rule build_industry_sector_ratios_intermediate"
-        provenance: "scripts/build_industry_sector_ratios_intermediate.py:build_industry_sector_ratios_intermediate"
+        provenance: "scripts/build_industry_sector_ratios_intermediate.py:build_industry_sector_ratios_intermediate; rules/build_sector.smk:rule build_industry_sector_ratios_intermediate"
+      - change: "nodal demand per carrier"
+        anchor: "rule build_industrial_energy_demand_per_node"
+        provenance: "scripts/build_industrial_energy_demand_per_node.py; rules/build_sector.smk:rule build_industrial_energy_demand_per_node"
 
     data_dependencies:
       - input: "JRC-IDEES industry sheets (per-sector fuel and end-use data)"
-        required_for: "sector ratios, both exogenous and band-translated"
+        required_for: "sector ratios"
         availability: "must be built (retrieved); EU-focused — non-EU countries use Eurostat fallbacks"
-      - input: "Fleiter et al. 2025 temperature-band splits"
-        required_for: "band translation"
-        availability: "exists by default — hardcoded dicts in build_industry_sector_ratios_endogenous"
-      - input: "technology-data costs rows (direct firing gas, industrial heat pump high temperature, electric boiler steam)"
-        required_for: "band supply links"
-        availability: "exists by default via the costs pipeline"
+      - input: "per-process temperature-level data (e.g. Fleiter et al. 2025 bands)"
+        required_for: "any band-resolved variant"
+        availability: "absent from the workflow"
 
     demand_dimensions:
-      driver: "kt/a physical production per sector x MWh/t sector ratios (JRC-IDEES), heat share split into bands per process"
-      spatial: "nodal via industrial distribution keys (Hotmaps sites, GEM trackers); band loads per cluster node"
-      temporal: "flat profile — annual band demand / 8760, with must_run floor on supply instead of a demand profile"
-      scenario: "planning_horizons keys in per-year dicts (sector_ratios_fraction_future, route fractions) + endogen flag per scenario"
+      driver: "kt/a physical production per sector x MWh/t sector ratios (JRC-IDEES) per carrier; no temperature dimension"
+      spatial: "nodal via industrial distribution keys (Hotmaps sites, GEM trackers)"
+      temporal: "flat profile — annual carrier demand / 8760"
+      scenario: "planning_horizons keys in per-year dicts (sector_ratios_fraction_future, route fractions)"

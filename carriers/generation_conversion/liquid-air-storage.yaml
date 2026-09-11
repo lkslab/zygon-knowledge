@@ -10,7 +10,7 @@ when_to_use:
   - "known in pypsa-eur as: lair, lair charger, lair discharger"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Wired but dormant — unlike pypsa-earth, pypsa-eur ships a first-class
@@ -28,7 +28,7 @@ models:
         representation, and because both links carry their own capital cost the
         free-discharger caveat of the bicharger chemistries does not apply.
       mechanism: >
-        rule add_electricity runs scripts/add_electricity.py:
+        rule compose_network runs scripts/add_electricity.py:
         attach_storageunits / attach_stores loop over the configured carrier
         lists filtered through get_available_storage_carriers (intersection
         with STORE_LOOKUP); the lair entry uses the charger/discharger (not
@@ -81,7 +81,7 @@ models:
         note: "efficiency coupling between charge and discharge states has no PyPSA component analogue here; bespoke logic"
     where:
       - change: "carrier activation and component creation"
-        anchor: "scripts/add_electricity.py::attach_storageunits / ::attach_stores + STORE_LOOKUP 'lair' entry (rule add_electricity)"
+        anchor: "scripts/add_electricity.py::attach_storageunits / ::attach_stores + STORE_LOOKUP 'lair' entry (rule compose_network)"
         provenance: "scripts/add_electricity.py:attach_stores; scripts/add_electricity.py:STORE_LOOKUP"
       - change: "combined cost row synthesis"
         anchor: "scripts/process_cost_data.py::prepare_costs (costs_for_storage loop over electricity.max_hours)"

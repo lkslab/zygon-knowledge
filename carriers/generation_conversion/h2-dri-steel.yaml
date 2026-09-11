@@ -23,7 +23,7 @@ when_to_use:
   - "sponge iron"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Covered as an exogenously phased-in demand route. In
@@ -54,9 +54,8 @@ models:
         steel_processes loop) -> rule build_industrial_energy_demand_per_node
         -> add_industry attaches "H2 for industry" (H2 bus), "industry
         electricity" (AC bus), "gas for industry" and "low-temperature heat for
-        industry" loads. Even with sector.industry_t.endogen the route keeps
-        its exogenous ratios: "DRI + Electric arc" is listed in
-        sectors_copied_from_exogenous in build_industrial_energy_demand_per_node.
+        industry" loads, all as flat exogenous ratios (no temperature bands,
+        no supply choice inside industry).
       not_covered: >
         No DRI plant exists in the network — no capacity, capital cost, or
         dispatch; the route is a fixed flat energy demand. No natural-gas DRI
@@ -68,7 +67,7 @@ models:
         flexibility, although upstream H2 storage effectively buffers it. No
         CCS option on the remaining integrated route's coal/coke ("coal for
         industry" vents its CO2 to the atmosphere with no CC variant).
-      provenance: "scripts/build_industry_sector_ratios.py:H2_DRI; scripts/build_industrial_production_per_country_tomorrow.py:dri_fraction; scripts/prepare_sector_network.py:H2 for industry; scripts/build_industrial_energy_demand_per_node.py:sectors_copied_from_exogenous; scripts/build_industrial_distribution_key.py:steel_processes"
+      provenance: "scripts/build_industry_sector_ratios.py:H2_DRI; scripts/build_industrial_production_per_country_tomorrow.py:dri_fraction; scripts/prepare_sector_network.py:H2 for industry; scripts/build_industrial_energy_demand_per_node.py; scripts/build_industrial_distribution_key.py:steel_processes"
     levers:
       - key: industry.DRI_fraction
         effect: "Per-horizon fraction of persistent primary steel produced via H2-DRI+EAF; the rest stays as integrated steelworks."

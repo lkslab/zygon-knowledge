@@ -5,7 +5,9 @@ what: 'All planning horizons co-optimised in a single LP with full knowledge of 
   future: per-horizon networks concatenated over multi-indexed snapshots (investment_periods),
   the objective discounted with a social discount rate, assets active per period through
   build_year/lifetime windows. The no-regret benchmark against [[pathway-myopic]]
-  — the cost gap between the two is the value of foresight. Native on eur (solve_perfect.smk);
+  — the cost gap between the two is the value of foresight. Native on eur (foresight: perfect;
+  compose_network concatenates the horizons via prepare_perfect_foresight and solve_network
+  solves the multi-period LP, a6c45e5);
   on earth it is a PORT of the eur machinery shipped as this method''s pre-tested
   payload (payload/pypsa-earth/).
 

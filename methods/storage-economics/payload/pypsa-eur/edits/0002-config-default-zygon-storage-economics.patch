@@ -1,0 +1,23 @@
+--- a/config/config.default.yaml
++++ b/config/config.default.yaml
+@@ -1545,3 +1545,20 @@
+     project_name: "PyPSA-Eur"
+     email: "contact@pypsa.org"
+     website: "https://github.com/PyPSA/pypsa-eur"
++
++# Zygon methods payload `storage-economics` — per-asset economic performance
++# of every storage asset in a solved network. Consumed by
++# rules/zygon_storage_economics.smk -> scripts/zygon_storage_economics.py:
++# values each Store (with its charger/discharger links) or StorageUnit at
++# the prices it actually faces, snapshot-weighted, and writes one
++# long-format CSV per quantity under results/zygon_storage_economics/.
++# Energy-arbitrage stream only — there is no capacity market, ancillary
++# product or imbalance settlement in the model. Docs in
++# methods/storage-economics/spec.yaml.
++zygon_storage_economics:
++  networks: []
++  labels: []
++  carriers: [battery, home battery, H2 Store, PHS, hydro]
++  quantities: [arbitrage_revenue, annualised_cost, cost_recovery, discharge_energy,
++               full_cycles, capture_price, charge_price, spread, duration_h,
++               utilisation, msv_mean, msv_max]

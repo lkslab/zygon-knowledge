@@ -21,7 +21,7 @@ when_to_use:
   - "known in pypsa-eur as: Fischer-Tropsch, liquid, power-to-liquid"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         ON by default and unconditional within add_industry: an extendable
@@ -45,7 +45,7 @@ models:
         electrobiofuels. Myopic runs carry built FT capacity forward via
         add_brownfield.
       mechanism: >
-        rule prepare_sector_network -> add_industry (Fischer-Tropsch block
+        rule compose_network -> add_industry (Fischer-Tropsch block
         right after the oil boiler block); oil bus + fossil supply from
         add_carrier_buses; CO2 feedstock from the co2 stored buses
         (add_co2_tracking + capture technologies); waste heat in

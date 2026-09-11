@@ -1,13 +1,13 @@
---- a/config/config.default.yaml	2026-08-02 14:54:50.426486454 +0200
-+++ b/config/config.default.yaml	2026-08-02 15:09:50.384429416 +0200
-@@ -1506,3 +1506,21 @@
+--- a/config/config.default.yaml
++++ b/config/config.default.yaml
+@@ -1545,3 +1545,21 @@
      project_name: "PyPSA-Eur"
      email: "contact@pypsa.org"
      website: "https://github.com/PyPSA/pypsa-eur"
 +
 +# Redispatch stage (zygon methods payload: redispatch)
 +# Consumed by rules/redispatch.smk -> scripts/solve_redispatch.py; docs in
-+# the method spec cookbooks/methods/redispatch/spec.yaml.
++# the method spec methods/redispatch/spec.yaml.
 +redispatch:
 +  stage1: ntc            # ntc (self-contained) | fbmc (needs that payload)
 +  snapshots:

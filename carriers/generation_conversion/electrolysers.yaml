@@ -22,7 +22,7 @@ when_to_use:
   - "known in pypsa-eur as: H2 Electrolysis, H2 electrolysis, power-to-H2"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Fully covered as a greenfield investment option, in BOTH workflows.
@@ -49,11 +49,11 @@ models:
         Link handling, capacity_threshold pruning); add_existing_baseyear
         contains no electrolysis branch, i.e. no exogenous 2020s fleet.
       mechanism: >
-        rule prepare_sector_network runs scripts/prepare_sector_network.py::
+        rule compose_network runs scripts/prepare_sector_network.py::
         add_h2_gas_infrastructure (first block after the H2 buses are
         created); waste heat is attached later by add_waste_heat (only at
         nodes holding an "urban central heat" bus). Electricity workflow:
-        rule add_electricity runs scripts/add_electricity.py::attach_stores.
+        rule compose_network runs scripts/add_electricity.py::attach_stores.
         Costs come from rule process_cost_data (row "electrolysis").
       not_covered: >
         One generic electrolyser technology only — no PEM / alkaline / SOEC

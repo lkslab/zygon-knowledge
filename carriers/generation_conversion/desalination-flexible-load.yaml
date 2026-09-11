@@ -12,7 +12,7 @@ when_to_use:
   - "schedulable load with product storage"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Nothing — grounded absence: "desalination" appears nowhere in scripts,
@@ -25,11 +25,10 @@ models:
         load needs, all in prepare_sector_network.py: add_EVs builds exactly
         the "device bus + conversion Link + product Store + fixed product
         Load" shape (AC -> BEV charger Link -> EV battery Bus/Store -> fixed
-        land transport EV Load); the endogenous industry blocks
-        (add_t_industry100_200 and siblings, sector.industry_t.endogen) build
-        extendable supply links serving a fixed demand with a minimum duty
-        cycle p_min_pu = sector.industry_t.must_run — i.e. "flexible
-        industrial load with limited turndown"; and data/custom_costs.csv
+        land transport EV Load); the synthetic-fuel links (Fischer-Tropsch,
+        methanolisation, Sabatier, electrolysis) carry a minimum duty cycle
+        p_min_pu = sector.min_part_load_* — i.e. "flexible industrial process
+        with limited turndown"; and data/custom_costs.csv
         (costs.custom_cost_fn) can introduce a brand-new technology cost row
         without code, because overwrite_costs CONCATENATES rows whose
         technology is not yet in the cost index.
@@ -39,7 +38,7 @@ models:
         energy consumption kWh/m3 as efficiency, CAPEX from a user cost row),
         a water Store (tank/reservoir buffer) and a fixed water-demand Load —
         authored in prepare_sector_network.py on the add_EVs /
-        endogenous-industry template. The crudest proxy needs no water
+        min_part_load template. The crudest proxy needs no water
         accounting at all: solving.options.load_sinks
         (add_load_balance_components with sign=-1) attaches infinite-capacity
         price-taking sinks at chosen bus carriers, absorbing energy whenever
@@ -49,7 +48,7 @@ models:
         Everything domain-specific: no water demand data, no desalination
         technology or cost row, no brine/intake modelling, no municipal water
         system, no water transport between nodes.
-      provenance: "scripts/prepare_sector_network.py:add_EVs; scripts/prepare_sector_network.py:add_t_industry100_200; scripts/solve_network.py:add_load_balance_components; scripts/process_cost_data.py:overwrite_costs"
+      provenance: "scripts/prepare_sector_network.py:add_EVs; scripts/prepare_sector_network.py:min_part_load_methanation; scripts/solve_network.py:add_load_balance_components; scripts/process_cost_data.py:overwrite_costs"
     levers:
       - key: load.scaling_factor
         effect: "Not desalination-specific — scales the WHOLE electricity demand time series; the only existing config way to fold a known desalination consumption into demand as a flat uplift."
@@ -63,10 +62,10 @@ models:
         effect: "Points at data/custom_costs.csv, whose rows can ADD new technologies to the cost table (overwrite_costs concatenates missing technology indices) — the no-code route to a 'seawater desalination' cost row for the bespoke block."
         default: "data/custom_costs.csv"
         provenance: "config/config.default.yaml:custom_cost_fn; scripts/process_cost_data.py:overwrite_costs"
-      - key: sector.industry_t.must_run
-        effect: "Not desalination — but the precedent knob for 'minimum duty cycle of a flexible industrial process' (p_min_pu of the endogenous industry links); a desalination Link would copy this pattern."
-        default: "0.8"
-        provenance: "config/config.default.yaml:must_run; scripts/prepare_sector_network.py:add_t_industry100_200"
+      - key: sector.min_part_load_fischer_tropsch
+        effect: "Not desalination — but the precedent knob for 'minimum duty cycle of a flexible industrial process' (p_min_pu of the Fischer-Tropsch links; siblings min_part_load_methanolisation / _methanation / _electrolysis); a desalination Link would copy this pattern."
+        default: "0.5"
+        provenance: "config/config.default.yaml:min_part_load_fischer_tropsch; scripts/prepare_sector_network.py:min_part_load_methanation"
     boundary:
       - variant: "price-elastic sink absorbing cheap power (no water accounting)"
         rung: L1
@@ -76,7 +75,7 @@ models:
         note: "data route: add the desalination consumption into the electricity demand data consumed by rule build_electricity_demand_base (or crudely via load.scaling_factor at L1); no new components, no flexibility"
       - variant: "flexible desalination load with water storage"
         rung: L5
-        note: "bespoke block in prepare_sector_network.py: 'water' Bus per coastal node, extendable electricity->water Link, water Store, fixed water Load; component template = add_EVs (device bus + Store + fixed Load), duty-cycle template = the endogenous industry links (p_min_pu = must_run); cost row via data/custom_costs.csv (L3 part)"
+        note: "bespoke block in prepare_sector_network.py: 'water' Bus per coastal node, extendable electricity->water Link, water Store, fixed water Load; component template = add_EVs (device bus + Store + fixed Load), duty-cycle template = the synthetic-fuel links (p_min_pu = sector.min_part_load_*); cost row via data/custom_costs.csv (L3 part)"
       - variant: "feed desalination from a national water dataset via the workflow"
         rung: L4
         note: "needs a new snakemake rule producing nodal water-demand series (siting via the onshore region shapes) plus the L5 component block consuming it"
@@ -85,8 +84,8 @@ models:
         anchor: "scripts/prepare_sector_network.py::add_EVs"
         provenance: "scripts/prepare_sector_network.py:add_EVs"
       - change: "minimum-duty-cycle flexible process pattern"
-        anchor: "scripts/prepare_sector_network.py::add_t_industry100_200 (and the _t_industry siblings; p_min_pu = must_run)"
-        provenance: "scripts/prepare_sector_network.py:add_t_industry100_200; config/config.default.yaml:must_run"
+        anchor: "scripts/prepare_sector_network.py (Fischer-Tropsch / methanolisation / Sabatier links; p_min_pu = sector.min_part_load_*)"
+        provenance: "scripts/prepare_sector_network.py:min_part_load_methanation; config/config.default.yaml:min_part_load_fischer_tropsch"
       - change: "where the new component block belongs"
         anchor: "scripts/prepare_sector_network.py (sector component assembly, alongside add_industry)"
         provenance: "scripts/prepare_sector_network.py:add_industry"

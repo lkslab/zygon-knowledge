@@ -27,7 +27,7 @@ when_to_use:
   - "known in pypsa-eur as: gas pipeline, gas pipeline new"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         A REAL, data-derived gas grid, on by default (sector.gas_network:
@@ -141,7 +141,7 @@ models:
         note: "in add_h2_gas_infrastructure the non-retrofit branch sets p_nom_extendable False with p_nom_max inf unused — flip extendable True and give a CH4 pipeline capital cost (the cost row 'CH4 (g) pipeline' is already used for new pipes)"
       - variant: "add a specific planned pipeline / interconnector"
         rung: L3
-        note: "append a row to the clustered gas network CSV (resources gas_network_base_s_{clusters}.csv) or the upstream gas_network.csv — columns bus0, bus1, p_nom, p_min_pu, length, name"
+        note: "append a row to the clustered gas network CSV (resources gas_network_clustered.csv) or the upstream gas_network.csv — columns bus0, bus1, p_nom, p_min_pu, length, name"
       - variant: "change capacity estimates for poorly-reported pipes"
         rung: L2
         note: "tune the correction thresholds / diameter mapping in build_gas_network.py::prepare_dataset (correction_threshold_p_nom, diameter_to_capacity)"
@@ -177,7 +177,7 @@ models:
       - input: "SciGRID_gas IGGIELGN_PipeSegments.geojson"
         required_for: "the entire pipeline topology and capacities"
         availability: "retrieved by rule retrieve_gas_infrastructure_data (European coverage only)"
-      - input: "clustered onshore/offshore region geometries (regions_onshore_base_s_{clusters})"
+      - input: "clustered onshore/offshore region geometries (onshore_regions.geojson)"
         required_for: "mapping pipe endpoints to gas buses"
         availability: "must be built (clustering chain), default in workflow"
       - input: "cost rows 'CH4 (g) pipeline', 'H2 (g) pipeline repurposed'"

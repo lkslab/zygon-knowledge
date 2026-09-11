@@ -13,7 +13,7 @@ when_to_use:
   - "limit gas burn (CH4L wildcard)"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Nothing methane-as-a-species — emissions accounting is CO2-only and
@@ -21,8 +21,7 @@ models:
         venting, flaring or GWP concept in scripts or config; every "methane"
         hit is an industry energy carrier or pipeline capacity). What exists:
         (1) a gas FUEL budget in the electricity workflow —
-        electricity.gaslimit_enable (or the CH4L opts wildcard, which
-        update_config_from_wildcards translates as TWh x 1e6) makes
+        electricity.gaslimit_enable makes
         add_gaslimit tag carriers with a gas_usage attribute and add a
         GlobalConstraint of electricity.gaslimit MWh_th/a; NOTE its carrier
         set is n.carriers.index.intersection(["OCGT", "CCGT", "CHP"]) and no
@@ -33,8 +32,8 @@ models:
         prepare_costs copies the "gas" row's CO2 intensity onto OCGT and CCGT;
         in sector runs every gas-burning Link books
         costs.at["gas", "CO2 intensity"] to the "co2 atmosphere" bus
-        (add_co2_tracking), capped by the co2_budget chapter via the sector
-        add_co2limit. (3) A live UPSTREAM-chain emissions template — for oil,
+        (add_co2_tracking), capped by the co2_budget chapter via
+        apply_co2_budget_constraints -> add_co2limit in compose_network. (3) A live UPSTREAM-chain emissions template — for oil,
         not gas: with industry.oil_refining_emissions (default 0.013
         tCO2/MWh), add_carrier_buses splits supply into an "oil primary" bus
         plus a refining Link whose efficiency2 emits to the atmosphere. Gas
@@ -70,28 +69,24 @@ models:
         precision matters. The electricity-workflow gaslimit acts on
         Generators only; in sector runs (where gas plants are Links) it has no
         bite and the brake is the gas supply side / CO2 budget instead.
-      provenance: "scripts/prepare_network.py:add_gaslimit; scripts/_helpers.py:update_config_from_wildcards; scripts/add_electricity.py:add_co2_emissions; scripts/process_cost_data.py:prepare_costs; scripts/prepare_sector_network.py:add_co2_tracking; scripts/prepare_sector_network.py:oil_refining_emissions; scripts/prepare_sector_network.py:biogas to gas"
+      provenance: "scripts/prepare_network.py:add_gaslimit; scripts/add_electricity.py:add_co2_emissions; scripts/process_cost_data.py:prepare_costs; scripts/prepare_sector_network.py:add_co2_tracking; scripts/prepare_sector_network.py:oil_refining_emissions; scripts/prepare_sector_network.py:biogas to gas"
     levers:
       - key: electricity.gaslimit_enable
-        effect: "true adds the GasLimit GlobalConstraint (gas_usage attribute on OCGT/CCGT; the 'CHP' member of its carrier list never exists in this workflow). The 'CH4L' opts wildcard sets this key."
+        effect: "true adds the GasLimit GlobalConstraint (gas_usage attribute on OCGT/CCGT; the 'CHP' member of its carrier list never exists in this workflow)."
         default: "false"
         provenance: "config/config.default.yaml:gaslimit_enable; scripts/prepare_network.py:add_gaslimit"
       - key: electricity.gaslimit
-        effect: "The gas budget in MWh_th/a (CH4L<value> passes TWh, multiplied by 1e6)."
+        effect: "The gas budget in MWh_th/a."
         default: "false"
-        provenance: "config/config.default.yaml:gaslimit; scripts/_helpers.py:update_config_from_wildcards"
-      - key: electricity.co2limit_enable
-        effect: "CO2 cap on the electricity workflow — prices whatever sits in the carriers' co2_emissions, including any CO2e uplift added to the gas intensity."
-        default: "false (co2limit: 77500000.0)"
-        provenance: "config/config.default.yaml:co2limit_enable; scripts/prepare_network.py:add_co2limit"
+        provenance: "config/config.default.yaml:gaslimit"
       - key: costs.emission_prices
         effect: "Static or dynamic CO2 price added to generator marginal costs via the carriers' *_emissions attributes — an uplifted gas CO2e intensity turns this into a combined carbon+methane price on gas power."
         default: "{enable: false, co2: 0.0, dynamic: false, rolling_window: 90}"
         provenance: "config/config.default.yaml:emission_prices; scripts/prepare_network.py:add_emission_prices"
       - key: co2_budget
-        effect: "Sector-workflow emissions cap (fraction of 1990 per horizon year, or 'cb...' carbon-budget strings) enforced on the co2 atmosphere accounting — the binding brake on gas use, and on any CO2e uplift, in sector runs."
-        default: "{2020: 0.72, ..., 2050: 0.0}"
-        provenance: "config/config.default.yaml:co2_budget; scripts/prepare_sector_network.py:add_co2limit"
+        effect: "Emissions cap for both workflows: co2_budget.upper per horizon year (fraction of 1990 while relative: true, else tCO2/a; lower adds a floor), turned into a GlobalConstraint by apply_co2_budget_constraints — in the electricity workflow it prices whatever sits in the carriers' co2_emissions (including any CO2e uplift on the gas intensity), in sector runs it binds the co2 atmosphere accounting."
+        default: "upper: {2020: 0.72, ..., 2050: 0.0}, relative: true, emissions_scope: CO2"
+        provenance: "config/config.default.yaml:co2_budget; scripts/prepare_network.py:apply_co2_budget_constraints"
       - key: costs.custom_cost_fn
         effect: "The CO2e-uplift carrier: a data/custom_costs.csv row (technology gas, parameter CO2 intensity) is applied before cost preparation and propagates to OCGT/CCGT and all sector gas links."
         default: "data/custom_costs.csv"
@@ -111,10 +106,10 @@ models:
     boundary:
       - variant: "cap gas burned in power plants (electricity workflow)"
         rung: L0
-        note: "electricity.gaslimit_enable + gaslimit, or 'CH4L<TWh>' in the opts wildcard — a fuel budget, not an emissions species; Generators only"
+        note: "electricity.gaslimit_enable + gaslimit — a fuel budget, not an emissions species; Generators only"
       - variant: "tighten CO2 cap / price (indirectly penalising gas, hence leaks)"
         rung: L1
-        note: "electricity.co2limit / costs.emission_prices in the electricity workflow; co2_budget in sector runs"
+        note: "co2_budget.upper (both workflows) or costs.emission_prices (price instead of cap)"
       - variant: "count methane leakage as CO2e on all gas use"
         rung: L3
         note: "data/custom_costs.csv row: technology 'gas', parameter 'CO2 intensity', value = combustion + leak_rate x GWP x CH4-per-MWh; propagates everywhere automatically — but also scales the biogas-upgrading credit and the CC capture splits that read the same number"

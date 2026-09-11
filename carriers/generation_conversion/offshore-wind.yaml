@@ -19,7 +19,7 @@ when_to_use:
   - "known in pypsa-eur as: offwind, offshore wind, offwind-ac, offshore wind (AC), offshore wind ac, offwind-dc, offshore wind (DC), offshore wind dc"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Fully covered with two fixed-bottom carriers, both default renewable
@@ -47,14 +47,15 @@ models:
         Technology 'Offshore' are force-attached via
         attach_renewable_powerplants under technology_mapping Offshore ->
         'offwind-ac' (ALL existing offshore lands on the ac carrier).
-        Sector runs keep the carriers (pypsa_eur keep-list) and
-        update_wind_solar_costs in prepare_sector_network.py re-derives the
-        same connection-cost formula at the planning-year costs. Myopic
+        Sector runs keep the carriers (pypsa_eur keep-list); compose_network
+        calls attach_wind_and_solar per planning horizon with that horizon's
+        costs, so the connection-cost formula is applied in exactly one place.
+        Myopic
         vintages for offwind-ac via add_existing_renewables; the per-horizon
         land-use bookkeeping in add_land_use_constraint covers offwind-ac/dc.
       mechanism: >
         rule determine_availability_matrix (offshore branch: regions =
-        regions_offshore_base_s_{clusters}.geojson; GEBCO max_depth/min_depth
+        offshore_regions.geojson; GEBCO max_depth/min_depth
         rasters, ship_density raster, min/max_shore_distance geometry
         buffers, natura) -> rule build_renewable_profiles (offshore regions;
         average_distance to the matching onshore region geometry) -> rule
@@ -74,7 +75,7 @@ models:
         No wake modelling beyond the scalar correction_factor 0.8855. No
         international offshore bidding-zone assignment logic beyond the
         offshore Voronoi regions.
-      provenance: "scripts/add_electricity.py:attach_wind_and_solar; scripts/determine_availability_matrix.py:ship_threshold; scripts/determine_availability_matrix.py:max_shore_distance; scripts/build_renewable_profiles.py:average_distance; scripts/prepare_sector_network.py:update_wind_solar_costs; config/config.default.yaml:technology_mapping"
+      provenance: "scripts/add_electricity.py:attach_wind_and_solar; scripts/determine_availability_matrix.py:ship_threshold; scripts/determine_availability_matrix.py:max_shore_distance; scripts/build_renewable_profiles.py:average_distance; config/config.default.yaml:technology_mapping"
     levers:
       - key: electricity.renewable_carriers
         effect: "Include/exclude 'offwind-ac' / 'offwind-dc' (remove for landlocked scopes; the assert in determine_availability_matrix fires if offshore regions are empty)."
@@ -160,23 +161,20 @@ models:
         note: "technology_mapping maps 'Offshore' to a single carrier string; splitting by distance/plant needs a small edit in attach_renewable_powerplants (or curated data/custom_powerplants.csv rows, L3)"
       - variant: "distance-independent or user-defined connection cost formula"
         rung: L2
-        note: "the formula is hardcoded in the supcar == 'offwind' branch of attach_wind_and_solar (and mirrored in prepare_sector_network::update_wind_solar_costs — edit BOTH for sector runs)"
+        note: "the formula is hardcoded in the supcar == 'offwind' branch of attach_wind_and_solar, the single costing site for both workflows since compose_network"
       - variant: "explicit offshore grid: hubs, shared cables, meshed topology as network components"
         rung: L5
         note: "no mechanism — connection is a cost adder; modelled offshore buses/links would be bespoke network construction"
     where:
       - change: "offshore eligibility masks (depth, shore bands, shipping, natura)"
         anchor: "scripts/determine_availability_matrix.py (offshore branch; rule determine_availability_matrix with regions_offshore input)"
-        provenance: "scripts/determine_availability_matrix.py:max_depth; rules/build_electricity.smk:regions_offshore_base_s_{clusters}.geojson"
+        provenance: "scripts/determine_availability_matrix.py:max_depth; rules/build_electricity.smk:offshore_regions"
       - change: "profile + average_distance computation over offshore regions"
         anchor: "scripts/build_renewable_profiles.py (offwind branch: distance to onshore region shapes)"
         provenance: "scripts/build_renewable_profiles.py:offshore_regions; scripts/build_renewable_profiles.py:average_distance"
       - change: "connection-cost formula + generator attachment"
         anchor: "scripts/add_electricity.py::attach_wind_and_solar (supcar == 'offwind' branch)"
         provenance: "scripts/add_electricity.py:connection_cost"
-      - change: "sector-run re-costing of offshore carriers"
-        anchor: "scripts/prepare_sector_network.py::update_wind_solar_costs"
-        provenance: "scripts/prepare_sector_network.py:update_wind_solar_costs"
       - change: "existing-fleet carrier assignment"
         anchor: "scripts/add_electricity.py::attach_renewable_powerplants (electricity.estimate_renewable_capacities.technology_mapping)"
         provenance: "scripts/add_electricity.py:attach_renewable_powerplants"
@@ -193,7 +191,7 @@ models:
       - input: "ship density raster (rule build_ship_raster)"
         required_for: "ship_threshold exclusion"
         availability: "built by the workflow from retrieved ship density data"
-      - input: "offshore_shapes.geojson + regions_offshore_base_s_{clusters}.geojson (EEZ-based bus regions) and country_shapes.geojson for shore-distance buffers"
+      - input: "offshore_shapes.geojson + offshore_regions.geojson (EEZ-based bus regions) and country_shapes.geojson for shore-distance buffers"
         required_for: "siting area, per-bus aggregation, shore bands"
         availability: "built by rules build_shapes / simplify_network / cluster_network"
       - input: "natura.tiff raster"

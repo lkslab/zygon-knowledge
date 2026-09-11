@@ -29,81 +29,115 @@ when_to_use:
 - corporate PPA or hourly PPA structure for a C&I load
 models:
 - model: pypsa-eur
-  coverage: gap
+  coverage: partial
   approach: >-
-    Nothing in pypsa-eur implements a procurement rule: loads are fixed p_set profiles
-    on the zonal AC bus, no constraint ties a consumer's draw to any generator's output,
-    and greps for temporal_matching, additionality, CFE and 24/7 return nothing at
-    this ref (Riepin 2024's PyPSA-Eur study added its own components; that fork was
-    never merged). Out of the box you get the no-rule rung: add the consumer as a
-    Load at a bus (attach_load in add_electricity.py, L2 — there is no data-centre
-    load category) and the ordinary solve prices serving it on the grid mix; single-asset-cba
-    runs exactly that as a PINT demand variant against a fixed reference, and that
-    reference network is the counterfactual an additionality constraint subtracts.
-    The matching constraint itself lands in the module named by solving.options.custom_extra_functionality
-    (default '../data/custom_extra_functionality.py', a no-op stub): weighted Generator-p
-    plus StorageUnit-p_dispatch of the contracted set >= x times the consumer's weighted
-    draw, one row per window via groupby on snapshot, snapshot.month or snapshot.year.
-    Copy the bus/country groupers from add_EQ_constraints, port pypsa-earth's hydrogen_temporal_constraint
-    for the window loop, and apply n.snapshot_weightings on both sides. Today a study
-    delivers the no-rule cost and the price series; every matching regime is constraint
-    code you write.
+    The matching rule now ships as the zygon_cfe payload cited by the hourly-matching
+    and annual-matching methods, built to Riepin 2024's design: build_cfe_network puts
+    ONE participating consumer (a flat load at its own bus behind the zone's AC bus)
+    with a contracted portfolio of new assets cloned from the zone's own onwind, solar,
+    battery, H2-chain and firm components, an import link and a capped export link;
+    zygon_cfe_constraints adds the rule at solve time as the solve rule's own
+    custom_extra_functionality — one row per snapshot (hour), per calendar month, or
+    per year, plus the 20% excess cap and an optional portfolio-only charging rule; and
+    zygon_cfe_collect turns the run set (nomatch / annual / monthly / hourly x CFE
+    score) into the consumer's premium in EUR/MWh over the grid-mix purchase, the
+    system-cost delta, the ex-post CFE score, the procured mix and scope-2 emissions.
+    The CFE score sweep is the emission-reduction ladder: 0.8 to 1.0 hourly, against
+    the annual rung and no rule. Grid imports are uncredited by default (one linear
+    solve); Riepin's bilinear grid-CFE credit is a documented two-pass. Partial rather
+    than ready: the payload is code this config-only deployment cannot execute itself,
+    it has been exercised standalone (rows counted per window on the 3-hourly fixture)
+    but not through an eval solve, and additionality, cross-zone deliverability and
+    gCO2/kWh certification remain readings, not constraints.
   pitfalls:
   - >-
-    the snapshot resolution IS the strictness — Riepin 2024 ran 3-hourly (2920 snapshots),
-    so published hourly-matching costs are lower bounds; TSAM segmentation is worse
-    than averaging
+    the pypsa-eur section was re-anchored to upstream a6c45e5 (2026-09-10) without a
+    re-run: every verification claim below predates the streamlined workflow (#1838 —
+    no wildcards, compose_network/solve_network, planning_horizons and co2_budget as
+    plain config), so treat its numbers as unconfirmed until an eval on an a6c45e5
+    install
   - >-
-    annual matching that credits storage discharge is satisfiable by a battery charged
-    on fossil power
+    the snapshot resolution IS the strictness — the de1 fixture is 3-hourly, so
+    "hourly" matching there is 3-hourly matching and the premium is a lower bound
+    (Riepin 2024 ran 2920 snapshots too); never coarsen further, and never segment
   - >-
-    crediting grid imports at the grid's hourly CFE share makes the constraint bilinear
-    — Riepin 2024 fixed-point iterated from CFE_t = 0 and reports convergence in 2
-    passes; or drop the credit and keep one linear solve
+    an annual rule that credits storage discharge is satisfiable by a battery charged
+    on fossil power — credit_storage.year stays false, and the collected scope-2 number
+    is what shows the annual rule moving emissions rather than cutting them
   - >-
-    additionality is a two-solve counterfactual or Schumm 2025's build-year filter
-    (RE built within 3 years before the consumer); neither exists in the model
+    what counts is a formulation choice the payload makes explicit (basis): the hourly
+    rule counts dispatched supply plus NET storage minus excess (Riepin Eq. 2), the
+    annual and monthly windows count the contracted plants' AVAILABLE generation, the
+    volume a PPA sells whether consumed, sold or curtailed — crediting gross discharge
+    or dispatched generation under a binding excess cap made the first end-to-end runs
+    build a lossy charger/discharger loop as an energy sink
   - >-
-    same-zone deliverability is a grouper you write, and nothing tracks a GO or REC
-    through storage
+    crediting grid imports at the grid's hourly CFE share is bilinear — the payload
+    runs linear by default; the two-pass (grid_cfe.series pointed at the collector's
+    grid_cfe_factor.csv) is an assumption until you report the passes and the residual
+  - >-
+    additionality is a reading, not a constraint: the portfolio is new by construction
+    and zygon_cfe.baseline gives the counterfactual objective, but the background
+    system re-optimises around the consumer; Schumm 2025's build-year filter is not
+    implemented
+  - >-
+    deliverability is the consumer's own zone bus by construction — a portfolio spread
+    over zones needs a second consumer or code, and nothing tracks a GO or REC through
+    storage
+  - >-
+    the installed baseline sets solving.options.custom_extra_functionality to "" and
+    the payload rule passes its own hook, so a user hook is bypassed on
+    solve_cfe_network only
   - >-
     solving.constraints.EQ is annual self-sufficiency, not matching, and a bare EQ
     token crashes
   - >-
-    there is no gCO2/kWh column: scope-2 numbers are post-processing over the energy
-    balance and move with average-vs-marginal and generation-vs-consumption basis
+    there is no gCO2/kWh column: scope-2 is the collector's import x zonal hourly
+    generation intensity, an average not a marginal, and it moves with the basis
   - >-
     strictness redistributes cost as much as it adds it — report the price duration
     curve and non-participating consumers' cost beside the premium
-  - verify any hook constraint by counting constraint rows against the window count
+  - >-
+    the hook logs matching rows against the window count and raises on a mismatch;
+    read the solver log before believing a variant, and check n.meta['zygon_cfe']
   methods:
-  - id: single-asset-cba
+  - id: hourly-matching
     role: >-
-      the no-rule rung and the additionality reference: PINT the consumer as a demand
-      op against the fixed reference — B1 is the grid-mix cost of serving the load,
-      and the solved reference is the counterfactual network a matching-with-additionality
-      constraint subtracts
+      the headline: Riepin's 24/7 rule as a CFE-score sweep (hourly-090/098/100) in
+      one run set with the no-rule counterfactual — premium per MWh, system-cost
+      delta, procured mix, scope-2, and the grid-CFE two-pass when imports must count
+  - id: annual-matching
+    role: >-
+      the volumetric rungs the premium is measured against: the 100% renewable PPA
+      (one row over the year, storage uncredited) and the monthly RFNBO regime, from
+      the same payload and config block
   - id: price-formation
     role: >-
-      the cost to everyone else: bounded hourly prices with a declared VOLL and the
-      price duration curve per regime — strictness is a cost allocation across the
-      system, not a line item on the consumer
+      the cost to everyone else: bounded prices with a declared VOLL and all duals,
+      and the price duration curve per regime — strictness is a cost allocation across
+      the system, not a line item on the consumer
   - id: multi-scenario
     role: >-
-      the regime sweep once the constraint exists in the hook: no rule / annual /
-      monthly / hourly x CFE score as run.scenarios overrides read by your custom_extra_functionality
-      module, with harmonised cost, capacity and price collection — it fans out runs,
-      it does not supply the constraint
+      the background dimension: background CO2 policy or target year as run.scenarios
+      overrides, and its collect rule composes with zygon_cfe.networks for harmonised
+      cost, capacity and price tables across regimes — it fans out runs, the constraint
+      lives in the payload
+  - id: single-asset-cba
+    role: >-
+      the additionality reference read the guideline way: PINT the consumer alone as a
+      demand op against the fixed reference — B1 is the grid-mix cost of serving the
+      load, the number the premium starts from
   defaults:
   - aspect: no-procurement-rule
     is: >-
-      loads are fixed p_set profiles on the zonal AC bus and nothing constrains where
-      their electricity comes from — a default run is the no-rule counterfactual,
+      loads are fixed p_set profiles on the low-voltage buses and nothing constrains
+      where their electricity comes from — a default run is the no-rule counterfactual,
       the grid-mix cost of serving the load, not a 100% renewable PPA and not a CFE
       score
     note: >-
-      solving.options.custom_extra_functionality defaults to '../data/custom_extra_functionality.py',
-      a no-op stub — the hook is wired, the constraint is not.
+      the installed baseline sets solving.options.custom_extra_functionality to ""; the
+      zygon_cfe solve rule passes its own hook, so no config edit turns the rule on
+      outside that rule.
   plots:
   - id: price_duration
     role: >-
@@ -111,9 +145,11 @@ models:
       with
   - id: dispatch_weeks
     role: 'what the rule buys: the hourly balance in the weeks where matching binds'
+  - id: compare_system_cost
+    role: 'what the rule costs the system: total cost per regime beside the premium'
   version_anchor:
-    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
-    date: '2026-09-10'
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
 - model: pypsa-earth
   coverage: partial
   approach: >-

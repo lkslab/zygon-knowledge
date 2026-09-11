@@ -1,13 +1,13 @@
 --- a/config/config.default.yaml
 +++ b/config/config.default.yaml
-@@ -465,6 +465,23 @@
+@@ -460,6 +460,23 @@
    length_factor: 1.25
    under_construction: keep
  
 +
 +# Zygon methods payload `single-asset-cba` — TYNDP-style TOOT/PINT run set.
 +# Consumed by rules/zygon_cba.smk -> scripts/build_cba_network.py /
-+# zygon_cba_collect.py; docs in cookbooks/methods/single-asset-cba/spec.yaml.
++# zygon_cba_collect.py; docs in methods/single-asset-cba/spec.yaml.
 +# Each variant is an ordered operation list applied to the prepared network;
 +# the reference label carries an empty list; every other label MUST start
 +# pint- (asset put in) or toot- (asset taken out). Ops: add (new component

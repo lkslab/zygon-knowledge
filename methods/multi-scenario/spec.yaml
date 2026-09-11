@@ -19,8 +19,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
-    date: '2026-08-02'
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
   baseline: config.de.yaml
   execution:
   - kind: config
@@ -46,7 +46,7 @@ models:
       policy: base
       exclude:
       - costs_
-    note: 'share the pre-add_electricity chain ONCE across runs. costs_ must be excluded:
+    note: 'share the pre-compose_network chain ONCE across runs. costs_ must be excluded:
       producer is run-scoped but consumers resolve the horizon before the sharing
       decision (asymmetry verified 2026-08-02).
 
@@ -55,7 +55,7 @@ models:
     target: config/scenarios.yaml
     do: 'author one top-level key per run.name entry carrying that variant''s config
       overrides (test: co2_budget.2050 = 0.0 / 0.05 / 0.2). Overrides must hit keys
-      consumed at add_electricity or LATER — upstream keys live in the shared chain
+      consumed at compose_network or LATER — upstream keys live in the shared chain
       and would be silently dead.
 
       '
@@ -63,9 +63,9 @@ models:
     key: zygon_collect
     value:
       networks:
-      - results/co2-tight/networks/base_s_5__168H_2050.nc
-      - results/co2-ref/networks/base_s_5__168H_2050.nc
-      - results/co2-loose/networks/base_s_5__168H_2050.nc
+      - results/co2-tight/networks/solved_2050.nc
+      - results/co2-ref/networks/solved_2050.nc
+      - results/co2-loose/networks/solved_2050.nc
       labels:
       - co2-tight
       - co2-ref
@@ -88,6 +88,7 @@ models:
   - kind: payload
     note: 'rules/zygon_collect.smk + scripts/zygon_collect.py; patches the Snakefile
       include list and appends the zygon_collect: config section.
+      Rebased on a6c45e5 (2026-09-10), not yet re-run against an a6c45e5 install.
 
       '
   - kind: invocation
@@ -97,8 +98,8 @@ models:
 
       '
   invalidates:
-  - prepare_sector_network
-  - solve_sector_network
+  - compose_network
+  - solve_network
   - zygon_collect
   budget:
     jobs: 130

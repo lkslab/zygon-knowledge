@@ -1,0 +1,169 @@
+id: hourly-matching
+title: hourly matching — 24/7 carbon-free procurement for one consumer (Riepin 2024)
+family: markets-and-prices
+what: 'Put ONE participating consumer (a data centre, a campus, an electrolyser
+  draw) behind its zone''s AC bus with a contracted portfolio of NEW assets in that
+  zone — wind, solar, battery, optionally an H2 chain and clean firm, cloned from
+  the zone''s own components — and require in EVERY snapshot that contracted
+  generation plus credited storage discharge minus excess sales cover a CFE score
+  x of its load (Riepin et al. 2024, Eq. 2). Sweep x against a no-rule case and
+  the annual PPA rung; read the premium in EUR/MWh, the system-cost delta, the
+  ex-post CFE score, the procured mix and scope-2.
+
+  '
+when_to_use:
+- how much more expensive is 24/7 hourly-matched clean power than a renewable PPA
+- CFE score sweep for a data centre or C&I consumer
+- what mix of wind, solar, storage and firm does an hourly rule buy
+- who pays for strictness — price duration curve beside the premium
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+  baseline: config.de1.yaml
+  execution:
+  - kind: config
+    key: zygon_cfe
+    value:
+      consumer:
+        name: datacentre
+        bus: DE0 0AC
+        p_mw: 100
+        profile: flat
+        grid_capacity: 10
+      palette:
+      - onwind
+      - solar
+      - battery
+      potential_share: 1.0
+      excess_share: 0.2
+      credit_storage:
+        hour: true
+        month: true
+        year: false
+      charge_from_portfolio_only: false
+      basis:
+        year: available
+        month: available
+        hour: dispatched
+      grid_cfe:
+        series: null
+      reference: nomatch
+      variants:
+        nomatch:
+          window: none
+        annual-100:
+          window: year
+          score: 1.0
+        hourly-090:
+          window: hour
+          score: 0.9
+        hourly-098:
+          window: hour
+          score: 0.98
+        hourly-100:
+          window: hour
+          score: 1.0
+      labels:
+      - nomatch
+      - annual-100
+      - hourly-090
+      - hourly-098
+      - hourly-100
+      networks:
+      - results/germany-2n/cfe/nomatch/solved_2050.nc
+      - results/germany-2n/cfe/annual-100/solved_2050.nc
+      - results/germany-2n/cfe/hourly-090/solved_2050.nc
+      - results/germany-2n/cfe/hourly-098/solved_2050.nc
+      - results/germany-2n/cfe/hourly-100/solved_2050.nc
+      indicators:
+      - procurement_cost
+      - premium
+      - system_cost_delta
+      - cfe_score
+      - procured_capacity
+      - scope2_emissions
+      - grid_exchange
+    note: 'a 100 MW flat load at DE0 0AC with wind+solar+battery (Riepin palette 1;
+      add ldes and firm for palettes 2/3); x swept 0.9/0.98/1.0 against the no-rule
+      and annual rungs. A real study names its own consumer, bus and scores.
+
+      '
+  - kind: config
+    key: solving.options.load_shedding
+    value:
+      enable: true
+      default_cost: 2000
+    note: 'declared VOLL so grid imports and everyone else''s prices are bounded
+      by a number you can defend (the price-formation setting); add
+      solving.options.assign_all_duals: true for storage duals.
+
+      '
+  - kind: payload
+    note: 'rules/zygon_cfe.smk + build_cfe_network.py (consumer + palette as new
+      prefixed components) + zygon_cfe_constraints.py (the rule, passed as the
+      solve rule''s OWN custom_extra_functionality — a user hook is bypassed on
+      that rule) + zygon_cfe_collect.py; patches Snakefile + config.
+      Rebased on a6c45e5 (2026-09-10), not yet re-run against an a6c45e5 install.
+
+      '
+  - kind: invocation
+    note: 'extra_targets results/zygon_cfe/{zygon_cfe.indicators}.csv; verify_networks:
+      solved = {zygon_cfe.networks} (one per variant) + collected = the indicator
+      CSVs. Optional zygon_cfe.baseline: the untouched baseline network for the
+      additionality reading.
+
+      '
+  invalidates:
+  - build_cfe_network
+  - solve_cfe_network
+  - zygon_cfe_collect
+  budget:
+    jobs: 16
+    class: hours
+  success_metric:
+  - name: consumer-landed
+    needs: solved
+    check: all('zcfe:datacentre:load' in nv[v].loads.index and abs(float(nv[v].loads_t.p_set['zcfe:datacentre:load'].mean())
+      - 100.0) < 1e-6 for v in nv)
+    expect: every variant carries the 100 MW consumer load at its own bus
+  - name: hourly-rule-holds
+    needs: solved
+    check: all(((nv[v].generators_t.p[[g for g in nv[v].generators.index if g.startswith('zcfe:datacentre:')]].sum(axis=1)
+      + (-nv[v].links_t.p1[[l for l in nv[v].links.index if l.startswith('zcfe:datacentre:') and nv[v].links.at[l, 'bus1'] == 'zcfe:datacentre:bus' and nv[v].links.at[l, 'carrier'] != 'zcfe import']]).clip(lower=0).sum(axis=1)
+      - nv[v].links_t.p0[[l for l in nv[v].links.index if l.startswith('zcfe:datacentre:') and nv[v].links.at[l, 'bus0'] == 'zcfe:datacentre:bus' and nv[v].links.at[l, 'carrier'] != 'zcfe export']].clip(lower=0).sum(axis=1)
+      - nv[v].links_t.p0['zcfe:datacentre:export']) >= float(v.split('-')[1]) / 100 * nv[v].loads_t.p_set['zcfe:datacentre:load'] - 0.1).all() for v in nv if v.startswith('hourly-'))
+    expect: 'in every hourly variant contracted generation + net storage (delivered minus drawn) - export covers x times the load at every snapshot'
+  - name: annual-rule-holds
+    needs: solved
+    check: (nv['annual-100'].snapshot_weightings.generators @ (nv['annual-100'].generators_t.p_max_pu[[g for g in nv['annual-100'].generators.index if g.startswith('zcfe:datacentre:') and g in nv['annual-100'].generators_t.p_max_pu.columns]] * nv['annual-100'].generators.p_nom_opt[[g for g in nv['annual-100'].generators.index if g.startswith('zcfe:datacentre:') and g in nv['annual-100'].generators_t.p_max_pu.columns]]).sum(axis=1)) >= 0.999 * (nv['annual-100'].snapshot_weightings.generators @ nv['annual-100'].loads_t.p_set['zcfe:datacentre:load'])
+    expect: the annual variant's contracted plants can generate its yearly demand (available basis, the PPA volume) — storage is not credited (year false)
+  - name: excess-capped
+    needs: solved
+    check: all((nv[v].snapshot_weightings.generators @ nv[v].links_t.p0['zcfe:datacentre:export']) <= 0.2 * (nv[v].snapshot_weightings.generators @ nv[v].loads_t.p_set['zcfe:datacentre:load']) + 1.0 for v in nv if v != 'nomatch')
+    expect: excess sales to the grid stay within 20% of the consumer's annual demand in every matched variant
+  - name: strictness-costs
+    needs: solved
+    check: float(nv['hourly-100'].objective) >= float(nv['hourly-098'].objective) - 1e-6 * abs(float(nv['nomatch'].objective)) and float(nv['hourly-098'].objective) >= float(nv['hourly-090'].objective) - 1e-6 * abs(float(nv['nomatch'].objective)) and float(nv['hourly-090'].objective) >= float(nv['nomatch'].objective) - 1e-6 * abs(float(nv['nomatch'].objective)) and float(nv['annual-100'].objective) >= float(nv['nomatch'].objective) - 1e-6 * abs(float(nv['nomatch'].objective))
+    expect: 'nested feasible sets: a stricter CFE score never lowers system cost, and any rule costs at least the no-rule case'
+  - name: premium-is-delta
+    needs: solved
+    check: all(abs(float(collected['premium'].set_index('network')['value'][v]) - (float(collected['procurement_cost'].set_index('network')['value'][v]) - float(collected['procurement_cost'].set_index('network')['value']['nomatch']))) < 1e-6 for v in set(collected['premium']['network']))
+    expect: the collected premium is the consumer's procurement cost minus the no-rule grid-purchase cost, per MWh
+  - name: indicators-complete
+    needs: solved
+    check: set(collected) >= {'procurement_cost', 'premium', 'system_cost_delta', 'cfe_score', 'procured_capacity', 'scope2_emissions', 'grid_exchange'} and all({'network', 'value'} <= set(collected[q].columns) and collected[q]['value'].notna().all() for q in collected) and set(collected['premium']['network']) == set(nv)
+    expect: one long-format CSV per indicator, every variant present, no NaN
+notes: 'The snapshot resolution IS the strictness: on the 3h fixture this is 3-hourly
+  matching, so the premium is a lower bound (Riepin ran 3-hourly too). Imports are
+  uncredited by default (linear, one solve); to credit them at the grid''s hourly
+  carbon-free share (Riepin''s bilinear form) run once, point grid_cfe.series at
+  results/zygon_cfe/grid_cfe_factor.csv and rerun — two passes converged in the paper.
+  Storage is credited NET (delivered minus drawn); the hourly rule counts dispatched
+  supply minus excess, the year/month windows count available generation (basis) —
+  counting dispatch there made the LP build a lossy loop as a sink. Additionality is
+  read against zygon_cfe.baseline. Report non-participants'' price duration curve
+  beside the premium: strictness redistributes cost.
+
+  '

@@ -30,6 +30,12 @@ models:
     named intervention.
   pitfalls:
   - >-
+    the pypsa-eur section was re-anchored to upstream a6c45e5 (2026-09-10) without a
+    re-run: every verification claim below predates the streamlined workflow (#1838 —
+    no wildcards, compose_network/solve_network, planning_horizons and co2_budget as
+    plain config), so treat its numbers as unconfirmed until an eval on an a6c45e5
+    install
+  - >-
     splitting B1 into producer/consumer surplus per side and congestion rent is manual:
     read nodal prices and link duals off the solved pair yourself
   - >-
@@ -41,8 +47,9 @@ models:
     TOOT and PINT are order-dependent when several projects queue, so each asset needs
     its own run set against the same reference
   - >-
-    at this ref the ATK opts token KeyErrors (use electricity.autarky for a no-interconnection
-    counterfactual) and a bare EQ token crashes (always give a value)
+    there are no opts tokens at a6c45e5: a no-interconnection counterfactual is
+    electricity.autarky (enforce_autarky in prepare_network.py), and anything the old EQ /
+    ATK tokens did must be expressed as a config key or a code change
   methods:
   - id: existing-fleet
     role: >-
@@ -78,8 +85,8 @@ models:
       a strict fixed-reference-grid reading wants expansion frozen — see the transmission-expansion-projects
       carrier card for the levers.
   version_anchor:
-    ref: 849c8858d2536ccf8eed0c2e838d22a474a7ee5d
-    date: '2026-08-07'
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
 - model: pypsa-earth
   coverage: ready
   approach: >-

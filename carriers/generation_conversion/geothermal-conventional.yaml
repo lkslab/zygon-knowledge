@@ -17,7 +17,7 @@ when_to_use:
   - "known in pypsa-eur as: geothermal, geothermal heat, geothermal district heat, geothermal heat direct utilisation, geothermal organic rankine cycle"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Two distinct sides. POWER (electricity workflow, on by default):
@@ -47,12 +47,12 @@ models:
         bypasses the heat pump in hours where the source temperature exceeds
         the network forward temperature.
       mechanism: >
-        Power: rule build_powerplants -> rule add_electricity
+        Power: rule build_powerplants -> rule compose_network
         (attach_conventional_generators; carriers restricted to those present
         in the powerplant data). Heat: rule
         retrieve_geothermal_heat_utilisation_potentials -> rule
         build_geothermal_heat_potential ->
-        heat_source_power_geothermal_base_s_{clusters}.csv, requested as a
+        heat_source_power_geothermal.csv, requested as a
         prepare_sector_network input by input_heat_source_power only when
         "geothermal" is in sector.heat_pump_sources."urban central"; consumed
         in add_heat's heat-source loop (limited_heat_sources branch +
@@ -153,7 +153,7 @@ models:
         note: "add a conventional config block (conventional: {geothermal: {p_max_pu: 0.9}}) — the conventional_params machinery applies any generator attribute per carrier, a 'data/' CSV path gives per-country values (the nuclear block is the template)"
     where:
       - change: "power fleet attachment + extendable candidates + per-carrier attribute overrides"
-        anchor: "scripts/add_electricity.py::attach_conventional_generators (rule add_electricity; conventional_params)"
+        anchor: "scripts/add_electricity.py::attach_conventional_generators (rule compose_network; conventional_params)"
         provenance: "scripts/add_electricity.py:attach_conventional_generators"
       - change: "carrier CO2 intensity attachment (geothermal emits 0.12 tCO2/MWh here)"
         anchor: "scripts/add_electricity.py::add_co2_emissions"

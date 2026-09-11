@@ -23,7 +23,7 @@ when_to_use:
   - "known in pypsa-eur as: NH3, ammonia, ammonia store, ammonia cracker, Haber-Bosch"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         An ammonia economy is ON by default (sector.ammonia: true).
@@ -50,7 +50,7 @@ models:
         NH3 buses. Myopic runs carry built Haber-Bosch/cracker/store
         capacity forward via add_brownfield.
       mechanism: >
-        rule prepare_sector_network calls add_ammonia when
+        rule compose_network calls add_ammonia when
         options["ammonia"] is truthy; the NH3 industry Load is added inside
         add_industry (also gated by options["ammonia"] — switching ammonia
         off removes the demand along with the supply chain, it does not

@@ -15,7 +15,7 @@ when_to_use:
   - "known in pypsa-eur as: links, HVDC links, DC, DC-DC, DC link"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "849c8858d2536ccf8eed0c2e838d22a474a7ee5d", date: "2026-07-23"}
+    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
     out_of_box:
       covers: >
         Fully covered on the existing-asset side and — unlike pypsa-earth —
@@ -39,7 +39,8 @@ models:
         extendable together with AC lines by electricity.transmission_limit
         (default vopt: p_nom_min = p_nom, p_nom_extendable, joint
         GlobalConstraint over carrier_attribute "AC, DC"), with per-link growth
-        capped by links.max_extension (30000 MW, set_line_nom_max). Candidate
+        capped by links.p_nom_max_extension (30000 MW,
+        cap_transmission_capacity). Candidate
         NEW interconnectors come from transmission_projects (TYNDP2020, German
         NEP, manual list — see transmission-expansion-projects carrier card), entering
         as DC Links with p_nom 0 by default (new_link_capacity: zero). In
@@ -52,9 +53,10 @@ models:
         rule base_network (DC Links, converters) -> rule
         add_transmission_projects_and_dlr (project links appended) -> rule
         simplify_network (remove_converters, simplify_links) -> rule
-        cluster_network -> rule add_electricity / rule prepare_network
-        (set_transmission_costs, set_transmission_limit, set_line_nom_max) ->
-        rule solve_network. Sector chain: rule prepare_sector_network runs
+        cluster_network -> rule compose_network, which calls add_electricity.py
+        and prepare_network.py (set_transmission_costs, set_transmission_limit,
+        cap_transmission_capacity) -> rule solve_network. Sector chain: the
+        prepare_sector_network.py part of compose_network runs
         lossy_bidirectional_links for every carrier listed in
         sector.transmission_efficiency.enable (includes "DC").
       not_covered: >
@@ -85,14 +87,14 @@ models:
         effect: "Lower per-unit flow bound (asymmetric ratings possible by setting it differently from -p_max_pu)."
         default: "-1.0"
         provenance: "config/config.default.yaml:p_min_pu; scripts/base_network.py:_set_electrical_parameters_links_raw"
-      - key: links.max_extension
-        effect: "Per-link cap on capacity growth: p_nom_max = p_nom + max_extension for carrier-DC links (set_line_nom_max; limit_individual_line_extension in sector runs)."
+      - key: links.p_nom_max_extension
+        effect: "Per-link cap on capacity growth: p_nom_max = p_nom + p_nom_max_extension for carrier-DC links (cap_transmission_capacity in prepare_network, run inside compose_network for both workflows)."
         default: "30000 (MW)"
-        provenance: "config/config.default.yaml:max_extension; scripts/prepare_network.py:set_line_nom_max"
+        provenance: "config/config.default.yaml:p_nom_max_extension; scripts/prepare_network.py:cap_transmission_capacity"
       - key: links.p_nom_max
         effect: "Absolute upper clip on link capacity after extension headroom."
         default: ".inf"
-        provenance: "config/config.default.yaml:p_nom_max; scripts/prepare_network.py:set_line_nom_max"
+        provenance: "config/config.default.yaml:p_nom_max; scripts/prepare_network.py:cap_transmission_capacity"
       - key: links.under_construction
         effect: "Handling of DC assets flagged under construction in the base data: 'keep' (default, full capacity), 'zero', 'remove'."
         default: "keep"
@@ -116,7 +118,7 @@ models:
     boundary:
       - variant: "let existing HVDC links expand cost-optimally"
         rung: L0
-        note: "default — transmission_limit vopt includes carrier-DC links; per-link headroom capped at links.max_extension"
+        note: "default — transmission_limit vopt includes carrier-DC links; per-link headroom capped at links.p_nom_max_extension"
       - variant: "candidate pipeline of planned interconnectors (TYNDP2020 / German NEP)"
         rung: L0
         note: "default on — transmission_projects.enable with include.tyndp2020/nep true, status filter [under_construction, in_permitting, confirmed]"
@@ -131,7 +133,7 @@ models:
         note: "sector runs: on by default via sector.transmission_efficiency (DC 0.98 static + 0.977/1000km); electricity-only runs: no config hook — set link efficiency in _set_electrical_parameters_links_raw (L2), noting bidirectional efficiency needs the lossy split"
       - variant: "freeze only DC while allowing AC expansion (or vice versa)"
         rung: L2
-        note: "transmission_limit acts on AC+DC jointly; a DC-only freeze needs a localised edit in set_transmission_limit (links_dc_b block) or fixing p_nom_max = p_nom for DC after set_line_nom_max"
+        note: "transmission_limit acts on AC+DC jointly; a DC-only freeze needs a localised edit in set_transmission_limit (links_dc_b block) or fixing p_nom_max = p_nom for DC after cap_transmission_capacity"
       - variant: "correct a wrong existing DC capacity"
         rung: L3
         note: "no config override; fix the source dataset (data.osm.source: build) or author an adjust_links transmission-project CSV row (n.links.update in attach_transmission_projects)"
@@ -152,8 +154,8 @@ models:
         anchor: "scripts/add_electricity.py::set_transmission_costs (rows 'HVDC overhead' / 'HVDC submarine' / 'HVDC inverter pair')"
         provenance: "scripts/add_electricity.py:set_transmission_costs; scripts/base_network.py:_set_links_underwater_fraction"
       - change: "DC expansion bounds in the LP"
-        anchor: "scripts/prepare_network.py::set_transmission_limit (links_dc_b selection) and ::set_line_nom_max"
-        provenance: "scripts/prepare_network.py:set_transmission_limit; scripts/prepare_network.py:set_line_nom_max"
+        anchor: "scripts/prepare_network.py::set_transmission_limit (links_dc_b selection) and ::cap_transmission_capacity"
+        provenance: "scripts/prepare_network.py:set_transmission_limit; scripts/prepare_network.py:cap_transmission_capacity"
       - change: "candidate interconnector projects"
         anchor: "rule build_transmission_projects -> scripts/build_transmission_projects.py::add_projects; attached by scripts/add_transmission_projects_and_dlr.py::attach_transmission_projects"
         provenance: "scripts/build_transmission_projects.py:add_projects; scripts/add_transmission_projects_and_dlr.py:attach_transmission_projects"
