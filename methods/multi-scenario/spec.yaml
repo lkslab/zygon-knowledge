@@ -8,7 +8,10 @@ what: 'Optimise N variants of one system that differ by declared parameters, the
   label column, the hook''s index columns, `value`). Collection input is an explicit
   path list, so it composes with networks other methods produce (e.g. myopic horizons).
   Eur variants ride the native run.scenarios mechanism; earth ships a declarative
-  prepared-network modifier.
+  prepared-network modifier. NOTE (2026-09-11): the pypsa-app consultant fans a
+  study''s scenarios out as one run per scenario itself (one folded config each,
+  never run.scenarios), so do not combine this method with the app''s scenarios
+  key; it is for a single-workflow fan-out with harmonised collection only.
 
   '
 when_to_use:
@@ -21,7 +24,6 @@ models:
   version_anchor:
     ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
     date: '2026-09-09'
-  baseline: config.de.yaml
   execution:
   - kind: config
     key: run.scenarios.enable
@@ -144,7 +146,6 @@ models:
   version_anchor:
     ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
     date: '2026-08-02'
-  baseline: null
   execution:
   - kind: config
     key: zygon_scenarios

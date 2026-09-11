@@ -21,7 +21,6 @@ models:
   version_anchor:
     ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
     date: '2026-09-09'
-  baseline: config.de1.yaml
   execution:
   - kind: config
     key: zygon_cfe

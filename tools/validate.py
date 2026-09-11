@@ -43,8 +43,10 @@ def submodule_gitlink(path: str) -> str | None:
 def main() -> int:
     r = load_restructure()
     r.ANCHORS["pypsa-eur"] = EUR_ANCHOR
-    # CLAUDE.md and tools/ postdate the frozen TOP_LEVEL set.
+    # CLAUDE.md and tools/ postdate the frozen TOP_LEVEL set; baselines/ was
+    # removed on 2026-09-11 when the app dropped baseline runs.
     r.TOP_LEVEL |= {"CLAUDE.md", "tools"}
+    r.TOP_LEVEL -= {"baselines"}
     errors: list[str] = []
 
     staged = subprocess.run(

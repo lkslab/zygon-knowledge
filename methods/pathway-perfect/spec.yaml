@@ -21,7 +21,6 @@ models:
   version_anchor:
     ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
     date: '2026-08-01'
-  baseline: null
   execution:
   - kind: config
     key: foresight

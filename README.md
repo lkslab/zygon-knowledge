@@ -12,7 +12,6 @@ below at runtime; bump the pin to ship new content.
 | `carriers/generation_conversion/<slug>.yaml`, `carriers/demand/<slug>.yaml` | carrier cards: one per technology or demand segment, shared across models | `id, title, summary, when_to_use[], models[]` where each entry is `{model, version_anchor, out_of_box, levers[], boundary[{variant, rung, note}], where[], data_dependencies[]}` |
 | `methods/<slug>.yaml` or `methods/<slug>/spec.yaml` + `payload/<model>/` | executable method specs, only the ones a topic cites | `id, title, family, what, when_to_use[], models[]` with `execution[]`, `invalidates[]`, `budget`, `success_metric[]` per entry |
 | `data_quality/<model>/countries/<CC>.yaml` | per-country data-quality scorecards (generated), with `datasets.yaml`, `MATRIX.csv`, `INDEX.md` | |
-| `baselines/<model>/` | the settled baseline `manifest.yaml` and its `config[.<variant>].yaml` overlays | |
 | `policy/` | the energy policy registry (assets, targets, subsidies, regulation as CSV) and its tools | |
 | `basemaps/` | admin0/admin1/land GeoJSON for the plot cards | |
 | `models/<model>` | submodules, the version anchor every card cites | |

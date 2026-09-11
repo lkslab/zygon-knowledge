@@ -50,7 +50,7 @@ a card.
 | `methods/<slug>.yaml` or `methods/<slug>/spec.yaml` | `knowledge.load_method`; scoper tool `get_method` | Resolved flat file first, then directory spec. The scoper only opens methods the topic card names. `payload/<model>/` trees are not read by the scoper; the referee's `method_payload` handling is still deferred in the app (`config_static.py` reports `payload-deferred`). |
 | `data_quality/<model>/countries/<CC>.yaml` | `knowledge.load_country`; scoper tool `get_data_quality` | Whole document returned, keyed by upper-cased ISO2. The scoper is told to call this first and flag grades `C`, `D`, `fair` or `poor`. Cards carry `families[].grade` and `datasets`, no top-level `overall`; the scoper's brief has a required `overall` field it fills itself. `datasets.yaml`, `MATRIX.csv`, `INDEX.md` are not read by the app. |
 | `policy/*.csv` | `agent/registry.py`, `policy_tools.py`, dispatched as the **policy researcher** subagent (`research_policy`) | Tables `assets`, `targets`, `subsidies`, `regulation`, plus `coverage`, `blocs`, `technology_taxonomy`. Same checkout, same `ensure_root`. `record_id` values are what `report.md` refs comments cite and the referee checks. `policy/tools/`, `_qa/`, `_work/` are not read. |
-| `baselines/<model>/manifest.yaml`, `config[.<variant>].yaml` | `backend/services/agent/baseline_profile.py`, `baseline.py` | `manifest.yaml` supplies `invocation.targets` and the verify stages, rendered from the effective config (`{planning_horizons}` collapses a one-element list). Variant names must match `^config(\.[a-z0-9]+)?\.yaml$`. The `budget` block is a zygon-era hint the app ignores; the old machine-local `snakemake`/`python_hint` blocks were removed on 2026-09-10. |
+| (no `baselines/`) | `backend/services/agent/model_profile.py` | Removed 2026-09-11: the app runs no reference config. Its target/verify templates and the solver overlay are app-owned constants, every study folds onto the checkout's own `config/config.default.yaml`, and a method section's `execution[kind: config]` entries are applied by the app underneath the bundle's changes. Method sections no longer carry a `baseline:` field. |
 | `basemaps/_land50m.json`, `_admin1_10m.json`, `_admin0_50m.json` | `backend/services/agent/plots.py` passes the dir as `--basemaps` to `plots/style.py` | Exact file names are hard-coded in the app. Missing dir degrades to a labelled fallback rather than failing. |
 | `models/<model>` submodules | nobody at runtime | The version anchor the cards cite. See Anchors below. |
 | `archive/` | nobody | Pre-restructure content. `archive/tools/restructure.py --validate` is the schema check. |
@@ -117,18 +117,15 @@ industry cards re-rung those asks as L4 code changes naming the fork branch).
   any deployment built from that window saw no carrier cards. When changing a directory name
   or card shape again, bump the gitlink in the same app commit that changes the reader.
 - **Eur content re-anchored to upstream a6c45e5 on 2026-09-10, nothing re-run.** Every
-  pypsa-eur section (146 carrier cards, 7 topics, 12 method docs, data_quality, baselines, the
+  pypsa-eur section (146 carrier cards, 7 topics, 12 method docs, data_quality, the
   seven payloads) was rewritten against the streamlined workflow and passes
   `tools/resolve_eur_citations.py` with zero unresolved citations, but no baseline has been
   rebuilt and no `success_metric` evaluated on an a6c45e5 install. Every topic's eur section
   carries a pitfall saying so; `storage-dispatch` and `transmission-planning` dropped to
-  `partial`, `clean-procurement` stays `partial`. The four `baselines/pypsa-eur/config*.yaml`
-  overlays validate against a6c45e5's own pydantic schema
-  (`scripts/lib/validation/config`); the manifest's `res/v1` binary and interpreter hints were
-  removed, so the app resolves snakemake/python purely from `ZYGON_SNAKEMAKE_EUR` /
-  `ZYGON_PYTHON` / PATH. The app's `tests/fixtures/knowledge/baselines/pypsa-eur/` still
-  mirrors the old wildcard-era manifest and must be updated in the app commit that bumps the
-  pin. pypsa-earth content was not touched (earth sections and trees are byte-identical).
+  `partial`, `clean-procurement` stays `partial`. The `baselines/` tree and the method
+  sections' `baseline:` fields were removed on 2026-09-11 when the app dropped baseline runs
+  (see the layout table). pypsa-earth content was not touched (earth sections and trees are
+  byte-identical).
 - **Payload patches rebased.** All 14 `methods/*/payload/pypsa-eur/edits/*.patch` apply
   cleanly to a6c45e5 (`git apply --check`); the payload rule files read
   `networks/composed_{horizon}.nc` and keep the `{horizon}` wildcard because

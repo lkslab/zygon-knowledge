@@ -20,7 +20,6 @@ models:
   version_anchor:
     ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
     date: '2026-09-09'
-  baseline: config.de.yaml
   execution:
   - kind: config
     key: investment_geography.targets
@@ -94,7 +93,6 @@ models:
   version_anchor:
     ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
     date: '2026-08-02'
-  baseline: config.gh.yaml
   execution:
   - kind: config
     key: investment_geography.targets
