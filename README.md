@@ -25,9 +25,11 @@ network in front of the user, and reads `approach`, `trade_offs` and
 `limitations` before anything else: `approach` says how the model treats the
 question (what it represents natively and where the levers live);
 `trade_offs` are the choices about where a study spends its resolution,
-compute and scenarios and what it can then say, which the consultant opens
-with; `limitations` are what the model does not represent or gets wrong out
-of the box, which the consultant states once, at the end of the interview.
+compute and scenarios and what it can then say, which the consultant raises
+at the interview question each bears on (a time-step trade-off with the
+temporal resolution question); `limitations` are what the model does not
+represent or gets wrong out of the box, which the consultant states once, at
+the end of the interview. The consultant affirms the study from `approach`.
 There is no coverage verdict: every topic with an entry for a model can be
 modelled on it, and a topic is listed for a model only when it has one.
 Topics do not name carrier cards: the app lists `carriers/<book>/` and opens a
