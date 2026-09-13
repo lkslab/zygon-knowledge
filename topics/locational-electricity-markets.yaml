@@ -23,31 +23,26 @@ models:
     'bz' clusters straight onto them, so current-zones vs split vs nodal is configuration,
     not a data project. The pipeline prices the inefficiency wedge between a zonal
     market and the nodal optimum for whichever zone map the study chooses.
-  pitfalls:
+  trade_offs:
   - >-
-    the pypsa-eur section was re-anchored to upstream a6c45e5 (2026-09-10) without a
-    re-run: every verification claim below predates the streamlined workflow (#1838 —
-    no wildcards, compose_network/solve_network, planning_horizons and co2_budget as
-    plain config), so treat its numbers as unconfirmed until an eval on an a6c45e5
-    install
+    one nodal solve is NOT 'the market after redispatch' — it is the efficient bound, and
+    substituting it (Weber's shortcut) deletes exactly the inefficiency wedge being asked
+    about; the two-stage design costs a second solve per case and is the study
   - >-
-    one nodal solve is NOT 'the market after redispatch' — it is the efficient bound,
-    and substituting it (Weber's shortcut) deletes exactly the inefficiency wedge
-    being asked about
-  - >-
-    the redispatch stage must minimise volume or weighted volume, never system cost,
-    or stage 2 silently re-derives the nodal optimum and reports that zonal pricing
-    is free
+    the redispatch stage must minimise volume or weighted volume, never system cost, or
+    stage 2 silently re-derives the nodal optimum and reports that zonal pricing is free
   - >-
     NTC border caps are the optimistic abstraction (no loop flows) — prefer the flow-based
     spec or state the bias direction
   - >-
-    the zone MAP is chosen before any solving and dominates the verdict — run at least
-    two maps unless the user brings a regulatory one
+    the zone MAP is chosen before any solving and dominates the verdict — run at least two
+    maps unless the user brings a regulatory one; the map is where the study's compute
+    goes
+  limitations:
   - >-
-    the welfare split is not a wired output: per-unit producer surplus and its distributional
-    risk-reward (Franken) and per-design consumer cost (Thomassen) are post-processing
-    on the solved stage-1/stage-2 networks
+    the welfare split is not a wired output: per-unit producer surplus and its
+    distributional risk-reward (Franken) and per-design consumer cost (Thomassen) are
+    post-processing on the solved stage-1/stage-2 networks
   methods:
   - id: co2-budget
     role: >-
@@ -93,21 +88,21 @@ models:
     dataset and has no 'bz' clustering level, so every market-relevant zone map is
     a user-authored custom busmap over GADM admin units (political, not market, boundaries),
     and the study starts by agreeing that map with the user.
-  pitfalls:
+  trade_offs:
   - >-
     the zone map is the study's dominant assumption, chosen before any solving — confirm
-    it with the user, never assume it
-  - >-
-    osm-grid data quality bounds how much to trust nodal price geography: a sparse
-    OSM topology reports little congestion for the wrong reason, so gate the nodal
-    stage on the country's data_quality scorecard
+    it with the user, never assume it, and spend the run budget on a second map rather
+    than on finer nodes
   - >-
     one nodal solve is not 'the market after redispatch' — it is the efficient bound;
-    Weber's shortcut deletes the wedge being asked about
+    Weber's shortcut deletes the wedge being asked about, so the two-stage design is the
+    study
   - >-
-    the redispatch stage must minimise volume or weighted volume, never system cost,
-    or it silently reports zonal pricing as free
-  - NTC caps are the optimistic abstraction against flow-based
+    the redispatch stage must minimise volume or weighted volume, never system cost, or it
+    silently reports zonal pricing as free
+  - >-
+    NTC caps are the optimistic abstraction against flow-based
+  limitations:
   - >-
     the welfare split is not a wired output: per-unit producer surplus and distributional
     risk-reward (Franken) and per-design consumer cost (Thomassen) remain post-processing

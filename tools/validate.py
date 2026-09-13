@@ -40,6 +40,26 @@ def submodule_gitlink(path: str) -> str | None:
     return out[2] if len(out) >= 3 else None
 
 
+def validate_topic_sections() -> list[str]:
+    """Every topic's model section carries trade_offs[] and limitations[], no pitfalls."""
+    import yaml
+
+    errors: list[str] = []
+    for path in sorted((ROOT / "topics").glob("*.yaml")):
+        doc = yaml.safe_load(path.read_text())
+        for sec in doc.get("models") or []:
+            where = f"topic {path.stem}/{sec.get('model')}"
+            if "pitfalls" in sec:
+                errors.append(f"{where}: pitfalls was split into trade_offs and limitations")
+            for key in ("trade_offs", "limitations"):
+                value = sec.get(key)
+                if not isinstance(value, list) or not all(
+                    isinstance(p, str) and p.strip() for p in value
+                ):
+                    errors.append(f"{where}: {key} must be a list of strings")
+    return errors
+
+
 def main() -> int:
     r = load_restructure()
     r.ANCHORS["pypsa-eur"] = EUR_ANCHOR
@@ -58,7 +78,11 @@ def main() -> int:
 
     topics, method_models, scan_errors = r.scan_disk()
     errors += scan_errors
-    errors += r.validate(topics, method_models)
+    # The frozen validator predates the 2026-09-13 split of a topic section's
+    # `pitfalls` into `trade_offs` and `limitations`; its one check on the old
+    # key is dropped here and the live shape is checked below.
+    errors += [e for e in r.validate(topics, method_models) if "pitfalls must be" not in e]
+    errors += validate_topic_sections()
     for e in errors:
         print("ERROR", e)
     print("ok" if not errors else f"{len(errors)} error(s)")

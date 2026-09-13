@@ -44,40 +44,40 @@ models:
     freely built asset at ~1, verified 0.997-0.9996 on both baselines), cycles, capture
     and charge price, spread, realised duration, utilisation. A pre-scoped unit is a
     single-asset-cba composite (bus + store + two links) whose B1 is its system value.
-  pitfalls:
-  - >-
-    the pypsa-eur section was re-anchored to upstream a6c45e5 (2026-09-10) without a
-    re-run: every verification claim below predates the streamlined workflow (#1838 —
-    no wildcards, compose_network/solve_network, planning_horizons and co2_budget as
-    plain config), so treat its numbers as unconfirmed until an eval on an a6c45e5
-    install
+  trade_offs:
   - >-
     coarsening past the shortest duration deletes it from the optimum — on the 168h
     fixture no battery is built and the cycle numbers are meaningless; size and value
-    storage on the 3h fixture (config.de1.yaml) or finer, never on a weekly rung
+    storage on the 3h fixture (config.de1.yaml) or finer, never on a weekly rung, and pay
+    with nodes instead
+  - >-
+    cyclic state of charge over one weather year is an accounting fiction for seasonal
+    stores (it pays for a full annual cycle); free endpoints understate the volume; an
+    inter-annual question buys a weather-year ensemble, not one cyclic year
+  - >-
+    a storage answer belongs to its flexibility assumption — removing DSM and V2G raised
+    stationary battery capacity 61% in the same model; the EV and DSM settings are a
+    scenario axis to run, and to report beside the capacities
+  limitations:
   - >-
     unintended storage cycling: the LP charges and discharges in the same snapshot when
     the round trip is free; noisy_costs (~1e-2 EUR/MWh) is two orders below the 0.5
     EUR/MWh Parzen recommends — add a variable cost and count simultaneous charge and
     discharge snapshots before quoting utilisation
   - >-
-    cyclic state of charge over one weather year is an accounting fiction for seasonal
-    stores (it pays for a full annual cycle); free endpoints understate the volume;
-    inter-annual questions need a weather-year ensemble, not one cyclic year
+    the 6 h / 168 h StorageUnit durations are the shipped config, not a finding — duration
+    is only a result in the Store + Links form
   - >-
-    the 6 h / 168 h StorageUnit durations are the shipped config, not a finding —
-    duration is only a result in the Store + Links form
-  - >-
-    energy arbitrage is the only revenue stream: no capacity market, no aFRR/FCR or
-    sub-hourly products, no imbalance settlement — read cost_recovery as the long-run
-    energy-value share of a stack, a lower bound on a merchant case
+    energy arbitrage is the only revenue stream: no capacity market, no aFRR/FCR or sub-
+    hourly products, no imbalance settlement — read cost_recovery as the long-run energy-
+    value share of a stack, a lower bound on a merchant case
   - >-
     marginal storage value needs solving.options.assign_all_duals: true (absent from
     config.default.yaml, bare .get() in solve_network) — both settled baselines were
     solved without it, so their mu_energy_balance frames are empty
   - >-
-    the newer chemistry tokens (lfp, vanadium, pair, lair) have an uncoupled,
-    zero-cost discharger in the Store form — audit their duration results
+    the newer chemistry tokens (lfp, vanadium, pair, lair) have an uncoupled, zero-cost
+    discharger in the Store form — audit their duration results
   - >-
     "storage TWh" is ill-defined across a sector-coupled network (EV batteries, water
     tanks, gas and H2 stores, indirect storage in MW of electrolyser) — enumerate the
@@ -85,10 +85,6 @@ models:
   - >-
     market-visible capacity is not nameplate: GB units split between wholesale and
     balancing, so an operations study of the real fleet needs the contracted share
-  - >-
-    a storage answer belongs to its flexibility assumption — removing DSM and V2G
-    raised stationary battery capacity 61% in the same model; report EV and DSM
-    settings beside the capacities
   methods:
   - id: co2-budget
     role: >-
@@ -162,10 +158,11 @@ models:
     verified for pypsa-earth yet. This card descends from the
     v1 cards battery-storage-sizing, long-duration-storage-ldes, storage-revenue-stacking
     (archived under archive/cookbooks/pypsa-earth/topics/v1/); the levers it can describe live in the carrier cards under carriers/ that carry a section for this model.
-  pitfalls:
+  trade_offs: []
+  limitations:
   - >-
-    no method spec is verified for pypsa-earth yet: the study runs on carrier levers
-    and default config, and its results are unverified for this model
+    no method spec is verified for pypsa-earth yet: the study runs on carrier levers and
+    default config, and its results are unverified for this model
   methods: []
   defaults: []
   version_anchor:

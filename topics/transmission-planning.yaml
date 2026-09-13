@@ -31,50 +31,46 @@ models:
     fixed reference, multi-scenario for the TYNDP scenario dimension and the cap
     sweep). Bidding-zone clustering (clustering.administrative.level bz) puts the
     corridors on real market geometry.
-  pitfalls:
+  trade_offs:
   - >-
-    the pypsa-eur section was re-anchored to upstream a6c45e5 (2026-09-10) without a
-    re-run: every verification claim below predates the streamlined workflow (#1838 —
-    no wildcards, compose_network/solve_network, planning_horizons and co2_budget as
-    plain config), so treat its numbers as unconfirmed until an eval on an a6c45e5
-    install
+    corridor detail dies with the cluster count — the 5-node baselines resolve one or two
+    corridors and the 2-node fixture none; a siting answer pins the cluster count to the
+    question and pays in solve time, and results are not comparable across counts
   - >-
-    reliability is a static 0.7 derating (lines.s_max_pu), not N-1 — no SCOPF, which
-    is what TSO planning legally requires; raising s_max_pu cuts the MWkm the model
-    must buy for the same flow
+    TOOT and PINT are order-dependent when several corridors queue — each buys its own run
+    set against the same reference; eur DC links carry '-reversed' twins in sector runs,
+    TOOT both
+  limitations:
+  - >-
+    reliability is a static 0.7 derating (lines.s_max_pu), not N-1 — no SCOPF, which is
+    what TSO planning legally requires; raising s_max_pu cuts the MWkm the model must buy
+    for the same flow
   - >-
     post_discretization is read ONLY in the iterative branch: enabling it with
-    skip_iterations left true is a silent no-op that returns fractional circuits;
-    and max_iterations 3 is below the 4-5 the literature needs, so set
-    track_iterations true to tell a converged loop from one that hit the cap
+    skip_iterations left true is a silent no-op that returns fractional circuits; and
+    max_iterations 3 is below the 4-5 the literature needs, so set track_iterations true
+    to tell a converged loop from one that hit the cap
   - >-
     set_transmission_limit re-prices lines through set_transmission_costs WITHOUT the
-    length factor, so the +25% detour markup is discarded and a 'c' cost cap moves
-    with that bug — repair it when transmission cost is load-bearing
+    length factor, so the +25% detour markup is discarded and a 'c' cost cap moves with
+    that bug — repair it when transmission cost is load-bearing
   - >-
-    the cap's shadow price (the lv_limit / lc_limit dual, the corpus's most
-    decision-relevant number) is extracted by no rule; read n.global_constraints.mu
-    yourself and check the cap binds before attributing the volume to it
+    the cap's shadow price (the lv_limit / lc_limit dual, the corpus's most decision-
+    relevant number) is extracted by no rule; read n.global_constraints.mu yourself and
+    check the cap binds before attributing the volume to it
   - >-
-    corridor detail dies with the cluster count — the 5-node baselines resolve one or
-    two corridors and the 2-node fixture none; a siting answer needs the cluster count
-    pinned by the question, and results are not comparable across counts
+    a global cap is not a per-corridor limit: without lines.s_nom_max_extension /
+    links.p_nom_max_extension a 125% study can put 4x on one interconnector; the JRC per-
+    country budget shape needs a new GlobalConstraint per region (L4)
   - >-
-    a global cap is not a per-corridor limit: without lines.s_nom_max_extension / links.p_nom_max_extension a 125%
-    study can put 4x on one interconnector; the JRC per-country budget shape needs a
-    new GlobalConstraint per region (L4)
+    the cost-benefit knee of a cap sweep is assembled by hand from total cost and volume
+    per run; nothing locates it, and robustness beyond scenario sweeps (MGA, Monte Carlo)
+    is absent here
   - >-
-    the cost-benefit knee of a cap sweep is assembled by hand from total cost and
-    volume per run; nothing locates it, and robustness beyond scenario sweeps (MGA,
-    Monte Carlo) is absent here
+    new project LINES enter at full type-derived capacity regardless of build_year in an
+    overnight run — only links are zero-started by new_link_capacity
   - >-
-    new project LINES enter at full type-derived capacity regardless of build_year in
-    an overnight run — only links are zero-started by new_link_capacity
-  - >-
-    TOOT and PINT are order-dependent when several corridors queue — each needs its
-    own run set against the same reference; eur DC links carry '-reversed' twins in
-    sector runs, TOOT both
-  - 'scope is Europe: a non-European grid plan is a pypsa-earth answer'
+    scope is Europe: a non-European grid plan is a pypsa-earth answer
   methods:
   - id: co2-budget
     role: >-
@@ -146,10 +142,11 @@ models:
     verified for pypsa-earth yet. This card descends from the
     v1 cards transmission-expansion-planning (archived under archive/cookbooks/pypsa-earth/topics/v1/);
     the levers it can describe live in the carrier cards under carriers/ that carry a section for this model.
-  pitfalls:
+  trade_offs: []
+  limitations:
   - >-
-    no method spec is verified for pypsa-earth yet: the study runs on carrier levers
-    and default config, and its results are unverified for this model
+    no method spec is verified for pypsa-earth yet: the study runs on carrier levers and
+    default config, and its results are unverified for this model
   methods: []
   defaults: []
   version_anchor:

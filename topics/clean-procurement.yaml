@@ -48,47 +48,48 @@ models:
     it has been exercised standalone (rows counted per window on the 3-hourly fixture)
     but not through an eval solve, and additionality, cross-zone deliverability and
     gCO2/kWh certification remain readings, not constraints.
-  pitfalls:
+  trade_offs:
   - >-
-    the snapshot resolution IS the strictness. Ideal is 1-hourly, but 3-hourly was even 
-    used in Riepin 2024; never coarsen further, and never segment
-  - >-
-    an annual rule that credits storage discharge is satisfiable by a battery charged
-    on fossil power — credit_storage.year stays false, and the collected scope-2 number
-    is what shows the annual rule moving emissions rather than cutting them
+    the snapshot resolution IS the strictness: ideal is 1-hourly, and 3-hourly was still
+    used in Riepin 2024; never coarsen further and never segment, so the study pays for
+    its matching rule in time steps and saves on nodes instead
   - >-
     what counts is a formulation choice the payload makes explicit (basis): the hourly
-    rule counts dispatched supply plus NET storage minus excess (Riepin Eq. 2), the
-    annual and monthly windows count the contracted plants' AVAILABLE generation, the
-    volume a PPA sells whether consumed, sold or curtailed — crediting gross discharge
-    or dispatched generation under a binding excess cap made the first end-to-end runs
-    build a lossy charger/discharger loop as an energy sink
+    rule counts dispatched supply plus NET storage minus excess (Riepin Eq. 2), the annual
+    and monthly windows count the contracted plants' AVAILABLE generation, the volume a
+    PPA sells whether consumed, sold or curtailed — crediting gross discharge or
+    dispatched generation under a binding excess cap made the first end-to-end runs build
+    a lossy charger/discharger loop as an energy sink
   - >-
-    crediting grid imports at the grid's hourly CFE share is bilinear — the payload
-    runs linear by default; the two-pass (grid_cfe.series pointed at the collector's
+    strictness redistributes cost as much as it adds it — the price duration curve and
+    non-participating consumers' cost belong beside the premium, so extract them from the
+    start
+  limitations:
+  - >-
+    an annual rule that credits storage discharge is satisfiable by a battery charged on
+    fossil power — credit_storage.year stays false, and the collected scope-2 number is
+    what shows the annual rule moving emissions rather than cutting them
+  - >-
+    crediting grid imports at the grid's hourly CFE share is bilinear — the payload runs
+    linear by default; the two-pass (grid_cfe.series pointed at the collector's
     grid_cfe_factor.csv) is an assumption until you report the passes and the residual
   - >-
-    additionality is a reading, not a constraint: the portfolio is new by construction
-    and zygon_cfe.baseline gives the counterfactual objective, but the background
-    system re-optimises around the consumer; Schumm 2025's build-year filter is not
-    implemented
+    additionality is a reading, not a constraint: the portfolio is new by construction and
+    zygon_cfe.baseline gives the counterfactual objective, but the background system re-
+    optimises around the consumer; Schumm 2025's build-year filter is not implemented
   - >-
     deliverability is the consumer's own zone bus by construction — a portfolio spread
     over zones needs a second consumer or code, and nothing tracks a GO or REC through
     storage
   - >-
-    the installed baseline sets solving.options.custom_extra_functionality to "" and
-    the payload rule passes its own hook, so a user hook is bypassed on
-    solve_cfe_network only
+    the installed baseline sets solving.options.custom_extra_functionality to "" and the
+    payload rule passes its own hook, so a user hook is bypassed on solve_cfe_network only
   - >-
     there is no gCO2/kWh column: scope-2 is the collector's import x zonal hourly
     generation intensity, an average not a marginal, and it moves with the basis
   - >-
-    strictness redistributes cost as much as it adds it — report the price duration
-    curve and non-participating consumers' cost beside the premium
-  - >-
-    the hook logs matching rows against the window count and raises on a mismatch;
-    read the solver log before believing a variant, and check n.meta['zygon_cfe']
+    the hook logs matching rows against the window count and raises on a mismatch; read
+    the solver log before believing a variant, and check n.meta['zygon_cfe']
   methods:
   - id: co2-budget
     role: >-
@@ -163,41 +164,41 @@ models:
     so model the site as a Link off the AC bus and add its carrier to matching_technologies.
     The reference build (is_reference plus remove_h2_load) works and is the counterfactual
     network for an additionality reading.
-  pitfalls:
-  - >-
-    grid imports are not credited at the grid's CFE share — no bilinear term, so the
-    24/7 CFE-score form with grid crediting is not this constraint
-  - >-
-    no spatial grouper: the constraint sums over every eligible component in the network,
-    and policy_config.hydrogen.spatial_matching is a dead key with no consumer in
-    the repo, so a same-bidding-zone claim on stock earth is unenforced
-  - >-
-    additionality is cosmetic: n_ref is loaded from path_to_ref and passed in but
-    never read, so additionality true and false add the same constraint while the
-    run logs success; re_country_load is dead too
-  - >-
-    a plain Load (the electricity-load carrier card's attach_load variant) is invisible
-    to the rule — only Link-p over matching_technologies counts
+  trade_offs:
   - >-
     the default temporal_matching_carriers list credits reservoir hydro and run-of-river
     discharge, which most matching rules do not certify — prune it to what the rule
     credits (Duque-Perez's annual matching without batteries is the same edit)
   - >-
-    any annual rule crediting storage discharge is satisfiable by a battery charged
-    on fossil power
-  - 'coarse snapshots weaken the rule: keep the resolution and cut nodes instead'
+    coarse snapshots weaken the rule: keep the resolution and cut nodes instead
   - >-
-    the constraint is reachable from the electricity-only solve rule, where it finds
-    no electrolyser Links and adds vacuous rows — count RESconstraints_ rows against
+    the price duration curve and domestic consumer cost belong beside the product cost:
+    Schumm 2025 finds stricter matching lowers domestic electricity prices, up to 31% —
+    the regime is a cost allocation, not a line item, so extract both
+  limitations:
+  - >-
+    grid imports are not credited at the grid's CFE share — no bilinear term, so the 24/7
+    CFE-score form with grid crediting is not this constraint
+  - >-
+    no spatial grouper: the constraint sums over every eligible component in the network,
+    and policy_config.hydrogen.spatial_matching is a dead key with no consumer in the
+    repo, so a same-bidding-zone claim on stock earth is unenforced
+  - >-
+    additionality is cosmetic: n_ref is loaded from path_to_ref and passed in but never
+    read, so additionality true and false add the same constraint while the run logs
+    success; re_country_load is dead too
+  - >-
+    a plain Load (the electricity-load carrier card's attach_load variant) is invisible to
+    the rule — only Link-p over matching_technologies counts
+  - >-
+    any annual rule crediting storage discharge is satisfiable by a battery charged on
+    fossil power
+  - >-
+    the constraint is reachable from the electricity-only solve rule, where it finds no
+    electrolyser Links and adds vacuous rows — count RESconstraints_ rows against
     |snapshots|, 12 or the year count before believing anything
-  - there is no gCO2/kWh column and no GO tracking through storage or pipelines
   - >-
-    report the price duration curve and domestic consumer cost beside the product
-    cost: Schumm 2025 finds stricter matching lowers domestic electricity prices,
-    up to 31% — the regime is a cost allocation, not a line item
-  - >-
-    check the country's data_quality demand and renewable grades first; hourly matching
-    is only as good as the hourly profiles behind it
+    there is no gCO2/kWh column and no GO tracking through storage or pipelines
   methods:
   - id: single-asset-cba
     role: >-

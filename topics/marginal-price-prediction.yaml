@@ -20,24 +20,24 @@ models:
     stays manual, per the v1 essays: decomposing the series by price-setting regime
     (zero/storage/thermal/scarcity), KKT price-setter identification, revenue concentration
     and per-technology cost-recovery ratios.
-  pitfalls:
+  trade_offs:
   - >-
-    the pypsa-eur section was re-anchored to upstream a6c45e5 (2026-09-10) without a
-    re-run: every verification claim below predates the streamlined workflow (#1838 —
-    no wildcards, compose_network/solve_network, planning_horizons and co2_budget as
-    plain config), so treat its numbers as unconfirmed until an eval on an a6c45e5
-    install
+    the visible spatial price spread is set by the clustering: more nodes buy price
+    geography, fewer nodes blur it into zonal means, so a locational price claim pays in
+    nodes
+  - >-
+    the policy instrument (cap vs tax) flips the market-value trend, so a price claim that
+    means to be robust runs the instrument as a scenario pair
+  limitations:
   - >-
     the upper tail is a config number — always report the VOLL and the hours-at-ceiling
     share beside any statistic
   - >-
-    expansion-run duals are not market forecasts: a competitive benchmark of a cost-minimising
-    planner, with no bidding, no demand elasticity and no market design
+    expansion-run duals are not market forecasts: a competitive benchmark of a cost-
+    minimising planner, with no bidding, no demand elasticity and no market design
   - >-
-    noisy_costs jitters marginal costs by ~1e-2 EUR/MWh, so zero-price tests need
-    a <0.1 tolerance
-  - the visible spatial spread is set by the clustering
-  - the policy instrument (cap vs tax) flips the market-value trend
+    noisy_costs jitters marginal costs by ~1e-2 EUR/MWh, so zero-price tests need a <0.1
+    tolerance
   methods:
   - id: co2-budget
     role: >-
@@ -102,23 +102,23 @@ models:
     (the gh1 fixture runs the full weather year at native hourly resolution). There
     is no dispatch-only rule, so short-term merit-order prices of a fixed fleet mean
     freezing capacities by hand (extendable off) rather than flipping a config key.
-  pitfalls:
+  trade_offs:
   - >-
-    make_summary's price tables do not apply snapshot weightings and there is no market_values
-    output — compute weighted means and capture prices from n.buses_t.marginal_price
-    yourself, as the plot cards do
+    the sector chain's shipped temporal rungs (144h sopts) destroy the scarcity tail, so a
+    price question keeps fine time steps and pays with nodes or sectors; carrier prices
+    beyond electricity are coarse-resolution only
+  limitations:
   - >-
-    the sector chain's shipped temporal rungs (144h sopts) destroy the scarcity tail,
-    so carrier prices beyond electricity are coarse-resolution only
-  - >-
-    spatial price claims inherit the OSM grid: check the country's data_quality scorecard
-    before trusting nodal price geography, and prefer zonal aggregates over single-node
-    prices
+    make_summary's price tables do not apply snapshot weightings and there is no
+    market_values output — compute weighted means and capture prices from
+    n.buses_t.marginal_price yourself, as the plot cards do
   - >-
     load shedding ships enabled at 100 EUR/kWh, so every default price series is silently
     capped — report VOLL and hours-at-ceiling beside every statistic
-  - expansion duals are a competitive benchmark, not a market forecast
-  - noisy_costs (~1e-2 EUR/MWh) means zero-price tests need a <0.1 tolerance
+  - >-
+    expansion duals are a competitive benchmark, not a market forecast
+  - >-
+    noisy_costs (~1e-2 EUR/MWh) means zero-price tests need a <0.1 tolerance
   methods:
   - id: price-formation
     role: >-

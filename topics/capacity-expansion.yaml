@@ -22,22 +22,27 @@ models:
     so typos fail fast.
     Should be run at high temporal (at least 3-hourly) resolution for accurate balancing-economics.
     Spatial resolution is also important.
-  pitfalls:
+  trade_offs:
   - >-
-    If run at low spatio-temporal resolution can underestimate the cost of renewables
+    renewable-integration economics only show at fine spatial and temporal resolution
+    (3-hourly or finer, enough nodes to see the grid); coarser runs understate the cost of
+    renewables, so this is the dial most expansion studies protect and pay for elsewhere
   - >-
-    penny-switching; vastly different model solutions could be only marginally more expensive.
-    sensitivies can help to make sure the findings are robust
-  - >-
-    BAU floors and the SAFE reserve margin need user-added config keys; they are not
-    on by default
-  - >-
-    builds are continuous — post-discretisation is optional and iterative-only, so
-    no lumpy investment out of the box
+    penny-switching: vastly different capacity mixes can be only marginally more
+    expensive, so a robust finding buys a sensitivity set (scenarios) rather than more
+    detail in a single run
   - >-
     the shipped default is fully sector-coupled: an electricity-only question silently
-    inherits heat, transport and industry demand unless sector.enabled is set false or
-    the sector toggles are narrowed one by one
+    inherits heat, transport and industry demand unless sector.enabled is set false or the
+    sector toggles are narrowed one by one; coupling buys the cross-sector interactions
+    and pays in solve time and data breadth
+  limitations:
+  - >-
+    BAU floors and the SAFE reserve margin need user-added config keys; they are not on by
+    default
+  - >-
+    builds are continuous — post-discretisation is optional and iterative-only, so no
+    lumpy investment out of the box
   methods:
   - id: co2-budget
     role: >-
@@ -90,14 +95,11 @@ models:
     and a ported perfect-foresight branch are verified specs here, the latter shipping
     its code surgery as a pre-tested payload rather than something to re-author per
     study.
-  pitfalls:
+  trade_offs: []
+  limitations:
   - >-
-    investment is LP: unit-commitment data is never populated, so no lumpy builds
-    or start-up costs
-  - >-
-    results are only as good as country inputs — check the data_quality scorecard
-    grades for power-fleet and electricity-demand before presenting a mix to a ministry;
-    the fleet and demand baselines gate credibility more than the optimiser does
+    investment is LP: unit-commitment data is never populated, so no lumpy builds or
+    start-up costs
   methods:
   - id: existing-fleet
     role: >-

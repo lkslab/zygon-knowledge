@@ -27,7 +27,8 @@ models:
     reads as the (negative) cost of serving it. System design under a whole demand
     scenario stays the capacity-expansion topic; this card prices the delta of one
     named intervention.
-  pitfalls:
+  trade_offs: []
+  limitations:
   - >-
     splitting B1 into producer/consumer surplus per side and congestion rent is manual:
     read nodal prices and link duals off the solved pair yourself
@@ -35,7 +36,8 @@ models:
     benefits are what a deterministic cost-minimising planner sees — no probabilistic
     adequacy (B6), flexibility (B7) or stability (B8) indicators, and no CBCA/wheeling
     revenue-allocation layer
-  - under the binding net-zero cap B2 is ~0 by construction
+  - >-
+    under the binding net-zero cap B2 is ~0 by construction
   methods:
   - id: co2-budget
     role: >-
@@ -91,7 +93,15 @@ models:
     ops that reach the time-varying load series, so B1 reads as the (negative) cost
     of serving it. System design under a whole demand scenario stays the capacity-expansion
     topic; this card prices the delta of one named intervention.
-  pitfalls:
+  trade_offs:
+  - >-
+    TOOT and PINT are order-dependent when several projects queue, so each asset buys its
+    own run set against the same reference; one set answers one asset
+  - >-
+    OSM grid completeness varies by country and the coarse settled baselines carry little
+    or no native inter-zonal transmission, so the interconnector case leans on PINT (put
+    the candidate in) rather than TOOT of an existing corridor
+  limitations:
   - >-
     splitting B1 into producer/consumer surplus per side and congestion rent is manual:
     read country-level duals off the solved pair yourself
@@ -99,15 +109,8 @@ models:
     benefits are what a deterministic cost-minimising planner sees — no probabilistic
     adequacy (B6), flexibility (B7) or stability (B8) indicators, and no wheeling-charge
     or transmission-tariff layer for revenue allocation
-  - under a binding CO2 cap B2 is ~0 by construction
   - >-
-    TOOT and PINT are order-dependent when several projects queue, so each asset needs
-    its own run set against the same reference
-  - >-
-    OSM grid completeness varies by country and the coarse settled baselines carry
-    little or no native inter-zonal transmission — the interconnector case leans on
-    PINT (put the candidate in) rather than TOOT of an existing corridor
-  - per-country data grades gate which power pools are answerable at all
+    under a binding CO2 cap B2 is ~0 by construction
   methods:
   - id: existing-fleet
     role: >-
