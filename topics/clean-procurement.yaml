@@ -90,6 +90,12 @@ models:
     the hook logs matching rows against the window count and raises on a mismatch;
     read the solver log before believing a variant, and check n.meta['zygon_cfe']
   methods:
+  - id: co2-budget
+    role: >-
+      the background emissions policy the consumer buys clean power inside — the shipped
+      default already caps the whole system, so a matching rule's scope-2 saving and
+      premium are measured against a decarbonising grid, not a fossil one; settle
+      emissions_target against this card, never as a renewable share
   - id: hourly-matching
     role: >-
       the headline: Riepin's 24/7 rule as a CFE-score sweep (hourly-090/098/100) in

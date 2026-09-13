@@ -49,6 +49,10 @@ models:
     risk-reward (Franken) and per-design consumer cost (Thomassen) are post-processing
     on the solved stage-1/stage-2 networks
   methods:
+  - id: co2-budget
+    role: >-
+      how the emissions target enters the model and what the shipped default already
+      caps — the consultant settles emissions_target against this card, never a share
   - id: investment-geography
     role: >-
       where auctioned capacity lands WITHOUT locational signals — eta-blended sub-market

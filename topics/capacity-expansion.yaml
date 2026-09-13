@@ -34,7 +34,15 @@ models:
   - >-
     builds are continuous — post-discretisation is optional and iterative-only, so
     no lumpy investment out of the box
+  - >-
+    the shipped default is fully sector-coupled: an electricity-only question silently
+    inherits heat, transport and industry demand unless sector.enabled is set false or
+    the sector toggles are narrowed one by one
   methods:
+  - id: co2-budget
+    role: >-
+      how the emissions target enters the model and what the shipped default already
+      caps — the consultant settles emissions_target against this card, never a share
   - id: existing-fleet
     role: >-
       which pre-built capacity the optimiser sees — the greenfield/brownfield starting
@@ -56,6 +64,18 @@ models:
       no method spec because there is nothing to change, so there is nothing to cite.
       Reach for a pathway method only when the question is about timing; an end-state
       mix does not need one.
+  - aspect: sector-coupling
+    is: >-
+      every sector on — sector.enabled and the transport, heating, biomass, industry,
+      shipping, aviation, agriculture and fossil_fuels toggles are all true in the
+      shipped config
+    note: >-
+      the sector scope is a settled decision, never a default to fall into: power only
+      is sector.enabled false, a subset switches the toggles off one by one. The
+      emissions cap counts whatever sectors are in, but its 1990 baseline follows the
+      transport, heating, industry and agriculture toggles, not sector.enabled — a
+      power-only run with those toggles left true is capped against economy-wide 1990
+      emissions (see the co2-budget method card)
   version_anchor:
     ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
     date: '2026-09-09'

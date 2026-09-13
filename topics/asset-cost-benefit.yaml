@@ -37,6 +37,12 @@ models:
     revenue-allocation layer
   - under the binding net-zero cap B2 is ~0 by construction
   methods:
+  - id: co2-budget
+    role: >-
+      the frame the B2 CO2 benefit lives in — under the shipped default the cap binds,
+      so an asset's emissions delta is ~0 by construction and its value shows up in B1
+      through the CO2 shadow price; settle emissions_target against this card before
+      reading B2, and say whether the pair runs sector-coupled or power-only
   - id: existing-fleet
     role: >-
       the reference grid's substrate — control which pre-built fleet the with/without

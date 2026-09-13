@@ -90,6 +90,10 @@ models:
     raised stationary battery capacity 61% in the same model; report EV and DSM
     settings beside the capacities
   methods:
+  - id: co2-budget
+    role: >-
+      how the emissions target enters the model and what the shipped default already
+      caps — the consultant settles emissions_target against this card, never a share
   - id: price-formation
     role: >-
       the substrate every revenue number sits on: fine-resolution solve with a

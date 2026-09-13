@@ -1,0 +1,119 @@
+id: co2-budget
+title: co2-budget — the CO2 cap every pypsa-eur run carries
+family: policy-and-constraints
+what: >-
+  pypsa-eur enforces an emissions target as a global constraint on CO2, never as a
+  technology share. compose_network calls scripts/prepare_network.py:apply_co2_budget_constraints,
+  which reads the top-level co2_budget block, picks the value for the current horizon with
+  scripts/co2_budget.py:bound_value_for_horizon, and adds one GlobalConstraint per bound
+  through scripts/prepare_network.py:add_co2limit: CO2Limit-upper for co2_budget.upper,
+  CO2Limit-lower for co2_budget.lower, both with carrier_attribute co2_emissions and the
+  constant in tonnes over the modelled years. How the solver enforces it depends on the
+  workflow. Electricity-only (sector.enabled false): type primary_energy, PyPSA's native
+  constraint, which sums every generator's dispatch times its carrier's co2_emissions factor.
+  Sector-coupled (the shipped default): type co2_atmosphere, and
+  scripts/solve_network.py:add_co2_atmosphere_constraint bounds the end-of-horizon level of
+  the non-cyclic "co2 atmosphere" store on the bus with carrier co2 instead; emissions reach
+  that store through the CO2 bus wiring of every emitting link (efficiency2 on gas, oil, process links, negative on DAC
+  and sequestration), the carrier attribute only identifies the store. Either way there is
+  no user decision about which technologies "count": the model's wiring decides. With
+  relative: true (default) the values are fractions of the 1990 emissions the model computes
+  for the study's countries (scripts/prepare_sector_network.py:co2_emissions_year, EEA data
+  plus a Eurostat estimate for the Balkan countries); with relative: false they are absolute
+  Gt CO2 per year. The default trajectory has been run on this anchor: with the full
+  country list, 10% of 1990 gave a cap of 460 Mt, so the model's economy-wide 1990
+  baseline is about 4.6 Gt.
+when_to_use:
+- the user names an emissions target (net zero by year, X% below 1990, a carbon budget)
+- the user asks what the default run already caps, or wants an uncapped run
+- the user says "clean share" or "renewable share" and it has to become a CO2 reduction
+- system cost under an emissions target
+- the CO2 shadow price (the dual of CO2Limit-upper, n.global_constraints.mu) as a result
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+  # No execution entries on purpose: co2_budget.* is a study-frame key the bundle
+  # sets citing the tracker's emissions_target, never a method lever. This card is
+  # the grounding the scoper relays and the consultant settles the key against.
+  execution: []
+  invalidates:
+  - compose_network
+  - solve_network
+  budget:
+    jobs: 0
+    class: minutes
+  success_metric:
+  - name: cap-in-the-network
+    needs: prepared
+    check: n.global_constraints.index.str.startswith('CO2Limit').any()
+    expect: >-
+      a CO2Limit global constraint exists whenever co2_budget.upper or lower has a value
+      for the horizon; the name holds in every foresight mode, including the
+      perfect-foresight Co2Budget case
+  - name: cap-type-matches-workflow
+    needs: prepared
+    check: >-
+      set(n.global_constraints[n.global_constraints.index.str.startswith('CO2Limit')].type)
+      <= ({'co2_atmosphere', 'Co2Budget'} if (n.buses.carrier == 'co2').any()
+      else {'primary_energy'})
+    expect: >-
+      sector runs carry co2_atmosphere (or Co2Budget under perfect foresight with a scalar
+      budget), electricity-only runs primary_energy; a mismatch means the wrong solver
+      routine enforces the cap
+  - name: cap-constant-is-the-target
+    needs: solved
+    check: >-
+      abs(n.global_constraints.loc['CO2Limit-upper', 'constant']
+      - n.meta['co2_budget']['upper'][str(n.meta['wildcards']['horizon'])]
+      * 4.6e9 * n.snapshot_weightings.objective.sum() / 8760) < 0.15 * 4.6e9
+      if n.meta['co2_budget']['relative'] else True
+    expect: >-
+      for the full default country list the constant is the fraction times roughly 4.6 Gt
+      (the 1990 economy-wide baseline the model computes) times the modelled years; a
+      constant far above that means the baseline included sectors the run does not
+      model, see note (b)
+notes: >-
+  (a) The shipped default is already a cap: co2_budget.upper is {2020: 0.72, 2025: 0.648,
+  2030: 0.45, 2035: 0.25, 2040: 0.1, 2045: 0.05, 2050: 0.0} with relative: true,
+  emissions_scope: CO2 and lower: null (config/config.default.yaml:co2_budget); "no
+  explicit target" is not an uncapped run, and this now holds for electricity-only runs
+  too, which the pre-streamline workflow left uncapped unless electricity.co2limit_enable
+  was set. An electricity-only run with planning_horizons [2050] is capped at zero and may
+  be infeasible. (b) What is counted follows the workflow, but the 1990 baseline does NOT
+  follow sector.enabled. scripts/prepare_sector_network.py:determine_emission_sectors
+  builds the baseline from the sector.transport, sector.heating, sector.industry and
+  sector.agriculture toggles, which stay true in the shipped config when sector.enabled is
+  false. An electricity-only run with defaults therefore gets fraction x economy-wide 1990
+  emissions (about 4.6 Gt for the full country list) as a cap on power-sector emissions
+  alone, far looser than the fraction suggests. Power-only against a power-only baseline
+  needs those four toggles false as well; a sector run counts whatever sectors are on and
+  its baseline matches. Same key, different meaning: say which reading the study uses.
+  (c) Translation, one value per planning horizon: "net zero by Y" -> {Y: 0.0}; "X% below
+  1990 by Y" -> {Y: 1 - X/100}; a horizon the user does not change keeps the shipped
+  fraction because config files and run.scenarios overrides are deep-merged, never
+  replaced; interpolation between horizons is the user's call, one number each. "X% clean"
+  or "X% renewable" has no co2_budget equivalent: ask which CO2 reduction against 1990 it
+  stands for. (d) An uncapped run is co2_budget.upper: null (with lower null), an explicit
+  decision; a single year is switched off with {Y: null}. (e) The schema
+  (scripts/lib/validation/config/co2_budget.py:Co2BudgetConfig) accepts any integer year,
+  so an unlisted year does not fail the config check. The trap is the reverse: a planning
+  horizon with no key in upper (and none in lower) gets no CO2 constraint at all, silently,
+  with no log line, because bound_value_for_horizon returns None and add_co2limit skips
+  None. Always give every planning horizon an explicit value or an explicit null. (f)
+  Units: with relative: false, upper and lower are Gt CO2 per year; the pre-streamline
+  electricity.co2limit was in t CO2 per year, so an old number copied unchanged is a billion
+  times too loose. (g) Foresight: overnight and myopic add one constraint per horizon
+  network. Perfect foresight with the per-year mapping adds one constraint per investment
+  period, CO2Limit-upper-<year>, enforced by scripts/solve_network.py:add_carbon_constraint
+  on the store level change within that period; only a scalar upper (one number, no years)
+  becomes a single cumulative budget of type Co2Budget over all periods
+  (scripts/solve_network.py:add_carbon_budget_constraint), added at the last horizon. upper
+  and lower must both be scalars or both be mappings, and lower must stay below upper for
+  every horizon. (h) Limits: pypsa-eur has no renewable- or clean-share constraint (CCL caps
+  capacity per country and carrier, EQ is a self-sufficiency share, BAU and SAFE are floors
+  and reserve margins); hourly- and annual-matching are procurement rules for one consumer,
+  not system targets. A price instead of a cap is costs.emission_prices, a different card.
+  pypsa-earth still caps through the Co2L opts wildcard and electricity.co2limit; see the
+  coal-power-plants carrier card.

@@ -39,6 +39,10 @@ models:
   - the visible spatial spread is set by the clustering
   - the policy instrument (cap vs tax) flips the market-value trend
   methods:
+  - id: co2-budget
+    role: >-
+      how the emissions target enters the model and what the shipped default already
+      caps — the consultant settles emissions_target against this card, never a share
   - id: price-formation
     role: >-
       the core: hourly-rung solve with an explicit VOLL ceiling and all duals written

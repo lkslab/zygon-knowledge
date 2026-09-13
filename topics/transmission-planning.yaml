@@ -76,6 +76,10 @@ models:
     sector runs, TOOT both
   - 'scope is Europe: a non-European grid plan is a pypsa-earth answer'
   methods:
+  - id: co2-budget
+    role: >-
+      how the emissions target enters the model and what the shipped default already
+      caps — the consultant settles emissions_target against this card, never a share
   - id: existing-fleet
     role: >-
       the fleet the grid is sized around — control which pre-built capacity the
