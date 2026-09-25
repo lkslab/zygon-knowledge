@@ -1,0 +1,68 @@
+id: mga-near-optimal
+title: Near-optimal alternatives (MGA)
+summary: >-
+  How different can a system look while costing almost the same? The two-fortnight
+  single-node expansion at a 20 % CO2 cap is solved to its optimum, then re-solved
+  with cost held within a slack of that optimum while each technology's capacity is
+  pushed to its minimum and its maximum: modelling-to-generate-alternatives. The
+  ranges show which capacities the cost optimum really pins down.
+concepts: [mga, near-optimal, capacity-expansion, co2-cap, investment, uncertainty]
+answers:
+- "how robust is the optimal capacity mix, what else costs nearly the same"
+- "what is modelling-to-generate-alternatives and how do I run it in PyPSA"
+- "how much wind could be replaced by solar at one percent extra cost"
+builds_on: [capacity-expansion-single-node]
+setup:
+  buses: one electricity bus
+  components:
+  - extendable Generators onwind, solar, CCGT and an extendable StorageUnit battery, costs from the base model
+  - a load-shedding Generator at the value of lost load and one GlobalConstraint on CO2
+  snapshots: 112 snapshots (two fortnights at 3-hour resolution), weighted to a year
+  profiles: the base model's load, wind and solar sliced to 8-21 January and 8-21 July
+  assumptions:
+  - {name: co2 cap, value: "20 % of the unconstrained emissions of the same two-fortnight network"}
+  - {name: slack, value: "5 % of the optimal cost for the ranges; 1, 2, 5, 10 % in the sweep"}
+  - {name: technology costs, value: "as capacity-expansion-single-node"}
+method: |
+  `n.optimize()` gives the optimum and stores its cost in `n.objective`. Each
+  alternative is `n.optimize.optimize_mga(weights={component: {"p_nom": {name: 1}}},
+  sense="min"|"max", slack=0.05)` on a copy of the solved network: PyPSA adds a budget
+  constraint (total cost within (1 + slack) of the stored objective) and replaces the
+  objective by the weighted capacity. Eight solves give a min and a max per technology;
+  a further sweep over slack values traces how the wind range opens. The cost of each
+  alternative is recomputed from its capacities and dispatch, since `n.objective` after
+  MGA is the alternate objective, not cost. `optimize_mga_in_multiple_directions` also
+  exists (parallel, via a temporary NetCDF) for many directions at once.
+knobs:
+- {name: slack, in: "SLACK, SLACKS", effect: "the budget; ranges widen quickly with it"}
+- {name: directions, in: CARRIERS and _weights, effect: "any linear function of capacities, e.g. total renewable capacity"}
+- {name: cap fraction, in: CAP_FRACTION, effect: "a tighter cap narrows the gas range and widens the storage range"}
+figures:
+- id: capacity_ranges
+  file: figures/capacity_ranges.json
+  title: Capacity ranges within 5 % of the optimal cost
+  shows: Minimum, optimum and maximum capacity per technology inside the slack.
+- id: alternative_mixes
+  file: figures/alternative_mixes.json
+  title: The near-optimal mixes
+  shows: One stacked bar per alternative; wind and solar trade against each other while gas hardly moves.
+- id: range_vs_slack
+  file: figures/range_vs_slack.json
+  title: Wind capacity range against cost slack
+  shows: Min and max wind capacity as the slack grows from 1 % to 10 %.
+numbers:
+- {id: optimum_cost_meur_a, label: Optimal annual cost, unit: MEUR/a}
+- {id: slack_pct, label: Slack used for the ranges, unit: "%"}
+- {id: slack_cost_meur_a, label: The budget the alternatives may exceed the optimum by, unit: MEUR/a}
+- {id: capacity_range_mw, label: Min, optimum, max and range over optimum per technology, unit: MW and "%"}
+- {id: alternative_costs_meur_a, label: Recomputed cost of every alternative (at the budget), unit: MEUR/a}
+- {id: wind_range_by_slack_mw, label: Min and max wind per slack level, unit: MW}
+- {id: co2_price_eur_t, label: CO2 shadow price at the optimum, unit: EUR/t}
+limitations:
+- Two fortnights, so absolute capacities are rough; the width of the ranges is the message.
+- One direction at a time; the full near-optimal space needs many directions or its hull (the near-opt-space example).
+sources:
+- {title: "PyPSA example: Modelling-to-Generate Alternatives", url: "https://docs.pypsa.org/latest/examples/mga/"}
+- {title: "PyPSA example: Exploring Near-Optimal Spaces", url: "https://docs.pypsa.org/latest/examples/near-opt-space/"}
+- {title: "PyPSA user guide: Modelling-to-generate alternatives", url: "https://docs.pypsa.org/latest/user-guide/optimization/modelling-to-generate-alternatives/"}
+pypsa: "1.3.0"

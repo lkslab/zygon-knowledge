@@ -1,0 +1,49 @@
+numbers:
+  static rating:
+    cost_eur: 4622294.1837
+    hours_at_limit: 72
+    congestion_rent_eur: 5760000.0
+    mean_price_spread_eur_mwh: 100.0
+    peaker_energy_mwh: 28919.1182
+    energy_over_line_mwh: 57600.0
+    load_shed_mwh: 0.0
+  dynamic rating:
+    cost_eur: 3617573.6702
+    hours_at_limit: 60
+    congestion_rent_eur: 5580000.0
+    mean_price_spread_eur_mwh: 83.3333
+    peaker_energy_mwh: 18871.9131
+    energy_over_line_mwh: 67647.2051
+    load_shed_mwh: 0.0
+  dynamic + emergency:
+    cost_eur: 3497573.6702
+    hours_at_limit: 60
+    congestion_rent_eur: 5700000.0
+    mean_price_spread_eur_mwh: 83.3333
+    peaker_energy_mwh: 17671.9131
+    energy_over_line_mwh: 68847.2051
+    load_shed_mwh: 0.0
+  saving_vs_static_eur:
+    dynamic rating: 1004720.5135
+    dynamic + emergency: 1124720.5135
+  ratings_pu:
+    night: 1.0
+    hot afternoon: 0.8
+    emergency: 1.1
+meta:
+  pypsa: 1.3.0
+  solver: highs
+  runtime_s: 1.95
+  figures:
+    flow_vs_limit:
+      title: Line flow against its rating
+      file: figures/flow_vs_limit.json
+      height: 360
+    price_spread:
+      title: Price spread across the line
+      file: figures/price_spread.json
+      height: 360
+    cost_and_rent:
+      title: Three-day cost and congestion rent by rating
+      file: figures/cost_and_rent.json
+      height: 240

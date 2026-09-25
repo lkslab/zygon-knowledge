@@ -1,0 +1,71 @@
+id: perfect-foresight-pathway
+title: Perfect-foresight pathway vs myopic
+summary: >-
+  The myopic pathway's three horizons solved as one problem. Same existing plants,
+  candidate technologies, cost declines, load growth and CO2 caps, but 2030, 2040 and
+  2050 are investment periods of a single optimisation: every build decision knows the
+  later caps and costs, and an asset's annualised capital cost is paid in every period
+  it is alive. The committed myopic results are read back for the comparison.
+concepts: [pathway, perfect-foresight, myopic-foresight, multi-investment-periods, build-year, lifetime, co2-cap, cost-decline]
+answers:
+- "what is the difference between perfect-foresight and myopic pathway planning"
+- "how do I set up multi_investment_periods in PyPSA"
+- "how much does myopia cost over a pathway"
+builds_on: [myopic-pathway]
+setup:
+  buses: one electricity bus
+  components:
+  - existing coal (build 2000, life 40) and CCGT (2015, 30) with sunk capital cost
+  - per period, extendable onwind, solar, CCGT (Generators) and battery (StorageUnit) with build_year = period and a lifetime
+  - a load-shedding Generator and one GlobalConstraint on CO2 per period (investment_period set)
+  snapshots: a MultiIndex (period, timestep) of the two fortnights (3-hour) under each of 2030, 2040, 2050; 336 snapshots, weighted to a year within each period
+  profiles: the myopic model's load, wind and solar, load rescaled per period
+  assumptions:
+  - {name: investment period weightings, value: "10 years each, objective weight 10 (undiscounted decade totals)"}
+  - {name: co2 budgets, value: "60 %, 30 %, 15 % of the unconstrained 2030 emissions, times 10 years"}
+  - {name: everything else, value: "as myopic-pathway"}
+method: |
+  `n.set_snapshots(pd.MultiIndex.from_product([periods, timesteps]))`, then
+  `n.investment_periods = periods` and `n.investment_period_weightings` with `years` and
+  `objective` per period. Assets carry `build_year` and `lifetime`; PyPSA activates
+  them in the periods they are alive and charges capital cost in each of those periods
+  times the objective weight. Per-period CO2 constraints are GlobalConstraints with
+  `investment_period`; they sum emissions over the period's `years`, so the constant is
+  a decade budget. Solve with `n.optimize(multi_investment_periods=True)`. Two PyPSA
+  1.3 pitfalls found here: setting weightings with `n.snapshot_weightings.loc[:, :] = w`
+  on MultiIndex snapshots silently drops the snapshot dimension of every time series and
+  the solve fails ("'snapshot' is not a valid dimension"); use
+  `n.snapshot_weightings = n.snapshot_weightings * 0 + w`. And a period constraint's
+  constant must be scaled by the period's years, or the cap is ten times too tight.
+knobs:
+- {name: objective weights, in: "n.investment_period_weightings['objective']", effect: "discount later periods to see the plan defer builds"}
+- {name: caps and costs, in: myopic-pathway's constants, effect: "shared with the myopic model so the comparison stays fair"}
+figures:
+- id: capacity_perfect_vs_myopic
+  file: figures/capacity_perfect_vs_myopic.json
+  title: Installed capacity per horizon, perfect foresight beside myopic
+  shows: Stacked capacity per horizon and foresight; perfect foresight shifts builds between decades.
+- id: cost_per_horizon
+  file: figures/cost_per_horizon.json
+  title: Annual cost per horizon
+  shows: Annual cost of both plans per horizon.
+- id: emissions_path
+  file: figures/emissions_path.json
+  title: Emissions against the cap, both foresights
+  shows: Emissions per horizon for both plans with the dashed cap.
+numbers:
+- {id: perfect_foresight, label: Per-horizon block (capacity, new build, emissions, cap, CO2 price, cost, VRE share)}
+- {id: myopic_from_results, label: The same fields read from myopic-pathway/results.yaml}
+- {id: pathway_cost_meur, label: Decade-summed pathway cost, both plans, unit: MEUR}
+- {id: foresight_gap_pct, label: Myopic pathway cost over perfect foresight, unit: "%"}
+- {id: objective_meur, label: The multi-period objective, unit: MEUR}
+- {id: builds_more_than_myopic_in, label: Horizons where perfect foresight builds more of a carrier than myopic}
+- {id: cumulative_new_build_mw, label: Sum of new builds per carrier, both plans, unit: MW}
+limitations:
+- Undiscounted objective weights; with discounting the perfect-foresight plan defers more.
+- Two fortnights per period; same caveat as the myopic model.
+- The myopic comparison is only as fresh as the committed myopic results.yaml.
+sources:
+- {title: "PyPSA example: Pathway Planning", url: "https://docs.pypsa.org/latest/examples/multi-investment-optimisation/"}
+- {title: "PyPSA user guide: Pathway planning", url: "https://docs.pypsa.org/latest/user-guide/optimization/pathway-planning/"}
+pypsa: "1.3.0"

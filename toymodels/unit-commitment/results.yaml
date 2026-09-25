@@ -1,0 +1,35 @@
+numbers:
+  total_cost_uc_eur: 2079178.8662
+  total_cost_linearised_eur: 2009201.6189
+  integrality_gap_pct: 3.4828
+  start_ups:
+    coal: 0
+    CCGT: 8
+  start_up_cost_share_pct: 0.5772
+  hours_at_min_load:
+    coal: 0
+    CCGT: 13
+  hours_committed:
+    coal: 48
+    CCGT: 30
+  avg_price_fixed_status_eur_mwh: 68.5592
+  avg_price_linearised_eur_mwh: 58.443
+  min_price_linearised_eur_mwh: 30.0
+  peaker_energy_mwh: 687.0942
+meta:
+  pypsa: 1.3.0
+  solver: highs
+  runtime_s: 3.82
+  figures:
+    unit_status:
+      title: Commitment status
+      file: figures/unit_status.json
+      height: 240
+    dispatch_stack:
+      title: Dispatch
+      file: figures/dispatch_stack.json
+      height: 360
+    price_uc_vs_relaxed:
+      title: 'Prices: fixed vs linearised commitment'
+      file: figures/price_uc_vs_relaxed.json
+      height: 360

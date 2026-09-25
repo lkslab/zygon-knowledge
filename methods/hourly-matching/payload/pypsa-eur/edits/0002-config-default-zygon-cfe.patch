@@ -44,5 +44,5 @@
 +  reference: nomatch
 +  variants: {}
 +  labels: []
-+  networks: []
++  baseline: false        # true: collect also reads the run's own solved network (no consumer) for additionality
 +  indicators: [procurement_cost, premium, system_cost_delta, cfe_score, procured_capacity, scope2_emissions, grid_exchange]

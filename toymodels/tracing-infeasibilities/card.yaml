@@ -1,0 +1,76 @@
+id: tracing-infeasibilities
+title: Tracing an infeasible dispatch problem
+summary: >-
+  One bus, three days, two thermal units with ramp limits and minimum outputs, no load
+  shedding, and a load spike that is both too high and too fast. The solve says
+  "infeasible" and nothing else. HiGHS computes an irreducible infeasible subset, the
+  smallest set of constraints and bounds that cannot hold together, which is read back
+  into PyPSA's constraint names and snapshots. Adding load shedding repairs the model
+  and the price then points at the same hours.
+concepts: [infeasibility, iis, debugging, ramp-limits, load-shedding, value-of-lost-load]
+answers:
+- "my PyPSA model is infeasible, how do I find out why"
+- "how do I get an irreducible infeasible subset with HiGHS"
+- "why does everyone add a load-shedding generator"
+- "how do ramp limits make a dispatch problem infeasible"
+builds_on: [unit-commitment]
+setup:
+  buses: one electricity bus
+  components:
+  - coal Generator 1000 MW, 30 EUR/MWh, minimum 30 %, ramp 10 % per hour up and down
+  - CCGT Generator 500 MW, 60 EUR/MWh, minimum 20 %, ramp 30 % per hour
+  - a Load with the daily shape 700 to 1300 MW and a 2-hour spike to 1900 MW on day two
+  - repaired case only: a load-shedding Generator at the value of lost load
+  snapshots: 72 hourly snapshots, weight 1
+  profiles: synthetic daily load, seed 42, with the spike overwritten
+  assumptions:
+  - {name: spike, value: "1900 MW for two hours from 18:00 on day two, 400 MW above the fleet"}
+  - {name: value_of_lost_load, value: 3000, unit: EUR/MWh}
+method: |
+  `n.optimize.create_model()` then `n.model.solve(solver_name="highs")` keeps the solver
+  model attached after an infeasible solve. linopy's own `compute_infeasibilities()`
+  supports only Gurobi and Xpress, but the highspy object is reachable as
+  `n.model.solver_model`: set `presolve` off and `iis_strategy` to 2, `run()` again and
+  `getIis()` returns row and column indices. linopy names rows `c<label>` and columns
+  `x<label>`, and every constraint and variable in `n.model` carries a `labels` array,
+  so the labels map back to PyPSA constraint names (`Bus-nodal_balance`,
+  `Generator-p-ramp_limit_up`, ...) and their snapshot and component coordinates. The
+  repair adds a load-shedding generator and solves normally; its price hits the value of
+  lost load in exactly the hours the subset named.
+knobs:
+- {name: spike height and length, in: SPIKE, effect: "a spike below the fleet but above the ramp reach is still infeasible, and the subset then holds ramp constraints only"}
+- {name: ramp limits and minimums, in: UNITS, effect: "loosen them until the subset empties"}
+- {name: with_shedding, in: "build(with_shedding=True)", effect: "the repaired network"}
+figures:
+- id: load_vs_reachable
+  file: figures/load_vs_reachable.json
+  title: The load spike against what the fleet can reach
+  shows: Load, installed capacity and the served load after the repair.
+- id: iis_constraints
+  file: figures/iis_constraints.json
+  title: Constraint families in the irreducible infeasible subset
+  shows: How many constraints of each PyPSA name are in the subset.
+- id: price_after_repair
+  file: figures/price_after_repair.json
+  title: Price after adding load shedding
+  shows: The value of lost load in the spike hours, scarcity around them from the ramps.
+numbers:
+- {id: solver_condition, label: Termination condition of the broken solve}
+- {id: iis_size, label: Constraints and variable bounds in the subset, unit: count}
+- {id: iis_constraints_by_name, label: Subset members by PyPSA constraint name, unit: count}
+- {id: iis_hours, label: Snapshots the subset touches}
+- {id: fleet_capacity_mw, label: Installed capacity, unit: MW}
+- {id: peak_load_mw, label: The spike, unit: MW}
+- {id: load_over_capacity_mw, label: Spike minus capacity, unit: MW}
+- {id: shed_energy_mwh, label: Energy not served after the repair, unit: MWh}
+- {id: hours_with_shedding, label: Hours with shedding, unit: h}
+- {id: max_price_after_repair_eur_mwh, label: Highest price after the repair, unit: EUR/MWh}
+- {id: hours_at_voll, label: Hours priced at the value of lost load, unit: h}
+- {id: repaired_cost_eur, label: Objective of the repaired solve, unit: EUR}
+limitations:
+- The subset is one of possibly several irreducible ones; HiGHS returns the first it finds.
+- Works for LPs; for a MILP the same call applies to the relaxation only.
+sources:
+- {title: "PyPSA example: Tracing Infeasibilities", url: "https://docs.pypsa.org/latest/examples/tracing-infeasibilities/"}
+- {title: "linopy troubleshooting: infeasible model", url: "https://linopy.readthedocs.io/en/latest/infeasible-model.html"}
+pypsa: "1.3.0"

@@ -1,0 +1,74 @@
+<!doctype html>
+<html><head><meta charset='utf-8'><title>Sensitivity of the optimal mix to technology costs</title><meta name='viewport' content='width=device-width, initial-scale=1'><style>
+:root { --bg:#ffffff; --fg:#171717; --muted:#6b7280; --border:#e5e5e5; --card:#ffffff; }
+html.dark { --bg:#191919; --fg:#e5e5e5; --muted:#9ca3af; --border:#333333; --card:#222222; }
+body { margin:0; background:var(--bg); color:var(--fg);
+  font-family: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; font-size:12px; }
+main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+.sub { color: var(--muted); font-size: 12.5px; margin: 0 0 20px; }
+.card { border: 1px solid var(--border); border-radius: 24px; padding: 16px 20px; margin: 12px 0;
+  background: var(--card); }
+.title { font-size: 14px; font-weight: 600; }
+.caption { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+.chart { width: 720px; max-width: 100%; margin: 4px 0; }
+.bar { display:flex; justify-content: space-between; align-items: baseline; }
+button { font: inherit; background: none; color: var(--fg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+table.numbers { border-collapse: collapse; margin: 8px 0 16px; font-size: 12.5px; }
+table.numbers td { padding: 2px 12px 2px 0; border-bottom: 1px solid var(--border); }
+table.numbers td:nth-child(2) { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
+</style><script src='https://cdn.jsdelivr.net/npm/echarts@6/dist/echarts.min.js'></script></head><body><main><div class="bar"><h1>Sensitivity of the optimal mix to technology costs</h1><button id="theme">light / dark</button></div><p class="sub">The two-fortnight single-node expansion (wind, solar, gas, battery, 20 % cap), first
+with each overnight cost moved 30 % up and down on its own (a tornado), then with 16
+joint draws from a Latin hypercube over all four (a crude global sensitivity). Numpy
+sampling only; the point is which cost the answer hangs on.</p><table class="numbers"><tr><td>base_cost_meur_a</td><td>130.7033</td></tr><tr><td>base_capacity_mw / onwind</td><td>806.2171</td></tr><tr><td>base_capacity_mw / solar</td><td>391.7147</td></tr><tr><td>base_capacity_mw / CCGT</td><td>94.5456</td></tr><tr><td>base_capacity_mw / battery</td><td>0.0</td></tr><tr><td>cost_elasticity / onwind</td><td>0.6898</td></tr><tr><td>cost_elasticity / solar</td><td>0.1844</td></tr><tr><td>cost_elasticity / CCGT</td><td>0.0645</td></tr><tr><td>cost_elasticity / battery</td><td>0.0</td></tr><tr><td>dominant_parameter</td><td>onwind</td></tr><tr><td>tornado_cost_meur_a / onwind</td><td>{'-30 %': 102.834, '+30 %': 156.9279}</td></tr><tr><td>tornado_cost_meur_a / solar</td><td>{'-30 %': 122.5854, '+30 %': 137.0471}</td></tr><tr><td>tornado_cost_meur_a / CCGT</td><td>{'-30 %': 128.1356, '+30 %': 133.1969}</td></tr><tr><td>tornado_cost_meur_a / battery</td><td>{'-30 %': 130.7033, '+30 %': 130.7033}</td></tr><tr><td>capacity_range_across_draws_mw / onwind</td><td>{'min': 742.8768, 'median': 793.9226, 'max': 891.0756}</td></tr><tr><td>capacity_range_across_draws_mw / solar</td><td>{'min': 265.2843, 'median': 414.8805, 'max': 531.9903}</td></tr><tr><td>capacity_range_across_draws_mw / CCGT</td><td>{'min': 90.7764, 'median': 94.3955, 'max': 94.5774}</td></tr><tr><td>capacity_range_across_draws_mw / battery</td><td>{'min': 0.0, 'median': 0.0, 'max': 0.0}</td></tr><tr><td>cost_range_across_draws_meur_a / min</td><td>104.1551</td></tr><tr><td>cost_range_across_draws_meur_a / max</td><td>159.3202</td></tr><tr><td>variance_share_linear_fit / onwind</td><td>0.9396</td></tr><tr><td>variance_share_linear_fit / solar</td><td>0.0546</td></tr><tr><td>variance_share_linear_fit / CCGT</td><td>0.0058</td></tr><tr><td>variance_share_linear_fit / battery</td><td>0.0001</td></tr><tr><td>draws</td><td>16</td></tr><tr><td>swing</td><td>0.3</td></tr></table><section class="card"><div class="title">Tornado: system cost against each cost moved 30 %</div><div id="chart-tornado" class="chart"></div><div class="caption">Change in annual system cost when one overnight cost moves alone. The longest bar is the number worth pinning down first.</div></section><section class="card"><div class="title">Capacity across 16 joint cost draws</div><div id="chart-capacity_ranges" class="chart"></div><div class="caption">Minimum, median and maximum optimal capacity over Latin-hypercube draws of all four costs within plus or minus 30 %. A wide bar means the technology's role is a cost call, a narrow one means it is structural.</div></section><section class="card"><div class="title">System cost against the wind cost draw</div><div id="chart-cost_vs_wind_capex" class="chart"></div><div class="caption">Each point is one joint draw; the scatter around the trend is what the other three costs contribute.</div></section></main><script>
+const FIGURES = {"tornado": {"version": 1, "option": {"dataset": [{"id": "bars"}], "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}}, "grid": {"left": 8, "right": 24, "top": 24, "bottom": 24, "containLabel": true}, "xAxis": {"type": "value", "name": "MEUR/a change in system cost", "nameLocation": "middle", "nameGap": 26, "splitLine": {"lineStyle": {"opacity": 0.4}}, "axisLine": {"onZero": true}}, "yAxis": {"type": "category", "data": ["onwind overnight cost", "solar overnight cost", "CCGT overnight cost", "battery overnight cost"], "axisTick": {"alignWithLabel": true}, "inverse": true, "axisLabel": {"hideOverlap": true}}, "series": [{"type": "bar", "name": "-30 %", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"y": "parameter", "x": "-30 %"}, "itemStyle": {"color": "#0072b2"}}, {"type": "bar", "name": "+30 %", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"y": "parameter", "x": "+30 %"}, "itemStyle": {"color": "#e69f00"}}], "legend": {"icon": "roundRect", "itemWidth": 12, "itemHeight": 12, "itemGap": 14, "bottom": 0, "left": 0, "type": "plain", "data": ["-30 %", "+30 %"]}}, "datasets": {"bars": {"columns": ["parameter", "-30 %", "+30 %"], "rows": [["onwind overnight cost", -27.869, 26.225], ["solar overnight cost", -8.118, 6.344], ["CCGT overnight cost", -2.568, 2.494], ["battery overnight cost", 0.0, 0.0]]}}, "height": 240}, "capacity_ranges": {"version": 1, "option": {"dataset": [{"id": "bars"}], "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}}, "grid": {"left": 44, "right": 24, "top": 24, "bottom": 8, "containLabel": true}, "xAxis": {"type": "category", "data": ["onwind", "solar", "CCGT", "battery"], "axisTick": {"alignWithLabel": true}, "axisLabel": {"interval": 0, "width": 150, "overflow": "break", "lineHeight": 14}}, "yAxis": {"type": "value", "name": "MW", "nameLocation": "middle", "nameGap": 38, "splitLine": {"lineStyle": {"opacity": 0.4}}, "axisLine": {"onZero": true}}, "series": [{"type": "bar", "name": "min", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "technology", "y": "min"}, "itemStyle": {"color": "#0072b2"}}, {"type": "bar", "name": "median", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "technology", "y": "median"}, "itemStyle": {"color": "#e69f00"}}, {"type": "bar", "name": "max", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "technology", "y": "max"}, "itemStyle": {"color": "#009e73"}}], "legend": {"icon": "roundRect", "itemWidth": 12, "itemHeight": 12, "itemGap": 14, "bottom": 0, "left": 0, "type": "plain", "data": ["min", "median", "max"]}}, "datasets": {"bars": {"columns": ["technology", "min", "median", "max"], "rows": [["onwind", 742.9, 793.9, 891.1], ["solar", 265.3, 414.9, 532.0], ["CCGT", 90.8, 94.4, 94.6], ["battery", 0.0, 0.0, 0.0]]}}, "height": 360}, "cost_vs_wind_capex": {"version": 1, "option": {"dataset": [{"id": "draws"}], "tooltip": {"trigger": "item"}, "grid": {"left": 44, "right": 24, "top": 24, "bottom": 24, "containLabel": true}, "xAxis": {"type": "value", "name": "Wind overnight cost multiplier", "nameLocation": "middle", "nameGap": 26, "axisLine": {"onZero": false}, "splitLine": {"show": false}, "min": 0.7, "max": 1.3}, "yAxis": {"type": "value", "name": "MEUR/a", "nameLocation": "middle", "nameGap": 40, "splitLine": {"lineStyle": {"opacity": 0.4}}}, "series": [{"type": "scatter", "name": "system cost", "datasetId": "draws", "encode": {"x": "wind cost multiplier", "y": "cost"}, "symbolSize": 10, "itemStyle": {"color": "#0072b2"}}]}, "datasets": {"draws": {"columns": ["wind cost multiplier", "cost", "onwind"], "rows": [[0.725, 110.416, 891.076], [0.763, 108.86, 869.082], [0.776, 104.155, 805.961], [0.816, 118.436, 884.297], [0.871, 112.67, 794.967], [0.889, 115.667, 770.732], [0.937, 130.693, 869.082], [0.967, 127.168, 806.726], [1.037, 130.63, 792.878], [1.054, 131.269, 742.877], [1.089, 135.303, 792.878], [1.135, 142.048, 770.732], [1.162, 150.227, 806.217], [1.208, 148.863, 792.878], [1.24, 152.42, 763.0], [1.284, 159.32, 792.192]]}}, "height": 360}};
+const CARRIER_COLOURS = {"nuclear": "#ff8c00", "lignite": "#826837", "coal": "#545454", "CCGT": "#a85522", "OCGT": "#e0986c", "gas": "#e05b09", "oil": "#c9c9c9", "onwind": "#235ebc", "offwind-ac": "#6895dd", "solar": "#f9d002", "hydro": "#298c81", "ror": "#3dbfb0", "PHS": "#51dbcc", "battery": "#ace37f", "battery charger": "#88a75b", "battery discharger": "#5d4e29", "H2": "#bf13a0", "H2 Electrolysis": "#ff29d9", "H2 Fuel Cell": "#c251ae", "H2 Store": "#bf13a0", "AC": "#70af1d", "DC": "#8a1caf", "transmission lines": "#6c9459", "electricity": "#110d63", "load": "#110d63", "load shedding": "#dd2e23", "heat": "#cc1f1f", "heat pump": "#2fb537", "gas boiler": "#db6a25", "water tanks": "#e69487", "resistive heater": "#d8f9b8", "CHP": "#8a5751", "biomass": "#baa741", "solid biomass": "#baa741", "co2": "#f29dae", "co2 stored": "#f2385a", "co2 sequestered": "#f2682f", "DAC": "#ff5270", "methanolisation": "#83d6d5", "methanol": "#FF7B00", "EV battery": "#baf238", "BEV charger": "#baf238", "V2G": "#e5ffa8"};
+const NUMBERS = {"base_cost_meur_a": 130.70328839523137, "base_capacity_mw": {"onwind": 806.2170699242215, "solar": 391.71465014117837, "CCGT": 94.54556243406286, "battery": 0.0}, "cost_elasticity": {"onwind": 0.6897798478750754, "solar": 0.18440897712042584, "CCGT": 0.06453906104326326, "battery": 0.0}, "dominant_parameter": "onwind", "tornado_cost_meur_a": {"onwind": {"-30 %": 102.83398769475671, "+30 %": 156.9278843263776}, "solar": {"-30 %": 122.58542793157365, "+30 %": 137.04714376311802}, "CCGT": {"-30 %": 128.1355889100734, "+30 %": 133.19686941505046}, "battery": {"-30 %": 130.70328839523137, "+30 %": 130.70328839523137}}, "capacity_range_across_draws_mw": {"onwind": {"min": 742.8768157122801, "median": 793.9226443789535, "max": 891.0756188121509}, "solar": {"min": 265.2843027242069, "median": 414.8805438473276, "max": 531.9902864577531}, "CCGT": {"min": 90.77642640768337, "median": 94.39547395876787, "max": 94.5774078848087}, "battery": {"min": 0.0, "median": 0.0, "max": 0.0}}, "cost_range_across_draws_meur_a": {"min": 104.15511293142588, "max": 159.32020660040695}, "variance_share_linear_fit": {"onwind": 0.9395780627581288, "solar": 0.05456231936400956, "CCGT": 0.005753071001734585, "battery": 0.00010654687612698102}, "draws": 16, "swing": 0.3};
+const charts = [];
+function bound(fig) {
+  const option = JSON.parse(JSON.stringify(fig.option));
+  const entries = Array.isArray(option.dataset) ? option.dataset : (option.dataset ? [option.dataset] : []);
+  for (const entry of entries) {
+    const ds = fig.datasets[entry.id];
+    if (ds && !entry.source) entry.source = [ds.columns, ...ds.rows];
+  }
+  for (const s of option.series || []) {
+    const colour = CARRIER_COLOURS[s.name];
+    if (colour && !(s.itemStyle && s.itemStyle.color)) {
+      s.itemStyle = Object.assign({}, s.itemStyle, {color: colour});
+      if (s.type === "line") s.lineStyle = Object.assign({}, s.lineStyle, {color: colour});
+    }
+  }
+  // The app measures the bottom legend and pushes the grid up by its height; approximate that.
+  const legend = option.legend;
+  if (legend && legend.bottom === 0 && Array.isArray(legend.data)) {
+    const chars = legend.data.reduce((a, n) => a + String(n).length * 7.5 + 12 + 14, 0);
+    const rows = Math.max(1, Math.ceil(chars / 700));
+    const room = rows * 20 + 10;
+    const grids = Array.isArray(option.grid) ? option.grid : [option.grid || {}];
+    for (const g of grids) g.bottom = (typeof g.bottom === "number" ? g.bottom : 8) + room;
+    option.grid = Array.isArray(option.grid) ? grids : grids[0];
+    for (const z of option.dataZoom || []) if (typeof z.bottom === "number") z.bottom += room;
+  }
+  return Object.assign({backgroundColor: "transparent", textStyle: {fontFamily: "inherit"}}, option);
+}
+function render() {
+  const dark = document.documentElement.classList.contains("dark");
+  for (const c of charts) c.dispose();
+  charts.length = 0;
+  for (const [id, fig] of Object.entries(FIGURES)) {
+    const el = document.getElementById("chart-" + id);
+    el.style.height = (fig.height || 360) + "px";
+    const chart = echarts.init(el, dark ? "dark" : undefined);
+    chart.setOption(bound(fig), true);
+    charts.push(chart);
+  }
+}
+document.getElementById("theme").addEventListener("click", () => {
+  document.documentElement.classList.toggle("dark");
+  render();
+});
+window.addEventListener("resize", () => charts.forEach(c => c.resize()));
+render();
+</script></body></html>

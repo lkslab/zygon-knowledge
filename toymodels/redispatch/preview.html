@@ -1,0 +1,75 @@
+<!doctype html>
+<html><head><meta charset='utf-8'><title>Zonal market, redispatch and nodal pricing</title><meta name='viewport' content='width=device-width, initial-scale=1'><style>
+:root { --bg:#ffffff; --fg:#171717; --muted:#6b7280; --border:#e5e5e5; --card:#ffffff; }
+html.dark { --bg:#191919; --fg:#e5e5e5; --muted:#9ca3af; --border:#333333; --card:#222222; }
+body { margin:0; background:var(--bg); color:var(--fg);
+  font-family: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; font-size:12px; }
+main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+.sub { color: var(--muted); font-size: 12.5px; margin: 0 0 20px; }
+.card { border: 1px solid var(--border); border-radius: 24px; padding: 16px 20px; margin: 12px 0;
+  background: var(--card); }
+.title { font-size: 14px; font-weight: 600; }
+.caption { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+.chart { width: 720px; max-width: 100%; margin: 4px 0; }
+.bar { display:flex; justify-content: space-between; align-items: baseline; }
+button { font: inherit; background: none; color: var(--fg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+table.numbers { border-collapse: collapse; margin: 8px 0 16px; font-size: 12.5px; }
+table.numbers td { padding: 2px 12px 2px 0; border-bottom: 1px solid var(--border); }
+table.numbers td:nth-child(2) { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
+</style><script src='https://cdn.jsdelivr.net/npm/echarts@6/dist/echarts.min.js'></script></head><body><main><div class="bar"><h1>Zonal market, redispatch and nodal pricing</h1><button id="theme">light / dark</button></div><p class="sub">Four buses: a windy, cheap north and a load-heavy south joined by two small lines.
+Three solves: (1) the nodal reference, (2) a copper-plate zonal market that clears
+as if the lines were infinite, (3) redispatch: the market dispatch is frozen and
+every unit gets an up-twin and a down-twin the operator can call at a cost, so the
+flows fit the real grid. The gap between (2)+(3) and (1) is the price of pretending.</p><table class="numbers"><tr><td>cost_nodal_eur</td><td>2968253.6741</td></tr><tr><td>cost_zonal_market_eur</td><td>1602012.1666</td></tr><tr><td>cost_redispatch_eur</td><td>2770242.384</td></tr><tr><td>cost_zonal_plus_redispatch_eur</td><td>4372254.5507</td></tr><tr><td>efficiency_loss_pct</td><td>47.3006</td></tr><tr><td>redispatch_up_mwh</td><td>29920.8268</td></tr><tr><td>redispatch_down_mwh</td><td>29920.8268</td></tr><tr><td>redispatch_by_unit_mwh / onwind N1</td><td>{'up': 0.0, 'down': 6520.8122}</td></tr><tr><td>redispatch_by_unit_mwh / coal N2</td><td>{'up': 0.0, 'down': 23400.0146}</td></tr><tr><td>redispatch_by_unit_mwh / CCGT S1</td><td>{'up': 25370.9545, 'down': -0.0}</td></tr><tr><td>redispatch_by_unit_mwh / OCGT S2</td><td>{'up': 4549.8723, 'down': -0.0}</td></tr><tr><td>wind_curtailed_mwh / nodal</td><td>6525.5769</td></tr><tr><td>wind_curtailed_mwh / zonal market</td><td>0.0</td></tr><tr><td>wind_curtailed_mwh / after redispatch</td><td>6520.8122</td></tr><tr><td>avg_price_eur_mwh / nodal</td><td>{'N1': 13.75, 'N2': -37.5, 'S1': 65.0, 'S2': 116.25}</td></tr><tr><td>avg_price_eur_mwh / zonal market</td><td>58.75</td></tr><tr><td>max_line_loading_market_pct</td><td>336.2544</td></tr></table><section class="card"><div class="title">Daily system cost by market design</div><div id="chart-cost_comparison" class="chart"></div><div class="caption">The zonal market looks cheapest because it ignores the bottleneck; once the operator pays for redispatch the day costs more than nodal pricing would have.</div></section><section class="card"><div class="title">Redispatch volumes by unit</div><div id="chart-redispatch_volume" class="chart"></div><div class="caption">Northern wind is turned down and southern gas turned up so the north-south lines hold. Volumes are what the market schedule got wrong about the grid.</div></section><section class="card"><div class="title">Line loading implied by the zonal schedule</div><div id="chart-line_loading" class="chart"></div><div class="caption">Flows the market schedule would push through the real grid: the two north-south lines run far above their limit, which is the redispatch need.</div></section></main><script>
+const FIGURES = {"cost_comparison": {"version": 1, "option": {"dataset": [{"id": "bars"}], "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}}, "grid": {"left": 44, "right": 24, "top": 24, "bottom": 8, "containLabel": true}, "xAxis": {"type": "category", "data": ["nodal", "zonal market", "zonal + redispatch"], "axisTick": {"alignWithLabel": true}, "axisLabel": {"interval": 0, "width": 150, "overflow": "break", "lineHeight": 14}}, "yAxis": {"type": "value", "name": "kEUR/day", "nameLocation": "middle", "nameGap": 38, "splitLine": {"lineStyle": {"opacity": 0.4}}, "axisLine": {"onZero": true}}, "series": [{"type": "bar", "name": "cost", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "stage", "y": "cost"}, "itemStyle": {"color": "#0072b2"}}]}, "datasets": {"bars": {"columns": ["stage", "cost"], "rows": [["nodal", 2968.3], ["zonal market", 1602.0], ["zonal + redispatch", 4372.3]]}}, "height": 360}, "redispatch_volume": {"version": 1, "option": {"dataset": [{"id": "bars"}], "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}}, "grid": {"left": 44, "right": 24, "top": 24, "bottom": 8, "containLabel": true}, "xAxis": {"type": "category", "data": ["onwind N1", "coal N2", "CCGT S1", "OCGT S2"], "axisTick": {"alignWithLabel": true}, "axisLabel": {"interval": 0, "width": 150, "overflow": "break", "lineHeight": 14}}, "yAxis": {"type": "value", "name": "MWh", "nameLocation": "middle", "nameGap": 38, "splitLine": {"lineStyle": {"opacity": 0.4}}, "axisLine": {"onZero": true}}, "series": [{"type": "bar", "name": "ramp up", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "unit", "y": "ramp up"}, "itemStyle": {"color": "#0072b2"}, "markLine": {"silent": true, "symbol": "none", "lineStyle": {"type": "dotted", "color": "#6b7280", "width": 1}, "label": {"show": false}, "data": [{"yAxis": 0}]}}, {"type": "bar", "name": "ramp down", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "unit", "y": "ramp down"}, "itemStyle": {"color": "#e69f00"}}], "legend": {"icon": "roundRect", "itemWidth": 12, "itemHeight": 12, "itemGap": 14, "bottom": 0, "left": 0, "type": "plain", "data": ["ramp up", "ramp down"]}}, "datasets": {"bars": {"columns": ["unit", "ramp up", "ramp down"], "rows": [["onwind N1", 0.0, -6520.8], ["coal N2", 0.0, -23400.0], ["CCGT S1", 25371.0, 0.0], ["OCGT S2", 4549.9, 0.0]]}}, "height": 360}, "line_loading": {"version": 1, "option": {"dataset": [{"id": "ts"}], "tooltip": {"trigger": "axis", "axisPointer": {"type": "cross", "animation": false}}, "grid": {"left": 44, "right": 24, "top": 24, "bottom": 8, "containLabel": true}, "xAxis": {"type": "time", "boundaryGap": false, "axisLabel": {"hideOverlap": true, "showMinLabel": false, "showMaxLabel": false, "formatter": {"year": "{yyyy}", "month": "{MMM}", "day": "{d} {MMM}", "hour": "{HH}:{mm}", "minute": "{HH}:{mm}"}}}, "yAxis": {"type": "value", "name": "% of limit", "nameLocation": "middle", "nameGap": 40, "splitLine": {"lineStyle": {"opacity": 0.4}}}, "series": [{"type": "line", "name": "N1-N2", "showSymbol": false, "emphasis": {"focus": "series"}, "datasetId": "ts", "encode": {"x": "snapshot", "y": "N1-N2"}, "itemStyle": {"color": "#0072b2"}, "lineStyle": {"color": "#0072b2", "width": 2}, "markLine": {"silent": true, "symbol": "none", "lineStyle": {"type": "dashed", "color": "#6b7280", "width": 1}, "label": {"position": "insideEndTop", "fontSize": 11, "color": "#6b7280", "formatter": "{b}"}, "data": [{"yAxis": 100, "name": "limit"}]}}, {"type": "line", "name": "S1-S2", "showSymbol": false, "emphasis": {"focus": "series"}, "datasetId": "ts", "encode": {"x": "snapshot", "y": "S1-S2"}, "itemStyle": {"color": "#e69f00"}, "lineStyle": {"color": "#e69f00", "width": 2}}, {"type": "line", "name": "N1-S1", "showSymbol": false, "emphasis": {"focus": "series"}, "datasetId": "ts", "encode": {"x": "snapshot", "y": "N1-S1"}, "itemStyle": {"color": "#009e73"}, "lineStyle": {"color": "#009e73", "width": 2}}, {"type": "line", "name": "N2-S2", "showSymbol": false, "emphasis": {"focus": "series"}, "datasetId": "ts", "encode": {"x": "snapshot", "y": "N2-S2"}, "itemStyle": {"color": "#cc79a7"}, "lineStyle": {"color": "#cc79a7", "width": 2}}], "legend": {"icon": "roundRect", "itemWidth": 12, "itemHeight": 12, "itemGap": 14, "bottom": 0, "left": 0, "type": "plain", "data": ["N1-N2", "S1-S2", "N1-S1", "N2-S2"]}}, "datasets": {"ts": {"columns": ["snapshot", "N1-N2", "S1-S2", "N1-S1", "N2-S2"], "rows": [["2025-01-01T00:00:00", 15.4, 7.0, 309.0, 266.8], ["2025-01-01T01:00:00", 11.3, 11.1, 247.2, 246.2], ["2025-01-01T02:00:00", 14.5, 8.0, 294.5, 262.1], ["2025-01-01T03:00:00", 20.2, 6.7, 336.3, 268.9], ["2025-01-01T04:00:00", 10.5, 12.5, 231.7, 241.7], ["2025-01-01T05:00:00", 5.9, 18.1, 156.7, 217.8], ["2025-01-01T06:00:00", 7.2, 18.7, 165.5, 222.9], ["2025-01-01T07:00:00", 7.0, 21.5, 147.6, 219.8], ["2025-01-01T08:00:00", 7.9, 23.0, 147.3, 222.3], ["2025-01-01T09:00:00", 5.6, 26.3, 105.7, 209.6], ["2025-01-01T10:00:00", 8.9, 22.0, 161.4, 227.0], ["2025-01-01T11:00:00", 11.7, 16.8, 217.5, 243.1], ["2025-01-01T12:00:00", 11.5, 14.4, 230.1, 244.4], ["2025-01-01T13:00:00", 15.7, 8.4, 303.9, 267.0], ["2025-01-01T14:00:00", 17.3, 6.1, 331.6, 275.4], ["2025-01-01T15:00:00", 14.1, 9.9, 280.4, 259.0], ["2025-01-01T16:00:00", 16.3, 10.3, 297.4, 267.6], ["2025-01-01T17:00:00", 13.8, 17.9, 229.9, 250.8], ["2025-01-01T18:00:00", 18.8, 18.6, 272.8, 271.4], ["2025-01-01T19:00:00", 19.3, 20.7, 264.7, 271.6], ["2025-01-01T20:00:00", 18.0, 19.4, 259.6, 267.0], ["2025-01-01T21:00:00", 13.9, 17.8, 231.4, 251.3], ["2025-01-01T22:00:00", 17.5, 9.1, 316.0, 273.8], ["2025-01-01T23:00:00", 16.2, 7.6, 312.6, 269.5]]}}, "height": 360}};
+const CARRIER_COLOURS = {"nuclear": "#ff8c00", "lignite": "#826837", "coal": "#545454", "CCGT": "#a85522", "OCGT": "#e0986c", "gas": "#e05b09", "oil": "#c9c9c9", "onwind": "#235ebc", "offwind-ac": "#6895dd", "solar": "#f9d002", "hydro": "#298c81", "ror": "#3dbfb0", "PHS": "#51dbcc", "battery": "#ace37f", "battery charger": "#88a75b", "battery discharger": "#5d4e29", "H2": "#bf13a0", "H2 Electrolysis": "#ff29d9", "H2 Fuel Cell": "#c251ae", "H2 Store": "#bf13a0", "AC": "#70af1d", "DC": "#8a1caf", "transmission lines": "#6c9459", "electricity": "#110d63", "load": "#110d63", "load shedding": "#dd2e23", "heat": "#cc1f1f", "heat pump": "#2fb537", "gas boiler": "#db6a25", "water tanks": "#e69487", "resistive heater": "#d8f9b8", "CHP": "#8a5751", "biomass": "#baa741", "solid biomass": "#baa741", "co2": "#f29dae", "co2 stored": "#f2385a", "co2 sequestered": "#f2682f", "DAC": "#ff5270", "methanolisation": "#83d6d5", "methanol": "#FF7B00", "EV battery": "#baf238", "BEV charger": "#baf238", "V2G": "#e5ffa8"};
+const NUMBERS = {"cost_nodal_eur": 2968253.6741034826, "cost_zonal_market_eur": 1602012.1666439297, "cost_redispatch_eur": 2770242.3840415934, "cost_zonal_plus_redispatch_eur": 4372254.550685523, "efficiency_loss_pct": 47.30056897869749, "redispatch_up_mwh": 29920.826821517832, "redispatch_down_mwh": 29920.826821517836, "redispatch_by_unit_mwh": {"onwind N1": {"up": 0.0, "down": 6520.81221181717}, "coal N2": {"up": 0.0, "down": 23400.014609700665}, "CCGT S1": {"up": 25370.95454719279, "down": -0.0}, "OCGT S2": {"up": 4549.8722743250455, "down": -0.0}}, "wind_curtailed_mwh": {"nodal": 6525.576880283701, "zonal market": 0.0, "after redispatch": 6520.812211817174}, "avg_price_eur_mwh": {"nodal": {"N1": 13.75, "N2": -37.5, "S1": 65.0, "S2": 116.25}, "zonal market": 58.75}, "max_line_loading_market_pct": 336.2543618285448};
+const charts = [];
+function bound(fig) {
+  const option = JSON.parse(JSON.stringify(fig.option));
+  const entries = Array.isArray(option.dataset) ? option.dataset : (option.dataset ? [option.dataset] : []);
+  for (const entry of entries) {
+    const ds = fig.datasets[entry.id];
+    if (ds && !entry.source) entry.source = [ds.columns, ...ds.rows];
+  }
+  for (const s of option.series || []) {
+    const colour = CARRIER_COLOURS[s.name];
+    if (colour && !(s.itemStyle && s.itemStyle.color)) {
+      s.itemStyle = Object.assign({}, s.itemStyle, {color: colour});
+      if (s.type === "line") s.lineStyle = Object.assign({}, s.lineStyle, {color: colour});
+    }
+  }
+  // The app measures the bottom legend and pushes the grid up by its height; approximate that.
+  const legend = option.legend;
+  if (legend && legend.bottom === 0 && Array.isArray(legend.data)) {
+    const chars = legend.data.reduce((a, n) => a + String(n).length * 7.5 + 12 + 14, 0);
+    const rows = Math.max(1, Math.ceil(chars / 700));
+    const room = rows * 20 + 10;
+    const grids = Array.isArray(option.grid) ? option.grid : [option.grid || {}];
+    for (const g of grids) g.bottom = (typeof g.bottom === "number" ? g.bottom : 8) + room;
+    option.grid = Array.isArray(option.grid) ? grids : grids[0];
+    for (const z of option.dataZoom || []) if (typeof z.bottom === "number") z.bottom += room;
+  }
+  return Object.assign({backgroundColor: "transparent", textStyle: {fontFamily: "inherit"}}, option);
+}
+function render() {
+  const dark = document.documentElement.classList.contains("dark");
+  for (const c of charts) c.dispose();
+  charts.length = 0;
+  for (const [id, fig] of Object.entries(FIGURES)) {
+    const el = document.getElementById("chart-" + id);
+    el.style.height = (fig.height || 360) + "px";
+    const chart = echarts.init(el, dark ? "dark" : undefined);
+    chart.setOption(bound(fig), true);
+    charts.push(chart);
+  }
+}
+document.getElementById("theme").addEventListener("click", () => {
+  document.documentElement.classList.toggle("dark");
+  render();
+});
+window.addEventListener("resize", () => charts.forEach(c => c.resize()));
+render();
+</script></body></html>

@@ -1,0 +1,78 @@
+numbers:
+  cost_eur_h:
+    nodal: 13600.0
+    NTC: 19000.0
+    flow-based: 15040.0
+  welfare_gain_fb_over_ntc_eur_h: 3960.0
+  cost_of_zonal_vs_nodal_eur_h:
+    NTC: 5400.0
+    flow-based: 1440.0
+  net_positions_mw:
+    nodal:
+      A: 210.0
+      B: -60.0
+      C: -150.0
+    NTC:
+      A: 120.0
+      B: -0.0
+      C: -120.0
+    flow-based:
+      A: 174.0
+      B: -24.0
+      C: -150.0
+  domain_area_mw2: 104976.0
+  ntc_box_area_mw2: 14400.0
+  domain_over_box_area: 7.29
+  binding_critical_branch:
+  - A-C
+  fb_flows_mw:
+    A-B: 66.0
+    B-C: 42.0
+    A-C: 108.0
+  ram_mw:
+    A-B: 108.0
+    B-C: 108.0
+    A-C: 108.0
+  prices_eur_mwh:
+    nodal:
+      A: 20.0
+      B: 60.0
+      C: 100.0
+    NTC:
+      A: 20.0
+      B: 60.0
+      C: 120.0
+    flow-based:
+      A: 20.0
+      B: 60.0
+      C: 100.0
+  ptdf_slack_A:
+    A-B:
+      A: 0.0
+      B: -0.6667
+      C: -0.3333
+    B-C:
+      A: 0.0
+      B: 0.3333
+      C: -0.3333
+    A-C:
+      A: 0.0
+      B: -0.3333
+      C: -0.6667
+meta:
+  pypsa: 1.3.0
+  solver: highs
+  runtime_s: 4.23
+  figures:
+    flow_based_domain:
+      title: Flow-based domain and the NTC box
+      file: figures/flow_based_domain.json
+      height: 420
+    net_positions:
+      title: Net positions by design
+      file: figures/net_positions.json
+      height: 360
+    cost_by_design:
+      title: Dispatch cost by design
+      file: figures/cost_by_design.json
+      height: 360

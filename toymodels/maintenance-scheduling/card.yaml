@@ -1,0 +1,77 @@
+id: maintenance-scheduling
+title: Maintenance scheduling
+summary: >-
+  Three thermal units and two weeks of load with a weekend dip; the coal unit must be
+  off for 72 consecutive hours somewhere in the fortnight. PyPSA's native maintenance
+  attributes turn that into binary start variables and pick the cheapest window. The
+  same outage forced into the first days shows what a badly timed one costs.
+concepts: [maintenance, scheduling, milp, dispatch, outage, availability]
+answers:
+- "when should a plant schedule its outage"
+- "how do I model a planned outage of fixed duration whose timing is free"
+- "what do maintainable, maintenance_duration and maintenance_events do"
+- "what does bad outage timing cost"
+builds_on: [unit-commitment]
+setup:
+  buses: one electricity bus
+  components:
+  - Generators coal (maintainable), CCGT, OCGT with fixed capacity and marginal cost, plus load shedding
+  - a Load with the daily shape and a 25 % weekend dip
+  snapshots: 336 hourly snapshots (14 days), weight 1
+  profiles: daily load 600 to 1300 MW, weekends at 75 %; seed 42
+  assumptions:
+  - {name: coal, value: "1000 MW at 30 EUR/MWh, maintainable, one 72 h event, fully unavailable during it"}
+  - {name: CCGT, value: "800 MW at 60 EUR/MWh"}
+  - {name: OCGT, value: "600 MW at 120 EUR/MWh"}
+  - {name: forced case, value: "outage fixed to hours 24 to 95 (Thursday to Saturday of the first week)"}
+  - {name: value_of_lost_load, value: 3000, unit: EUR/MWh}
+method: |
+  On the coal generator: `maintainable=True`, `maintenance_duration=72` (hours of
+  elapsed time; the event covers the run of consecutive snapshots whose weightings sum
+  to it), `maintenance_pu=1.0` (fraction of capacity lost), `maintenance_events=1`.
+  `n.optimize()` then adds binary `Generator-maintenance_start` and derived
+  `Generator-maintenance` variables, a count constraint and window-coverage constraints,
+  and couples dispatch to the remaining capacity; results land in
+  `n.generators_t.maintenance` and `maintenance_start`. The forced case is an LP with the
+  outage written into `p_max_pu`. The MILP has no duals, so prices come from an LP
+  re-solve with the chosen outage fixed, as in unit-commitment.
+knobs:
+- {name: duration and events, in: "DURATION_H, maintenance_events", effect: "several shorter events, or one long one"}
+- {name: partial derating, in: maintenance_pu, effect: "0.5 keeps half the unit available during the works"}
+- {name: weekend dip, in: "build(): weekend_factor", effect: "a flatter week makes the timing matter less"}
+- {name: forced start, in: FORCED_START_H, effect: "compare any fixed window with the optimum"}
+figures:
+- id: unit_availability
+  file: figures/unit_availability.json
+  title: Unit availability, optimal timing
+  shows: One band per unit; coal's band drops for the 72 hours the solver chose.
+- id: dispatch_stack
+  file: figures/dispatch_stack.json
+  title: Dispatch with the optimal outage
+  shows: Stacked dispatch; gas covers the outage, the peaker runs at weekday peaks.
+- id: price_series
+  file: figures/price_series.json
+  title: Price, optimal vs forced outage timing
+  shows: LP prices with each outage fixed; the forced one puts the peaker on the margin for whole days.
+- id: cost_comparison
+  file: figures/cost_comparison.json
+  title: Fortnight cost by outage timing
+  shows: Dispatch cost with the optimal and the forced window.
+numbers:
+- {id: chosen_window, label: Start and end of the optimised outage and its weekday}
+- {id: forced_window, label: Start and end of the forced outage}
+- {id: cost_optimal_eur, label: Cost with the optimised window, unit: EUR}
+- {id: cost_forced_eur, label: Cost with the forced window, unit: EUR}
+- {id: saving_eur, label: Forced minus optimal, unit: EUR}
+- {id: saving_pct, label: Saving as a share of the forced cost, unit: "%"}
+- {id: mean_load_in_window_mw, label: Mean load during each outage, unit: MW}
+- {id: peaker_energy_mwh, label: OCGT energy per case, unit: MWh}
+- {id: load_shed_mwh, label: Energy not served per case, unit: MWh}
+- {id: avg_price_eur_mwh, label: Load-weighted price per case from the LP re-solve, unit: EUR/MWh}
+limitations:
+- One maintainable unit and one event; with several units the solver also spaces the outages apart.
+- A fortnight is short for a real outage plan; the formulation scales to a year at daily resolution.
+sources:
+- {title: "PyPSA example: Maintenance Scheduling", url: "https://docs.pypsa.org/latest/examples/maintenance-scheduling/"}
+- {title: "PyPSA user guide: Maintenance scheduling", url: "https://docs.pypsa.org/latest/user-guide/optimization/maintenance-scheduling/"}
+pypsa: "1.3.0"

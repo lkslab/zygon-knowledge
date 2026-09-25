@@ -1,0 +1,74 @@
+<!doctype html>
+<html><head><meta charset='utf-8'><title>Nodal prices in a congested triangle</title><meta name='viewport' content='width=device-width, initial-scale=1'><style>
+:root { --bg:#ffffff; --fg:#171717; --muted:#6b7280; --border:#e5e5e5; --card:#ffffff; }
+html.dark { --bg:#191919; --fg:#e5e5e5; --muted:#9ca3af; --border:#333333; --card:#222222; }
+body { margin:0; background:var(--bg); color:var(--fg);
+  font-family: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; font-size:12px; }
+main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+.sub { color: var(--muted); font-size: 12.5px; margin: 0 0 20px; }
+.card { border: 1px solid var(--border); border-radius: 24px; padding: 16px 20px; margin: 12px 0;
+  background: var(--card); }
+.title { font-size: 14px; font-weight: 600; }
+.caption { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+.chart { width: 720px; max-width: 100%; margin: 4px 0; }
+.bar { display:flex; justify-content: space-between; align-items: baseline; }
+button { font: inherit; background: none; color: var(--fg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+table.numbers { border-collapse: collapse; margin: 8px 0 16px; font-size: 12.5px; }
+table.numbers td { padding: 2px 12px 2px 0; border-bottom: 1px solid var(--border); }
+table.numbers td:nth-child(2) { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
+</style><script src='https://cdn.jsdelivr.net/npm/echarts@6/dist/echarts.min.js'></script></head><body><main><div class="bar"><h1>Nodal prices in a congested triangle</h1><button id="theme">light / dark</button></div><p class="sub">Linear optimal power flow: Kirchhoff's voltage law ties the flows on the three lines
+of the triangle together, so when the cheap bus cannot export any more through the
+small line, the price splits by bus. The load is scaled through six levels to show the
+prices converge at low load and diverge once the line binds.</p><table class="numbers"><tr><td>peak_prices_eur_mwh / A</td><td>20.0</td></tr><tr><td>peak_prices_eur_mwh / B</td><td>60.0</td></tr><tr><td>peak_prices_eur_mwh / C</td><td>40.0</td></tr><tr><td>peak_price_spread_eur_mwh</td><td>40.0</td></tr><tr><td>congestion_rent_peak_eur_h</td><td>24000.0</td></tr><tr><td>congestion_rent_by_line_peak_eur_h / A-B</td><td>16000.0</td></tr><tr><td>congestion_rent_by_line_peak_eur_h / B-C</td><td>-800.0</td></tr><tr><td>congestion_rent_by_line_peak_eur_h / A-C</td><td>8800.0</td></tr><tr><td>line_loading_peak_pct / A-B</td><td>100.0</td></tr><tr><td>line_loading_peak_pct / B-C</td><td>4.0</td></tr><tr><td>line_loading_peak_pct / A-C</td><td>44.0</td></tr><tr><td>marginal_value_line_ab_peak_eur_mw_h</td><td>40.0</td></tr><tr><td>cost_of_congestion_eur</td><td>13200.0</td></tr><tr><td>first_congested_level</td><td>90% load</td></tr><tr><td>loop_flow_share_peak</td><td>0.5238</td></tr></table><section class="card"><div class="title">Nodal prices by load level</div><div id="chart-nodal_prices" class="chart"></div><div class="caption">One price while the network is unconstrained; once line A-B hits its limit the cheap bus A decouples and B and C pay their own marginal units.</div></section><section class="card"><div class="title">Line flows at peak load</div><div id="chart-line_flows" class="chart"></div><div class="caption">Absolute flow against thermal limit; A-B is at its limit, the loop path A-C carries the rest.</div></section><section class="card"><div class="title">Congestion rent by line</div><div id="chart-congestion_rent_by_line" class="chart"></div><div class="caption">Flow times the price difference across the line, the merchandising surplus a transmission owner collects; zero until a constraint binds. B-C goes negative: Kirchhoff's voltage law forces flow against the price gradient on the loop path.</div></section></main><script>
+const FIGURES = {"nodal_prices": {"version": 1, "option": {"dataset": [{"id": "bars"}], "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}}, "grid": {"left": 44, "right": 24, "top": 24, "bottom": 8, "containLabel": true}, "xAxis": {"type": "category", "data": ["A", "B", "C"], "axisTick": {"alignWithLabel": true}, "axisLabel": {"interval": 0, "width": 150, "overflow": "break", "lineHeight": 14}}, "yAxis": {"type": "value", "name": "EUR/MWh", "nameLocation": "middle", "nameGap": 38, "splitLine": {"lineStyle": {"opacity": 0.4}}, "axisLine": {"onZero": true}}, "series": [{"type": "bar", "name": "50% load", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "bus", "y": "50% load"}, "itemStyle": {"color": "#0072b2"}}, {"type": "bar", "name": "70% load", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "bus", "y": "70% load"}, "itemStyle": {"color": "#e69f00"}}, {"type": "bar", "name": "90% load", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "bus", "y": "90% load"}, "itemStyle": {"color": "#009e73"}}, {"type": "bar", "name": "100% load", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "bus", "y": "100% load"}, "itemStyle": {"color": "#cc79a7"}}, {"type": "bar", "name": "110% load", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "bus", "y": "110% load"}, "itemStyle": {"color": "#56b4e9"}}, {"type": "bar", "name": "120% load", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "bus", "y": "120% load"}, "itemStyle": {"color": "#d55e00"}}], "legend": {"icon": "roundRect", "itemWidth": 12, "itemHeight": 12, "itemGap": 14, "bottom": 0, "left": 0, "type": "plain", "data": ["50% load", "70% load", "90% load", "100% load", "110% load", "120% load"]}}, "datasets": {"bars": {"columns": ["bus", "50% load", "70% load", "90% load", "100% load", "110% load", "120% load"], "rows": [["A", 20.0, 20.0, 20.0, 20.0, 20.0, 20.0], ["B", 20.0, 20.0, 60.0, 60.0, 60.0, 60.0], ["C", 20.0, 20.0, 40.0, 40.0, 40.0, 40.0]]}}, "height": 360}, "line_flows": {"version": 1, "option": {"dataset": [{"id": "bars"}], "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}}, "grid": {"left": 8, "right": 24, "top": 24, "bottom": 24, "containLabel": true}, "xAxis": {"type": "value", "name": "MW", "nameLocation": "middle", "nameGap": 26, "splitLine": {"lineStyle": {"opacity": 0.4}}, "axisLine": {"onZero": true}}, "yAxis": {"type": "category", "data": ["A-B", "B-C", "A-C"], "axisTick": {"alignWithLabel": true}, "inverse": true, "axisLabel": {"hideOverlap": true}}, "series": [{"type": "bar", "name": "flow", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"y": "line", "x": "flow"}, "itemStyle": {"color": "#0072b2"}}, {"type": "bar", "name": "capacity", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"y": "line", "x": "capacity"}, "itemStyle": {"color": "#e69f00"}}], "legend": {"icon": "roundRect", "itemWidth": 12, "itemHeight": 12, "itemGap": 14, "bottom": 0, "left": 0, "type": "plain", "data": ["flow", "capacity"]}}, "datasets": {"bars": {"columns": ["line", "flow", "capacity"], "rows": [["A-B", 400.0, 400.0], ["B-C", 40.0, 1000.0], ["A-C", 440.0, 1000.0]]}}, "height": 240}, "congestion_rent_by_line": {"version": 1, "option": {"dataset": [{"id": "bars"}], "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}}, "grid": {"left": 44, "right": 24, "top": 24, "bottom": 8, "containLabel": true}, "xAxis": {"type": "category", "data": ["A-B", "B-C", "A-C"], "axisTick": {"alignWithLabel": true}, "axisLabel": {"interval": 0, "width": 150, "overflow": "break", "lineHeight": 14}}, "yAxis": {"type": "value", "name": "EUR/h", "nameLocation": "middle", "nameGap": 38, "splitLine": {"lineStyle": {"opacity": 0.4}}, "axisLine": {"onZero": true}}, "series": [{"type": "bar", "name": "50% load", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "line", "y": "50% load"}, "itemStyle": {"color": "#0072b2"}, "markLine": {"silent": true, "symbol": "none", "lineStyle": {"type": "dotted", "color": "#6b7280", "width": 1}, "label": {"show": false}, "data": [{"yAxis": 0}]}}, {"type": "bar", "name": "70% load", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "line", "y": "70% load"}, "itemStyle": {"color": "#e69f00"}}, {"type": "bar", "name": "90% load", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "line", "y": "90% load"}, "itemStyle": {"color": "#009e73"}}, {"type": "bar", "name": "100% load", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "line", "y": "100% load"}, "itemStyle": {"color": "#cc79a7"}}, {"type": "bar", "name": "110% load", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "line", "y": "110% load"}, "itemStyle": {"color": "#56b4e9"}}, {"type": "bar", "name": "120% load", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "line", "y": "120% load"}, "itemStyle": {"color": "#d55e00"}}], "legend": {"icon": "roundRect", "itemWidth": 12, "itemHeight": 12, "itemGap": 14, "bottom": 0, "left": 0, "type": "plain", "data": ["50% load", "70% load", "90% load", "100% load", "110% load", "120% load"]}}, "datasets": {"bars": {"columns": ["line", "50% load", "70% load", "90% load", "100% load", "110% load", "120% load"], "rows": [["A-B", 0.0, 0.0, 16000.0, 16000.0, 16000.0, 16000.0], ["B-C", -0.0, -0.0, 400.0, 0.0, -400.0, -800.0], ["A-C", 0.0, 0.0, 7600.0, 8000.0, 8400.0, 8800.0]]}}, "height": 360}};
+const CARRIER_COLOURS = {"nuclear": "#ff8c00", "lignite": "#826837", "coal": "#545454", "CCGT": "#a85522", "OCGT": "#e0986c", "gas": "#e05b09", "oil": "#c9c9c9", "onwind": "#235ebc", "offwind-ac": "#6895dd", "solar": "#f9d002", "hydro": "#298c81", "ror": "#3dbfb0", "PHS": "#51dbcc", "battery": "#ace37f", "battery charger": "#88a75b", "battery discharger": "#5d4e29", "H2": "#bf13a0", "H2 Electrolysis": "#ff29d9", "H2 Fuel Cell": "#c251ae", "H2 Store": "#bf13a0", "AC": "#70af1d", "DC": "#8a1caf", "transmission lines": "#6c9459", "electricity": "#110d63", "load": "#110d63", "load shedding": "#dd2e23", "heat": "#cc1f1f", "heat pump": "#2fb537", "gas boiler": "#db6a25", "water tanks": "#e69487", "resistive heater": "#d8f9b8", "CHP": "#8a5751", "biomass": "#baa741", "solid biomass": "#baa741", "co2": "#f29dae", "co2 stored": "#f2385a", "co2 sequestered": "#f2682f", "DAC": "#ff5270", "methanolisation": "#83d6d5", "methanol": "#FF7B00", "EV battery": "#baf238", "BEV charger": "#baf238", "V2G": "#e5ffa8"};
+const NUMBERS = {"peak_prices_eur_mwh": {"A": 20.0, "B": 60.0, "C": 40.0}, "peak_price_spread_eur_mwh": 40.0, "congestion_rent_peak_eur_h": 24000.0, "congestion_rent_by_line_peak_eur_h": {"A-B": 16000.0, "B-C": -800.0, "A-C": 8800.0}, "line_loading_peak_pct": {"A-B": 100.0, "B-C": 4.0, "A-C": 44.0}, "marginal_value_line_ab_peak_eur_mw_h": 40.0, "cost_of_congestion_eur": 13200.0, "first_congested_level": "90% load", "loop_flow_share_peak": 0.5238095238095238};
+const charts = [];
+function bound(fig) {
+  const option = JSON.parse(JSON.stringify(fig.option));
+  const entries = Array.isArray(option.dataset) ? option.dataset : (option.dataset ? [option.dataset] : []);
+  for (const entry of entries) {
+    const ds = fig.datasets[entry.id];
+    if (ds && !entry.source) entry.source = [ds.columns, ...ds.rows];
+  }
+  for (const s of option.series || []) {
+    const colour = CARRIER_COLOURS[s.name];
+    if (colour && !(s.itemStyle && s.itemStyle.color)) {
+      s.itemStyle = Object.assign({}, s.itemStyle, {color: colour});
+      if (s.type === "line") s.lineStyle = Object.assign({}, s.lineStyle, {color: colour});
+    }
+  }
+  // The app measures the bottom legend and pushes the grid up by its height; approximate that.
+  const legend = option.legend;
+  if (legend && legend.bottom === 0 && Array.isArray(legend.data)) {
+    const chars = legend.data.reduce((a, n) => a + String(n).length * 7.5 + 12 + 14, 0);
+    const rows = Math.max(1, Math.ceil(chars / 700));
+    const room = rows * 20 + 10;
+    const grids = Array.isArray(option.grid) ? option.grid : [option.grid || {}];
+    for (const g of grids) g.bottom = (typeof g.bottom === "number" ? g.bottom : 8) + room;
+    option.grid = Array.isArray(option.grid) ? grids : grids[0];
+    for (const z of option.dataZoom || []) if (typeof z.bottom === "number") z.bottom += room;
+  }
+  return Object.assign({backgroundColor: "transparent", textStyle: {fontFamily: "inherit"}}, option);
+}
+function render() {
+  const dark = document.documentElement.classList.contains("dark");
+  for (const c of charts) c.dispose();
+  charts.length = 0;
+  for (const [id, fig] of Object.entries(FIGURES)) {
+    const el = document.getElementById("chart-" + id);
+    el.style.height = (fig.height || 360) + "px";
+    const chart = echarts.init(el, dark ? "dark" : undefined);
+    chart.setOption(bound(fig), true);
+    charts.push(chart);
+  }
+}
+document.getElementById("theme").addEventListener("click", () => {
+  document.documentElement.classList.toggle("dark");
+  render();
+});
+window.addEventListener("resize", () => charts.forEach(c => c.resize()));
+render();
+</script></body></html>

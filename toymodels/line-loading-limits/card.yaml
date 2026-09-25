@@ -1,0 +1,69 @@
+id: line-loading-limits
+title: Static, dynamic and emergency line ratings
+summary: >-
+  One line between a cheap generator and a load with a peaker, over three hot days. The
+  conductor carries less in the afternoon heat and more at night. Three cases compare a
+  conservative static rating, a dynamic rating that follows the hour, and the dynamic
+  rating with a two-hour emergency allowance at the evening peak; the difference is
+  peaker fuel and congestion rent.
+concepts: [line-rating, dynamic-line-rating, congestion, congestion-rent, lopf, transmission]
+answers:
+- "how do I give a line a time-varying rating in PyPSA"
+- "what is dynamic line rating worth"
+- "how much does a short-term overload allowance save"
+- "how does congestion rent change with the rating"
+builds_on: [nodal-prices-lopf]
+setup:
+  buses: A (generation) and B (load)
+  components:
+  - Generator coal at A (cheap, large) and OCGT at B (the peaker), plus load shedding at B
+  - one Line A-B with s_nom 1000 MW and a per-unit rating series `s_max_pu`
+  - a Load at B with the daily shape
+  snapshots: 72 hourly snapshots (three days), weight 1
+  profiles: daily load 600 to 1700 MW without noise
+  assumptions:
+  - {name: coal A, value: "2000 MW at 20 EUR/MWh"}
+  - {name: OCGT B, value: "1500 MW at 120 EUR/MWh"}
+  - {name: ratings, value: "1.0 p.u. at night, 0.8 p.u. from 12:00 to 18:59 (hot afternoon), 1.1 p.u. from 18:00 to 19:59 in the emergency case"}
+  - {name: static case, value: "0.8 p.u. all day, the conservative planning value"}
+  - {name: value_of_lost_load, value: 3000, unit: EUR/MWh}
+method: |
+  The rating enters as a time series on the Line's `s_max_pu` (passed to `n.add` as a
+  Series indexed by snapshot); PyPSA bounds the flow by `s_nom * s_max_pu` per
+  snapshot. Each case is one `n.optimize()`. Congestion rent is flow times the price
+  difference across the line, positive only in the hours the line is full; hours at
+  limit count the snapshots where flow reaches the rating.
+knobs:
+- {name: derating, in: "HOT_PU, HOT_HOURS", effect: "how much and how long the heat takes off the line"}
+- {name: emergency allowance, in: "EMERGENCY_PU, EMERGENCY_HOURS", effect: "the size and length of the short-term overload"}
+- {name: load shape, in: "BASE_MW, PEAK_MW", effect: "a lower night makes the dynamic rating's night headroom worthless"}
+figures:
+- id: flow_vs_limit
+  file: figures/flow_vs_limit.json
+  title: Line flow against its rating
+  shows: Flow per case with the static and the dynamic-plus-emergency limits dashed.
+- id: price_spread
+  file: figures/price_spread.json
+  title: Price spread across the line
+  shows: Price at B minus price at A per case; zero with room on the line, the peaker's premium when full.
+- id: cost_and_rent
+  file: figures/cost_and_rent.json
+  title: Three-day cost and congestion rent by rating
+  shows: Dispatch cost and congestion rent per case.
+numbers:
+- {id: "static rating / dynamic rating / dynamic + emergency", label: Per-case block with the fields below}
+- {id: cost_eur, label: Dispatch cost over three days, unit: EUR}
+- {id: hours_at_limit, label: Hours the line is full, unit: h}
+- {id: congestion_rent_eur, label: Flow times price spread summed, unit: EUR}
+- {id: mean_price_spread_eur_mwh, label: Mean price difference B minus A, unit: EUR/MWh}
+- {id: peaker_energy_mwh, label: OCGT energy, unit: MWh}
+- {id: energy_over_line_mwh, label: Energy transferred over the line, unit: MWh}
+- {id: saving_vs_static_eur, label: Cost saving of each case against the static rating, unit: EUR}
+- {id: ratings_pu, label: The three rating levels, unit: p.u.}
+limitations:
+- The rating is a given time series, not computed from weather; the app's seasonal-line-ratings guide is where that lives.
+- An emergency rating in reality is limited by conductor temperature history; here it is a fixed two-hour window.
+sources:
+- {title: "PyPSA example: Line Loading Limits", url: "https://docs.pypsa.org/latest/examples/line-loading-limits/"}
+- {title: "PyPSA user guide: Seasonal line ratings", url: "https://docs.pypsa.org/latest/user-guide/seasonal-line-ratings/"}
+pypsa: "1.3.0"

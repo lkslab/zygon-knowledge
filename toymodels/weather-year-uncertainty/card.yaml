@@ -1,0 +1,71 @@
+id: weather-year-uncertainty
+title: Weather-year uncertainty in investment
+summary: >-
+  Investment when the weather year itself is the unknown. Three weather scenarios
+  differ in their wind and solar time series (a calm, a normal and a windy year),
+  equally likely and unknown when capacities are chosen. Three deterministic plans,
+  the two-stage stochastic plan and the normal-year plan evaluated across all three
+  years give the value of the stochastic solution and of perfect information, for
+  weather rather than a fuel price.
+concepts: [stochastic-programming, scenarios, uncertainty, weather-year, evpi, vss, two-stage, curtailment]
+answers:
+- "how do I put different weather years into one stochastic PyPSA problem"
+- "how much does planning on one weather year cost when another one arrives"
+- "does weather uncertainty change the capacity mix more than fuel-price uncertainty"
+builds_on: [capacity-expansion-single-node, stochastic-cvar]
+setup:
+  buses: one electricity bus
+  components:
+  - extendable Generators onwind, solar, CCGT and an extendable StorageUnit battery, costs from the base model
+  - a load-shedding Generator and one GlobalConstraint on CO2
+  snapshots: 112 snapshots (two fortnights at 3-hour resolution), weighted to a year
+  profiles: three seeded weather years with wind mean capacity factors 0.28, 0.35, 0.42 and matching solar noise; the same load in every scenario
+  assumptions:
+  - {name: probabilities, value: "1/3 each"}
+  - {name: co2 cap, value: "30 % of the normal year's unconstrained emissions, the same tonnes in every scenario"}
+  - {name: technology costs, value: "as capacity-expansion-single-node"}
+method: |
+  `n.set_scenarios({calm: 1/3, normal: 1/3, windy: 1/3})` turns the network into a
+  scenario tree; afterwards every time-series frame has columns (scenario, name), so
+  each year's wind and solar availability is written into
+  `n.generators_t.p_max_pu[(scenario, "onwind")]` and `[(scenario, "solar")]`. Static
+  tables are indexed (scenario, name) and capacities are shared. The normal-year plan
+  is evaluated in each year by freezing its capacities and solving dispatch. EVPI =
+  stochastic cost minus the probability-weighted deterministic costs; VSS = expected
+  cost of the normal-year plan minus the stochastic cost. Pitfall: assign the scenario
+  columns with `.to_numpy()` (the scenario frames share the plain snapshot index) and do
+  it after `set_scenarios`, or the assignment lands on the wrong axis.
+knobs:
+- {name: weather years, in: WEATHER, effect: "mean capacity factors and seeds; wider spread raises EVPI"}
+- {name: cap fraction, in: CAP_FRACTION, effect: "a binding cap fixes the mix regardless of weather and shrinks VSS"}
+- {name: probabilities, in: PROB, effect: "skew toward the calm year to see firm capacity grow"}
+figures:
+- id: capacity_by_plan
+  file: figures/capacity_by_plan.json
+  title: Capacity by planning strategy
+  shows: Stacked capacity for the three deterministic plans and the stochastic plan.
+- id: cost_by_weather_year
+  file: figures/cost_by_weather_year.json
+  title: Realised annual cost under each weather year
+  shows: Cost of the normal-year plan and the stochastic plan in each year.
+- id: curtailment_by_weather_year
+  file: figures/curtailment_by_weather_year.json
+  title: Wind and solar curtailment under each weather year
+  shows: Curtailment of both plans per year.
+numbers:
+- {id: capacity_mw, label: Capacity per carrier per plan, unit: MW}
+- {id: capacity_range_over_deterministic_plans_mw, label: Min and max capacity across the three deterministic plans, unit: MW}
+- {id: expected_cost_meur_a, label: Wait-and-see, stochastic and normal-plan (EEV) expected costs, unit: MEUR/a}
+- {id: evpi_meur_a, label: Expected value of perfect information, unit: MEUR/a}
+- {id: vss_meur_a, label: Value of the stochastic solution, unit: MEUR/a}
+- {id: cost_by_weather_meur_a, label: Realised cost per year for both plans, unit: MEUR/a}
+- {id: curtailment_pct, label: Curtailment per year for both plans, unit: "%"}
+- {id: load_shed_mwh, label: Lost load per year for both plans, unit: MWh}
+- {id: wind_mean_cf, label: Mean wind capacity factor per year, unit: fraction}
+limitations:
+- With the cap binding in every year the plans are similar and VSS is small; that is a finding, not a bug, and the knobs change it.
+- Two fortnights per year; a real weather-year study needs full years and more of them.
+sources:
+- {title: "PyPSA user guide: Stochastic Optimization", url: "https://docs.pypsa.org/latest/user-guide/optimization/stochastic/"}
+- {title: "PyPSA example: Stochastic Optimization", url: "https://docs.pypsa.org/latest/examples/stochastic-optimization/"}
+pypsa: "1.3.0"

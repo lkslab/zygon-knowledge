@@ -1,0 +1,78 @@
+id: flow-based-market-coupling
+title: NTC, flow-based and nodal market coupling
+summary: >-
+  Three zones in a triangle cleared three ways: as a nodal market (the physics), as a
+  zonal market with fixed bilateral exchange limits (NTC), and as a flow-based market
+  whose only constraints on the zones' net positions are the lines' remaining margins
+  mapped through the power transfer distribution factors. The flow-based domain is a
+  polygon in net-position space with the NTC box inside it; the difference is exchange
+  the NTC design leaves unused.
+concepts: [flow-based-market-coupling, ntc, ptdf, market-coupling, congestion, nodal-pricing, market-design]
+answers:
+- "what is flow-based market coupling and how does it differ from NTC"
+- "how do I compute a PTDF matrix in PyPSA and build a flow-based domain"
+- "how much welfare does flow-based coupling gain over fixed transfer capacities"
+- "how do I put zonal net-position constraints into a PyPSA model"
+builds_on: [nodal-prices-lopf]
+setup:
+  buses: zones A, B, C as one bus each; the market networks add a hub bus
+  components:
+  - one Generator per zone (coal at A, CCGT at B, OCGT at C) plus load shedding, one Load per zone
+  - physical network: three Lines with equal reactance, 120 MW each
+  - market networks: the Lines removed, one unconstrained bidirectional Link per zone to the hub (its flow is the zone's net position), and the design's constraints added through extra_functionality
+  snapshots: one snapshot
+  profiles: none
+  assumptions:
+  - {name: generators, value: "A coal 400 MW at 20, B CCGT 400 MW at 60, C OCGT 400 MW at 120 EUR/MWh"}
+  - {name: loads, value: "A 50, B 200, C 150 MW"}
+  - {name: line ratings, value: "120 MW each, reactance 0.1 p.u."}
+  - {name: reliability margin, value: "10 % of each rating withheld; RAM = 108 MW"}
+  - {name: NTC, value: "60 MW per border, so each zone may net-export or import at most 120 MW"}
+  - {name: value_of_lost_load, value: 3000, unit: EUR/MWh}
+method: |
+  Nodal: `n.optimize()` on the physical network. PTDF: `n.determine_network_topology()`,
+  then `calculate_PTDF()` on the sub-network gives line flow per MW injected at a bus
+  and withdrawn at the slack (PyPSA's first bus, A, whose column is zero); because net
+  positions sum to zero the slack choice does not matter. Market designs: the zones
+  hang off a hub through unconstrained links whose flow variable `Link-p` is the net
+  position; `extra_functionality` adds either the NTC bounds on each net position or,
+  for flow-based, one pair of constraints per line, sum over zones of PTDF times net
+  position within plus or minus the remaining available margin. The domain figure is
+  the same half-planes drawn in the (A, B) plane after substituting C's balance.
+knobs:
+- {name: reliability margin, in: RELIABILITY_MARGIN, effect: "shrinks the polygon; at zero the flow-based clearing equals nodal in this toy"}
+- {name: NTC, in: NTC_MW, effect: "the box; the welfare gain of flow-based is what lies between box and polygon"}
+- {name: reactances and ratings, in: "X_PU, LINES", effect: "unequal reactances tilt the polygon and change the critical branch"}
+figures:
+- id: flow_based_domain
+  file: figures/flow_based_domain.json
+  title: Flow-based domain and the NTC box
+  shows: The polygon of feasible (A, B) net positions, the NTC box inside it, and where each design clears.
+- id: net_positions
+  file: figures/net_positions.json
+  title: Net positions by design
+  shows: Export of A and imports of B and C under nodal, NTC and flow-based clearing.
+- id: cost_by_design
+  file: figures/cost_by_design.json
+  title: Dispatch cost by design
+  shows: Nodal lowest, flow-based close, NTC paying for its unused margin.
+numbers:
+- {id: cost_eur_h, label: Dispatch cost per design, unit: EUR/h}
+- {id: welfare_gain_fb_over_ntc_eur_h, label: NTC cost minus flow-based cost, unit: EUR/h}
+- {id: cost_of_zonal_vs_nodal_eur_h, label: Each zonal design's cost above nodal, unit: EUR/h}
+- {id: net_positions_mw, label: Net export per zone per design, unit: MW}
+- {id: domain_area_mw2, label: Area of the flow-based polygon, unit: MW^2}
+- {id: ntc_box_area_mw2, label: Area of the NTC box, unit: MW^2}
+- {id: domain_over_box_area, label: Polygon area over box area, unit: ratio}
+- {id: binding_critical_branch, label: Lines whose margin binds in the flow-based clearing}
+- {id: fb_flows_mw, label: Physical flows implied by the flow-based net positions, unit: MW}
+- {id: ram_mw, label: Remaining available margin per line, unit: MW}
+- {id: prices_eur_mwh, label: Zonal prices per design, unit: EUR/MWh}
+- {id: ptdf_slack_A, label: The PTDF matrix used, slack at A}
+limitations:
+- One snapshot and one generator per zone; the real thing has hourly domains, generation shift keys and remedial actions.
+- Zones are single buses, so there is no intra-zonal congestion for the flow-based design to hide.
+sources:
+- {title: "PyPSA example: Flow-Based Market Coupling", url: "https://docs.pypsa.org/latest/examples/fbmc-simple-example/"}
+- {title: "PyPSA example: Calculating Flow-Based Domains", url: "https://docs.pypsa.org/latest/examples/fbmc-building-domain/"}
+pypsa: "1.3.0"

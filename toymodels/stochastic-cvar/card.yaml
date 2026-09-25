@@ -1,0 +1,78 @@
+id: stochastic-cvar
+title: Stochastic investment and CVaR risk aversion
+summary: >-
+  Investment under an uncertain gas price. One node with wind, solar, gas and a
+  battery over two representative fortnights; the gas price is low, mid or high with
+  known probabilities but unknown when capacities are chosen. Three deterministic
+  plans, a two-stage stochastic plan that minimises expected cost, and CVaR-weighted
+  plans that also penalise the expensive tail. Yields the value of perfect information,
+  the value of the stochastic solution and the price of insurance.
+concepts: [stochastic-programming, scenarios, cvar, risk-aversion, evpi, vss, two-stage, uncertainty]
+answers:
+- "how do I plan capacity when the fuel price is uncertain"
+- "what is the value of the stochastic solution and the expected value of perfect information"
+- "what does CVaR risk aversion do to the capacity mix"
+- "how much does hedging against the bad scenario cost in expectation"
+- "how do I use n.set_scenarios and n.set_risk_preference"
+builds_on: [capacity-expansion-single-node]
+setup:
+  buses: one electricity bus
+  components:
+  - extendable Generators onwind, solar, CCGT and an extendable StorageUnit battery, costs from the base model
+  - a load-shedding Generator at the value of lost load
+  snapshots: 112 snapshots (two fortnights at 4-hour resolution), each weighted 8760/112 h
+  profiles: the base model's load, wind and solar sliced to 8-21 January and 8-21 July
+  assumptions:
+  - {name: gas price scenarios, value: "low 40, mid 80, high 160 EUR/MWh electric"}
+  - {name: probabilities, value: "0.3, 0.4, 0.3"}
+  - {name: alpha, value: 0.9, note: "confidence level; CVaR averages the worst 10 % of the cost distribution, here the worst scenario"}
+  - {name: omega, value: "0.5 for the headline CVaR plan; swept 0, 0.25, 0.5, 0.75, 1"}
+  - {name: technology costs, value: "as capacity-expansion-single-node"}
+method: |
+  Deterministic plans: `n.optimize()` with one gas price. Stochastic: `n.set_scenarios
+  ({low: .3, mid: .4, high: .3})` turns the network into a scenario tree with shared
+  investment (first stage) and per-scenario dispatch (second stage); the gas price is
+  set per scenario on the (scenario, name)-indexed generator table; the objective is
+  expected cost. Risk aversion: `n.set_risk_preference(alpha, omega)` after
+  set_scenarios adds CVaR to the objective, (1 - omega) x expected cost + omega x CVaR_alpha.
+  The mid-price plan is evaluated under every scenario by fixing its capacities and
+  re-solving dispatch (EEV). EVPI = stochastic cost minus the probability-weighted
+  deterministic costs; VSS = EEV minus stochastic cost; CVaR premium = expected cost
+  of the CVaR plan minus the risk-neutral one. Under scenarios, static tables are
+  indexed (scenario, name), time series carry a scenario column level, and
+  `buses_t.marginal_price` is probability-weighted.
+knobs:
+- {name: scenarios and probabilities, in: "GAS_PRICE, PROB", effect: "more or wider scenarios; the value of the stochastic solution grows with spread"}
+- {name: alpha and omega, in: "ALPHA, OMEGAS, CVAR_OMEGA", effect: "omega 0 is risk-neutral, omega 1 minimises the tail alone; with three scenarios the tail is the worst one"}
+- {name: representative weeks, in: profiles.representative_weeks, effect: "more weeks for fidelity at the cost of solve time"}
+figures:
+- id: capacity_mix_by_strategy
+  file: figures/capacity_mix_by_strategy.json
+  title: Capacity by planning strategy
+  shows: Stacked capacities for the three deterministic plans, the risk-neutral stochastic plan and the CVaR plan.
+- id: cost_distribution
+  file: figures/cost_distribution.json
+  title: Realised annual cost under each gas price
+  shows: What the mid-price plan, the stochastic plan and the CVaR plan cost once each price is revealed.
+- id: omega_sweep
+  file: figures/omega_sweep.json
+  title: Expected vs worst-case cost as risk aversion grows
+  shows: Expected cost rises and the worst case falls as omega goes from 0 to 1.
+numbers:
+- {id: capacity_mw, label: Capacity per carrier for every plan, unit: MW}
+- {id: expected_cost_meur_a, label: Wait-and-see, stochastic, mid-plan (EEV) and CVaR expected costs, unit: MEUR/a}
+- {id: evpi_meur_a, label: Expected value of perfect information, unit: MEUR/a, formula: "stochastic - sum_s p_s * deterministic_s"}
+- {id: vss_meur_a, label: Value of the stochastic solution, unit: MEUR/a, formula: "EEV - stochastic"}
+- {id: cvar_premium_meur_a, label: Expected cost of hedging, unit: MEUR/a, formula: "E[cost | CVaR plan] - E[cost | risk-neutral plan]"}
+- {id: worst_case_cost_meur_a, label: Cost in the high-price scenario, stochastic vs CVaR plan, unit: MEUR/a}
+- {id: cost_by_scenario_meur_a, label: Realised cost per scenario per plan, unit: MEUR/a}
+- {id: omega_sweep, label: Expected and worst-case cost and capacities per omega, unit: MEUR/a and MW}
+limitations:
+- Two fortnights stand in for the year, so absolute costs are rough; the comparisons between plans are what matters.
+- Three scenarios make CVaR at alpha 0.9 identical to the worst case; with many scenarios it averages a tail.
+- Only the gas price is uncertain; weather-year or demand uncertainty needs per-scenario time series, which set_scenarios also supports.
+sources:
+- {title: "PyPSA example: Stochastic Optimization", url: "https://docs.pypsa.org/latest/examples/stochastic-optimization/"}
+- {title: "PyPSA user guide: Stochastic Optimization (CVaR section)", url: "https://docs.pypsa.org/latest/user-guide/optimization/stochastic/"}
+- {title: "PyPSA Labs workshop: stochastic and CVaR notebook", url: "https://pypsalabs.github.io/workshop-202609/"}
+pypsa: "1.3.0"

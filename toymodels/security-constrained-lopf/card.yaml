@@ -1,0 +1,72 @@
+id: security-constrained-lopf
+title: Security-constrained optimal power flow (N-1)
+summary: >-
+  The three-bus triangle at one load level, dispatched twice: plainly, using every line
+  to its rating, and security-constrained, so that the loss of any single line leaves
+  the survivors within their ratings. A linear power flow under each outage re-checks
+  both dispatches and shows the overload the plain solve never saw, and what holding
+  spare line capacity costs.
+concepts: [sclopf, n-1, contingency, lopf, congestion, nodal-pricing, security-of-supply]
+answers:
+- "what does N-1 security mean for dispatch and what does it cost"
+- "how do I run a security-constrained OPF in PyPSA"
+- "how bad is the overload after a line outage if I only did a plain OPF"
+- "why do nodal prices rise under N-1"
+builds_on: [nodal-prices-lopf]
+setup:
+  buses: A, B, C, the triangle of nodal-prices-lopf
+  components:
+  - one Generator per bus (coal at A, CCGT at B, oil at C) plus load shedding
+  - three Lines of equal reactance; A-B rated 400 MW, the others 1000 MW
+  - the three Loads at 120 % of the triangle's base loads
+  snapshots: one snapshot (a single hour), weight 1
+  profiles: none
+  assumptions:
+  - {name: generators, value: "coal A 1000 MW at 20, CCGT B 1000 MW at 60, oil C 500 MW at 120 EUR/MWh"}
+  - {name: loads, value: "A 120, B 720, C 480 MW"}
+  - {name: outages considered, value: "each of the three lines on its own"}
+method: |
+  Plain: `n.optimize()`. Secure: `n.optimize.optimize_security_constrained(branch_
+  outages=n.lines.index)`, which adds for every outage the post-contingency flow on
+  every surviving line, computed from the line outage distribution factors, as an
+  extra constraint within the rating. The re-check for both dispatches copies the
+  network, fixes generator set points to the optimised dispatch, removes one line and
+  runs `n.lpf()`; loading is the resulting flow over the rating.
+knobs:
+- {name: load level, in: LOAD_LEVEL, effect: "lower loads make security free, higher ones make even the secure case shed load"}
+- {name: line ratings, in: "the triangle's LINES", effect: "the small A-B line is the binding contingency"}
+- {name: outage set, in: "solve_secure branch_outages", effect: "drop an outage from the set to see which one drives the cost"}
+figures:
+- id: post_contingency_plain
+  file: figures/post_contingency_plain.json
+  title: Post-contingency loading, plain dispatch
+  shows: Loading of the surviving lines after each single outage with the plain dispatch held; bars above 100 % are overloads.
+- id: post_contingency_secure
+  file: figures/post_contingency_secure.json
+  title: Post-contingency loading, N-1 secure dispatch
+  shows: The same check for the secure dispatch; every survivor stays at or under its rating.
+- id: nodal_prices
+  file: figures/nodal_prices.json
+  title: Nodal prices, plain vs N-1
+  shows: Bus prices under both dispatches; the constrained buses pay more for security.
+- id: cost_comparison
+  file: figures/cost_comparison.json
+  title: Dispatch cost per hour
+  shows: Plain versus secure dispatch cost.
+numbers:
+- {id: cost_plain_eur_h, label: Plain dispatch cost, unit: EUR/h}
+- {id: cost_secure_eur_h, label: Secure dispatch cost, unit: EUR/h}
+- {id: cost_of_security_pct, label: Secure over plain, unit: "%"}
+- {id: worst_post_contingency_loading_pct, label: Worst loading after any single outage, plain vs secure, unit: "%"}
+- {id: worst_case, label: Which outage overloads which line, per dispatch}
+- {id: base_case_loading_pct, label: Loading with all lines in service, per dispatch, unit: "%"}
+- {id: spare_capacity_held_mw, label: Flow the secure dispatch takes off each line in the base case, unit: MW, note: "negative where the secure dispatch loads a line more"}
+- {id: nodal_prices_eur_mwh, label: Bus prices per dispatch, unit: EUR/MWh}
+- {id: dispatch_mw, label: Generator outputs per dispatch, unit: MW}
+limitations:
+- Linear power flow and a single hour; no generator outages, no post-contingency redispatch (the corrective form).
+- One load level; the cost of security depends steeply on how loaded the grid is.
+sources:
+- {title: "PyPSA example: Security-Constrained LOPF", url: "https://docs.pypsa.org/latest/examples/scigrid-sclopf/"}
+- {title: "PyPSA user guide: Contingencies", url: "https://docs.pypsa.org/latest/user-guide/optimization/contingencies/"}
+pypsa: "1.3.0"

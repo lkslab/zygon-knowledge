@@ -1,0 +1,46 @@
+numbers:
+  chosen_window:
+    start: '2025-01-10 12:00:00'
+    end: '2025-01-13 11:00:00'
+    weekday_start: Friday
+  forced_window:
+    start: '2025-01-02 00:00:00'
+    end: '2025-01-04 23:00:00'
+  cost_optimal_eur: 11596688.9917
+  cost_forced_eur: 11988317.7488
+  saving_eur: 391628.757
+  saving_pct: 3.2668
+  mean_load_in_window_mw:
+    optimal: 816.5955
+    forced: 900.8096
+  peaker_energy_mwh:
+    optimal timing: 5143.7199
+    forced timing: 9292.0595
+  load_shed_mwh:
+    optimal timing: 0.0
+    forced timing: 0.0
+  avg_price_eur_mwh:
+    optimal timing: 51.3788
+    forced timing: 54.8475
+  duration_h: 72
+meta:
+  pypsa: 1.3.0
+  solver: highs
+  runtime_s: 9.19
+  figures:
+    unit_availability:
+      title: Unit availability, optimal timing
+      file: figures/unit_availability.json
+      height: 240
+    dispatch_stack:
+      title: Dispatch with the optimal outage
+      file: figures/dispatch_stack.json
+      height: 360
+    price_series:
+      title: Price, optimal vs forced outage timing
+      file: figures/price_series.json
+      height: 360
+    cost_comparison:
+      title: Fortnight cost by outage timing
+      file: figures/cost_comparison.json
+      height: 360

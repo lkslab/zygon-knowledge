@@ -1,0 +1,70 @@
+numbers:
+  base_cost_meur_a: 130.7033
+  base_capacity_mw:
+    onwind: 806.2171
+    solar: 391.7147
+    CCGT: 94.5456
+    battery: 0.0
+  cost_elasticity:
+    onwind: 0.6898
+    solar: 0.1844
+    CCGT: 0.0645
+    battery: 0.0
+  dominant_parameter: onwind
+  tornado_cost_meur_a:
+    onwind:
+      -30 %: 102.834
+      +30 %: 156.9279
+    solar:
+      -30 %: 122.5854
+      +30 %: 137.0471
+    CCGT:
+      -30 %: 128.1356
+      +30 %: 133.1969
+    battery:
+      -30 %: 130.7033
+      +30 %: 130.7033
+  capacity_range_across_draws_mw:
+    onwind:
+      min: 742.8768
+      median: 793.9226
+      max: 891.0756
+    solar:
+      min: 265.2843
+      median: 414.8805
+      max: 531.9903
+    CCGT:
+      min: 90.7764
+      median: 94.3955
+      max: 94.5774
+    battery:
+      min: 0.0
+      median: 0.0
+      max: 0.0
+  cost_range_across_draws_meur_a:
+    min: 104.1551
+    max: 159.3202
+  variance_share_linear_fit:
+    onwind: 0.9396
+    solar: 0.0546
+    CCGT: 0.0058
+    battery: 0.0001
+  draws: 16
+  swing: 0.3
+meta:
+  pypsa: 1.3.0
+  solver: highs
+  runtime_s: 34.34
+  figures:
+    tornado:
+      title: 'Tornado: system cost against each cost moved 30 %'
+      file: figures/tornado.json
+      height: 240
+    capacity_ranges:
+      title: Capacity across 16 joint cost draws
+      file: figures/capacity_ranges.json
+      height: 360
+    cost_vs_wind_capex:
+      title: System cost against the wind cost draw
+      file: figures/cost_vs_wind_capex.json
+      height: 360

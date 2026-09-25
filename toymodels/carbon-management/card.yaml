@@ -1,0 +1,85 @@
+id: carbon-management
+title: "Carbon management: capture, sequestration and synthetic fuel"
+summary: >-
+  Carbon tracked as a commodity across buses under a net-zero constraint. Gas plants emit
+  to an atmosphere bus; carbon capture on gas and on biomass, and direct air capture,
+  move CO2 to a captured pool, from where it is buried or combined with electrolytic
+  hydrogen into methanol for a fuel demand. A Store on the atmosphere bus holds the
+  cumulative balance; its end-of-period ceiling is the net-zero constraint and its bus
+  price is the CO2 shadow price.
+concepts: [carbon-management, co2-accounting, ccs, beccs, direct-air-capture, sequestration, synthetic-fuel, net-zero, multi-output-link, shadow-price]
+answers:
+- "how do I track CO2 across capture, storage and fuel synthesis in PyPSA"
+- "what does net zero cost and which removals does the optimiser pick"
+- "how do BECCS and direct air capture compare"
+- "how do I model a plant with several outputs (power and CO2) or several inputs"
+builds_on: [capacity-expansion-single-node]
+setup:
+  buses: electricity, gas, biomass, co2 atmosphere, co2 captured, co2 stored, hydrogen, methanol
+  components:
+  - fuel supply Generators on the gas and biomass buses at fixed prices
+  - extendable wind, solar and a battery on the electricity bus, plus load shedding
+  - Links CCGT and biomass (gas/biomass to electricity, bus2 = co2 atmosphere) and CCGT CCS and BECCS (bus2 = co2 captured, bus3 = co2 atmosphere; BECCS with a negative efficiency3, a removal)
+  - Link DAC electricity to co2 captured with a negative efficiency2 on the atmosphere
+  - Link co2 sequestration captured to stored at a cost per tonne, and Stores for the captured pool and the stored CO2
+  - Store co2 atmosphere allowed to go negative, with e_max_pu = 0 in the last snapshot (the net-zero constraint)
+  - electrolyser, hydrogen store, Link methanolisation (hydrogen to methanol, bus2 = co2 captured with a negative efficiency2, consuming CO2), a methanol store and a flat fuel Load
+  snapshots: 112 snapshots, two fortnights at 3-hour resolution, weighted to a year
+  profiles: the base model's load, wind and solar; seed 42
+  assumptions:
+  - {name: fuel prices, value: "gas 25, biomass 35 EUR/MWh thermal"}
+  - {name: emission factors, value: "gas 0.20 t/MWh thermal; biomass 0.30 biogenic, credited as uptake"}
+  - {name: capture rate, value: "90 %"}
+  - {name: sequestration, value: 15, unit: EUR/t}
+  - {name: methanol, value: "15 MW flat demand, 0.25 t CO2 per MWh, synthesis 80 % on hydrogen"}
+  - {name: DAC, value: "2 MWh electricity per tonne, 6000 EUR/kW electric"}
+  - {name: plant costs, value: "CCGT 900, CCGT CCS 1800, biomass 2500, BECCS 4000 EUR/kW electric; electrolyser 700; methanolisation 1200 EUR/kW methanol"}
+  - {name: net target, value: "0 t at the end of the period (NET_TARGET_T; negative for net removal)"}
+method: |
+  One `n.optimize()`. Every carbon flow is a Link output: a positive efficiency on a bus
+  delivers to it, a negative one withdraws from it, so one Link can burn fuel, make power,
+  emit to the atmosphere and send a captured share to the pool (bus2, bus3 with
+  efficiency2, efficiency3; PyPSA 1.3 takes them as plain `n.add` arguments). The
+  atmosphere Store has e_min_pu = -1 so removals can push it below zero and a
+  time-varying e_max_pu that is zero only in the last snapshot: the cumulative balance
+  may swing but must end at the target. Its bus price, times minus one, is the CO2
+  shadow price. The cost of net zero is the objective minus an unconstrained rerun.
+knobs:
+- {name: net target, in: "build(net_target_t=...)", effect: "negative values buy removals; the shadow price climbs to the cost of DAC"}
+- {name: sequestration cost, in: SEQ_COST, effect: "decides between burying captured CO2 and using it for fuel"}
+- {name: capture rate and costs, in: "CAPTURE_RATE, TECH", effect: "CCS vs unabated gas vs BECCS"}
+- {name: fuel demand, in: FUEL_DEMAND_MW, effect: "how much captured carbon the methanol route absorbs"}
+figures:
+- id: co2_sankey
+  file: figures/co2_sankey.json
+  title: Annual CO2 flows
+  shows: A sankey from gas combustion and the atmosphere into the captured pool and on to sequestration and methanol, in kt.
+- id: capacity
+  file: figures/capacity.json
+  title: Optimal capacity
+  shows: Plants in MW fuel input, DAC and electrolyser in MW electric, methanolisation in MW hydrogen.
+- id: carbon_balance
+  file: figures/carbon_balance.json
+  title: Cumulative carbon balance
+  shows: The atmosphere store rising when gas runs and falling with BECCS, ending at the target; the captured pool alongside.
+numbers:
+- {id: co2_kt, label: Gross emissions, captured from gas, removed by BECCS and DAC, sequestered, used in methanol, net, unit: kt/a}
+- {id: atmosphere_balance_end_t, label: Atmosphere store at the end (the target), unit: t}
+- {id: co2_shadow_price_eur_t, label: Minus the atmosphere bus price, unit: EUR/t}
+- {id: captured_co2_price_eur_t, label: Price of CO2 in the captured pool (negative means it costs to dispose of), unit: EUR/t}
+- {id: cost_of_net_zero_meur_a, label: Objective minus the unconstrained objective, unit: MEUR/a}
+- {id: unconstrained_emissions_kt, label: Net emissions without the constraint, unit: kt/a}
+- {id: total_cost_meur_a, label: Objective, unit: MEUR/a}
+- {id: capacity_mw, label: Capacity per technology, unit: MW}
+- {id: methanol_gwh_a, label: Fuel produced, unit: GWh/a}
+- {id: methanol_price_eur_mwh, label: Methanol bus price, unit: EUR/MWh}
+- {id: electricity_price_eur_mwh, label: Mean electricity price, unit: EUR/MWh}
+- {id: load_shed_mwh, label: Electricity not served, unit: MWh}
+limitations:
+- Methanol's downstream combustion is outside the boundary (fuel exported); count it to close the loop.
+- DAC needs no heat here; with a heat requirement it competes with the heat pump of the sector-coupling model.
+- Two fortnights: seasonal CO2 storage in the captured pool is only sketched.
+sources:
+- {title: "PyPSA example: Carbon Management", url: "https://docs.pypsa.org/latest/examples/biomass-synthetic-fuels-carbon-management/"}
+- {title: "PyPSA user guide: Links (multiple outputs)", url: "https://docs.pypsa.org/latest/user-guide/components/links/"}
+pypsa: "1.3.0"

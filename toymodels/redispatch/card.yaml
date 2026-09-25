@@ -1,0 +1,77 @@
+id: redispatch
+title: Zonal market, redispatch and nodal pricing
+summary: >-
+  A windy, cheap north and a load-heavy south joined by two small lines. Three solves
+  on one day: the nodal reference, a copper-plate zonal market that clears as if the
+  lines were infinite, and the operator's redispatch that freezes the market schedule
+  and pays units to ramp up or down until the flows fit. The gap between market plus
+  redispatch and nodal pricing is the cost of pretending the grid is not there.
+concepts: [redispatch, zonal-market, nodal-pricing, congestion, curtailment, market-design]
+answers:
+- "what is redispatch and how is it modelled"
+- "how much does a zonal market with redispatch cost compared to nodal pricing"
+- "why is wind curtailed in the north while gas runs in the south"
+- "how do you fix a market schedule and re-solve on the real grid"
+builds_on: [nodal-prices-lopf]
+setup:
+  buses: N1, N2 (north), S1, S2 (south), 380 kV
+  components:
+  - Generators onwind at N1 (with a profile), coal at N2, CCGT at S1, OCGT at S2, load shedding everywhere
+  - Lines N1-N2 and S1-S2 (large), N1-S1 and N2-S2 (the 400 MW bottlenecks), equal reactance
+  - Loads at every bus with a daily shape
+  - in the redispatch network, per unit an "up" twin (headroom at cost plus a premium) and a "down" twin (negative output refunding cost minus the premium)
+  snapshots: 24 hourly snapshots, weight 1
+  profiles: daily load shape scaled to 300/300/1500/1500 MW; wind with 50 % mean capacity factor; seed 42
+  assumptions:
+  - {name: onwind N1, value: "3000 MW at 0 EUR/MWh"}
+  - {name: coal N2, value: "1000 MW at 30 EUR/MWh"}
+  - {name: CCGT S1, value: "2000 MW at 60 EUR/MWh"}
+  - {name: OCGT S2, value: "1500 MW at 120 EUR/MWh"}
+  - {name: north-south lines, value: "400 MW each"}
+  - {name: redispatch premium, value: 10, unit: EUR/MWh, note: "paid on top of cost for ramping up; deducted from the refund for ramping down"}
+  - {name: value_of_lost_load, value: 3000, unit: EUR/MWh}
+method: |
+  Follows the PyPSA scigrid-redispatch example. (1) Nodal: `n.optimize()` on the real
+  grid. (2) Zonal market: the same network with every line rating multiplied by 100,
+  so the market ignores the bottleneck. (3) Redispatch: rebuild the real grid, fix each
+  unit's output to its market schedule through p_min_pu = p_max_pu, and add for each
+  unit a ramp-up generator with the remaining headroom at marginal cost plus the
+  premium and a ramp-down generator with p_min_pu = -schedule, p_max_pu = 0 at minus
+  (cost minus premium). Solving (3) finds the cheapest set of adjustments that make the
+  flows feasible. Redispatch cost is objective (3) minus objective (2).
+knobs:
+- {name: bottleneck rating, in: LINES, effect: "wider north-south lines shrink both redispatch volume and the nodal price split"}
+- {name: premium, in: REDISPATCH_PREMIUM, effect: "the operator's transaction cost; zero makes redispatch as cheap as nodal in this toy"}
+- {name: wind size, in: GENS, effect: "more northern wind means more curtailment under every design"}
+figures:
+- id: cost_comparison
+  file: figures/cost_comparison.json
+  title: Daily system cost by market design
+  shows: Nodal, zonal market as cleared, and zonal plus redispatch; the zonal bar is a fiction, the third is what is paid.
+- id: redispatch_volume
+  file: figures/redispatch_volume.json
+  title: Redispatch volumes by unit
+  shows: Energy ramped up (southern gas) and down (northern wind and coal) per unit.
+- id: line_loading
+  file: figures/line_loading.json
+  title: Line loading implied by the zonal schedule
+  shows: Flows the market schedule would push through the real grid, in percent of the rating; the bottlenecks run far above 100 %.
+numbers:
+- {id: cost_nodal_eur, label: Nodal dispatch cost for the day, unit: EUR}
+- {id: cost_zonal_market_eur, label: Zonal market clearing cost, unit: EUR}
+- {id: cost_redispatch_eur, label: Cost of the redispatch actions, unit: EUR, formula: "objective(redispatch) - objective(market)"}
+- {id: cost_zonal_plus_redispatch_eur, label: What the zonal design actually costs, unit: EUR}
+- {id: efficiency_loss_pct, label: Zonal plus redispatch over nodal, unit: "%"}
+- {id: redispatch_up_mwh, label: Energy ramped up, unit: MWh}
+- {id: redispatch_down_mwh, label: Energy ramped down, unit: MWh}
+- {id: redispatch_by_unit_mwh, label: Up and down per unit, unit: MWh}
+- {id: wind_curtailed_mwh, label: Wind curtailed under each design, unit: MWh}
+- {id: avg_price_eur_mwh, label: Mean price per bus (nodal) and the single zonal price, unit: EUR/MWh, note: "N2 can go negative: injecting there loads the bottleneck through the loop"}
+- {id: max_line_loading_market_pct, label: Worst line overload implied by the market schedule, unit: "%"}
+limitations:
+- Cost-based redispatch with a flat premium; real redispatch is compensated by rules that differ by country.
+- One zone on each side, so no zonal price difference to exploit; a two-zone market with a fixed transfer capacity is the next step.
+sources:
+- {title: "PyPSA example: Redispatch", url: "https://docs.pypsa.org/latest/examples/scigrid-redispatch/"}
+- {title: "PyPSA-GB tutorial: market dispatch and balancing", url: "https://pypsa-gb.readthedocs.io/en/latest/tutorials/index.html"}
+pypsa: "1.3.0"

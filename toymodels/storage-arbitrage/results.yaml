@@ -1,0 +1,28 @@
+numbers:
+  revenue_eur: 331034.2327
+  revenue_per_mw_eur: 662.0685
+  full_cycles: 5.5919
+  round_trip_loss_pct: 9.75
+  avg_charge_price_eur_mwh: 36.2616
+  avg_discharge_price_eur_mwh: 69.7783
+  mean_daily_price_spread_eur_mwh: 40.7143
+  avg_price_eur_mwh: 50.2755
+  wind_share_pct: 27.9702
+  wind_curtailed_mwh: 0.0
+meta:
+  pypsa: 1.3.0
+  solver: highs
+  runtime_s: 1.3
+  figures:
+    charge_vs_price:
+      title: Battery power against the price
+      file: figures/charge_vs_price.json
+      height: 360
+    state_of_charge:
+      title: State of charge
+      file: figures/state_of_charge.json
+      height: 280
+    daily_revenue:
+      title: Daily arbitrage revenue
+      file: figures/daily_revenue.json
+      height: 360

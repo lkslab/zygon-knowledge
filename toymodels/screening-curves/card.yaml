@@ -1,0 +1,69 @@
+id: screening-curves
+title: Screening curves and the optimal thermal mix
+summary: >-
+  The textbook generation-mix argument solved two ways. Each technology's annual cost
+  per MW is a line in full-load hours; the lower envelope of those lines read against
+  the load duration curve gives the optimal capacity of each. A PyPSA capacity
+  expansion against the same load duration curve reproduces the arithmetic.
+concepts: [screening-curve, load-duration-curve, capacity-expansion, breakeven, full-load-hours, lcoe, scarcity-pricing]
+answers:
+- "how many full-load hours does a CCGT need to beat an OCGT"
+- "how do you read the optimal capacity mix off a load duration curve"
+- "why does the peaker only run a few hundred hours and still get built"
+- "what is the LCOE of each technology at its optimal utilisation"
+builds_on: []
+setup:
+  buses: one electricity bus
+  components:
+  - four extendable Generators (nuclear, coal, CCGT, OCGT) with annualised fixed cost and marginal cost
+  - a load-shedding Generator at the value of lost load (the last screening line)
+  - one Load whose snapshots are the steps of a synthetic load duration curve
+  snapshots: 100 load levels sorted from peak to base, each weighted 87.6 h (8760 h in total)
+  profiles: a convex synthetic load duration curve from 10000 MW down to 3000 MW
+  assumptions:
+  - {name: nuclear, value: "250 kEUR/MW/a fixed, 10 EUR/MWh"}
+  - {name: coal, value: "150 kEUR/MW/a fixed, 30 EUR/MWh"}
+  - {name: CCGT, value: "80 kEUR/MW/a fixed, 60 EUR/MWh"}
+  - {name: OCGT, value: "40 kEUR/MW/a fixed, 120 EUR/MWh"}
+  - {name: value_of_lost_load, value: 3000, unit: EUR/MWh}
+method: |
+  Breakeven hours between neighbours in merit order solve capex_i + mc_i h = capex_j +
+  mc_j h; the last boundary is against lost load at the value of lost load. Reading the
+  load duration curve at those hours gives each technology's capacity band. The LP
+  (`n.optimize()`, extendable generators, weighted snapshots) reaches the same numbers up
+  to the curve's step resolution. Prices in the LP take a few intermediate values on the
+  steps where a capacity constraint is only partly binding.
+knobs:
+- {name: technology costs, in: TECH, effect: "steeper or flatter lines move the breakevens; a dominated technology gets zero"}
+- {name: load duration curve, in: "PEAK_MW, BASE_MW, STEPS", effect: "a peakier curve builds more peaker; more steps tighten the analytic match"}
+- {name: value of lost load, in: VOLL, effect: "lower VOLL leaves more peak hours unserved and shrinks the peaker"}
+figures:
+- id: screening_curves
+  file: figures/screening_curves.json
+  title: Screening curves
+  shows: Annual cost per MW versus utilisation for each technology, with the breakeven hours marked.
+- id: load_duration_curve
+  file: figures/load_duration_curve.json
+  title: Load duration curve with the optimal capacity bands
+  shows: Load exceeded for a given number of hours, with horizontal lines at the cumulative optimal capacities.
+- id: optimal_mix
+  file: figures/optimal_mix.json
+  title: Optimal capacities, PyPSA vs screening-curve arithmetic
+  shows: The LP's capacities beside the analytic ones per technology.
+numbers:
+- {id: breakeven_full_load_hours, label: Full-load hours at which each pair of neighbours breaks even, unit: h, formula: "(capex_i - capex_j) / (mc_j - mc_i)"}
+- {id: optimal_capacity_mw, label: LP capacities, unit: MW}
+- {id: analytic_capacity_mw, label: Capacities read off the load duration curve, unit: MW}
+- {id: max_abs_deviation_mw, label: Largest gap between LP and analytic capacities, unit: MW}
+- {id: full_load_hours, label: Utilisation of each technology in the LP, unit: h}
+- {id: lcoe_eur_mwh, label: Levelised cost at that utilisation, unit: EUR/MWh, formula: "(capex + mc * flh) / flh"}
+- {id: hours_at_price, label: Hours per price level, unit: h}
+- {id: load_shed_mwh, label: Energy not served, unit: MWh}
+- {id: total_cost_meur_a, label: Annual system cost, unit: MEUR/a}
+- {id: avg_price_eur_mwh, label: Load-weighted price, unit: EUR/MWh}
+limitations:
+- Thermal only: wind and solar have no fixed utilisation, so the screening argument needs the full time series (capacity-expansion-single-node).
+- The load duration curve throws away chronology; storage and ramping cannot be represented.
+sources:
+- {title: "PyPSA example: Screening Curves", url: "https://docs.pypsa.org/latest/examples/generation-investment-screening-curve/"}
+pypsa: "1.3.0"

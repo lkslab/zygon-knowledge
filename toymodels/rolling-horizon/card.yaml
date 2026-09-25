@@ -1,0 +1,69 @@
+id: rolling-horizon
+title: Rolling horizon versus perfect foresight
+summary: >-
+  The same two windy weeks with a thermal fleet, wind and an 8-hour battery, dispatched
+  once with the whole fortnight in view and twice with a rolling 24-hour window (with
+  and without a 6-hour overlap). Foresight shows up in the battery: how much a perfect
+  forecast is worth is the cost gap between the solves.
+concepts: [rolling-horizon, foresight, dispatch, storage, battery, arbitrage, myopic-foresight]
+answers:
+- "what does perfect foresight assume and how much does it flatter storage"
+- "how do I dispatch a PyPSA model day by day with a rolling window"
+- "does an overlap between windows help"
+- "what is the value of a better forecast for a battery"
+builds_on: [storage-arbitrage]
+setup:
+  buses: one electricity bus
+  components:
+  - four thermal Generators (nuclear, lignite, CCGT, OCGT) with fixed capacity and marginal cost
+  - an onshore wind Generator with a synthetic availability profile and a load-shedding Generator
+  - one StorageUnit battery, not cyclic, starting half full, with a tiny marginal cost to break ties
+  - a Load with the daily shape
+  snapshots: 336 hourly snapshots (14 days), weight 1
+  profiles: daily load 5000 to 10000 MW; AR(1) wind, 35 % mean capacity factor; seed 42
+  assumptions:
+  - {name: fleet, value: "nuclear 2000 MW at 10, lignite 2500 at 25, CCGT 3000 at 55, OCGT 3000 at 110 EUR/MWh"}
+  - {name: wind, value: "6000 MW"}
+  - {name: battery, value: "1000 MW, 8 hours, 95 % / 95 % efficiency, starts at 4000 MWh, not cyclic"}
+  - {name: windows, value: "24 h without overlap, and 24 h with a 6 h overlap"}
+method: |
+  Perfect foresight is one `n.optimize()` over all 336 snapshots. The rolling solves use
+  `n.optimize.optimize_with_rolling_horizon(horizon=24, overlap=6)`: PyPSA solves
+  windows of horizon plus overlap snapshots in sequence, keeps only the first `horizon`
+  of each, and carries the battery's state of charge forward as the next window's
+  initial state. Nothing values stored energy at a window's end, so every window empties
+  the battery before it closes: that, not the overlap, is what the comparison shows.
+  Costs are recomputed from the results so the three solves are scored identically.
+knobs:
+- {name: horizon and overlap, in: CASES, effect: "longer windows converge on perfect foresight; the notebook sweeps (12,0) to (48,24)"}
+- {name: battery size, in: BATTERY, effect: "a bigger, longer-duration battery widens the gap because more of its value is multi-day"}
+- {name: wind capacity, in: WIND_MW, effect: "more wind, more day-to-day price variation, more to forecast"}
+figures:
+- id: state_of_charge
+  file: figures/state_of_charge.json
+  title: Battery state of charge
+  shows: State of charge under perfect foresight and both rolling cases; the rolling solves end every window empty.
+- id: price_comparison
+  file: figures/price_comparison.json
+  title: Hourly price
+  shows: The bus price per solve; they differ where the battery arrives at an evening empty or full at the wrong time.
+- id: cost_and_revenue
+  file: figures/cost_and_revenue.json
+  title: Fortnight cost and battery revenue
+  shows: Extra system cost over perfect foresight and the battery's revenue per solve.
+numbers:
+- {id: cost_eur, label: Dispatch cost per solve, unit: EUR}
+- {id: cost_gap_pct, label: Extra cost over perfect foresight, unit: "%"}
+- {id: battery_revenue_eur, label: Battery revenue per solve, unit: EUR}
+- {id: battery_cycles, label: Equivalent full cycles per solve, unit: count}
+- {id: final_state_of_charge_mwh, label: Energy left at the end, unit: MWh}
+- {id: avg_price_eur_mwh, label: Mean price per solve, unit: EUR/MWh}
+- {id: peaker_energy_mwh, label: OCGT energy per solve, unit: MWh}
+- {id: cases, label: Horizon and overlap of each rolling case, unit: h}
+limitations:
+- Rolling windows here have no terminal value for stored energy; water-values shows the fix.
+- Fourteen days at hourly resolution; the gap depends on how wind varies between days.
+sources:
+- {title: "PyPSA example: Rolling-Horizon Optimization", url: "https://docs.pypsa.org/latest/examples/rolling-horizon/"}
+- {title: "PyPSA API: optimize_with_rolling_horizon", url: "https://docs.pypsa.org/latest/api/networks/optimize/"}
+pypsa: "1.3.0"

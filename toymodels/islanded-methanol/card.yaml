@@ -1,0 +1,79 @@
+id: islanded-methanol
+title: Islanded methanol from wind, solar and air
+summary: >-
+  An off-grid plant that turns wind, solar and air into methanol. No grid and no
+  electricity demand: wind and solar feed an electrolyser and a direct air capture unit,
+  hydrogen and CO2 meet in a synthesis reactor, and a flat annual methanol demand is met
+  from the product store. Everything is extendable, so the optimiser sizes generation,
+  battery, electrolyser, stores and reactor over a year; the objective over the methanol
+  produced is its levelised cost.
+concepts: [synthetic-fuel, methanol, electrolysis, direct-air-capture, off-grid, levelised-cost, capacity-expansion, hydrogen, storage]
+answers:
+- "what does green methanol cost from a stand-alone wind and solar plant"
+- "how big are the hydrogen and product stores in an off-grid fuel plant"
+- "how do I model a reactor with two inputs (hydrogen and CO2) in PyPSA"
+- "how much electricity goes into a MWh of methanol"
+builds_on: [capacity-expansion-single-node]
+setup:
+  buses: electricity, hydrogen, co2, methanol
+  components:
+  - extendable wind and solar Generators and an extendable battery (costs from the base model)
+  - Link H2 Electrolysis electricity to hydrogen and an extendable hydrogen Store
+  - Link DAC electricity to co2 (tonnes) and an extendable CO2 store
+  - Link methanolisation hydrogen to methanol with bus2 = co2 and a negative efficiency2 (it consumes CO2)
+  - an extendable methanol Store and a flat methanol Load
+  snapshots: 1460 snapshots, a year every 6 hours, weight 6 h
+  profiles: AR(1) wind (35 % mean), clear-sky solar with cloud noise; seed 42
+  assumptions:
+  - {name: methanol demand, value: "10 MW flat, 87.6 GWh a year"}
+  - {name: CO2 per MWh methanol, value: 0.25, unit: t}
+  - {name: electrolyser, value: "700 EUR/kW, 70 %"}
+  - {name: DAC, value: "6000 EUR/kW electric, 2 MWh per tonne"}
+  - {name: methanolisation, value: "1200 EUR/kW methanol, 80 % on hydrogen"}
+  - {name: stores, value: "hydrogen 10 EUR/kWh, CO2 50 EUR/t, methanol 2 EUR/kWh"}
+  - {name: wind, solar, battery, value: "as capacity-expansion-single-node"}
+method: |
+  One `n.optimize()`; nothing is fixed except the demand. The reactor is a Link with a
+  second, negative-efficiency output on the CO2 bus, so it withdraws 0.25 t of captured
+  CO2 per MWh of methanol it delivers; DAC supplies that bus from electricity. Because
+  there is no grid, curtailment is the only outlet for surplus power, and the stores are
+  what let a flat demand ride on variable supply: hydrogen for days, methanol (cheap per
+  MWh) across seasons. The levelised cost is the objective divided by the annual methanol,
+  and its breakdown is each component's annualised cost from `n.statistics` over the same.
+knobs:
+- {name: demand, in: "build(demand_mw=...)", effect: "scale; the levelised cost is invariant, the capacities are not"}
+- {name: store costs, in: TECH, effect: "expensive methanol storage forces the reactor to follow the weather instead"}
+- {name: DAC cost, in: TECH, effect: "a quarter of the levelised cost here"}
+- {name: resolution, in: EVERY_H, effect: "6 h keeps the year under fifteen seconds; 4 h refines the battery's role"}
+figures:
+- id: capacities
+  file: figures/capacities.json
+  title: Optimal capacities
+  shows: Wind, solar, battery, electrolyser, DAC and reactor in MW.
+- id: stores_over_year
+  file: figures/stores_over_year.json
+  title: Hydrogen and methanol stores over the year
+  shows: The hydrogen store cycling on weather and the methanol store carrying the seasonal imbalance.
+- id: lcom_breakdown
+  file: figures/lcom_breakdown.json
+  title: Levelised cost of methanol by component
+  shows: EUR per MWh of methanol contributed by each component; the bars sum to the levelised cost.
+numbers:
+- {id: levelised_cost_of_methanol_eur_mwh, label: Objective over annual methanol, unit: EUR/MWh}
+- {id: cost_share_pct, label: Share of the annual cost per component, unit: "%"}
+- {id: electricity_per_mwh_methanol, label: Electrolyser plus DAC electricity per MWh of methanol, unit: MWh/MWh}
+- {id: methanol_gwh_a, label: Annual production, unit: GWh}
+- {id: capacity_mw, label: Capacity per technology, unit: MW}
+- {id: store_capacity, label: Hydrogen and methanol store energy, CO2 store tonnes}
+- {id: capacity_factor_pct, label: Utilisation of electrolyser, reactor and DAC, unit: "%"}
+- {id: curtailment_pct, label: Wind and solar available but not used, unit: "%"}
+- {id: co2_captured_kt_a, label: CO2 captured by DAC, unit: kt/a}
+- {id: total_cost_meur_a, label: Objective, unit: MEUR/a}
+limitations:
+- No minimum load or ramp limits on the electrolyser and reactor; real synthesis units dislike stopping.
+- No heat integration (DAC and synthesis exchange heat in practice) and no water supply.
+- Six-hourly snapshots understate the battery's intra-day role.
+sources:
+- {title: "PyPSA example: Islanded Methanol Production", url: "https://docs.pypsa.org/latest/examples/islanded-methanol-production/"}
+- {title: "PyPSA example: Carbon Management", url: "https://docs.pypsa.org/latest/examples/biomass-synthetic-fuels-carbon-management/"}
+pypsa: "1.3.0"

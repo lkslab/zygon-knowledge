@@ -1,0 +1,85 @@
+id: capacity-expansion-single-node
+title: Single-node capacity expansion under a CO2 cap
+summary: >-
+  Greenfield investment in wind, solar, gas, a 4-hour battery and a hydrogen chain
+  (electrolyser, store, fuel cell) against a stylised year of load, solved for five CO2
+  caps. The optimiser co-decides capacities and dispatch to minimise annualised capital
+  plus operating cost. The base model that cost-recovery, sector-coupling, stochastic
+  and pathway toys build on.
+concepts: [capacity-expansion, investment, co2-cap, shadow-price, annuity, lcoe, curtailment, hydrogen, storage]
+answers:
+- "what mix of wind, solar, gas and storage is cheapest under a CO2 cap"
+- "what CO2 price does a given cap imply"
+- "why does the cost of the last few percent of decarbonisation rise so steeply"
+- "how much curtailment is optimal"
+- "when does hydrogen storage enter the mix"
+builds_on: []
+setup:
+  buses: electricity (AC) and hydrogen (H2)
+  components:
+  - extendable Generators onwind, solar, CCGT (with a CO2 emission factor on its carrier)
+  - an extendable StorageUnit battery (4 h, 95 %/95 %)
+  - extendable Links H2 Electrolysis (70 %) and H2 Fuel Cell (50 %) and an extendable Store H2 Store
+  - a load-shedding Generator at the value of lost load
+  - one GlobalConstraint on CO2 (type primary_energy) per capped case
+  snapshots: 2190 snapshots, a year sampled every 4 hours, each weighted 4 h
+  profiles: annual load with daily and seasonal shape (mean 100 MW, winter 20 % above summer); AR(1) wind (35 % mean); clear-sky solar with cloud noise; seed 42
+  assumptions:
+  - {name: discount_rate, value: 0.07}
+  - {name: onwind, value: "1000 EUR/kW, 25 a, FOM 2.5 %/a"}
+  - {name: solar, value: "600 EUR/kW, 25 a, FOM 1.5 %/a"}
+  - {name: CCGT, value: "900 EUR/kW, 30 a, FOM 2 %/a, 60 EUR/MWh, 0.37 t CO2/MWh"}
+  - {name: battery, value: "1200 EUR/kW for 4 h, 15 a, FOM 1 %/a"}
+  - {name: H2 Electrolysis, value: "700 EUR/kW, 25 a, efficiency 0.70"}
+  - {name: H2 Fuel Cell, value: "1000 EUR/kW, 15 a, efficiency 0.50"}
+  - {name: H2 Store, value: "10 EUR/kWh, 30 a"}
+  - {name: value_of_lost_load, value: 3000, unit: EUR/MWh}
+  - {name: co2 caps, value: "none, then 50 %, 20 %, 5 %, 0 % of the unconstrained emissions"}
+method: |
+  Capital costs are annualised with `finance.capital_cost` (annuity at 7 % over the
+  lifetime plus fixed O&M) and passed as `capital_cost`; `p_nom_extendable=True` makes
+  capacity a variable. The unconstrained case is solved first; every cap is a fraction
+  of its emissions and is a `GlobalConstraint` whose dual (`n.global_constraints.mu`,
+  negative) is the CO2 shadow price. Each case is a fresh network solved with
+  `n.optimize()` (HiGHS interior point). Capacities come from
+  `n.statistics.optimal_capacity()` grouped by carrier, costs from `capex()` and `opex()`.
+knobs:
+- {name: caps, in: CAP_FRACTIONS, effect: "any list of fractions; 0 % needs the hydrogen chain to be feasible without shedding"}
+- {name: costs, in: TECH, effect: "overnight cost, lifetime, FOM, marginal cost per technology"}
+- {name: mean load, in: "build(mean_load_mw=...)", effect: "scales the whole system; results are per-MW invariant"}
+- {name: with_h2, in: "build(with_h2=False)", effect: "drop the hydrogen chain; deep caps then rely on the battery and shedding"}
+- {name: resolution, in: EVERY_H, effect: "hours between snapshots; 4 h keeps a solve near ten seconds"}
+figures:
+- id: capacity_mix_by_cap
+  file: figures/capacity_mix_by_cap.json
+  title: Optimal capacity by CO2 cap
+  shows: Stacked power capacities per cap; gas gives way to wind and solar, hydrogen appears for the last few percent.
+- id: cost_breakdown_by_cap
+  file: figures/cost_breakdown_by_cap.json
+  title: Annual system cost by technology
+  shows: Annualised capital plus operating cost per technology and cap; the total climbs slowly then steeply.
+- id: price_duration
+  file: figures/price_duration.json
+  title: Price duration curves
+  shows: Sorted prices over the share of hours per cap, axis clipped at 400 EUR/MWh; more zero hours and a few scarcity hours as the cap tightens.
+numbers:
+- {id: total_cost_meur_a, label: Annual system cost (per cap), unit: MEUR/a, formula: "objective / 1e6"}
+- {id: avg_cost_eur_mwh, label: System cost per MWh of demand, unit: EUR/MWh}
+- {id: load_weighted_price_eur_mwh, label: Load-weighted market price, unit: EUR/MWh}
+- {id: co2_price_eur_t, label: CO2 shadow price, unit: EUR/t, formula: "-mu of the co2_limit constraint"}
+- {id: emissions_kt, label: Annual emissions, unit: kt}
+- {id: capacity_mw, label: Optimal capacity per carrier, unit: MW}
+- {id: h2_store_mwh, label: Hydrogen store energy capacity, unit: MWh}
+- {id: capacity_factor_pct, label: Energy over capacity times 8760, unit: "%"}
+- {id: curtailment_pct, label: Wind and solar available but not used, unit: "%"}
+- {id: vre_share_pct, label: Wind plus solar generation over demand, unit: "%", note: "can exceed 100 % because storage losses are fed from VRE"}
+- {id: load_shed_mwh, label: Energy not served, unit: MWh}
+- {id: hours_price_above_ccgt_pct, label: Share of hours priced above the gas marginal cost, unit: "%"}
+limitations:
+- Synthetic profiles and round-number costs; the shapes of the curves are the point, not the absolute values.
+- One node, no network, one weather year; a 4-hourly year misses intra-day battery detail.
+- The 0 % cap leans on hydrogen and a little load shedding; results there are sensitive to the H2 store cost.
+sources:
+- {title: "PyPSA example: Single-Node Capacity Expansion", url: "https://docs.pypsa.org/latest/examples/capacity-expansion-planning-single-node/"}
+- {title: "Data Science for ESM: PyPSA capacity expansion workshop", url: "https://fneum.github.io/data-science-for-esm/dsesm/workshop-pypsa-cem/"}
+pypsa: "1.3.0"

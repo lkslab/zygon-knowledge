@@ -1,0 +1,73 @@
+id: reserve-constraints
+title: Operating reserve as a custom constraint
+summary: >-
+  An upward operating reserve added to a one-bus dispatch through `extra_functionality`,
+  the pattern for any rule PyPSA has no attribute for. Every hour the committed
+  headroom of the thermal fleet must cover 10 % of load plus 20 % of the wind output.
+  Reserve is a new linopy variable per unit capped by its headroom; the dual of the
+  requirement is the reserve price and the objective delta is what holding it costs.
+concepts: [reserve, custom-constraint, extra-functionality, linopy, dispatch, reserve-price, shadow-price]
+answers:
+- "how do I add a constraint PyPSA does not have built in"
+- "how do I add a reserve requirement and read its price"
+- "how do I access n.model and its variables inside extra_functionality"
+- "which units end up holding reserve and why"
+builds_on: [merit-order-dispatch]
+setup:
+  buses: one electricity bus
+  components:
+  - four thermal Generators (nuclear, lignite, CCGT, OCGT) and an onshore wind Generator with a profile
+  - a load-shedding Generator and a Load with the daily shape
+  snapshots: 72 hourly snapshots (three days), weight 1
+  profiles: daily load 5000 to 9500 MW; AR(1) wind, 35 % mean capacity factor; seed 42
+  assumptions:
+  - {name: fleet, value: "nuclear 2000 MW at 10, lignite 2000 at 25, CCGT 2500 at 55, OCGT 2500 at 110 EUR/MWh"}
+  - {name: wind, value: "6000 MW, zero marginal cost"}
+  - {name: reserve providers, value: "lignite, CCGT, OCGT (nuclear and wind hold none)"}
+  - {name: requirement, value: "10 % of load plus 20 % of wind output, every hour"}
+  - {name: value_of_lost_load, value: 3000, unit: EUR/MWh}
+method: |
+  `n.optimize(extra_functionality=add_reserve)`. PyPSA builds `n.model` (a linopy
+  Model) from the components, calls `add_reserve(n, snapshots)`, then solves. Inside:
+  `p = n.model["Generator-p"]` is the dispatch variable with dims (snapshot, name);
+  `reserve = n.model.add_variables(lower=0, coords=[snapshots, providers], name=
+  "Generator-reserve")`; `n.model.add_constraints(reserve + p.sel(name=providers) <=
+  p_nom, name="Generator-reserve-headroom")`; and the requirement `reserve.sum("name")
+  - 0.2 * p.sel(name="onwind") >= 0.1 * load`, named "Reserve-requirement". After the
+  solve the held reserve is `n.model["Generator-reserve"].solution` and the reserve
+  price is `n.model.constraints["Reserve-requirement"].dual`; both live on the model,
+  not on the network tables. A second solve without the hook gives the baseline.
+knobs:
+- {name: shares, in: "LOAD_SHARE, WIND_SHARE", effect: "the size of the requirement; wind's share is what makes reserve scarce on windy evenings"}
+- {name: providers, in: PROVIDERS, effect: "let nuclear provide and the price falls; add a battery and it takes the reserve"}
+- {name: fleet, in: FLEET, effect: "more headroom makes reserve free; this fleet is sized so it binds at the evening peak"}
+figures:
+- id: dispatch_with_reserve
+  file: figures/dispatch_with_reserve.json
+  title: Dispatch with the reserve held on top
+  shows: Energy dispatch stacked by carrier with the total reserve held as the top band.
+- id: reserve_provision
+  file: figures/reserve_provision.json
+  title: Reserve provision by unit
+  shows: Which unit holds the reserve hour by hour.
+- id: prices
+  file: figures/prices.json
+  title: Energy price with and without reserve, and the reserve price
+  shows: The energy price under both solves and the requirement's dual.
+numbers:
+- {id: reserve_cost_eur, label: Objective with reserve minus without, unit: EUR}
+- {id: reserve_cost_share_pct, label: Reserve cost over the baseline cost, unit: "%"}
+- {id: reserve_price_eur_mw_h, label: Mean and max reserve price and hours it is positive, unit: EUR/MW/h}
+- {id: requirement_mw, label: Mean and max reserve requirement, unit: MW}
+- {id: reserve_held_share_pct, label: Share of reserve-hours held by each provider, unit: "%"}
+- {id: avg_price_eur_mwh, label: Mean energy price with and without reserve, unit: EUR/MWh}
+- {id: peaker_energy_mwh, label: OCGT energy with and without reserve, unit: MWh}
+- {id: wind_curtailed_mwh, label: Wind curtailed per solve, unit: MWh}
+limitations:
+- Upward reserve only, no activation, no ramp-rate limit on delivery; downward reserve is the mirror image.
+- In the one hour the fleet cannot cover load plus reserve the price jumps to the value of lost load; that is the reserve competing with energy, not a bug.
+sources:
+- {title: "PyPSA example: Reserve Constraints", url: "https://docs.pypsa.org/latest/examples/reserve-power/"}
+- {title: "PyPSA user guide: Custom constraints", url: "https://docs.pypsa.org/latest/user-guide/optimization/custom-constraints/"}
+- {title: "linopy user guide: creating constraints", url: "https://linopy.readthedocs.io/en/latest/creating-constraints.html"}
+pypsa: "1.3.0"

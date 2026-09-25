@@ -1,0 +1,75 @@
+id: transmission-expansion
+title: Transmission expansion between a windy and a load-rich zone
+summary: >-
+  Two zones joined by one extendable bidirectional link. The north has cheap existing
+  wind and little load; the south has the demand, an existing gas fleet and the option
+  to build gas, solar and batteries. Sweeping the link's annualised cost per MW shows
+  the trade-off between wires, southern generation and northern curtailment, and checks
+  that at the optimum the link's congestion rent exactly pays for it.
+concepts: [transmission-expansion, link, congestion-rent, curtailment, cost-benefit, interconnector, price-spread]
+answers:
+- "how much transmission is worth building between a wind region and a load centre"
+- "does an interconnector pay for itself from congestion rent"
+- "how does wind curtailment fall as the link grows"
+- "what is the trade-off between building lines and building gas locally"
+builds_on: [capacity-expansion-single-node]
+setup:
+  buses: north and south
+  components:
+  - existing onwind (north, sunk cost) and a small existing OCGT peaker (north)
+  - existing CCGT (south, can be expanded), extendable solar and battery (south), load shedding at both buses
+  - one extendable Link north to south with p_min_pu -1 (flows both ways), 97 % efficiency, a capacity ceiling
+  snapshots: 112 snapshots (two fortnights at 4-hour resolution), weighted to a year
+  profiles: base-model load split 20/80 north/south; wind with 40 % mean capacity factor; solar; seed 42
+  assumptions:
+  - {name: wind north, value: "400 MW existing, 0.1 EUR/MWh"}
+  - {name: OCGT north, value: "30 MW existing at 120 EUR/MWh"}
+  - {name: CCGT south, value: "60 MW existing, extendable at the base model's cost, 60 EUR/MWh"}
+  - {name: mean load, value: "north 20 MW, south 80 MW"}
+  - {name: link cost cases, value: "50, 100, 200, 400 kEUR per MW per year, and no link"}
+  - {name: link ceiling, value: 500, unit: MW}
+method: |
+  One `n.optimize()` per link cost on a fresh network; the link is a `Link` (not a
+  `Line`) so its capacity is a plain extendable variable without Kirchhoff's voltage
+  law. The link's revenue is delivered power sold at the receiving bus minus power
+  bought at the sending bus, summed over the year; at the optimum of a linear programme
+  it equals the link's annualised cost (cost recovery ratio 1). Curtailment is wind
+  available minus wind dispatched.
+knobs:
+- {name: link cost cases, in: LINK_COST_CASES, effect: "any sweep; the capacity curve is the demand curve for transmission"}
+- {name: link ceiling, in: LINK_MAX_MW, effect: "when it binds the cost recovery ratio exceeds 1: scarcity rent on the wire"}
+- {name: wind size, in: WIND_NORTH_MW, effect: "more stranded wind raises the value of the link"}
+- {name: efficiency, in: "build(): efficiency=0.97", effect: "losses widen the price spread the link needs"}
+figures:
+- id: capacity_vs_cost
+  file: figures/capacity_vs_cost.json
+  title: Optimal link and southern gas capacity against link cost
+  shows: Link MW falling and southern gas MW rising as transmission gets dearer.
+- id: system_cost_tradeoff
+  file: figures/system_cost_tradeoff.json
+  title: System cost by link cost case
+  shows: Stacked transmission, generation capital and operating cost per case, including no link.
+- id: flow_duration
+  file: figures/flow_duration.json
+  title: Flow duration on the link
+  shows: Sorted link flows per case; positive is north to south, negative hours are the south feeding the north.
+numbers:
+- {id: link_mw, label: Optimal link capacity (per case), unit: MW}
+- {id: link_full_load_hours, label: Energy over capacity, unit: h}
+- {id: wind_curtailment_pct, label: Wind available but not used, unit: "%"}
+- {id: mean_price_spread_eur_mwh, label: Mean south minus north price, unit: EUR/MWh}
+- {id: congestion_rent_meur_a, label: Link revenue, unit: MEUR/a, formula: "sum_t w_t (price_south * delivered_t - price_north * sent_t)"}
+- {id: link_cost_recovery_ratio, label: Rent over annualised link cost, unit: ratio, note: "1.0 at the optimum unless the ceiling binds"}
+- {id: gas_south_mw, label: Southern gas capacity, unit: MW}
+- {id: solar_south_mw, label: Southern solar capacity, unit: MW}
+- {id: battery_south_mw, label: Southern battery capacity, unit: MW}
+- {id: cost_meur_a, label: Transmission, generation capex, opex and total, unit: MEUR/a}
+- {id: share_hours_link_at_limit_pct, label: Share of hours the link is full, unit: "%"}
+- {id: saving_vs_no_link_meur_a, label: Total cost saving of each case against no link, unit: MEUR/a}
+limitations:
+- A single link between two copper-plate zones; loop flows and N-1 security need Lines and the nodal-prices toy.
+- Two fortnights, so the flow duration curve is coarse.
+sources:
+- {title: "PyPSA example: Three-Node Capacity Expansion", url: "https://docs.pypsa.org/latest/examples/3-node-cem/"}
+- {title: "PyPSA user guide: Network optimization (transmission expansion)", url: "https://docs.pypsa.org/latest/user-guide/network-optimization/"}
+pypsa: "1.3.0"

@@ -15,12 +15,50 @@
 # ex-post CFE score, procured capacity, scope-2 emissions, grid exchange —
 # plus the grid CFE factor series a second pass with import crediting reads.
 #
-# a6c45e5 streamlined workflow: networks are composed_{horizon}.nc /
-# solved_{horizon}.nc, no cluster/opts wildcards; solve_network.py reads
-# wildcards.horizon, so the {horizon} wildcard is kept on every path.
-# Rebased 2026-09-10; not yet exercised against an a6c45e5 install.
+# Streamlined workflow (a6c45e5 and later): networks are composed_{horizon}.nc
+# / solved_{horizon}.nc, no cluster/opts wildcards; solve_network.py reads
+# wildcards.horizon, so the {horizon} wildcard is kept on every path. Every
+# zygon_cfe.* value is read through config_provider, so under run.scenarios a
+# scenario's own labels/variants apply to its {run}; the collect rule is
+# per-run for the same reason (results/{run}/zygon_cfe/<indicator>.csv).
+# Dry-run validated against 82b13507 (lkslab/pypsa-eur, 2026-09-16).
 
 import os
+
+
+def _zygon_cfe_solar_capacity_per_sqkm(w):
+    # solve_network.py at 82b13507 reads params.solar_capacity_per_sqkm when
+    # solar and solar-hsat are both renewable and extendable; rules/solve.smk
+    # defines the provider there. a6c45e5a has neither, hence the fallback.
+    provider = globals().get("solar_capacity_per_sqkm_provider")
+    return provider(w) if provider is not None else {}
+
+
+def _zygon_cfe_run_expand(pattern, w, **kw):
+    # RESULTS carries a {run} wildcard only under run.scenarios.
+    if "{run}" in pattern:
+        kw["run"] = [w.run]
+    return expand(pattern, **kw)
+
+
+def _zygon_cfe_solved(w):
+    """The solved variant networks of one run: its own labels, last horizon."""
+    labels = config_provider("zygon_cfe", "labels")(w)
+    horizon = config_provider("planning_horizons")(w)[-1]
+    return _zygon_cfe_run_expand(
+        RESULTS + "cfe/{zcfe}/solved_{horizon}.nc", w, zcfe=labels, horizon=[horizon]
+    )
+
+
+def _zygon_cfe_baseline(w):
+    """The run's own solved network (no consumer), when zygon_cfe.baseline is
+    true, for the additionality reading."""
+    if not config_provider("zygon_cfe", "baseline", default=False)(w):
+        return []
+    horizon = config_provider("planning_horizons")(w)[-1]
+    return _zygon_cfe_run_expand(
+        RESULTS + "networks/solved_{horizon}.nc", w, horizon=[horizon]
+    )
 
 
 wildcard_constraints:
@@ -29,8 +67,8 @@ wildcard_constraints:
 
 rule build_cfe_network:
     params:
-        variant=lambda w: config["zygon_cfe"]["variants"][w.zcfe],
-        cfe=config["zygon_cfe"],
+        variant=lambda w: config_provider("zygon_cfe", "variants")(w)[w.zcfe],
+        cfe=config_provider("zygon_cfe"),
     input:
         network=resources("networks/composed_{horizon}.nc"),
     output:
@@ -74,6 +112,9 @@ rule solve_cfe_network:
         co2_sequestration_potential=config_provider(
             "sector", "co2_sequestration_potential"
         ),
+        solar_capacity_per_sqkm=_zygon_cfe_solar_capacity_per_sqkm,
+        # the variant set of THIS run, read by zygon_cfe_constraints
+        cfe=config_provider("zygon_cfe"),
         # the payload's own hook: solve_network.py imports this module and
         # calls the function named like the file (zygon_cfe_constraints)
         custom_extra_functionality=lambda w: os.path.join(
@@ -87,22 +128,23 @@ rule solve_cfe_network:
 
 rule zygon_cfe_collect:
     params:
-        labels=config["zygon_cfe"]["labels"],
-        reference=config["zygon_cfe"]["reference"],
-        indicators=config["zygon_cfe"]["indicators"],
-        cfe=config["zygon_cfe"],
+        labels=config_provider("zygon_cfe", "labels"),
+        reference=config_provider("zygon_cfe", "reference"),
+        indicators=config_provider("zygon_cfe", "indicators"),
+        cfe=config_provider("zygon_cfe"),
     input:
-        networks=config["zygon_cfe"]["networks"],
-        baseline=config["zygon_cfe"].get("baseline", []),
+        networks=_zygon_cfe_solved,
+        baseline=_zygon_cfe_baseline,
     output:
         csvs=expand(
-            "results/zygon_cfe/{indicator}.csv",
+            RESULTS + "zygon_cfe/{indicator}.csv",
             indicator=config["zygon_cfe"]["indicators"],
+            allow_missing=True,
         ),
-        grid_cfe="results/zygon_cfe/grid_cfe_factor.csv",
-        manifest="results/zygon_cfe/cfe_manifest.json",
+        grid_cfe=RESULTS + "zygon_cfe/grid_cfe_factor.csv",
+        manifest=RESULTS + "zygon_cfe/cfe_manifest.json",
     log:
-        "logs/zygon_cfe_collect.log",
+        RESULTS + "logs/zygon_cfe_collect.log",
     threads: 1
     resources:
         mem_mb=4000,

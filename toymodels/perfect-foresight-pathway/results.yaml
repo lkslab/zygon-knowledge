@@ -1,0 +1,167 @@
+numbers:
+  perfect_foresight:
+    '2030':
+      capacity_mw:
+        coal: 100.0
+        CCGT: 50.0
+        onwind: 0.0
+        solar: 129.2
+        battery: 0.0
+      new_build_mw:
+        coal: 0.0
+        CCGT: 0.0
+        onwind: 0.0
+        solar: 129.2
+        battery: 0.0
+      emissions_kt: 456.6392
+      co2_price_eur_t: 67.0707
+      cap_kt: 456.6392
+      cost_meur_a:
+        new capex: 7.8127
+        existing capex: 0.0
+        opex: 34.581
+      vre_share_pct: 14.7771
+    '2040':
+      capacity_mw:
+        coal: 0.0
+        CCGT: 142.0
+        onwind: 173.5
+        solar: 138.8
+        battery: 0.0
+      new_build_mw:
+        coal: 0.0
+        CCGT: 92.0
+        onwind: 173.5
+        solar: 9.7
+        battery: 0.0
+      emissions_kt: 228.3196
+      co2_price_eur_t: 45.5358
+      cap_kt: 228.3196
+      cost_meur_a:
+        new capex: 26.1249
+        existing capex: 7.8127
+        opex: 37.0248
+      vre_share_pct: 38.7453
+    '2050':
+      capacity_mw:
+        coal: 0.0
+        CCGT: 125.3
+        onwind: 643.5
+        solar: 384.1
+        battery: 0.0
+      new_build_mw:
+        coal: 0.0
+        CCGT: 33.3
+        onwind: 470.0
+        solar: 245.3
+        battery: 0.0
+      emissions_kt: 114.1598
+      co2_price_eur_t: 586.0915
+      cap_kt: 114.1598
+      cost_meur_a:
+        new capex: 55.9249
+        existing capex: 33.9375
+        opex: 18.5124
+      vre_share_pct: 72.9066
+  myopic_from_results:
+    '2030':
+      capacity_mw:
+        coal: 100.0
+        CCGT: 50.0
+        onwind: 142.7
+        solar: 122.5
+        battery: 0.0
+      new_build_mw:
+        coal: 0.0
+        CCGT: 0.0
+        onwind: 142.7
+        solar: 122.5
+        battery: 0.0
+      emissions_kt: 456.6392
+      co2_price_eur_t: 56.6038
+      cost_meur_a:
+        new capex: 23.2223
+        existing capex: 0.0
+        opex: 18.3685
+    '2040':
+      capacity_mw:
+        coal: 0.0
+        CCGT: 142.1
+        onwind: 172.5
+        solar: 140.6
+        battery: 0.0
+      new_build_mw:
+        coal: 0.0
+        CCGT: 92.1
+        onwind: 29.7
+        solar: 18.2
+        battery: 0.0
+      emissions_kt: 228.3196
+      co2_price_eur_t: 25.5512
+      cost_meur_a:
+        new capex: 12.2338
+        existing capex: 23.2223
+        opex: 37.0248
+    '2050':
+      capacity_mw:
+        coal: 0.0
+        CCGT: 125.3
+        onwind: 643.5
+        solar: 384.1
+        battery: 0.0
+      new_build_mw:
+        coal: 0.0
+        CCGT: 33.2
+        onwind: 471.1
+        solar: 243.5
+        battery: 0.0
+      emissions_kt: 114.1598
+      co2_price_eur_t: 586.0915
+      cost_meur_a:
+        new capex: 55.9306
+        existing capex: 35.4562
+        opex: 18.5124
+  pathway_cost_meur:
+    perfect_foresight: 2217.3087
+    myopic: 2239.709
+  foresight_gap_pct: 1.0102
+  objective_meur: 2217.3087
+  builds_more_than_myopic_in:
+    coal: []
+    CCGT: []
+    onwind:
+    - '2040'
+    solar:
+    - '2030'
+    - '2050'
+    battery: []
+  cumulative_new_build_mw:
+    perfect_foresight:
+      coal: 0.0
+      CCGT: 125.3
+      onwind: 643.5
+      solar: 384.2
+      battery: 0.0
+    myopic:
+      coal: 0.0
+      CCGT: 125.3
+      onwind: 643.5
+      solar: 384.2
+      battery: 0.0
+meta:
+  pypsa: 1.3.0
+  solver: highs
+  runtime_s: 5.44
+  figures:
+    capacity_perfect_vs_myopic:
+      title: Installed capacity per horizon, perfect foresight beside myopic
+      file: figures/capacity_perfect_vs_myopic.json
+      height: 360
+    cost_per_horizon:
+      title: Annual cost per horizon
+      file: figures/cost_per_horizon.json
+      height: 360
+    emissions_path:
+      title: Emissions against the cap, both foresights
+      file: figures/emissions_path.json
+      height: 360

@@ -1,0 +1,72 @@
+id: nodal-prices-lopf
+title: Nodal prices in a congested triangle
+summary: >-
+  Three buses in a meshed AC triangle with one small line. Linear optimal power flow
+  with Kirchhoff's voltage law: as load grows the small line fills, the cheap bus
+  decouples and each bus gets its own price. Shows locational marginal prices, loop
+  flows and congestion rent on the smallest network that has them.
+concepts: [lopf, nodal-pricing, lmp, congestion, kirchhoff, loop-flow, congestion-rent]
+answers:
+- "why do nodal prices differ between buses"
+- "what is congestion rent and who collects it"
+- "why can a line carry power from the expensive to the cheap bus"
+- "how does Kirchhoff's voltage law change dispatch compared to a transport model"
+builds_on: []
+setup:
+  buses: A, B, C at 380 kV, connected in a triangle
+  components:
+  - one Generator per bus (coal at A, CCGT at B, oil at C) plus load shedding at every bus
+  - three Line components with equal reactance, one of them (A-B) small
+  - three Loads scaled together through six load levels
+  snapshots: six snapshots, one per load level (50 % to 140 % of the base loads), weight 1
+  profiles: none; the six snapshots are load multipliers
+  assumptions:
+  - {name: coal at A, value: "1000 MW at 20 EUR/MWh"}
+  - {name: CCGT at B, value: "1000 MW at 60 EUR/MWh"}
+  - {name: oil at C, value: "500 MW at 120 EUR/MWh"}
+  - {name: base loads, value: "A 100 MW, B 600 MW, C 400 MW"}
+  - {name: line ratings, value: "A-B 400 MW, B-C 1000 MW, A-C 1000 MW"}
+  - {name: reactance, value: "0.1 p.u. on every line, so flows split by the loop alone"}
+  - {name: value_of_lost_load, value: 3000, unit: EUR/MWh}
+method: |
+  `n.optimize()` on a network with Line components: PyPSA adds Kirchhoff's voltage law
+  over the cycle (the sum of reactance times flow around the triangle is zero), so a
+  MW injected at A splits two thirds via A-B and one third via A-C-B by the path
+  reactances. Bus prices are the duals of the nodal balances, line flows `n.lines_t.p0`,
+  and congestion rent per line is flow times the price difference across it. The cost of
+  congestion is the objective minus a copper-plate rerun with A-B unconstrained.
+knobs:
+- {name: A-B rating, in: "build(s_nom_ab=...)", effect: "raise it and the prices converge; the number reports at which load level it first binds"}
+- {name: load levels, in: "build(load_levels=[...])", effect: "sweep finer or beyond the fleet"}
+- {name: reactances, in: X_PU, effect: "unequal reactances change how the loop splits and where congestion appears"}
+figures:
+- id: nodal_prices
+  file: figures/nodal_prices.json
+  title: Nodal prices by load level
+  shows: One price per bus per load level; identical while unconstrained, then A stays cheap and B and C separate.
+- id: line_flows
+  file: figures/line_flows.json
+  title: Line flows at peak load
+  shows: Absolute flow against thermal rating per line; A-B sits at its limit while the loop path carries the rest.
+- id: congestion_rent_by_line
+  file: figures/congestion_rent_by_line.json
+  title: Congestion rent by line
+  shows: Flow times price difference per line and load level; negative on the line the loop pushes against the price gradient.
+numbers:
+- {id: peak_prices_eur_mwh, label: Nodal prices at the highest load level, unit: EUR/MWh, formula: "dual of the bus balance per bus"}
+- {id: peak_price_spread_eur_mwh, label: Max minus min nodal price at peak, unit: EUR/MWh}
+- {id: congestion_rent_peak_eur_h, label: Total congestion rent at peak, unit: EUR/h, formula: "sum_lines p0 * (price_bus1 - price_bus0)"}
+- {id: congestion_rent_by_line_peak_eur_h, label: Congestion rent per line at peak, unit: EUR/h}
+- {id: line_loading_peak_pct, label: Flow over rating per line at peak, unit: "%"}
+- {id: marginal_value_line_ab_peak_eur_mw_h, label: Rent per MW of the congested line, unit: EUR/MW/h, formula: "rent_AB / s_nom_AB; what one more MW of the line would earn"}
+- {id: cost_of_congestion_eur, label: Objective minus the copper-plate objective, unit: EUR}
+- {id: first_congested_level, label: Load level at which A-B first binds}
+- {id: loop_flow_share_peak, label: Share of A's export taking the long path A-C at peak, unit: fraction}
+limitations:
+- Linearised (DC) power flow; no losses, no reactive power, no voltage limits.
+- Prices at C come from the loop, not from a generator at C being marginal; see the PyPSA negative-LMP example for the extreme case.
+sources:
+- {title: "PyPSA example: Meshed AC-DC Networks", url: "https://docs.pypsa.org/latest/examples/ac-dc-lopf/"}
+- {title: "PyPSA example: Negative LMPs from Line Congestion", url: "https://docs.pypsa.org/latest/examples/negative-prices-kvl-baker/"}
+- {title: "PyPSA example: SciGRID Network", url: "https://docs.pypsa.org/latest/examples/scigrid-lopf-then-pf/"}
+pypsa: "1.3.0"

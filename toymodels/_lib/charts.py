@@ -1,0 +1,516 @@
+# SPDX-License-Identifier: MIT
+"""House-style ECharts option builders, mirroring pypsa-app's `figure_templates.py`.
+
+Every builder returns `(option, datasets)`: a plain-JSON ECharts option whose series
+read their rows from `datasets` through `datasetId` + `encode`, never inline. The
+option carries no `title` (the app's card frame owns it), the legend sits below the
+chart, the value axis is named with its unit, category labels wrap and never rotate.
+
+Colour policy: a series named after a carrier id (see `carrier_style.CARRIERS`) gets
+no colour, the client colours it; any other series gets the next Okabe-Ito colour.
+"""
+
+from __future__ import annotations
+
+import math
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from . import carrier_style as cs
+
+# ── house constants (values copied from pypsa-app figure_templates.py) ──────
+
+LEGEND_STYLE: dict[str, Any] = {"icon": "roundRect", "itemWidth": 12, "itemHeight": 12, "itemGap": 14}
+LEGEND: dict[str, Any] = {**LEGEND_STYLE, "bottom": 0, "left": 0, "type": "plain"}
+GRID: dict[str, Any] = {"left": 8, "right": 24, "top": 24, "bottom": 8, "containLabel": True}
+AXIS_NAME_MARGIN = 44
+AXIS_LABEL: dict[str, Any] = {"hideOverlap": True}
+BAR_TOOLTIP: dict[str, Any] = {"trigger": "axis", "axisPointer": {"type": "shadow"}}
+LINE_TOOLTIP: dict[str, Any] = {"trigger": "axis", "axisPointer": {"type": "cross", "animation": False}}
+BAR_MAX_WIDTH = 40
+CURVE_POINTS = 400
+WITHDRAWAL_SUFFIX = " (withdrawal)"
+HORIZONTAL_ABOVE = 6
+LONG_LABEL = 18
+DECIMALS = 3
+
+Option = dict[str, Any]
+Datasets = dict[str, dict[str, Any]]
+
+
+# ── datasets ────────────────────────────────────────────────────────────────
+
+
+def _cell(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, pd.Timestamp):
+        return value.strftime("%Y-%m-%dT%H:%M:%S")
+    if isinstance(value, (np.floating, float)):
+        if math.isnan(value) or math.isinf(value):
+            return None
+        return round(float(value), DECIMALS)
+    if isinstance(value, (np.integer, int)):
+        return int(value)
+    if isinstance(value, np.bool_):
+        return bool(value)
+    return value
+
+
+def dataset(columns: list[str], rows: list[list[Any]]) -> dict[str, Any]:
+    return {"columns": list(columns), "rows": [[_cell(v) for v in row] for row in rows]}
+
+
+def dataset_from_frame(df: pd.DataFrame, index_name: str = "x") -> dict[str, Any]:
+    """Columns = [index_name, *df.columns]; a DatetimeIndex is written as ISO strings."""
+    columns = [index_name, *(str(c) for c in df.columns)]
+    rows = [[idx, *vals] for idx, vals in zip(df.index, df.to_numpy().tolist())]
+    return dataset(columns, rows)
+
+
+# ── axes ────────────────────────────────────────────────────────────────────
+
+
+def value_axis(unit: str, **extra: Any) -> dict[str, Any]:
+    """A vertical value axis with the unit rotated along its middle."""
+    return {
+        "type": "value",
+        "name": unit,
+        "nameLocation": "middle",
+        "nameGap": 40,
+        "splitLine": {"lineStyle": {"opacity": 0.4}},
+        **extra,
+    }
+
+
+def time_axis() -> dict[str, Any]:
+    return {
+        "type": "time",
+        "boundaryGap": False,
+        "axisLabel": {
+            **AXIS_LABEL,
+            "showMinLabel": False,
+            "showMaxLabel": False,
+            "formatter": {
+                "year": "{yyyy}",
+                "month": "{MMM}",
+                "day": "{d} {MMM}",
+                "hour": "{HH}:{mm}",
+                "minute": "{HH}:{mm}",
+            },
+        },
+    }
+
+
+def x_value_axis(name: str, **extra: Any) -> dict[str, Any]:
+    """A horizontal value axis (a duration share, a capacity, a cost) named at its middle."""
+    return {
+        "type": "value",
+        "name": name,
+        "nameLocation": "middle",
+        "nameGap": 26,
+        "axisLine": {"onZero": False},
+        "splitLine": {"show": False},
+        **extra,
+    }
+
+
+def category_axis(categories: list[str], *, horizontal: bool = False) -> dict[str, Any]:
+    axis: dict[str, Any] = {"type": "category", "data": list(categories), "axisTick": {"alignWithLabel": True}}
+    if horizontal:
+        axis["inverse"] = True
+        axis["axisLabel"] = {**AXIS_LABEL}
+    else:
+        slot = max(56, min(150, 640 // max(1, len(categories)) - 10))
+        axis["axisLabel"] = {"interval": 0, "width": slot, "overflow": "break", "lineHeight": 14}
+    return axis
+
+
+# ── series ──────────────────────────────────────────────────────────────────
+
+
+class Palette:
+    """Hands out Okabe-Ito colours to non-carrier series in order of appearance."""
+
+    def __init__(self) -> None:
+        self.i = 0
+        self.seen: dict[str, str] = {}
+
+    def style(self, name: str, *, line: bool) -> dict[str, Any]:
+        if cs.is_carrier(name):
+            return {}
+        if name in self.seen:
+            colour = self.seen[name]
+        else:
+            colour = cs.SCENARIO_PALETTE[self.i % len(cs.SCENARIO_PALETTE)]
+            self.i += 1
+            self.seen[name] = colour
+        style: dict[str, Any] = {"itemStyle": {"color": colour}}
+        if line:
+            style["lineStyle"] = {"color": colour, "width": 2}
+        return style
+
+
+def line_series(
+    name: str,
+    dataset_id: str,
+    x: str,
+    palette: Palette,
+    *,
+    y: str | None = None,
+    stack: str | None = None,
+    area: bool = False,
+    step: str | None = None,
+    y_axis_index: int = 0,
+    dashed: bool = False,
+) -> dict[str, Any]:
+    s: dict[str, Any] = {
+        "type": "line",
+        "name": name,
+        "showSymbol": False,
+        "emphasis": {"focus": "series"},
+        "datasetId": dataset_id,
+        "encode": {"x": x, "y": y or name},
+        **palette.style(name, line=True),
+    }
+    if stack:
+        s["stack"] = stack
+    if area:
+        s["areaStyle"] = {"opacity": 0.85}
+        s["lineStyle"] = {**s.get("lineStyle", {}), "width": 0.5}
+    if step:
+        s["step"] = step
+    if y_axis_index:
+        s["yAxisIndex"] = y_axis_index
+    if dashed:
+        s["lineStyle"] = {**s.get("lineStyle", {}), "type": "dashed"}
+    return s
+
+
+def bar_series(
+    name: str,
+    dataset_id: str,
+    x: str,
+    palette: Palette,
+    *,
+    y: str | None = None,
+    stack: str | None = None,
+    horizontal: bool = False,
+) -> dict[str, Any]:
+    s: dict[str, Any] = {
+        "type": "bar",
+        "name": name,
+        "barMaxWidth": BAR_MAX_WIDTH,
+        "emphasis": {"focus": "series"},
+        "datasetId": dataset_id,
+        "encode": {"y": x, "x": y or name} if horizontal else {"x": x, "y": y or name},
+        **palette.style(name, line=False),
+    }
+    if stack:
+        s["stack"] = stack
+    return s
+
+
+def zero_line() -> dict[str, Any]:
+    return {
+        "silent": True,
+        "symbol": "none",
+        "lineStyle": {"type": "dotted", "color": cs.NEUTRAL, "width": 1},
+        "label": {"show": False},
+        "data": [{"yAxis": 0}],
+    }
+
+
+def mark_lines(marks: list[dict[str, Any]], *, axis: str = "xAxis") -> dict[str, Any]:
+    """Labelled reference lines: `[{"value": 4000, "label": "breakeven"}]`."""
+    return {
+        "silent": True,
+        "symbol": "none",
+        "lineStyle": {"type": "dashed", "color": cs.NEUTRAL, "width": 1},
+        "label": {"position": "insideEndTop", "fontSize": 11, "color": cs.NEUTRAL, "formatter": "{b}"},
+        "data": [{axis: m["value"], "name": m.get("label", "")} for m in marks],
+    }
+
+
+def _legend(names: list[str]) -> dict[str, Any]:
+    return {**LEGEND, "data": list(names)}
+
+
+def _grid(*, named_y: bool = True, bottom: int | None = None, right: int | None = None) -> dict[str, Any]:
+    grid = {**GRID}
+    if named_y:
+        grid["left"] = AXIS_NAME_MARGIN
+    if bottom is not None:
+        grid["bottom"] = bottom
+    if right is not None:
+        grid["right"] = right
+    return grid
+
+
+# ── builders ────────────────────────────────────────────────────────────────
+
+
+def time_series(
+    df: pd.DataFrame,
+    unit: str,
+    *,
+    stack: bool = False,
+    area: bool = False,
+    step: str | None = None,
+    negative_stack: list[str] | None = None,
+    slider: bool | None = None,
+) -> tuple[Option, Datasets]:
+    """Lines (or stacked areas) over a DatetimeIndex, one series per column.
+
+    `negative_stack` names columns stacked below zero (withdrawals in an energy balance).
+    A slider dataZoom is added past 1000 snapshots unless `slider` says otherwise.
+    """
+    ds = dataset_from_frame(df, "snapshot")
+    palette = Palette()
+    series = []
+    names: list[str] = []
+    for col in df.columns:
+        column = str(col)
+        stack_name = None
+        if stack:
+            stack_name = "withdrawal" if negative_stack and column in negative_stack else "supply"
+        # a withdrawal column named "<carrier> (withdrawal)" is shown under the carrier's
+        # own name, so both halves share one legend entry and one colour (the client
+        # colours by carrier id); the encode still reads the suffixed column
+        name = column.removesuffix(WITHDRAWAL_SUFFIX)
+        series.append(line_series(name, "ts", "snapshot", palette, y=column, stack=stack_name, area=area, step=step))
+        if name not in names:
+            names.append(name)
+    if (df.to_numpy() < 0).any():
+        series[0]["markLine"] = zero_line()
+    use_slider = slider if slider is not None else len(df) > 1000
+    option: Option = {
+        "dataset": [{"id": "ts"}],
+        "tooltip": LINE_TOOLTIP,
+        "grid": _grid(bottom=80 if use_slider else None),
+        "xAxis": time_axis(),
+        "yAxis": value_axis(unit),
+        "series": series,
+    }
+    if len(names) > 1:
+        option["legend"] = _legend(names)
+    if use_slider:
+        option["dataZoom"] = [{"type": "slider", "bottom": 30, "height": 20}]
+    return option, {"ts": ds}
+
+
+def dual_axis(
+    df: pd.DataFrame,
+    left: list[str],
+    right: list[str],
+    left_unit: str,
+    right_unit: str,
+    *,
+    left_area: bool = False,
+    step: str | None = None,
+) -> tuple[Option, Datasets]:
+    """Two value axes over one time axis: `left` columns on the left, `right` on the right."""
+    ds = dataset_from_frame(df, "snapshot")
+    palette = Palette()
+    series = [line_series(c, "ts", "snapshot", palette, area=left_area, step=step) for c in left]
+    series += [line_series(c, "ts", "snapshot", palette, y_axis_index=1) for c in right]
+    if (df[left].to_numpy() < 0).any():
+        series[0]["markLine"] = zero_line()
+    option: Option = {
+        "dataset": [{"id": "ts"}],
+        "tooltip": LINE_TOOLTIP,
+        "grid": _grid(right=56),
+        "xAxis": time_axis(),
+        "yAxis": [value_axis(left_unit), value_axis(right_unit, splitLine={"show": False})],
+        "series": series,
+        "legend": _legend(left + right),
+    }
+    return option, {"ts": ds}
+
+
+def xy_lines(
+    df: pd.DataFrame,
+    x_name: str,
+    unit: str,
+    *,
+    step: str | None = None,
+    marks: list[dict[str, Any]] | None = None,
+    x_extra: dict[str, Any] | None = None,
+    symbols: bool = False,
+) -> tuple[Option, Datasets]:
+    """Lines over a numeric x (the index of `df`), one series per column."""
+    ds = dataset_from_frame(df, "x")
+    palette = Palette()
+    series = [line_series(str(c), "xy", "x", palette, step=step) for c in df.columns]
+    if symbols:
+        for s in series:
+            s["showSymbol"] = True
+            s["symbolSize"] = 7
+    if marks:
+        series[0]["markLine"] = mark_lines(marks)
+    option: Option = {
+        "dataset": [{"id": "xy"}],
+        "tooltip": LINE_TOOLTIP,
+        "grid": _grid(bottom=24),
+        "xAxis": x_value_axis(x_name, **(x_extra or {})),
+        "yAxis": value_axis(unit),
+        "series": series,
+    }
+    if len(df.columns) > 1:
+        option["legend"] = _legend([str(c) for c in df.columns])
+    return option, {"xy": ds}
+
+
+def step_curve(
+    segments: pd.DataFrame,
+    x_name: str,
+    unit: str,
+    *,
+    marks: list[dict[str, Any]] | None = None,
+) -> tuple[Option, Datasets]:
+    """A merit-order style staircase: `segments` has columns x0, x1, y, name; one
+    series per name so every step carries its carrier's colour."""
+    names = list(dict.fromkeys(segments["name"]))
+    columns = ["x", *names]
+    rows: list[list[Any]] = []
+    for _, seg in segments.iterrows():
+        blank: list[Any] = [None] * len(names)
+        j = names.index(seg["name"])
+        r0 = [seg["x0"], *blank]
+        r1 = [seg["x1"], *blank]
+        r0[j + 1] = seg["y"]
+        r1[j + 1] = seg["y"]
+        rows += [r0, r1]
+    palette = Palette()
+    series = []
+    for name in names:
+        s = line_series(name, "steps", "x", palette)
+        s["lineStyle"] = {**s.get("lineStyle", {}), "width": 3}
+        s["areaStyle"] = {"opacity": 0.25}
+        s["connectNulls"] = False
+        series.append(s)
+    if marks:
+        series[0]["markLine"] = mark_lines(marks)
+    option: Option = {
+        "dataset": [{"id": "steps"}],
+        "tooltip": {"trigger": "item"},
+        "grid": _grid(bottom=24),
+        "xAxis": x_value_axis(x_name, max=float(segments["x1"].max())),
+        "yAxis": value_axis(unit),
+        "series": series,
+        "legend": _legend(names),
+    }
+    return option, {"steps": dataset(columns, rows)}
+
+
+def bars(
+    categories: list[str],
+    data: dict[str, list[float]],
+    unit: str,
+    *,
+    stack: bool = False,
+    horizontal: bool | None = None,
+    category_name: str = "category",
+) -> tuple[Option, Datasets]:
+    """Grouped or stacked bars: `data` maps series name to one value per category.
+
+    Bars go horizontal past six categories or with a label longer than 18 characters.
+    """
+    names = list(data)
+    horiz = horizontal
+    if horiz is None:
+        horiz = len(categories) > HORIZONTAL_ABOVE or max(len(c) for c in categories) > LONG_LABEL
+    columns = [category_name, *names]
+    rows = [[cat, *(data[nm][i] for nm in names)] for i, cat in enumerate(categories)]
+    palette = Palette()
+    series = [
+        bar_series(nm, "bars", category_name, palette, stack="total" if stack else None, horizontal=horiz)
+        for nm in names
+    ]
+    has_negative = any(v is not None and v < 0 for nm in names for v in data[nm])
+    if has_negative and not horiz:
+        series[0]["markLine"] = zero_line()
+    cat_axis = category_axis(categories, horizontal=horiz)
+    val_axis = value_axis(unit, axisLine={"onZero": True})
+    if horiz:
+        val_axis["nameGap"] = 26
+        height = min(960, max(240, 80 + len(categories) * (10 + 9 * (1 if stack else len(names)))))
+        option: Option = {
+            "dataset": [{"id": "bars"}],
+            "tooltip": BAR_TOOLTIP,
+            "grid": _grid(named_y=False, bottom=24),
+            "xAxis": val_axis,
+            "yAxis": cat_axis,
+            "series": series,
+        }
+    else:
+        val_axis["nameGap"] = 38
+        height = 360
+        option = {
+            "dataset": [{"id": "bars"}],
+            "tooltip": BAR_TOOLTIP,
+            "grid": _grid(),
+            "xAxis": cat_axis,
+            "yAxis": val_axis,
+            "series": series,
+        }
+    if len(names) > 1:
+        option["legend"] = _legend(names)
+    option["_height"] = height
+    return option, {"bars": dataset(columns, rows)}
+
+
+def _resample_sorted(values: list[float], points: int) -> list[float]:
+    ordered = sorted(values, reverse=True)
+    if len(ordered) <= points:
+        return ordered
+    positions = np.linspace(0, len(ordered) - 1, points)
+    return [float(ordered[int(round(p))]) for p in positions]
+
+
+def duration_curves(curves: dict[str, pd.Series], unit: str, *, points: int = CURVE_POINTS) -> tuple[Option, Datasets]:
+    """Sorted curves over the share of hours (0-100 %), one line per entry."""
+    sampled = {name: _resample_sorted([float(v) for v in s.dropna()], points) for name, s in curves.items()}
+    names = list(sampled)
+    columns = ["share", *names]
+    cells: dict[float, list[Any]] = {}
+    for j, name in enumerate(names):
+        vals = sampled[name]
+        n = len(vals)
+        for i, v in enumerate(vals):
+            share = round(100 * i / max(1, n - 1), 3)
+            cells.setdefault(share, [None] * len(names))[j] = v
+    rows = [[share, *cells[share]] for share in sorted(cells)]
+    palette = Palette()
+    series = [{**line_series(name, "curves", "share", palette), "connectNulls": True} for name in names]
+    if any(v < 0 for vals in sampled.values() for v in vals):
+        series[0]["markLine"] = zero_line()
+    option: Option = {
+        "dataset": [{"id": "curves"}],
+        "tooltip": LINE_TOOLTIP,
+        "grid": _grid(bottom=24),
+        "xAxis": x_value_axis("Share of hours (%)", min=0, max=100),
+        "yAxis": value_axis(unit),
+        "series": series,
+    }
+    if len(names) > 1:
+        option["legend"] = _legend(names)
+    return option, {"curves": dataset(columns, rows)}
+
+
+def status_steps(df: pd.DataFrame) -> tuple[Option, Datasets]:
+    """0/1 commitment status per unit as offset step lines (unit i drawn at i + status*0.8)."""
+    offset = pd.DataFrame({c: df[c].astype(float) * 0.8 + i for i, c in enumerate(df.columns)}, index=df.index)
+    option, ds = time_series(offset, "", step="end", slider=False)
+    option["yAxis"] = {
+        "type": "value",
+        "min": 0,
+        "max": len(df.columns),
+        "interval": 1,
+        "axisLabel": {"show": False},
+        "splitLine": {"lineStyle": {"opacity": 0.4}},
+    }
+    option["tooltip"] = {"trigger": "axis", "axisPointer": {"type": "line"}}
+    return option, ds

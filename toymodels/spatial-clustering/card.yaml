@@ -1,0 +1,73 @@
+id: spatial-clustering
+title: Spatial clustering of a six-bus network
+summary: >-
+  What a network loses when its buses are merged. Six buses in two meshed regions, a
+  windy west and a load-heavy east joined by two tie lines, solved with Kirchhoff's
+  laws over one week, then clustered to two buses with cluster_by_busmap and solved
+  again. Internal congestion and the price spread inside each region vanish and the
+  tie-line ratings are summed; the comparison shows what a clustered model can and
+  cannot say.
+concepts: [spatial-clustering, busmap, lopf, nodal-pricing, congestion, network-reduction]
+answers:
+- "what does clustering a network to fewer buses do to prices and flows"
+- "how do I cluster a PyPSA network with a busmap"
+- "why does a clustered model transfer more power than the real grid allows"
+builds_on: [nodal-prices-lopf]
+setup:
+  buses: W1, W2, W3 (west) and E1, E2, E3 (east), 380 kV, each region a triangle, two tie lines W3-E1 and W2-E3
+  components:
+  - Generators onwind at W1 and W2 (profiles), coal at W3, CCGT at E1 and E2, OCGT at E3, load shedding everywhere
+  - eight Lines with equal reactance; internal ratings 300 MW (west) and 500 MW (east), tie lines 350 and 250 MW
+  - Loads with a daily shape at every bus, heavier in the east
+  snapshots: 168 hourly snapshots (one week), weight 1
+  profiles: daily load shape; two seeded wind profiles with 45 % and 40 % mean capacity factor
+  assumptions:
+  - {name: onwind, value: "800 MW at W1, 600 MW at W2, zero marginal cost"}
+  - {name: coal W3, value: "300 MW at 30 EUR/MWh"}
+  - {name: CCGT, value: "600 MW at E1 and 400 MW at E2, 60 EUR/MWh"}
+  - {name: OCGT E3, value: "400 MW at 120 EUR/MWh"}
+  - {name: loads, value: "100/100/150 MW west, 300/300/250 MW east"}
+  - {name: value_of_lost_load, value: 3000, unit: EUR/MWh}
+method: |
+  The full network is solved with `n.optimize()` (KVL on every cycle). Clustering:
+  `n.cluster.spatial.cluster_by_busmap({bus: region})` returns a new network with one
+  bus per region, generators and loads re-attached, and the lines between regions
+  aggregated into one line whose rating is the sum (the internal lines disappear). Bus
+  coordinates are the mean of the members. The clustered network is solved the same
+  way. Prices, line loadings, west-east transfer and cost are compared; wind
+  curtailment shows how much of the full network's congestion was internal.
+knobs:
+- {name: busmap, in: REGION, effect: "any grouping; three clusters keep one internal line"}
+- {name: tie ratings, in: LINES, effect: "the clustered model sums them; make them unequal to see loop-flow limits ignored"}
+- {name: reactances, in: "build(): x=0.1", effect: "unequal reactances make the two tie lines load unevenly in the full model"}
+figures:
+- id: prices_nodal_vs_clustered
+  file: figures/prices_nodal_vs_clustered.json
+  title: Mean price per bus, nodal vs clustered
+  shows: Mean weekly price per bus in the full network beside the region price after clustering.
+- id: line_loading
+  file: figures/line_loading.json
+  title: Mean line loading, nodal vs clustered
+  shows: Mean loading of every line in the full network; after clustering only the aggregated tie line remains.
+- id: tie_flow
+  file: figures/tie_flow.json
+  title: West-to-east transfer over the week
+  shows: Summed tie-line flow in the full network against the single aggregated line.
+numbers:
+- {id: cost_eur, label: Weekly dispatch cost, nodal and clustered, unit: EUR}
+- {id: cost_difference_pct, label: Clustered over nodal cost, unit: "%", note: "negative: the clustered model drops constraints"}
+- {id: buses_and_lines, label: Bus and line counts before and after}
+- {id: tie_capacity_mw, label: Summed tie-line rating before and after, unit: MW}
+- {id: mean_price_eur_mwh, label: Mean price per bus (nodal) and per region (clustered), unit: EUR/MWh}
+- {id: mean_intra_region_price_spread_eur_mwh, label: Mean max-minus-min price within each region in the full network, unit: EUR/MWh}
+- {id: mean_west_east_spread_eur_mwh, label: Mean east-minus-west price, both models, unit: EUR/MWh}
+- {id: tie_flow_mwh, label: Weekly west-to-east transfer, both models, unit: MWh}
+- {id: hours_any_internal_line_congested, label: Hours with an internal line at its rating in the full network, unit: h}
+- {id: wind_curtailed_pct, label: Wind curtailment, both models, unit: "%"}
+limitations:
+- A hand busmap; k-means and hierarchical clustering exist in n.cluster.spatial and need bus coordinates and weights.
+- Generators are re-attached, not aggregated; pypsa-eur also merges generators per carrier and cluster.
+sources:
+- {title: "PyPSA user guide: Clustering", url: "https://docs.pypsa.org/latest/user-guide/clustering/"}
+- {title: "PyPSA API: Network.cluster", url: "https://docs.pypsa.org/latest/api/networks/cluster/"}
+pypsa: "1.3.0"

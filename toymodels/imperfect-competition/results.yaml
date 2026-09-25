@@ -1,0 +1,64 @@
+numbers:
+  demand_curve:
+    intercept_eur_mwh: 200.0
+    slope_eur_mwh_per_mw: 0.1
+  marginal_cost_eur_mwh:
+    firm 1: 20.0
+    firm 2: 40.0
+  competitive:
+    quantity_mw:
+      firm 1: 1799.9964
+      firm 2: 0.0
+    total_quantity_mw: 1799.9964
+    price_eur_mwh: 20.0004
+    markup_over_marginal_cost_eur_mwh: 0.0004
+    lerner_index: 0.0
+    consumer_surplus_keur_h: 161.9994
+    producer_surplus_keur_h: 0.0006
+    deadweight_loss_keur_h: 0.0
+  cournot:
+    quantity_mw:
+      firm 1: 666.6664
+      firm 2: 466.6666
+    total_quantity_mw: 1133.333
+    price_eur_mwh: 86.6667
+    markup_over_marginal_cost_eur_mwh: 46.6667
+    lerner_index: 0.5385
+    consumer_surplus_keur_h: 64.2222
+    producer_surplus_keur_h: 66.2222
+    deadweight_loss_keur_h: 31.5556
+  monopoly:
+    quantity_mw:
+      firm 1: 900.0
+      firm 2: 0.0
+    total_quantity_mw: 900.0
+    price_eur_mwh: 110.0
+    markup_over_marginal_cost_eur_mwh: 90.0
+    lerner_index: 0.8182
+    consumer_surplus_keur_h: 40.5
+    producer_surplus_keur_h: 81.0
+    deadweight_loss_keur_h: 40.5
+  quantity_withheld_mw:
+    cournot: 666.6634
+    monopoly: 899.9964
+  competitive_price_pypsa_dual_eur_mwh: 20.0002
+  cournot_analytic_mw:
+    firm 1: 666.6667
+    firm 2: 466.6667
+meta:
+  pypsa: 1.3.0
+  solver: highs
+  runtime_s: 3.32
+  figures:
+    quantity_by_regime:
+      title: Quantity supplied by regime
+      file: figures/quantity_by_regime.json
+      height: 360
+    best_responses:
+      title: Best-response functions
+      file: figures/best_responses.json
+      height: 360
+    welfare_by_regime:
+      title: Welfare by regime
+      file: figures/welfare_by_regime.json
+      height: 360

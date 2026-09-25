@@ -1,0 +1,73 @@
+id: modular-committable-expansion
+title: Modular and committable expansion
+summary: >-
+  What changes when gas can only be built in 100 MW blocks and has to be committed
+  with a minimum part load and start-up costs. The two-fortnight single node is solved
+  as a linear relaxation and as the mixed-integer problem; the lumpy plan costs more
+  and, with prices from a fixed-commitment re-solve, gas no longer breaks even. The
+  zero-profit identity of the LP is gone.
+concepts: [capacity-expansion, modular-expansion, unit-commitment, milp, integrality-gap, cost-recovery, zero-profit, start-up-cost]
+answers:
+- "what happens to the optimal mix when plants come in discrete blocks"
+- "can I combine committable and extendable in PyPSA"
+- "why do lumpy investments break cost recovery"
+builds_on: [capacity-expansion-single-node, unit-commitment, price-duration-and-cost-recovery]
+setup:
+  buses: one electricity bus
+  components:
+  - extendable Generators onwind, solar and an extendable StorageUnit battery, continuous
+  - Generator CCGT extendable with p_nom_mod (100 MW blocks), committable, minimum part load 40 %, start-up cost, min up/down 2 snapshots
+  - a load-shedding Generator and one GlobalConstraint on CO2
+  snapshots: 112 snapshots (two fortnights at 3-hour resolution), weighted to a year
+  profiles: the base model's load, wind and solar sliced to the two fortnights
+  assumptions:
+  - {name: co2 cap, value: "30 % of the unconstrained two-fortnight emissions"}
+  - {name: block size, value: 100, unit: MW}
+  - {name: start-up cost, value: 20000, unit: EUR per start}
+  - {name: technology costs, value: "as capacity-expansion-single-node"}
+method: |
+  Relaxation: `n.optimize()` with continuous capacities. MILP: `p_nom_mod=100` makes the
+  gas capacity an integer number of blocks, `committable=True` with `p_min_pu`,
+  `start_up_cost`, `min_up_time`, `min_down_time` adds the commitment binaries; PyPSA
+  links commitment and extendable capacity with a big-M formulation. Solved with HiGHS
+  at a relative MIP gap of 1e-4. Prices: a MILP has no duals, so the MILP's capacities
+  and gas commitment are frozen in an LP (p_min_pu/p_max_pu from the status) whose duals
+  are the dispatch prices, the same trick as unit-commitment. Cost recovery per
+  technology is revenue at those prices against annualised capital cost, fuel, carbon
+  (the LP's CO2 dual) and start-up costs.
+knobs:
+- {name: block size, in: BLOCK_MW, effect: "smaller blocks shrink the integrality gap toward zero"}
+- {name: start-up cost and minimum load, in: GAS_UC, effect: "stiffer commitment pushes more of the year onto wind, solar and the battery"}
+- {name: cap fraction, in: CAP_FRACTION, effect: "the tighter the cap the fewer gas hours and the worse a whole block pays"}
+figures:
+- id: capacity_continuous_vs_modular
+  file: figures/capacity_continuous_vs_modular.json
+  title: Capacity, continuous relaxation vs blocks with commitment
+  shows: Capacity per technology for the LP and the MILP; gas snaps to a whole block.
+- id: dispatch_with_commitment
+  file: figures/dispatch_with_commitment.json
+  title: Dispatch in the winter fortnight with commitment
+  shows: Stacked dispatch; committed gas holds its minimum part load and avoids cycling.
+- id: cost_recovery_lp_vs_milp
+  file: figures/cost_recovery_lp_vs_milp.json
+  title: Revenue against cost, the zero-profit identity breaks
+  shows: Revenue and cost per technology in the LP (equal) and in the MILP (not).
+numbers:
+- {id: cost_relaxed_meur_a, label: LP annual cost, unit: MEUR/a}
+- {id: cost_milp_meur_a, label: MILP annual cost, unit: MEUR/a}
+- {id: integrality_gap_pct, label: MILP over LP cost, unit: "%"}
+- {id: capacity_mw, label: Capacity per technology, relaxed and modular, unit: MW}
+- {id: gas_blocks_built, label: Number of 100 MW blocks, unit: count}
+- {id: gas_start_ups_in_two_fortnights, label: Gas start-ups over the 28 modelled days, unit: count}
+- {id: gas_hours_committed_pct, label: Share of the year gas is on, unit: "%"}
+- {id: cost_recovery_ratio, label: Revenue over cost per technology, LP and MILP, unit: ratio}
+- {id: gas_profit_meur_a, label: Gas revenue minus cost in the MILP at fixed-commitment prices, unit: MEUR/a}
+- {id: co2_price_eur_t, label: CO2 dual in the LP and in the fixed-commitment LP, unit: EUR/t}
+limitations:
+- The fixed-commitment LP's CO2 dual can be zero (gas dispatch is fixed by the commitment), so the carbon term in the MILP's cost recovery may vanish; the identity still breaks, for the right reason.
+- Two fortnights; a whole 100 MW block against a 100 MW mean load exaggerates the lumpiness on purpose.
+sources:
+- {title: "PyPSA example: Modular Capacity Expansion", url: "https://docs.pypsa.org/latest/examples/modular-expansion/"}
+- {title: "PyPSA example: Committable and Extendable", url: "https://docs.pypsa.org/latest/examples/committable-extendable/"}
+- {title: "PyPSA example: Modular and Committable", url: "https://docs.pypsa.org/latest/examples/modular-committable/"}
+pypsa: "1.3.0"

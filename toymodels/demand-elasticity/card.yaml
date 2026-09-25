@@ -1,0 +1,71 @@
+id: demand-elasticity
+title: Price-responsive demand and market clearing
+summary: >-
+  The merit-order day cleared three ways: with a fixed load, with demand made of bid
+  blocks (an inelastic core at the value of lost load plus tranches with falling
+  willingness to pay), and with a linear demand curve approximated by five blocks.
+  Elastic demand shaves the evening peak, caps the price below the peaker and turns the
+  objective from cost into welfare.
+concepts: [demand-elasticity, demand-bids, welfare, consumer-surplus, producer-surplus, marginal-price, merit-order]
+answers:
+- "how do I model price-elastic demand in PyPSA"
+- "what happens to the peak price when demand can respond"
+- "how do supply and demand bids clear in a market model"
+- "how do I compute consumer and producer surplus from a dispatch"
+builds_on: [merit-order-dispatch]
+setup:
+  buses: one electricity bus
+  components:
+  - the five thermal Generators of merit-order-dispatch
+  - fixed case: a Load with the daily shape and a load-shedding Generator at the value of lost load
+  - elastic cases: one Generator per demand block with sign -1 (a sink), p_max_pu tracking its share of the hourly load and a negative marginal cost equal to its willingness to pay
+  snapshots: 24 hourly snapshots, weight 1
+  profiles: synthetic daily load 5000 to 10500 MW, seed 42
+  assumptions:
+  - {name: fleet, value: "nuclear 2000 MW at 10, lignite 3000 at 25, CCGT 4000 at 55, OCGT 2000 at 110, oil 1000 at 180 EUR/MWh"}
+  - {name: bid blocks, value: "60 % of the load at 3000 EUR/MWh, then 10 % each at 300, 150, 80, 40"}
+  - {name: linear demand, value: "60 % at 3000, then five blocks of 8 % at 200, 160, 120, 80, 40"}
+  - {name: value_of_lost_load, value: 3000, unit: EUR/MWh}
+method: |
+  A demand block is a Generator with `sign=-1` and `marginal_cost=-wtp`: it withdraws
+  power and its "cost" is minus the utility of consuming, so `n.optimize()` minimising
+  cost minus utility maximises welfare (the demand-supply-bids pattern). The price is
+  still the bus dual; a block is served in full while its willingness to pay is above
+  the price and drops out otherwise. Consumer surplus is willingness to pay minus price
+  over what is consumed, producer surplus price minus marginal cost over what is
+  generated; for the fixed load every MWh is valued at the value of lost load.
+knobs:
+- {name: block shares and prices, in: CASES, effect: "a steeper demand curve caps the price lower and cuts more peak"}
+- {name: fleet, in: FLEET, effect: "the supply staircase the demand curves cross"}
+- {name: load, in: "BASE_MW, PEAK_MW", effect: "how far into the peaker the fixed load reaches"}
+figures:
+- id: supply_demand_curves
+  file: figures/supply_demand_curves.json
+  title: Supply and demand curves at the peak hour
+  shows: The supply staircase and the two demand staircases (core clipped at 400 EUR/MWh); the price is where they cross.
+- id: price_by_case
+  file: figures/price_by_case.json
+  title: Hourly price by demand case
+  shows: The evening price reaches the peaker only for the fixed load.
+- id: welfare_by_case
+  file: figures/welfare_by_case.json
+  title: Welfare by demand case
+  shows: Consumer and producer surplus stacked per case.
+numbers:
+- {id: peak_hour, label: The hour of the day's peak}
+- {id: peak_price_eur_mwh, label: Price at the peak hour (per case), unit: EUR/MWh}
+- {id: avg_price_eur_mwh, label: Consumption-weighted average price, unit: EUR/MWh}
+- {id: consumed_mwh, label: Energy consumed over the day, unit: MWh}
+- {id: peak_consumption_mw, label: Consumption at the peak hour, unit: MW}
+- {id: consumer_surplus_meur, label: Consumer surplus, unit: MEUR/day}
+- {id: producer_surplus_meur, label: Producer surplus, unit: MEUR/day}
+- {id: welfare_meur, label: Consumer plus producer surplus, unit: MEUR/day}
+- {id: dispatch_cost_eur, label: Generation cost, unit: EUR/day}
+- {id: peak_demand_reduction_pct, label: Peak consumption cut relative to the fixed load, unit: "%"}
+limitations:
+- Block demand is a step approximation; a smooth curve needs a quadratic utility (see imperfect-competition for that trick).
+- Welfare levels depend on the value of lost load chosen for the inelastic core; compare cases, not absolutes.
+sources:
+- {title: "PyPSA example: Demand Elasticity", url: "https://docs.pypsa.org/latest/examples/demand-elasticity/"}
+- {title: "PyPSA example: Demand and Supply Bids", url: "https://docs.pypsa.org/latest/examples/demand-supply-bids/"}
+pypsa: "1.3.0"

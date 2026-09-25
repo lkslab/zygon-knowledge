@@ -44,10 +44,9 @@ models:
     The CFE score sweep is the emission-reduction ladder: 0.8 to 1.0 hourly, against
     the annual rung and no rule. Grid imports are uncredited by default (one linear
     solve); Riepin's bilinear grid-CFE credit is a documented two-pass. Limitations:
-    the payload is code this config-only deployment cannot execute itself,
-    it has been exercised standalone (rows counted per window on the 3-hourly fixture)
-    but not through an eval solve, and additionality, cross-zone deliverability and
-    gCO2/kWh certification remain readings, not constraints.
+    the payload has been exercised standalone (rows counted per window on the
+    3-hourly fixture) but not through an eval solve, and additionality, cross-zone
+    deliverability and gCO2/kWh certification remain readings, not constraints.
   trade_offs:
   - >-
     the snapshot resolution IS the strictness: ideal is 1-hourly, and 3-hourly was still
@@ -115,7 +114,8 @@ models:
   - id: multi-scenario
     role: >-
       the background dimension: background CO2 policy or target year as run.scenarios
-      overrides, and its collect rule composes with zygon_cfe.networks for harmonised
+      overrides, and its collect rule composes with the per-run zygon_cfe tables
+      (results/<run>/zygon_cfe/<indicator>.csv) for harmonised
       cost, capacity and price tables across regimes — it fans out runs, the constraint
       lives in the payload
   - id: single-asset-cba

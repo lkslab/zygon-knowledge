@@ -1,0 +1,75 @@
+id: imperfect-competition
+title: Cournot competition against a linear demand curve
+summary: >-
+  Two generators with different constant costs face a linear demand curve. Perfect
+  competition is a PyPSA welfare maximisation (a quadratic programme, the demand curve
+  entering as a sink with a quadratic marginal cost); the Cournot-Nash equilibrium is
+  solved in closed form and confirmed by iterated best responses, each a small linopy
+  QP; a monopoly closes the range. Withheld quantity, markup and deadweight loss follow.
+concepts: [imperfect-competition, cournot, market-power, welfare, deadweight-loss, demand-elasticity, quadratic-programming]
+answers:
+- "how much does a strategic generator withhold and what does it do to the price"
+- "what is the deadweight loss of market power"
+- "how do I put a smooth demand curve into PyPSA"
+- "how do I solve a Cournot equilibrium with linopy"
+builds_on: [demand-elasticity]
+setup:
+  buses: one market bus
+  components:
+  - two Generators (firm 1, firm 2) with constant marginal cost and a capacity that never binds
+  - one Generator "demand" with sign -1, marginal_cost -A and marginal_cost_quadratic B/2, so its dispatch cost is minus the utility A Q - B/2 Q^2
+  snapshots: one snapshot
+  profiles: none
+  assumptions:
+  - {name: inverse demand, value: "P = 200 - 0.1 Q (EUR/MWh, Q in MW)"}
+  - {name: firm 1, value: "20 EUR/MWh"}
+  - {name: firm 2, value: "40 EUR/MWh"}
+  - {name: capacity, value: "2000 MW each, not binding"}
+method: |
+  Competitive: `n.optimize()` with HiGHS' QP solver (`solver_options={"solver":
+  "choose"}`; the interior-point LP option does not accept a quadratic objective). The
+  objective is cost minus utility, so the solve maximises welfare and the bus dual is the
+  competitive price. Cournot: firm i maximises (A - B (q_i + q_j)) q_i - c_i q_i given
+  q_j; the best response is (A - c_i - B q_j) / (2B), the Nash equilibrium
+  q_1 = (A - 2 c_1 + c_2) / (3B), q_2 = (A - 2 c_2 + c_1) / (3B). Iterated best responses
+  each solve a one-variable linopy QP (`m.add_objective(B q q + (c - A + B q_j) q)`)
+  and converge to the same point. Monopoly: the cheaper firm alone, q = (A - c) / (2B).
+  Surpluses are the usual triangles and rectangles under the linear curve; deadweight
+  loss is competitive welfare minus the regime's welfare.
+knobs:
+- {name: A, B, in: module constants, effect: "a steeper demand curve (larger B) gives more market power"}
+- {name: firm costs, in: FIRMS, effect: "asymmetric costs shift output to the cheaper firm; equal costs give the textbook symmetric Cournot"}
+- {name: capacity, in: CAPACITY, effect: "a binding capacity turns the game into a capacity-constrained one"}
+figures:
+- id: quantity_by_regime
+  file: figures/quantity_by_regime.json
+  title: Quantity supplied by regime
+  shows: Output per firm under competition, Cournot and monopoly.
+- id: best_responses
+  file: figures/best_responses.json
+  title: Best-response functions
+  shows: Each firm's output as a function of the other's; they cross at the Nash equilibrium.
+- id: welfare_by_regime
+  file: figures/welfare_by_regime.json
+  title: Welfare by regime
+  shows: Consumer surplus, producer surplus and deadweight loss stacked to the competitive welfare.
+numbers:
+- {id: demand_curve, label: Intercept and slope of the inverse demand}
+- {id: marginal_cost_eur_mwh, label: Cost per firm, unit: EUR/MWh}
+- {id: quantity_mw, label: Output per firm (per regime), unit: MW}
+- {id: total_quantity_mw, label: Total output, unit: MW}
+- {id: price_eur_mwh, label: Market price, unit: EUR/MWh}
+- {id: markup_over_marginal_cost_eur_mwh, label: Price minus the marginal producer's cost, unit: EUR/MWh}
+- {id: lerner_index, label: Markup over price, unit: ratio}
+- {id: consumer_surplus_keur_h, label: Consumer surplus, unit: kEUR/h}
+- {id: producer_surplus_keur_h, label: Producer surplus, unit: kEUR/h}
+- {id: deadweight_loss_keur_h, label: Welfare lost against competition, unit: kEUR/h}
+- {id: quantity_withheld_mw, label: Competitive minus regime output, unit: MW}
+- {id: competitive_price_pypsa_dual_eur_mwh, label: The bus dual of the QP, unit: EUR/MWh}
+- {id: cournot_analytic_mw, label: Closed-form Cournot outputs for the check, unit: MW}
+limitations:
+- Cournot is solved outside PyPSA; PyPSA's role is the competitive benchmark. A network-constrained Cournot needs a complementarity formulation.
+- Linear demand and constant costs keep everything closed-form; real bids are stepwise.
+sources:
+- {title: "PyPSA example: Imperfect Competition", url: "https://docs.pypsa.org/latest/examples/imperfect-competition/"}
+pypsa: "1.3.0"

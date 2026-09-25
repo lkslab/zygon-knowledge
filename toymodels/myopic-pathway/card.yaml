@@ -1,0 +1,78 @@
+id: myopic-pathway
+title: Myopic pathway with brownfield carry-over
+summary: >-
+  Three planning horizons (2030, 2040, 2050) solved one after another, each seeing only
+  its own year. Existing coal and gas start the story; every decade adds new wind,
+  solar, gas and batteries at falling costs against a tightening CO2 cap and growing
+  demand, inherits the previous horizon's builds and retires plants at the end of their
+  life. Myopic means no horizon anticipates the next.
+concepts: [pathway, myopic-foresight, brownfield, build-year, lifetime, retirement, co2-cap, cost-decline]
+answers:
+- "how do I run a sequence of investment horizons with capacity carried over"
+- "what is the difference between myopic and perfect foresight planning"
+- "when does existing coal retire and what replaces it"
+- "how does the CO2 price evolve along a pathway"
+builds_on: [capacity-expansion-single-node]
+setup:
+  buses: one electricity bus
+  components:
+  - existing Generators coal (build year 2000, life 40) and CCGT (2015, 30) with sunk capital cost
+  - per horizon, new extendable onwind, solar, CCGT (Generators) and battery (StorageUnit) with build_year and lifetime
+  - a load-shedding Generator and one GlobalConstraint on CO2 whose constant is reset per horizon
+  snapshots: 112 snapshots (two fortnights at 4-hour resolution) per horizon, weighted to a year
+  profiles: the base model's load, wind and solar sliced to 8-21 January and 8-21 July, load rescaled per horizon
+  assumptions:
+  - {name: mean load, value: "100, 115, 130 MW in 2030, 2040, 2050"}
+  - {name: co2 caps, value: "60 %, 30 %, 15 % of the unconstrained 2030 emissions"}
+  - {name: cost decline per decade, value: "wind 10 %, solar 15 %, battery 20 %, gas 0 %"}
+  - {name: existing coal, value: "100 MW at 30 EUR/MWh, 0.9 t/MWh"}
+  - {name: existing CCGT, value: "50 MW at 60 EUR/MWh, 0.37 t/MWh"}
+  - {name: new technology costs, value: "as capacity-expansion-single-node in 2030"}
+method: |
+  A loop over horizons on one network object, the pattern of the PyPSA myopic-pathway
+  example. Before each solve: rescale the load, set `active` on every asset from
+  build_year and lifetime (retired plants drop out of the problem), add that horizon's
+  extendable assets with build_year = horizon, and set the CO2 constant. Solve with
+  `n.optimize()`. After the solve, freeze: p_nom = p_nom_opt and p_nom_extendable =
+  False, so the next horizon sees them as existing. `multi_investment_periods` is not
+  used; that is the perfect-foresight alternative, one solve over all horizons.
+knobs:
+- {name: caps, in: CAP_FRACTION, effect: "the 2050 fraction is the lever; below about 10 % this two-fortnight toy without hydrogen overbuilds wind"}
+- {name: cost decline, in: COST_DECLINE_PER_DECADE, effect: "faster declines defer investment to later horizons, the myopic trap in reverse"}
+- {name: load growth, in: MEAN_LOAD_MW, effect: "electrification; scales new build"}
+- {name: existing fleet, in: EXISTING, effect: "build years set when retirements happen"}
+figures:
+- id: capacity_by_horizon
+  file: figures/capacity_by_horizon.json
+  title: Installed capacity by horizon
+  shows: Stacked capacity per horizon; coal leaves in 2040, inherited wind and solar accumulate, gas stays as firm capacity.
+- id: emissions_path
+  file: figures/emissions_path.json
+  title: Emissions against the cap
+  shows: Emissions per horizon sit on the dashed cap line; the cap binds every time.
+- id: cost_by_horizon
+  file: figures/cost_by_horizon.json
+  title: Annual cost by horizon
+  shows: New-build capital, annuities still paid on inherited assets, and fuel per horizon.
+numbers:
+- {id: "2030 / 2040 / 2050", label: Per horizon block with the fields below}
+- {id: capacity_mw, label: Installed capacity per carrier, unit: MW}
+- {id: new_build_mw, label: Capacity built in that horizon, unit: MW}
+- {id: emissions_kt, label: Emissions in that horizon, unit: kt}
+- {id: cap_kt, label: The cap in that horizon, unit: kt}
+- {id: co2_price_eur_t, label: CO2 shadow price in that horizon, unit: EUR/t}
+- {id: cost_meur_a, label: New capex, existing capex and opex, unit: MEUR/a}
+- {id: vre_share_pct, label: Wind plus solar over demand, unit: "%"}
+- {id: load_shed_mwh, label: Energy not served, unit: MWh}
+- {id: cumulative_new_build_mw, label: Sum of new builds over the pathway per carrier, unit: MW}
+- {id: emission_reduction_2050_vs_2030_pct, label: Reduction from the 2030 horizon to 2050, unit: "%"}
+- {id: coal_retired_by, label: First horizon with no coal}
+limitations:
+- No hydrogen chain, so the last few percent of decarbonisation are not reachable without overbuild; that is why 2050 stops at 15 %.
+- Two fortnights per horizon; seasonal storage cannot show up.
+- Retirements are by lifetime only; no economic early retirement.
+sources:
+- {title: "PyPSA example: Myopic Pathway Planning", url: "https://docs.pypsa.org/latest/examples/myopic-pathway/"}
+- {title: "PyPSA example: Pathway Planning (perfect foresight)", url: "https://docs.pypsa.org/latest/examples/multi-investment-optimisation/"}
+- {title: "PyPSA-Eur docs: Foresight", url: "https://pypsa-eur.readthedocs.io/en/latest/foresight/"}
+pypsa: "1.3.0"

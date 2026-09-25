@@ -109,7 +109,9 @@ def pick_scaled(var, sns, names, factor):
 
 
 def zygon_cfe_constraints(n, snapshots, snakemake):
-    cfg = snakemake.config["zygon_cfe"]
+    # the solve rule passes the run's own zygon_cfe (config_provider); the
+    # base config is the fallback for a solve rule that does not
+    cfg = snakemake.params.get("cfe") or snakemake.config["zygon_cfe"]
     label = str(snakemake.wildcards.zcfe)
     variant = dict(cfg["variants"][label])
     window = str(variant.get("window", "none"))

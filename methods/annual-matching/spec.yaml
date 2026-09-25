@@ -19,8 +19,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
-    date: '2026-09-09'
+    ref: 9a0c6bc5daa3c3398ab17de6350e90c809b993ec
+    date: '2026-09-16'
   execution:
   - kind: config
     key: zygon_cfe
@@ -66,11 +66,6 @@ models:
       - annual-080
       - annual-100
       - monthly-100
-      networks:
-      - results/germany-2n/cfe/nomatch/solved_2050.nc
-      - results/germany-2n/cfe/annual-080/solved_2050.nc
-      - results/germany-2n/cfe/annual-100/solved_2050.nc
-      - results/germany-2n/cfe/monthly-100/solved_2050.nc
       indicators:
       - procurement_cost
       - premium
@@ -94,17 +89,24 @@ models:
 
       '
   - kind: payload
+    source: hourly-matching
     note: 'SHARES the zygon_cfe payload shipped under methods/hourly-matching/payload/pypsa-eur
       (rules/zygon_cfe.smk, scripts/build_cfe_network.py, zygon_cfe_constraints.py,
       zygon_cfe_collect.py, the two patches). Apply it once; both specs read one
       zygon_cfe config block.
-      Rebased on a6c45e5 (2026-09-10), not yet re-run against an a6c45e5 install.
+      Dry-run validated on 9a0c6bc5 (lkslab/pypsa-eur, 2026-09-16); not yet solved
+      end to end.
 
       '
   - kind: invocation
-    note: 'extra_targets results/zygon_cfe/{zygon_cfe.indicators}.csv; verify_networks:
-      solved = {zygon_cfe.networks} (one per variant) + collected = the indicator
-      CSVs.
+    note: 'extra_targets: results/{run.name}/zygon_cfe/{zygon_cfe.indicators}.csv (the
+      collect rule is per run: each scenario''s own labels, read through
+      config_provider). verify_networks: {stage: solved, path:
+      results/{run.name}/cfe/{zygon_cfe.labels}/solved_{planning_horizons}.nc} (one
+      per variant per scenario) and {stage: collected, path:
+      results/{run.name}/zygon_cfe/{zygon_cfe.indicators}.csv}. Optional
+      zygon_cfe.baseline: true adds the run''s own solved network (no consumer) to
+      the collect inputs for the additionality reading.
 
       '
   invalidates:

@@ -1,0 +1,79 @@
+id: water-values
+title: Water values for a seasonal reservoir
+summary: >-
+  A hydro reservoir with snowmelt inflow, wind and two gas units over a stylised year.
+  With perfect foresight, the dual of the reservoir's energy balance is the marginal
+  value of stored water in every snapshot. A two-week rolling solve that ignores it
+  drains the reservoir early and spills in spring; the same rolling solve with the water
+  value charged as the cost of releasing and of spilling water lands much closer to the
+  foresight cost.
+concepts: [water-value, hydro, reservoir, rolling-horizon, foresight, shadow-price, storage, spill]
+answers:
+- "what is a water value and where does it come from in a model"
+- "how do I give a myopic dispatch a sensible value for stored energy"
+- "why does a rolling horizon spill or drain a seasonal reservoir"
+- "how do I read the state-of-charge dual of a StorageUnit"
+builds_on: [rolling-horizon]
+setup:
+  buses: one electricity bus
+  components:
+  - one StorageUnit hydro with an inflow series, a 48 GWh reservoir behind an 80 MW turbine, not cyclic, spill allowed
+  - Generators onwind (profile), CCGT, OCGT and load shedding
+  - a Load with the annual shape
+  snapshots: 730 snapshots, a year sampled every 12 hours, each weighted 12 h
+  profiles: annual load mean 100 MW; AR(1) wind; snowmelt inflow peaking in May with a dry late summer, mean 45 MW; seeds 42 and 7
+  assumptions:
+  - {name: hydro, value: "80 MW turbine, 600 hours (48 GWh), starts half full, spill free"}
+  - {name: inflow, value: "394 GWh per year, spring peak above turbine capacity"}
+  - {name: wind, value: "130 MW"}
+  - {name: CCGT, value: "70 MW at 60 EUR/MWh"}
+  - {name: OCGT, value: "100 MW at 120 EUR/MWh"}
+  - {name: rolling window, value: "28 snapshots (two weeks), no overlap"}
+  - {name: value_of_lost_load, value: 3000, unit: EUR/MWh}
+method: |
+  Perfect foresight: `n.optimize(assign_all_duals=True)`; the water value is
+  `n.storage_units_t.mu_energy_balance["hydro"]`, the dual of the state-of-charge
+  balance, already in EUR per MWh of stored energy (absolute value taken). It is zero
+  when the reservoir is about to spill, equals the fuel it displaces when the reservoir
+  is the marginal source, and is constant across any stretch where neither bound binds.
+  Rolling solves use `optimize_with_rolling_horizon(horizon=28)`. The informed case puts
+  the water value series on the StorageUnit's `marginal_cost` (releasing a MWh costs
+  it) and its mean on `spill_cost` (spilling costs it too), which is the StorageUnit
+  translation of the water-value example's Store `marginal_cost`.
+knobs:
+- {name: reservoir size, in: "HYDRO max_hours", effect: "a large reservoir never hits a bound and the water value is flat all year"}
+- {name: inflow shape, in: inflow(), effect: "a sharper melt raises spring spill and lowers the spring water value"}
+- {name: window, in: WINDOW, effect: "longer windows need less of the water value"}
+- {name: fuel costs, in: "CCGT, OCGT", effect: "the ceiling of the water value is the dearest unit hydro displaces"}
+figures:
+- id: reservoir_level
+  file: figures/reservoir_level.json
+  title: Reservoir level over the year
+  shows: Stored energy under perfect foresight, the naive rolling solve and the rolling solve with water values.
+- id: water_value
+  file: figures/water_value.json
+  title: Water value against the price
+  shows: The reservoir balance dual over the year next to the bus price from the perfect-foresight solve.
+- id: cost_comparison
+  file: figures/cost_comparison.json
+  title: Annual dispatch cost by approach
+  shows: Cost per approach; the water value recovers most of the gap.
+numbers:
+- {id: "perfect foresight / rolling horizon / rolling + water value", label: Per-approach block with the fields below}
+- {id: cost_meur_a, label: Dispatch cost, unit: MEUR/a}
+- {id: spill_gwh, label: Water spilled, unit: GWh}
+- {id: shortage_hours, label: Hours with load shedding, unit: h}
+- {id: hydro_gwh, label: Hydro generation, unit: GWh}
+- {id: min_reservoir_gwh, label: Lowest reservoir level, unit: GWh}
+- {id: end_reservoir_gwh, label: Reservoir at the end of the year, unit: GWh}
+- {id: cost_gap_pct, label: Extra cost over perfect foresight per approach, unit: "%"}
+- {id: water_value_eur_mwh, label: Mean, min and max water value and the month it is lowest, unit: EUR/MWh}
+- {id: mean_price_perfect_eur_mwh, label: Mean price under perfect foresight, unit: EUR/MWh}
+limitations:
+- Twelve-hour resolution, so daily arbitrage is invisible; this is about seasons.
+- No terminal value at the end of the year, so every approach drains the reservoir in December.
+- A single water value series applied as a cost is a heuristic; stochastic dynamic programming would give a level-dependent one.
+sources:
+- {title: "PyPSA example: Water Values", url: "https://docs.pypsa.org/latest/examples/water-value/"}
+- {title: "PyPSA example: Rolling-Horizon Optimization", url: "https://docs.pypsa.org/latest/examples/rolling-horizon/"}
+pypsa: "1.3.0"

@@ -1,0 +1,74 @@
+id: price-duration-and-cost-recovery
+title: Price duration and cost recovery
+summary: >-
+  Do the technologies an optimiser builds earn their money back at the prices the same
+  optimiser produces? The single-node expansion at a 20 % CO2 cap, read through its
+  price duration curve and a revenue-versus-cost check per technology. In a linear
+  programme every technology built recovers exactly its annualised capital, operating
+  and carbon cost: the zero-profit condition of a competitive market.
+concepts: [cost-recovery, zero-profit, price-duration-curve, scarcity-pricing, market-value, revenue, carbon-price]
+answers:
+- "do wind and solar recover their costs at market prices"
+- "where does the revenue of a wind farm come from when the price is zero half the time"
+- "what does a price duration curve of a high-renewables system look like"
+- "what is the market value of wind versus its LCOE"
+- "why does gas look over-recovering unless you charge it the CO2 price"
+builds_on: [capacity-expansion-single-node]
+setup:
+  buses: electricity and hydrogen, as in capacity-expansion-single-node
+  components: identical to capacity-expansion-single-node at the 20 % cap
+  snapshots: 2190 snapshots (a year every 4 hours), weight 4 h
+  profiles: the same seeded load, wind and solar as the base model
+  assumptions:
+  - {name: co2 cap, value: "20 % of the unconstrained emissions, read from the base model's results.yaml"}
+  - {name: everything else, value: "see capacity-expansion-single-node"}
+method: |
+  One `n.optimize()`. Revenue per technology from `n.statistics.revenue()` (net of what a
+  component pays for its inputs, so the electrolyser's electricity bill is deducted and
+  storage earns its spread). Cost is `statistics.capex()` (annualised) plus `opex()`,
+  plus for gas the carbon cost: the CO2 constraint's shadow price times its emissions.
+  That carbon term is what the market price already contains when gas is marginal
+  (price = fuel cost + CO2 price x emission factor), so without it gas would appear to
+  over-recover by exactly that amount. The margin split classifies hours as scarcity
+  when the price is above the gas level (set by storage or lost load).
+knobs:
+- {name: cap fraction, in: "build(cap_fraction=...)", effect: "tighter caps raise the CO2 price and shift wind's revenue into scarcity hours"}
+- {name: value of lost load, in: BASE.VOLL, effect: "the height of the scarcity spike; total scarcity rent is what the cap and VOLL leave for capital cost"}
+figures:
+- id: price_duration
+  file: figures/price_duration.json
+  title: Price duration curve (log scale)
+  shows: Sorted prices; a few hours at the value of lost load, a block at the gas-plus-carbon level, a long tail at zero.
+- id: revenue_vs_cost
+  file: figures/revenue_vs_cost.json
+  title: Revenue against annualised cost
+  shows: Revenue beside stacked capital, operating and carbon cost per built technology; the bars match.
+- id: revenue_split
+  file: figures/revenue_split.json
+  title: Where the margin comes from
+  shows: Margin above marginal cost per generator split into scarcity hours and ordinary hours.
+numbers:
+- {id: co2_price_eur_t, label: CO2 shadow price, unit: EUR/t}
+- {id: gas_price_level_eur_mwh, label: Price when gas is marginal, unit: EUR/MWh, formula: "60 + co2_price * 0.37"}
+- {id: carbon_cost_ccgt_meur_a, label: Implicit carbon cost paid by gas, unit: MEUR/a}
+- {id: cost_recovery_ratio, label: Revenue over cost per technology (1.0 at the optimum), unit: ratio}
+- {id: zero_profit_residual_pct, label: Revenue minus cost over cost, unit: "%"}
+- {id: revenue_meur_a, label: Revenue per technology, unit: MEUR/a}
+- {id: annualised_cost_meur_a, label: Capex plus opex plus carbon per technology, unit: MEUR/a}
+- {id: market_value_eur_mwh, label: Revenue per MWh generated, unit: EUR/MWh}
+- {id: lcoe_eur_mwh, label: Cost per MWh generated, unit: EUR/MWh, note: "equals market value at the optimum"}
+- {id: share_of_hours_pct, label: Share of hours at zero, at the gas level, above it (scarcity), in between, unit: "%"}
+- {id: mean_price_eur_mwh, label: Time-weighted mean price, unit: EUR/MWh}
+- {id: load_weighted_price_eur_mwh, label: Load-weighted mean price, unit: EUR/MWh}
+- {id: max_price_eur_mwh, label: Highest price (the value of lost load), unit: EUR/MWh}
+- {id: consumer_payment_meur_a, label: Load times price over the year, unit: MEUR/a}
+- {id: system_cost_meur_a, label: Objective, unit: MEUR/a}
+- {id: scarcity_rent_share_pct, label: Share of each generator's margin earned in scarcity hours, unit: "%"}
+limitations:
+- Exact cost recovery is a property of the LP with perfect foresight and no lumpiness; real markets recover less or need capacity payments.
+- With a MILP (unit commitment, discrete builds) the identity breaks; see the PyPSA modular-expansion example.
+sources:
+- {title: "PyPSA example: Screening Curves (zero-profit check)", url: "https://docs.pypsa.org/latest/examples/generation-investment-screening-curve/"}
+- {title: "PyPSA user guide: Statistics (revenue, market value)", url: "https://docs.pypsa.org/latest/user-guide/statistics/"}
+- {title: "Brown & Reichenberg, Decreasing market value of variable renewables", url: "https://github.com/nworbmot/market-value"}
+pypsa: "1.3.0"

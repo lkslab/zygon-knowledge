@@ -1,0 +1,76 @@
+<!doctype html>
+<html><head><meta charset='utf-8'><title>NTC, flow-based and nodal market coupling</title><meta name='viewport' content='width=device-width, initial-scale=1'><style>
+:root { --bg:#ffffff; --fg:#171717; --muted:#6b7280; --border:#e5e5e5; --card:#ffffff; }
+html.dark { --bg:#191919; --fg:#e5e5e5; --muted:#9ca3af; --border:#333333; --card:#222222; }
+body { margin:0; background:var(--bg); color:var(--fg);
+  font-family: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; font-size:12px; }
+main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+.sub { color: var(--muted); font-size: 12.5px; margin: 0 0 20px; }
+.card { border: 1px solid var(--border); border-radius: 24px; padding: 16px 20px; margin: 12px 0;
+  background: var(--card); }
+.title { font-size: 14px; font-weight: 600; }
+.caption { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+.chart { width: 720px; max-width: 100%; margin: 4px 0; }
+.bar { display:flex; justify-content: space-between; align-items: baseline; }
+button { font: inherit; background: none; color: var(--fg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+table.numbers { border-collapse: collapse; margin: 8px 0 16px; font-size: 12.5px; }
+table.numbers td { padding: 2px 12px 2px 0; border-bottom: 1px solid var(--border); }
+table.numbers td:nth-child(2) { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
+</style><script src='https://cdn.jsdelivr.net/npm/echarts@6/dist/echarts.min.js'></script></head><body><main><div class="bar"><h1>NTC, flow-based and nodal market coupling</h1><button id="theme">light / dark</button></div><p class="sub">The same generators, loads and lines are cleared as a nodal market (the physics), as
+a zonal market with fixed bilateral exchange limits (NTC) and as a flow-based market
+whose only constraints on the zones' net positions are the lines' remaining margins
+mapped through the power transfer distribution factors (PTDF). The flow-based domain
+is a polygon in net-position space; the NTC box sits inside it, and the difference is
+exchange the NTC design leaves on the table.</p><table class="numbers"><tr><td>cost_eur_h / nodal</td><td>13600.0</td></tr><tr><td>cost_eur_h / NTC</td><td>19000.0</td></tr><tr><td>cost_eur_h / flow-based</td><td>15040.0</td></tr><tr><td>welfare_gain_fb_over_ntc_eur_h</td><td>3960.0</td></tr><tr><td>cost_of_zonal_vs_nodal_eur_h / NTC</td><td>5400.0</td></tr><tr><td>cost_of_zonal_vs_nodal_eur_h / flow-based</td><td>1440.0</td></tr><tr><td>net_positions_mw / nodal</td><td>{'A': 210.0, 'B': -60.0, 'C': -150.0}</td></tr><tr><td>net_positions_mw / NTC</td><td>{'A': 120.0, 'B': -0.0, 'C': -120.0}</td></tr><tr><td>net_positions_mw / flow-based</td><td>{'A': 174.0, 'B': -24.0, 'C': -150.0}</td></tr><tr><td>domain_area_mw2</td><td>104976.0</td></tr><tr><td>ntc_box_area_mw2</td><td>14400.0</td></tr><tr><td>domain_over_box_area</td><td>7.29</td></tr><tr><td>binding_critical_branch</td><td>['A-C']</td></tr><tr><td>fb_flows_mw / A-B</td><td>66.0</td></tr><tr><td>fb_flows_mw / B-C</td><td>42.0</td></tr><tr><td>fb_flows_mw / A-C</td><td>108.0</td></tr><tr><td>ram_mw / A-B</td><td>108.0</td></tr><tr><td>ram_mw / B-C</td><td>108.0</td></tr><tr><td>ram_mw / A-C</td><td>108.0</td></tr><tr><td>prices_eur_mwh / nodal</td><td>{'A': 20.0, 'B': 60.0, 'C': 100.0}</td></tr><tr><td>prices_eur_mwh / NTC</td><td>{'A': 20.0, 'B': 60.0, 'C': 120.0}</td></tr><tr><td>prices_eur_mwh / flow-based</td><td>{'A': 20.0, 'B': 60.0, 'C': 100.0}</td></tr><tr><td>ptdf_slack_A / A-B</td><td>{'A': 0.0, 'B': -0.6667, 'C': -0.3333}</td></tr><tr><td>ptdf_slack_A / B-C</td><td>{'A': 0.0, 'B': 0.3333, 'C': -0.3333}</td></tr><tr><td>ptdf_slack_A / A-C</td><td>{'A': 0.0, 'B': -0.3333, 'C': -0.6667}</td></tr></table><section class="card"><div class="title">Flow-based domain and the NTC box</div><div id="chart-flow_based_domain" class="chart"></div><div class="caption">Every point is a pair of zonal net positions (C balances the two). The polygon is what the lines can carry after the reliability margin; the box is what fixed bilateral limits allow. The flow-based clearing sits on the polygon's edge, the NTC clearing on the box's, and the nodal one just outside the polygon because it may use the full ratings.</div></section><section class="card"><div class="title">Net positions by design</div><div id="chart-net_positions" class="chart"></div><div class="caption">Cheap A exports, B and C import; the flow-based design lets A export more because it accounts for the loop flow through C instead of capping each border.</div></section><section class="card"><div class="title">Dispatch cost by design</div><div id="chart-cost_by_design" class="chart"></div><div class="caption">Nodal is the physical optimum; flow-based gets close; NTC pays for the margin its fixed limits waste.</div></section></main><script>
+const FIGURES = {"flow_based_domain": {"version": 1, "option": {"dataset": [{"id": "domain"}, {"id": "box"}, {"id": "points"}], "tooltip": {"trigger": "item"}, "grid": {"left": 44, "right": 24, "top": 24, "bottom": 24, "containLabel": true}, "xAxis": {"type": "value", "name": "Net position of A (MW export)", "nameLocation": "middle", "nameGap": 26, "axisLine": {"onZero": false}, "splitLine": {"show": false}}, "yAxis": {"type": "value", "name": "Net position of B (MW export)", "nameLocation": "middle", "nameGap": 40, "splitLine": {"lineStyle": {"opacity": 0.4}}}, "series": [{"type": "line", "name": "flow-based domain", "datasetId": "domain", "encode": {"x": "x", "y": "y"}, "showSymbol": false, "areaStyle": {"opacity": 0.15}, "itemStyle": {"color": "#0072b2"}, "lineStyle": {"color": "#0072b2", "width": 2}}, {"type": "line", "name": "NTC box", "datasetId": "box", "encode": {"x": "x", "y": "y"}, "showSymbol": false, "itemStyle": {"color": "#e69f00"}, "lineStyle": {"color": "#e69f00", "width": 2}}, {"type": "scatter", "name": "cleared net positions", "datasetId": "points", "encode": {"x": "x", "y": "y", "tooltip": ["design", "x", "y"]}, "symbolSize": 12, "label": {"show": true, "formatter": "{@design}", "position": "right", "fontSize": 11}, "itemStyle": {"color": "#009e73"}}], "legend": {"icon": "roundRect", "itemWidth": 12, "itemHeight": 12, "itemGap": 14, "bottom": 0, "left": 0, "type": "plain", "data": ["flow-based domain", "NTC box", "cleared net positions"]}}, "datasets": {"domain": {"columns": ["x", "y"], "rows": [[-108.0, -108.0], [108.0, -216.0], [216.0, -108.0], [108.0, 108.0], [-108.0, 216.0], [-216.0, 108.0], [-108.0, -108.0]]}, "box": {"columns": ["x", "y"], "rows": [[-120.0, -120.0], [120.0, -120.0], [120.0, 120.0], [-120.0, 120.0], [-120.0, -120.0]]}, "points": {"columns": ["x", "y", "design"], "rows": [[210.0, -60.0, "nodal"], [120.0, -0.0, "NTC"], [174.0, -24.0, "flow-based"]]}}, "height": 420}, "net_positions": {"version": 1, "option": {"dataset": [{"id": "bars"}], "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}}, "grid": {"left": 44, "right": 24, "top": 24, "bottom": 8, "containLabel": true}, "xAxis": {"type": "category", "data": ["A", "B", "C"], "axisTick": {"alignWithLabel": true}, "axisLabel": {"interval": 0, "width": 150, "overflow": "break", "lineHeight": 14}}, "yAxis": {"type": "value", "name": "MW export", "nameLocation": "middle", "nameGap": 38, "splitLine": {"lineStyle": {"opacity": 0.4}}, "axisLine": {"onZero": true}}, "series": [{"type": "bar", "name": "nodal", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "zone", "y": "nodal"}, "itemStyle": {"color": "#0072b2"}, "markLine": {"silent": true, "symbol": "none", "lineStyle": {"type": "dotted", "color": "#6b7280", "width": 1}, "label": {"show": false}, "data": [{"yAxis": 0}]}}, {"type": "bar", "name": "NTC", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "zone", "y": "NTC"}, "itemStyle": {"color": "#e69f00"}}, {"type": "bar", "name": "flow-based", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "zone", "y": "flow-based"}, "itemStyle": {"color": "#009e73"}}], "legend": {"icon": "roundRect", "itemWidth": 12, "itemHeight": 12, "itemGap": 14, "bottom": 0, "left": 0, "type": "plain", "data": ["nodal", "NTC", "flow-based"]}}, "datasets": {"bars": {"columns": ["zone", "nodal", "NTC", "flow-based"], "rows": [["A", 210.0, 120.0, 174.0], ["B", -60.0, -0.0, -24.0], ["C", -150.0, -120.0, -150.0]]}}, "height": 360}, "cost_by_design": {"version": 1, "option": {"dataset": [{"id": "bars"}], "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}}, "grid": {"left": 44, "right": 24, "top": 24, "bottom": 8, "containLabel": true}, "xAxis": {"type": "category", "data": ["nodal", "NTC", "flow-based"], "axisTick": {"alignWithLabel": true}, "axisLabel": {"interval": 0, "width": 150, "overflow": "break", "lineHeight": 14}}, "yAxis": {"type": "value", "name": "EUR/h", "nameLocation": "middle", "nameGap": 38, "splitLine": {"lineStyle": {"opacity": 0.4}}, "axisLine": {"onZero": true}}, "series": [{"type": "bar", "name": "cost", "barMaxWidth": 40, "emphasis": {"focus": "series"}, "datasetId": "bars", "encode": {"x": "design", "y": "cost"}, "itemStyle": {"color": "#0072b2"}}]}, "datasets": {"bars": {"columns": ["design", "cost"], "rows": [["nodal", 13600.0], ["NTC", 19000.0], ["flow-based", 15040.0]]}}, "height": 360}};
+const CARRIER_COLOURS = {"nuclear": "#ff8c00", "lignite": "#826837", "coal": "#545454", "CCGT": "#a85522", "OCGT": "#e0986c", "gas": "#e05b09", "oil": "#c9c9c9", "onwind": "#235ebc", "offwind-ac": "#6895dd", "solar": "#f9d002", "hydro": "#298c81", "ror": "#3dbfb0", "PHS": "#51dbcc", "battery": "#ace37f", "battery charger": "#88a75b", "battery discharger": "#5d4e29", "H2": "#bf13a0", "H2 Electrolysis": "#ff29d9", "H2 Fuel Cell": "#c251ae", "H2 Store": "#bf13a0", "AC": "#70af1d", "DC": "#8a1caf", "transmission lines": "#6c9459", "electricity": "#110d63", "load": "#110d63", "load shedding": "#dd2e23", "heat": "#cc1f1f", "heat pump": "#2fb537", "gas boiler": "#db6a25", "water tanks": "#e69487", "resistive heater": "#d8f9b8", "CHP": "#8a5751", "biomass": "#baa741", "solid biomass": "#baa741", "co2": "#f29dae", "co2 stored": "#f2385a", "co2 sequestered": "#f2682f", "DAC": "#ff5270", "methanolisation": "#83d6d5", "methanol": "#FF7B00", "EV battery": "#baf238", "BEV charger": "#baf238", "V2G": "#e5ffa8"};
+const NUMBERS = {"cost_eur_h": {"nodal": 13600.0, "NTC": 19000.0, "flow-based": 15040.000000000004}, "welfare_gain_fb_over_ntc_eur_h": 3959.9999999999964, "cost_of_zonal_vs_nodal_eur_h": {"NTC": 5400.0, "flow-based": 1440.0000000000036}, "net_positions_mw": {"nodal": {"A": 210.0, "B": -60.0, "C": -150.0}, "NTC": {"A": 120.0, "B": -0.0, "C": -120.0}, "flow-based": {"A": 174.0, "B": -24.0, "C": -150.0}}, "domain_area_mw2": 104976.0, "ntc_box_area_mw2": 14400.0, "domain_over_box_area": 7.29, "binding_critical_branch": ["A-C"], "fb_flows_mw": {"A-B": 65.99999999999997, "B-C": 42.00000000000002, "A-C": 108.0}, "ram_mw": {"A-B": 108.0, "B-C": 108.0, "A-C": 108.0}, "prices_eur_mwh": {"nodal": {"A": 20.0, "B": 60.0, "C": 100.0}, "NTC": {"A": 20.0, "B": 60.0, "C": 120.0}, "flow-based": {"A": 20.0, "B": 60.0, "C": 100.0}}, "ptdf_slack_A": {"A-B": {"A": 0.0, "B": -0.6666666666666667, "C": -0.33333333333333337}, "B-C": {"A": 0.0, "B": 0.33333333333333337, "C": -0.33333333333333337}, "A-C": {"A": 0.0, "B": -0.33333333333333337, "C": -0.6666666666666667}}};
+const charts = [];
+function bound(fig) {
+  const option = JSON.parse(JSON.stringify(fig.option));
+  const entries = Array.isArray(option.dataset) ? option.dataset : (option.dataset ? [option.dataset] : []);
+  for (const entry of entries) {
+    const ds = fig.datasets[entry.id];
+    if (ds && !entry.source) entry.source = [ds.columns, ...ds.rows];
+  }
+  for (const s of option.series || []) {
+    const colour = CARRIER_COLOURS[s.name];
+    if (colour && !(s.itemStyle && s.itemStyle.color)) {
+      s.itemStyle = Object.assign({}, s.itemStyle, {color: colour});
+      if (s.type === "line") s.lineStyle = Object.assign({}, s.lineStyle, {color: colour});
+    }
+  }
+  // The app measures the bottom legend and pushes the grid up by its height; approximate that.
+  const legend = option.legend;
+  if (legend && legend.bottom === 0 && Array.isArray(legend.data)) {
+    const chars = legend.data.reduce((a, n) => a + String(n).length * 7.5 + 12 + 14, 0);
+    const rows = Math.max(1, Math.ceil(chars / 700));
+    const room = rows * 20 + 10;
+    const grids = Array.isArray(option.grid) ? option.grid : [option.grid || {}];
+    for (const g of grids) g.bottom = (typeof g.bottom === "number" ? g.bottom : 8) + room;
+    option.grid = Array.isArray(option.grid) ? grids : grids[0];
+    for (const z of option.dataZoom || []) if (typeof z.bottom === "number") z.bottom += room;
+  }
+  return Object.assign({backgroundColor: "transparent", textStyle: {fontFamily: "inherit"}}, option);
+}
+function render() {
+  const dark = document.documentElement.classList.contains("dark");
+  for (const c of charts) c.dispose();
+  charts.length = 0;
+  for (const [id, fig] of Object.entries(FIGURES)) {
+    const el = document.getElementById("chart-" + id);
+    el.style.height = (fig.height || 360) + "px";
+    const chart = echarts.init(el, dark ? "dark" : undefined);
+    chart.setOption(bound(fig), true);
+    charts.push(chart);
+  }
+}
+document.getElementById("theme").addEventListener("click", () => {
+  document.documentElement.classList.toggle("dark");
+  render();
+});
+window.addEventListener("resize", () => charts.forEach(c => c.resize()));
+render();
+</script></body></html>
