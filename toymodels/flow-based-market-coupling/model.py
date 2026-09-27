@@ -21,7 +21,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, run  # noqa: E402
+from _lib import bundle, charts, geography, run  # noqa: E402
 
 SLUG = "flow-based-market-coupling"
 TITLE = "NTC, flow-based and nodal market coupling"
@@ -34,6 +34,9 @@ X_PU = 0.1
 RELIABILITY_MARGIN = 0.1  # share of the rating withheld from the market (FRM); RAM = (1 - margin) * rating
 NTC_MW = 60.0  # bilateral exchange limit per border under the NTC design
 VOLL = 3000.0
+TRIANGLE = run.load_model("nodal-prices-lopf")  # the made-up country its map is drawn on
+TRADE = ("A", "C", 100.0)  # the sale the map follows: seller zone, buyer zone, MW
+LABEL_AT = {"B-C": (6.7, 3.55)}  # on C's fill: B is left pale by the trade, where white text vanishes
 
 
 def physical() -> pypsa.Network:
@@ -164,6 +167,38 @@ def numbers(nets: dict[str, pypsa.Network]) -> dict:
     }
 
 
+def trade_split_map() -> bundle.Figure:
+    """One sale from A to C on the triangle's made-up country: the PTDF splits it over every
+    line, so a third of it runs past B, the zone not in the deal."""
+    seller, buyer, mw = TRADE
+    H = ptdf()
+    flows = {line: float(mw * (H.loc[line, seller] - H.loc[line, buyer])) for line in LINES}
+    outline, rings = geography.country(TRIANGLE.OUTLINE, TRIANGLE.CUTS, TRIANGLE.BUS_XY)
+    kind = {"A": "coal zone", "B": "not in the deal", "C": "gas zone"}
+    role = {seller: f"sells {mw:.0f} MW", buyer: f"buys {mw:.0f} MW"}
+    regions = [charts.Region(z, rings[z], value={seller: mw, buyer: -mw}.get(z, 0.0) / 1e3,
+                             label_at=TRIANGLE.REGIONS[z][2], label=f"{kind[z]}\n{role.get(z, 'no trade')}") for z in ZONES]
+    xy = TRIANGLE.BUS_XY
+    links = []
+    for line, (b0, b1, s_nom) in LINES.items():
+        f = flows[line]
+        # drawn at the trade's share, on the sale arrow's width scale
+        links.append(charts.Link(line, xy[b0], xy[b1], capacity=s_nom, flow=round(f, 1), width_mw=abs(f),
+                                 label=f"{line}: {abs(f):.0f} MW of the {mw:.0f}", label_at=LABEL_AT.get(line, TRIANGLE.LINK_LABEL_AT[line])))
+    # the sale itself, drawn beside the direct line so the two compare
+    arrow = charts.Arrow("the sale", (6.35, 9.35), (8.55, 5.05), value=mw, label=f"the sale:\n{mw:.0f} MW, A to C",
+                         label_at=(8.35, 9.4))
+    option, ds = charts.region_map(regions, outline=outline, links=links, arrows=[arrow],
+                                   value_name="traded", unit="GW", low_label="buys", high_label="sells")
+    return bundle.Figure(
+        option, ds, title="One sale, every line: how a trade really flows",
+        caption=f"Zone A sells {mw:.0f} MW to zone C. The power does not follow the deal: it splits over both paths by "
+        f"their impedance, two thirds on the direct A-C line and one third the long way through B, so the lines "
+        "around B carry part of a trade B has nothing to do with. The shares are the power transfer distribution "
+        "factors (PTDF).",
+    )
+
+
 def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     poly = domain_polygon()
     closed = np.vstack([poly, poly[:1]])
@@ -207,7 +242,7 @@ def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     cost_fig = bundle.Figure(option, ds, title="Dispatch cost by design",
                              caption="Nodal is the physical optimum; flow-based gets close; NTC pays for the margin "
                              "its fixed limits waste.")
-    return {"flow_based_domain": domain, "net_positions": np_fig, "cost_by_design": cost_fig}
+    return {"trade_split_map": trade_split_map(), "flow_based_domain": domain, "net_positions": np_fig, "cost_by_design": cost_fig}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

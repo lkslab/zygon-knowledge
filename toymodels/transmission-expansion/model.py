@@ -19,7 +19,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, finance, profiles, run  # noqa: E402
+from _lib import bundle, charts, finance, geography, profiles, run  # noqa: E402
 
 SLUG = "transmission-expansion"
 TITLE = "Transmission expansion between a windy and a load-rich zone"
@@ -31,6 +31,15 @@ WIND_NORTH_MW = 400  # existing wind in the north, cost sunk
 GAS_SOUTH_MW = 60  # existing gas in the south
 OCGT_NORTH_MW = 30  # small existing peaker in the north, so the no-link case is not about lost load
 LINK_MAX_MW = 500
+MAP_CASE = "100 kEUR"  # the link cost the map draws
+
+# the two zones as a made-up country: a windy, thinly populated north, the cities in the south
+OUTLINE = [(1.5, 13.2), (3.5, 13.9), (5.5, 13.5), (7.5, 14.0), (9.5, 13.4), (10.8, 12.6), (10.5, 10.8),
+           (11.0, 9.0), (10.6, 7.2), (11.1, 5.4), (10.7, 3.4), (9.6, 1.6), (7.6, 0.9), (5.6, 1.2), (3.6, 0.7),
+           (1.8, 1.4), (1.1, 3.2), (1.5, 5.0), (1.0, 6.8), (1.4, 8.6), (0.9, 10.4), (1.2, 12.0)]
+CUT = [(-1, 7.3), (3.0, 7.8), (6.0, 7.1), (9.0, 7.7), (12, 7.2)]
+ANCHORS = {"north": (6.0, 10.5), "south": (6.0, 4.0)}
+LABEL_AT = {"north": (5.4, 12.4), "south": (5.4, 2.4)}
 
 
 def _capex(tech: str) -> float:
@@ -113,6 +122,49 @@ def numbers(nets: dict[str, pypsa.Network]) -> dict:
     return out
 
 
+def transmission_geography(nets: dict[str, pypsa.Network]) -> bundle.Figure:
+    """The two zones as a made-up country: the wind the north has to spare in its windiest
+    hours against the link the optimum builds, at its width on the same scale."""
+    n = nets[MAP_CASE]
+    s = summary(n, LINK_COST_CASES[MAP_CASE])
+    w = n.snapshot_weightings.generators
+    outline, rings = geography.country(OUTLINE, [CUT], ANCHORS)
+    load = n.loads_t.p_set
+    avail = n.generators_t.p_max_pu["onwind north"] * WIND_NORTH_MW
+    surplus = float((avail - load["load north"]).max())
+    gen = n.generators_t.p.T.groupby(n.generators.bus).sum().T
+    price = n.buses_t.marginal_price
+    mean = lambda x: float((x * w).sum() / w.sum())  # noqa: E731
+    net = {"north": mean(gen["north"] - load["load north"]), "south": mean(gen["south"] - load["load south"])}
+    regions = [
+        charts.Region("North", rings["north"], value=round(net["north"], 1), label_at=LABEL_AT["north"],
+                      label=f"windy, few people\nwind {WIND_NORTH_MW} MW · demand {LOAD_MW['north']} MW\n"
+                      f"mean price {mean(price['north']):.0f} EUR/MWh"),
+        charts.Region("South", rings["south"], value=round(net["south"], 1), label_at=LABEL_AT["south"],
+                      label=f"cities\ndemand {LOAD_MW['south']} MW · gas {s['gas_south_mw']:.0f} MW · solar {s['solar_south_mw']:.0f} MW\n"
+                      f"mean price {mean(price['south']):.0f} EUR/MWh"),
+    ]
+    north_xy, south_xy = (3.4, 9.6), (3.4, 4.8)
+    sites = [charts.Site("onwind north", 7.3, 10.5, WIND_NORTH_MW, carrier="onwind", label="wind farms"),
+             charts.Site("CCGT south", 7.3, 4.4, s["gas_south_mw"], carrier="CCGT", label="gas")]
+    flow = mean(n.links_t.p0["north-south"])
+    link = charts.Link("north-south", north_xy, south_xy, capacity=s["link_mw"], flow=round(flow, 1),
+                       label=f"link built: {s['link_mw']:.0f} MW\nfull {s['share_hours_link_at_limit_pct']:.0f} % of hours",
+                       label_at=(3.4, 10.5))
+    arrow = charts.Arrow("wind to spare", (7.3, 9.7), (7.3, 5.4), value=surplus,
+                         label=f"wind to spare in\nthe windiest hours:\nup to {surplus:.0f} MW", label_at=(9.3, 8.9))
+    option, ds = charts.region_map(regions, outline=outline, sites=sites, links=[link], arrows=[arrow],
+                                   value_name="mean net position", unit="MW", low_label="short of power",
+                                   high_label="power to spare", height=560)
+    return bundle.Figure(
+        option, ds, title="How much wire to a windy region?",
+        caption=f"A made-up country with a windy, empty north and a populated south. In its windiest hours the north has "
+        f"up to {surplus:.0f} MW of wind to spare (the broad arrow); at {LINK_COST_CASES[MAP_CASE] / 1e3:.0f} kEUR per MW "
+        f"and year the optimum builds a {s['link_mw']:.0f} MW link (drawn on the same width scale) and curtails "
+        f"{s['wind_curtailment_pct']:.0f} % of the wind: the last MW of a bigger wire would carry power only a few hours a year.",
+    )
+
+
 def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     s = {label: summary(n, LINK_COST_CASES[label]) for label, n in nets.items()}
     with_link = [label for label in nets if LINK_COST_CASES[label] is not None]
@@ -134,7 +186,7 @@ def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     fd = bundle.Figure(option, ds, title="Flow duration on the link",
                        caption="Sorted flows: the cheap-link cases run at the limit for many hours and reverse in the "
                        "calm hours when the south's gas serves the north.")
-    return {"capacity_vs_cost": cv, "system_cost_tradeoff": tc, "flow_duration": fd}
+    return {"transmission_geography": transmission_geography(nets), "capacity_vs_cost": cv, "system_cost_tradeoff": tc, "flow_duration": fd}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

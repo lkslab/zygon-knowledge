@@ -44,10 +44,23 @@ knobs:
 - {name: NTC, in: NTC_MW, effect: "the box; the welfare gain of flow-based is what lies between box and polygon"}
 - {name: reactances and ratings, in: "X_PU, LINES", effect: "unequal reactances tilt the polygon and change the critical branch"}
 figures:
+- id: trade_split_map
+  file: figures/trade_split_map.json
+  title: "One sale, every line: how a trade really flows"
+  shows: >-
+    The three zones as a made-up country (the same one the nodal-prices toy uses). Zone A sells 100 MW to
+    zone C: the broad blue arrow. The power does not follow the deal: 67 MW takes the direct A-C line and
+    33 MW the long way, A to B to C, each line drawn at its share. B, which is not in the deal and stays
+    pale, still has a third of the trade on its lines.
 - id: flow_based_domain
   file: figures/flow_based_domain.json
   title: Flow-based domain and the NTC box
-  shows: The polygon of feasible (A, B) net positions, the NTC box inside it, and where each design clears.
+  shows: >-
+    Every point is a pair of net positions for A and B (C balances them). The blue polygon is every
+    combination the lines can carry, worked out from the PTDFs; the orange box is what fixed limits of 60 MW
+    per border allow, about seven times smaller. The NTC market clears on the box's edge with A exporting
+    120 MW; flow-based clears on the polygon's edge with A exporting 174; nodal, using the full ratings,
+    reaches 210.
 - id: net_positions
   file: figures/net_positions.json
   title: Net positions by design
@@ -56,6 +69,44 @@ figures:
   file: figures/cost_by_design.json
   title: Dispatch cost by design
   shows: Nodal lowest, flow-based close, NTC paying for its unused margin.
+teach:
+- concept: flow-based-market-coupling
+  gap: >-
+    Europe's power markets trade between price zones, and the old way to keep those trades within what
+    the grid can carry is a fixed exchange limit per border (the net transfer capacity, NTC), set in
+    advance. It treats a sale from one zone to another as if it crossed the border between the two, like
+    a parcel. In a meshed grid power does not do that: it spreads over every path, and a sale between two
+    zones loads lines around a third zone that is not in the deal. Not knowing which trades will happen,
+    the operator has to keep the border limits small. The map (trade_split_map) follows one sale.
+  remedy: >-
+    Flow-based market coupling lets the market clear against the lines themselves. Power transfer
+    distribution factors (PTDFs), fixed by the grid's impedances, say what share of each zone's export
+    lands on each important line; any combination of trades is allowed as long as the flows it causes stay
+    within each line's remaining margin. The market no longer needs a cautious guess per border, so it can
+    trade much more over the same wires. In PyPSA `calculate_PTDF()` on a sub-network gives the matrix.
+  figure: trade_split_map
+  example: >-
+    A 100 MW sale from A to C puts 67 MW on A-C and 33 MW on each of A-B and B-C (ptdf_slack_A). With
+    flow-based clearing the cheap zone A exports 174 MW instead of 120 under NTC, and the hour costs about
+    15,000 EUR instead of 19,000 (net_positions_mw, cost_eur_h, welfare_gain_fb_over_ntc_eur_h). One layer
+    deeper, flow_based_domain shows every trade the lines allow as a polygon around the much smaller NTC box.
+- concept: ntc
+  gap: >-
+    Fixed border limits look simple and safe, so it is worth seeing how much they give away, and why a
+    flow-based market still is not the same as pricing every bus.
+  remedy: >-
+    Draw every combination of zonal exports as a point: the NTC limits allow a box, the lines themselves (via
+    the PTDFs) a polygon, far bigger, and the box sits inside it because it has to be safe for every corner at
+    once. Flow-based clearing lands on the polygon's edge, NTC on the box's. Nodal pricing goes one step
+    further: it also sees the lines inside each zone and uses the full ratings, where flow-based keeps a
+    reliability margin.
+  figure: flow_based_domain
+  builds_on_concept: flow-based-market-coupling
+  example: >-
+    The flow-based domain is about 7.3 times the area of the NTC box; A exports 120 MW under NTC, 174 under
+    flow-based and 210 nodally, at about 19,000, 15,000 and 13,600 EUR for the hour (domain_over_box_area,
+    net_positions_mw, cost_eur_h, cost_of_zonal_vs_nodal_eur_h). One layer deeper, net_positions and
+    cost_by_design compare the three designs.
 numbers:
 - {id: cost_eur_h, label: Dispatch cost per design, unit: EUR/h}
 - {id: welfare_gain_fb_over_ntc_eur_h, label: NTC cost minus flow-based cost, unit: EUR/h}

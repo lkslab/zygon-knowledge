@@ -41,6 +41,15 @@ knobs:
 - {name: wind size, in: WIND_NORTH_MW, effect: "more stranded wind raises the value of the link"}
 - {name: efficiency, in: "build(): efficiency=0.97", effect: "losses widen the price spread the link needs"}
 figures:
+- id: transmission_geography
+  file: figures/transmission_geography.json
+  title: How much wire to a windy region?
+  shows: >-
+    The two zones as a made-up country. The north has 400 MW of wind and 20 MW of demand, so it has
+    power to spare (green); the south has the cities (purple). The broad blue arrow is the wind the
+    north could send south in its windiest hours, up to about 284 MW. The thin grey link is what the
+    optimum builds at 100 kEUR per MW and year, 82 MW, drawn on the same width scale: it is full a
+    fifth of the time, and about a third of the wind is curtailed rather than wired south.
 - id: capacity_vs_cost
   file: figures/capacity_vs_cost.json
   title: Optimal link and southern gas capacity against link cost
@@ -53,6 +62,45 @@ figures:
   file: figures/flow_duration.json
   title: Flow duration on the link
   shows: Sorted link flows per case; positive is north to south, negative hours are the south feeding the north.
+teach:
+- concept: transmission-expansion
+  gap: >-
+    The windiest places are rarely where people live. Wind built there is cheap to run, but its
+    power is only worth something if it reaches the cities, and a line costs money every year
+    whether it is full or empty. Building a wire for the windiest hour means paying for capacity
+    that sits idle most of the year; building none means curtailing the wind and burning gas in the
+    south. The map (transmission_geography) shows the size of the gap between the two.
+  remedy: >-
+    A capacity expansion treats the line as one more thing to build, with a cost per MW, and weighs
+    it against everything else: gas and solar in the south, and curtailment in the north. It keeps
+    adding line while one more MW saves more in fuel and southern capacity than it costs, which
+    stops well short of the windiest hour, because the last MW of a big line would carry power only a
+    few hours a year. In PyPSA the line is an extendable Link with a capital cost.
+  figure: transmission_geography
+  example: >-
+    At 100 kEUR per MW and year the optimum builds about 82 MW of link against up to 284 MW of wind to
+    spare, curtails about 32 % of the wind and keeps about 78 MW of gas in the south; at 400 kEUR only
+    about 16 MW is built and 65 % of the wind is curtailed; without a link the year costs about 49
+    MEUR instead of 35 (link_mw, wind_curtailment_pct, gas_south_mw, cost_meur_a,
+    saving_vs_no_link_meur_a). One layer deeper, capacity_vs_cost shows the link and the southern gas
+    trading places as the wire gets dearer and system_cost_tradeoff the cost split per case.
+- concept: congestion-rent
+  gap: >-
+    A line whose capacity was chosen by a planner still has to be paid for by someone, and it earns
+    nothing from power it does not carry. Does a line the optimum builds actually pay for itself?
+  remedy: >-
+    Whenever the line is full, the prices at its two ends differ: cheap where power is stuck, dear
+    where it is short. The line earns that difference on every MWh it carries, its congestion rent.
+    At the optimum of a linear model the rent over the year equals exactly what the line costs, the
+    same zero-profit rule as for plants: a bigger line would narrow the price gap and earn less than
+    it costs, a smaller one would earn more.
+  figure: transmission_geography
+  builds_on_concept: transmission-expansion
+  example: >-
+    In every link cost case the link's congestion rent covers exactly its cost (link_cost_recovery_ratio
+    1.0); at 100 kEUR the prices differ by about 13 EUR/MWh on average and the rent is about 8.2 MEUR a
+    year (mean_price_spread_eur_mwh, congestion_rent_meur_a). One layer deeper, flow_duration shows how
+    many hours the link runs full in each case.
 numbers:
 - {id: link_mw, label: Optimal link capacity (per case), unit: MW}
 - {id: link_full_load_hours, label: Energy over capacity, unit: h}

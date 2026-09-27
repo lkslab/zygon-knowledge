@@ -20,8 +20,12 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 1.8
+  runtime_s: 1.86
   figures:
+    nodal_geography:
+      title: 'Power takes every path: one full line splits the prices'
+      file: figures/nodal_geography.json
+      height: 520
     nodal_prices:
       title: Nodal prices by load level
       file: figures/nodal_prices.json

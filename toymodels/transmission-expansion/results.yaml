@@ -87,8 +87,12 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 8.88
+  runtime_s: 9.52
   figures:
+    transmission_geography:
+      title: How much wire to a windy region?
+      file: figures/transmission_geography.json
+      height: 560
     capacity_vs_cost:
       title: Optimal link and southern gas capacity against link cost
       file: figures/capacity_vs_cost.json

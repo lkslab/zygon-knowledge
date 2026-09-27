@@ -40,6 +40,15 @@ knobs:
 - {name: load levels, in: "build(load_levels=[...])", effect: "sweep finer or beyond the fleet"}
 - {name: reactances, in: X_PU, effect: "unequal reactances change how the loop splits and where congestion appears"}
 figures:
+- id: nodal_geography
+  file: figures/nodal_geography.json
+  title: "Power takes every path: one full line splits the prices"
+  shows: >-
+    The three buses at peak load as a made-up country. The north (A) has cheap coal at 20 EUR/MWh and
+    little demand, so it has power to spare (green); the city (B) and the town (C) in the south are
+    short (purple). The thin A-B line, 400 MW, is full and drawn vermillion; A-C carries 440 of its
+    1,000 MW. The labels carry each bus's price: 20 at A, 60 at B, where the CCGT is the last plant
+    needed, and 40 at C, which runs no plant at all.
 - id: nodal_prices
   file: figures/nodal_prices.json
   title: Nodal prices by load level
@@ -52,6 +61,48 @@ figures:
   file: figures/congestion_rent_by_line.json
   title: Congestion rent by line
   shows: Flow times price difference per line and load level; negative on the line the loop pushes against the price gradient.
+teach:
+- concept: nodal-pricing
+  gap: >-
+    A single price for a whole region assumes power can travel freely inside it. Once a line is
+    full that is no longer true: the cheap coal in the north cannot reach the city in the south,
+    which has to run its own dearer gas plant. One price would then pay the stuck coal as if it were
+    useful in the city, and tell nobody where more power, or a bigger line, would help. The map
+    (nodal_geography) shows the three buses at peak load with the small line full.
+  remedy: >-
+    Nodal pricing gives every bus its own price: what one more MWh would cost to deliver there,
+    given the lines. Where power is stuck behind a full line it is cheap, where it is short it is
+    dear, and the difference across the full line is what one more MW of line would be worth. In
+    PyPSA the prices are the duals of the bus balances of a linear power flow; while no line binds,
+    they are all equal.
+  figure: nodal_geography
+  example: >-
+    Up to 90 % load the three prices are equal; at 120 % A-B is full and they split into 20 EUR/MWh at A,
+    60 at B and 40 at C (first_congested_level, peak_prices_eur_mwh). One more MW on A-B would be worth
+    40 EUR per hour, the lines collect about 24,000 EUR per hour of congestion rent, and the congestion
+    costs the system about 13,200 EUR over the six load levels against an unconstrained grid
+    (marginal_value_line_ab_peak_eur_mw_h, congestion_rent_peak_eur_h, cost_of_congestion_eur). One
+    layer deeper, nodal_prices shows the prices splitting as the load grows and congestion_rent_by_line
+    the rent per line.
+- concept: loop-flow
+  gap: >-
+    Bus C runs no plant, yet its price is 40 EUR/MWh: neither the coal's 20 nor the gas's 60. And the
+    B-C line carries power from dear B to cheaper C, against the price. Both look wrong if power goes
+    where it is sent, like parcels along a chosen road.
+  remedy: >-
+    In a meshed AC grid power cannot be routed: it splits over every path by the lines' impedance
+    (Kirchhoff's laws). A MW sent from A to C goes about two thirds along A-C and one third the long way,
+    A to B to C, which puts it on the full line. So one more MWh at C cannot come from A alone: to keep
+    A-B within its limit, half must come from A and half from B, and C's price is the blend, 40. The
+    same picture (nodal_geography) shows the flows; PyPSA adds Kirchhoff's voltage law around the
+    triangle to the optimisation.
+  figure: nodal_geography
+  builds_on_concept: nodal-pricing
+  example: >-
+    At peak about 52 % of A's export takes the A-C path, and B-C carries 40 MW from B to C, earning a
+    negative congestion rent of about 800 EUR per hour (loop_flow_share_peak,
+    congestion_rent_by_line_peak_eur_h, line_loading_peak_pct). One layer deeper, line_flows shows each
+    line's flow against its rating.
 numbers:
 - {id: peak_prices_eur_mwh, label: Nodal prices at the highest load level, unit: EUR/MWh, formula: "dual of the bus balance per bus"}
 - {id: peak_price_spread_eur_mwh, label: Max minus min nodal price at peak, unit: EUR/MWh}

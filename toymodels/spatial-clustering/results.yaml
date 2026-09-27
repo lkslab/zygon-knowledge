@@ -40,8 +40,16 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 2.74
+  runtime_s: 2.98
   figures:
+    network_before_clustering:
+      title: 'Six buses: a price for every place'
+      file: figures/network_before_clustering.json
+      height: 480
+    network_after_clustering:
+      title: 'Two buses: the detail inside each half is gone'
+      file: figures/network_after_clustering.json
+      height: 480
     prices_nodal_vs_clustered:
       title: Mean price per bus, nodal vs clustered
       file: figures/prices_nodal_vs_clustered.json

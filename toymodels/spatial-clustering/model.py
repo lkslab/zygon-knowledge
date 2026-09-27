@@ -19,7 +19,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, profiles, run  # noqa: E402
+from _lib import bundle, charts, geography, profiles, run  # noqa: E402
 
 SLUG = "spatial-clustering"
 TITLE = "Spatial clustering of a six-bus network"
@@ -41,6 +41,22 @@ LINES = {  # name: bus0, bus1, s_nom
     "W3-E1": ("W3", "E1", 350), "W2-E3": ("W2", "E3", 250),
 }
 VOLL = 3000
+
+# the six buses as a made-up country, wide from west to east: the windy west (W1 south-west,
+# W2 north-west, W3 the coal district by the border), the load-heavy east
+OUTLINE = [(0.8, 7.6), (2.4, 8.5), (4.3, 8.0), (6.2, 8.7), (8.1, 8.1), (10.0, 8.8), (12.0, 8.2), (13.9, 8.7),
+           (15.3, 7.8), (15.0, 6.1), (15.6, 4.4), (15.1, 2.6), (15.4, 1.3), (13.8, 0.4), (11.8, 0.9), (9.9, 0.3),
+           (8.0, 0.8), (6.1, 0.2), (4.2, 0.8), (2.3, 0.3), (0.9, 1.2), (0.5, 2.9), (1.0, 4.5), (0.4, 6.1)]
+DIVIDE = [(8.1, 10), (7.7, 6.8), (8.3, 4.4), (7.8, 2.2), (8.2, -1)]  # west | east, the cluster boundary
+CUTS_WEST = [[(4.4, 10), (4.0, 6.5), (4.5, 4.0), (4.1, -1)], [(-1, 4.8), (1.8, 4.3), (4.35, 4.9)]]
+CUTS_EAST = [[(11.8, 10), (12.2, 6.5), (11.7, 4.0), (12.1, -1)], [(11.85, 4.4), (14.0, 5.0), (17, 4.5)]]
+BUS_XY = {"W1": (2.4, 2.6), "W2": (2.4, 6.5), "W3": (6.2, 4.4), "E1": (10.0, 4.4), "E2": (13.6, 2.6), "E3": (13.6, 6.5)}
+KIND = {"W1": "windy coast", "W2": "windy hills", "W3": "coal district", "E1": "industry", "E2": "city", "E3": "city"}
+BUS_LABEL_AT = {"W1": (2.4, 1.2), "W2": (2.4, 7.6), "W3": (6.2, 1.6), "E1": (10.0, 1.6), "E2": (13.6, 1.2), "E3": (13.6, 7.6)}
+SITE_LABEL = {"W1": "left", "W2": "left", "W3": "bottom", "E1": "bottom", "E2": "right", "E3": "right"}
+CLUSTER_XY = {"west": (4.4, 4.4), "east": (11.8, 4.4)}
+CLUSTER_LABEL_AT = {"west": (4.4, 7.2), "east": (11.8, 7.2)}
+TIE_LABEL_AT = {"W3-E1": (8.0, 3.6), "W2-E3": (8.0, 7.35)}
 
 
 def build() -> pypsa.Network:
@@ -112,6 +128,92 @@ def numbers(nets: dict[str, pypsa.Network]) -> dict:
     }
 
 
+def _country() -> tuple[list, dict, dict, list]:
+    outline, _ = geography.country(OUTLINE, [DIVIDE], CLUSTER_XY)
+    _, clusters = geography.country(OUTLINE, [DIVIDE], CLUSTER_XY)
+    _, buses = geography.country(OUTLINE, [DIVIDE, *CUTS_WEST, *CUTS_EAST], BUS_XY)
+    return outline, buses, clusters, geography.inside(outline, DIVIDE)
+
+
+def _net(n: pypsa.Network) -> pd.Series:
+    """Mean net position per bus (generation minus load), MW."""
+    gen = n.generators_t.p.T.groupby(n.generators.bus).sum().T.mean()
+    load = n.loads_t.p_set.T.groupby(n.loads.bus).sum().T.mean()
+    return gen.sub(load, fill_value=0.0)
+
+
+def _reach(nets: dict[str, pypsa.Network]) -> float:
+    return max(float(_net(n).abs().max()) for n in nets.values()) / 1e3
+
+
+def network_before_clustering(nets: dict[str, pypsa.Network]) -> bundle.Figure:
+    """The six-bus country: the price differs from bus to bus even inside a region."""
+    full = nets["nodal"]
+    outline, buses, _, divide = _country()
+    net = _net(full)
+    lmp = full.buses_t.marginal_price.mean()
+    regions = [charts.Region(b, buses[b], value=round(float(net[b]) / 1e3, 3), label_at=BUS_LABEL_AT[b],
+                             label=f"{KIND[b]} · price {lmp[b]:.0f}") for b in REGION]
+    sites = [charts.Site(g, *BUS_XY[bus], size=p_nom, carrier=carrier, label=f"{carrier} {p_nom} MW",
+                         label_position=SITE_LABEL[bus])
+             for g, (bus, carrier, p_nom, _) in GENS.items()]
+    flows = full.lines_t.p0.mean()
+    links = [charts.Link(name, BUS_XY[b0], BUS_XY[b1], capacity=s_nom, flow=round(float(flows[name]), 1),
+                         label=f"tie line {s_nom} MW" if name in TIE_LABEL_AT else None, label_at=TIE_LABEL_AT.get(name))
+             for name, (b0, b1, s_nom) in LINES.items()]
+    option, ds = charts.region_map(regions, outline=outline, sites=sites, links=links, borders=[divide],
+                                   value_name="mean net position", unit="GW", low_label="short of power",
+                                   high_label="power to spare", reach=_reach(nets), height=480,
+                                   map_name="six buses")
+    return bundle.Figure(
+        option, ds, title="Six buses: a price for every place",
+        caption="The full network as a made-up country: a windy west and a load-heavy east, the dark line between them "
+        "the boundary the clustering will merge along. Prices (EUR/MWh, the week's mean) differ inside each half, "
+        "because its own lines limit what can move, and the two tie lines limit what crosses.",
+    )
+
+
+def network_after_clustering(nets: dict[str, pypsa.Network]) -> bundle.Figure:
+    """The same country clustered to two buses: one price per half, one summed tie line."""
+    full, cl = nets["nodal"], nets["clustered"]
+    outline, _, clusters, _ = _country()
+    net = _net(cl)
+    lmp = cl.buses_t.marginal_price.mean()
+    regions = []
+    for r in ("west", "east"):
+        members = [b for b, rr in REGION.items() if rr == r]
+        spread = f"{min(full.buses_t.marginal_price.mean()[members]):.0f} to {max(full.buses_t.marginal_price.mean()[members]):.0f}"
+        regions.append(charts.Region(r.capitalize(), clusters[r], value=round(float(net[r]) / 1e3, 3),
+                                     label_at=CLUSTER_LABEL_AT[r],
+                                     label=f"one bus, one price: {lmp[r]:.0f} EUR/MWh\n(nodal: {spread})"))
+    sites = []
+    for r, (x, y) in CLUSTER_XY.items():
+        here = [(g, c, p_nom) for g, (bus, c, p_nom, _) in GENS.items() if REGION[bus] == r]
+        by_carrier: dict[str, float] = {}
+        for _, c, p_nom in here:
+            by_carrier[c] = by_carrier.get(c, 0.0) + p_nom
+        for k, (c, p_nom) in enumerate(by_carrier.items()):
+            dx = (k - (len(by_carrier) - 1) / 2) * 2.4
+            sites.append(charts.Site(f"{c} {r}", x + dx, y - 1.6, size=p_nom, carrier=c, label=f"{c} {p_nom:.0f} MW",
+                                     label_position="bottom"))
+    line = cl.lines.index[0]
+    s_nom = float(cl.lines.s_nom[line])
+    sign = 1 if cl.lines.bus0[line] == "west" else -1
+    flow = sign * float(cl.lines_t.p0[line].mean())
+    tie = charts.Link("tie", CLUSTER_XY["west"], CLUSTER_XY["east"], capacity=s_nom, flow=round(flow, 1),
+                      label=f"one tie line: {s_nom:.0f} MW\n(350 + 250 summed)", label_at=(8.0, 5.3))
+    option, ds = charts.region_map(regions, outline=outline, sites=sites, links=[tie],
+                                   value_name="mean net position", unit="GW", low_label="short of power",
+                                   high_label="power to spare", reach=_reach(nets), height=480,
+                                   map_name="two buses")
+    return bundle.Figure(
+        option, ds, title="Two buses: the detail inside each half is gone",
+        caption="The same country clustered to one bus per half. Each half gets one price, the lines inside it vanish, "
+        "and the two tie lines become one with their ratings summed, so the clustered model moves more power "
+        "west to east than the real pair of lines allows, and finds a cheaper week than the full network does.",
+    )
+
+
 def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     full, cl = nets["nodal"], nets["clustered"]
     lmp = full.buses_t.marginal_price.mean()
@@ -135,7 +237,7 @@ def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     tie = bundle.Figure(option, ds, title="West-to-east transfer over the week",
                         caption="The clustered network transfers more in windy hours because the aggregated tie "
                         "line ignores the loop-flow limit on the individual lines.")
-    return {"prices_nodal_vs_clustered": prices, "line_loading": loading, "tie_flow": tie}
+    return {"network_before_clustering": network_before_clustering(nets), "network_after_clustering": network_after_clustering(nets), "prices_nodal_vs_clustered": prices, "line_loading": loading, "tie_flow": tie}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

@@ -96,6 +96,26 @@ def numbers(nets: dict[str, pypsa.Network]) -> dict:
     return out
 
 
+def rating_intuition(nets: dict[str, pypsa.Network]) -> bundle.Figure:
+    """The static rating against the one that follows the weather: the static one assumes the
+    hottest afternoon all day, the room above it is what cool hours and a short emergency
+    allowance add."""
+    n = nets["dynamic + emergency"]
+    df = pd.DataFrame({"rating": (n.lines_t.s_max_pu["A-B"] * S_NOM).round(1)})
+    band = charts.Band(value="rating", level=HOT_PU * S_NOM, level_name="static rating: the hot afternoon all day",
+                       below=None, above="room the cooler hours add", unit="MW",
+                       value_name="rating that follows the weather", above_color="#56b4e9",
+                       under="what the static rating lets through", under_color=charts.BAND_BELOW)
+    option, ds = charts.fill_between(df, band, step="end")
+    return bundle.Figure(
+        option, ds, title="How much a line may carry depends on the weather",
+        caption=f"A line's limit is how hot its conductor may get. A static rating of {HOT_PU * S_NOM:.0f} MW assumes the "
+        f"hottest afternoon every hour; following the weather it carries {S_NOM} MW at night and in the morning, and "
+        f"{EMERGENCY_PU * S_NOM:.0f} MW for two hours at the evening peak under an emergency allowance. The line is full "
+        "whenever the peaker would otherwise run, so every extra MW of rating is a MW of cheap power.",
+    )
+
+
 def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     df = pd.DataFrame({f"flow, {k}": n.lines_t.p0["A-B"].round(1) for k, n in nets.items()})
     df["limit, dynamic + emergency"] = (nets["dynamic + emergency"].lines_t.s_max_pu["A-B"] * S_NOM).round(1)
@@ -119,7 +139,7 @@ def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     bars = bundle.Figure(option, ds, title="Three-day cost and congestion rent by rating",
                          caption="A rating that follows the weather cuts both the dispatch cost and the rent the "
                          "congestion transfers; the emergency allowance trims the last peak hours.")
-    return {"flow_vs_limit": flow, "price_spread": sp, "cost_and_rent": bars}
+    return {"rating_intuition": rating_intuition(nets), "flow_vs_limit": flow, "price_spread": sp, "cost_and_rent": bars}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

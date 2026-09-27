@@ -37,6 +37,14 @@ knobs:
 - {name: line ratings, in: "the triangle's LINES", effect: "the small A-B line is the binding contingency"}
 - {name: outage set, in: "solve_secure branch_outages", effect: "drop an outage from the set to see which one drives the cost"}
 figures:
+- id: contingency_map
+  file: figures/contingency_map.json
+  title: "One line trips: its flow lands on the others"
+  shows: >-
+    The triangle's made-up country at peak load under the plain dispatch, in the moment the A-C line
+    trips (dashed). It carried 440 MW; physics reroutes that at once over the remaining path, so the
+    thin A-B line, rated 400 MW, suddenly carries 840 MW, 210 % of its rating, drawn vermillion, and
+    would trip next. B-C carries 480 of its 1,000 MW.
 - id: post_contingency_plain
   file: figures/post_contingency_plain.json
   title: Post-contingency loading, plain dispatch
@@ -53,6 +61,42 @@ figures:
   file: figures/cost_comparison.json
   title: Dispatch cost per hour
   shows: Plain versus secure dispatch cost.
+teach:
+- concept: n-1
+  gap: >-
+    A dispatch that runs every line up to its rating is the cheapest one, and it holds as long as
+    nothing breaks. But lines trip without warning, from lightning, a fault or a fallen tree, and when
+    one does, the power it carried reroutes instantly over the lines that are left, by physics, faster
+    than any operator can react. If those lines were already near full, they overload and trip too,
+    and the failure cascades into a blackout. The map (contingency_map) shows that moment.
+  remedy: >-
+    Operators follow the N-1 rule: the system must stay within every rating after losing any single
+    element, whichever it is. So lines are run with spare room, and the dispatch is chosen such that
+    each possible outage leaves the survivors within their limits. Security is bought by using the
+    grid below its rating in normal operation.
+  figure: contingency_map
+  example: >-
+    Under the plain dispatch, losing A-C would push A-B to 210 % of its rating; the secure dispatch keeps
+    the worst case at 100 % (worst_post_contingency_loading_pct, worst_case). In normal operation it
+    runs A-B at about 27 % instead of 100 %, holding about 290 MW of it spare (base_case_loading_pct,
+    spare_capacity_held_mw). One layer deeper, post_contingency_plain shows every outage's overloads.
+- concept: sclopf
+  gap: >-
+    Checking a dispatch against every outage after it has been chosen tells you it is unsafe, not
+    what the cheapest safe dispatch is. The rule has to be part of the choice.
+  remedy: >-
+    A security-constrained optimal power flow adds, for every outage, the flows that would follow it
+    as constraints of the optimisation: the flow after losing line k is the flow now plus a fixed share
+    of line k's flow (the outage distribution factors). The optimiser then finds the cheapest dispatch
+    that is safe for every outage at once. In PyPSA it is `n.optimize.optimize_security_constrained`.
+    The price is less cheap import across the weak line and more expensive local generation.
+  figure: post_contingency_secure
+  builds_on_concept: n-1
+  example: >-
+    Coal at A falls from 960 to 520 MW and the CCGT at B rises from 360 to 800 MW; the hour costs about
+    58,400 EUR instead of 40,800, 43 % more, and C's price rises from 40 to 60 EUR/MWh (dispatch_mw,
+    cost_plain_eur_h, cost_secure_eur_h, cost_of_security_pct, nodal_prices_eur_mwh). One layer deeper,
+    nodal_prices and cost_comparison show the two dispatches side by side.
 numbers:
 - {id: cost_plain_eur_h, label: Plain dispatch cost, unit: EUR/h}
 - {id: cost_secure_eur_h, label: Secure dispatch cost, unit: EUR/h}

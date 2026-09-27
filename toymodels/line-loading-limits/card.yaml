@@ -38,6 +38,14 @@ knobs:
 - {name: emergency allowance, in: "EMERGENCY_PU, EMERGENCY_HOURS", effect: "the size and length of the short-term overload"}
 - {name: load shape, in: "BASE_MW, PEAK_MW", effect: "a lower night makes the dynamic rating's night headroom worthless"}
 figures:
+- id: rating_intuition
+  file: figures/rating_intuition.json
+  title: How much a line may carry depends on the weather
+  shows: >-
+    Three hot days on the one line. The dashed level is the static rating, 800 MW, set for the hottest
+    afternoon and kept all day; green is what it lets through. The blue line is a rating that follows the
+    weather: 1,000 MW at night and in the morning, 800 in the afternoon heat, and 1,100 for two hours at the
+    evening peak under an emergency allowance. The light blue area is the room a static rating throws away.
 - id: flow_vs_limit
   file: figures/flow_vs_limit.json
   title: Line flow against its rating
@@ -50,6 +58,27 @@ figures:
   file: figures/cost_and_rent.json
   title: Three-day cost and congestion rent by rating
   shows: Dispatch cost and congestion rent per case.
+teach:
+- concept: dynamic-line-rating
+  gap: >-
+    What limits a power line is heat: current warms the conductor, and a hot conductor stretches and sags
+    towards the ground. How much current it can take depends on the weather: far more on a cool, windy night
+    than on a still, hot afternoon. Operators traditionally use one static rating, safe for the worst
+    afternoon, all day and night, so on most hours the line could carry more than it is allowed to. When the
+    line is the bottleneck, that unused room is paid for with expensive local generation. The picture
+    (rating_intuition) shows how much room that is.
+  remedy: >-
+    A dynamic line rating follows the conditions hour by hour, from measured or forecast temperature and
+    wind, so the line carries more whenever it safely can. A short emergency rating adds a little more for an
+    hour or two, because a conductor heats up slowly. In PyPSA a time-varying rating is the line's `s_max_pu`
+    given as a time series.
+  figure: rating_intuition
+  example: >-
+    Over the three days the dynamic rating cuts the peaker's output from about 28.9 to 18.9 GWh and the
+    dispatch cost from about 4.6 to 3.6 MEUR, and the two-hour emergency allowance saves another 0.1 MEUR;
+    the line is full in 72 of 72 hours under the static rating and 60 under the dynamic one
+    (peaker_energy_mwh, cost_eur, saving_vs_static_eur, hours_at_limit). One layer deeper, flow_vs_limit shows
+    the flow riding each limit and price_spread the price gap across the line whenever it is full.
 numbers:
 - {id: "static rating / dynamic rating / dynamic + emergency", label: Per-case block with the fields below}
 - {id: cost_eur, label: Dispatch cost over three days, unit: EUR}

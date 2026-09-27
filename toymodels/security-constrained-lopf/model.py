@@ -19,7 +19,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, run  # noqa: E402
+from _lib import bundle, charts, geography, run  # noqa: E402
 
 SLUG = "security-constrained-lopf"
 TITLE = "Security-constrained optimal power flow (N-1)"
@@ -102,6 +102,61 @@ def _loading_bars(df: pd.DataFrame, title: str, caption: str) -> bundle.Figure:
     return bundle.Figure(option, ds, title=title, caption=caption)
 
 
+def outage_flows(n: pypsa.Network, outage: str) -> pd.Series:
+    """Flows (MW, signed bus0 -> bus1) on the surviving lines once `outage` trips, with
+    the dispatch held: what physics does in the instant before anyone can react."""
+    sn = n.snapshots[0]
+    m = n.copy()
+    m.generators_t.p_set = n.generators_t.p.copy()
+    m.remove("Line", outage)
+    m.lpf(snapshots=[sn])
+    return m.lines_t.p0.loc[sn]
+
+
+def contingency_map(nets: dict[str, pypsa.Network]) -> bundle.Figure:
+    """The plain dispatch in the moment after its worst single outage, on the triangle's
+    made-up country: the tripped line dashed, its flow pushed onto the small line."""
+    plain = nets["plain"]
+    sn = plain.snapshots[0]
+    loading = contingency_loading(plain)
+    outage, worst = loading.stack().idxmax()
+    flows = outage_flows(plain, outage)
+    before = plain.lines_t.p0.loc[sn]
+    outline, rings = geography.country(TRIANGLE.OUTLINE, TRIANGLE.CUTS, TRIANGLE.BUS_XY)
+    load = plain.loads_t.p_set.loc[sn]
+    made = plain.generators_t.p.loc[sn].groupby(plain.generators.bus).sum()
+    regions, sites = [], []
+    for bus, (name, kind, label_at) in TRIANGLE.REGIONS.items():
+        use = float(load[f"load {bus}"])
+        regions.append(charts.Region(name=name, polygon=rings[bus], value=round((float(made.get(bus, 0.0)) - use) / 1e3, 3),
+                                     label_at=label_at, label=f"{kind}\nmakes {made.get(bus, 0.0):.0f} · uses {use:.0f} MW"))
+        carrier, p_nom, mc = TRIANGLE.GENS[bus]
+        sites.append(charts.Site(name=f"{carrier} {bus}", x=TRIANGLE.BUS_XY[bus][0], y=TRIANGLE.BUS_XY[bus][1], size=p_nom,
+                                 carrier=carrier, label=f"{carrier}, {mc} EUR/MWh",
+                                 label_position="right" if bus != "B" else "left"))
+    links = []
+    for name, (b0, b1, _) in TRIANGLE.LINES.items():
+        s_nom = float(plain.lines.s_nom[name])
+        xy0, xy1 = TRIANGLE.BUS_XY[b0], TRIANGLE.BUS_XY[b1]
+        at = TRIANGLE.LINK_LABEL_AT[name]
+        if name == outage:
+            links.append(charts.Link(name=name, start=xy0, end=xy1, capacity=s_nom, outage=True, label_at=at,
+                                     label=f"{name} trips\n(was {abs(before[name]):,.0f} MW)"))
+            continue
+        f = float(flows[name])
+        label = f"{name}: {abs(f):,.0f} MW\non a {s_nom:,.0f} MW line" if abs(f) > s_nom else f"{name}: {abs(f):,.0f} of {s_nom:,.0f} MW"
+        links.append(charts.Link(name=name, start=xy0, end=xy1, capacity=s_nom, flow=round(f, 1), label=label, label_at=at))
+    option, ds = charts.region_map(regions, outline=outline, sites=sites, links=links,
+                                   value_name="net position", unit="GW", low_label="short of power",
+                                   high_label="power to spare")
+    return bundle.Figure(
+        option, ds, title="One line trips: its flow lands on the others",
+        caption=f"The plain dispatch at peak load, the moment {outage} trips. Nobody can react that fast: the "
+        f"{abs(before[outage]):,.0f} MW it carried reroutes by physics onto the survivors, and {worst} runs at "
+        f"{loading.loc[outage, worst]:.0f} % of its rating, so it would trip next.",
+    )
+
+
 def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     plain, secure = nets["plain"], nets["N-1 secure"]
     sn = plain.snapshots[0]
@@ -117,7 +172,7 @@ def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
                        "their prices rise; the system pays the difference as the cost of security.")
     option, ds = charts.bars(list(nets), {"dispatch cost": [round(float(plain.objective)), round(float(secure.objective))]}, "EUR/h", category_name="dispatch")
     cost = bundle.Figure(option, ds, title="Dispatch cost per hour", caption="The premium for a dispatch that survives any single line outage.")
-    return {"post_contingency_plain": lp, "post_contingency_secure": ls, "nodal_prices": pr, "cost_comparison": cost}
+    return {"contingency_map": contingency_map(nets), "post_contingency_plain": lp, "post_contingency_secure": ls, "nodal_prices": pr, "cost_comparison": cost}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

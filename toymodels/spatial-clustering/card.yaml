@@ -41,6 +41,21 @@ knobs:
 - {name: tie ratings, in: LINES, effect: "the clustered model sums them; make them unequal to see loop-flow limits ignored"}
 - {name: reactances, in: "build(): x=0.1", effect: "unequal reactances make the two tie lines load unevenly in the full model"}
 figures:
+- id: network_before_clustering
+  file: figures/network_before_clustering.json
+  title: "Six buses: a price for every place"
+  shows: >-
+    The full six-bus network as a made-up country: a windy west (wind at W1 and W2, coal at W3) with power to
+    spare, a load-heavy east (gas) that is short, the dark line between them the boundary the clustering will
+    merge along. Each region is labelled with its mean price over the week: 32 to 41 EUR/MWh in the west, 55 to
+    65 in the east, so prices differ even inside each half. Two tie lines, 350 and 250 MW, join the halves.
+- id: network_after_clustering
+  file: figures/network_after_clustering.json
+  title: "Two buses: the detail inside each half is gone"
+  shows: >-
+    The same country clustered to one bus per half, on the same colour scale. Each half has one price, 43
+    EUR/MWh in the west and 60 in the east; the lines inside each half are gone, and the two tie lines have
+    become one of 600 MW, their ratings summed.
 - id: prices_nodal_vs_clustered
   file: figures/prices_nodal_vs_clustered.json
   title: Mean price per bus, nodal vs clustered
@@ -53,6 +68,42 @@ figures:
   file: figures/tie_flow.json
   title: West-to-east transfer over the week
   shows: Summed tie-line flow in the full network against the single aggregated line.
+teach:
+- concept: spatial-clustering
+  gap: >-
+    A real power grid has thousands of buses and lines. Optimising investment and hourly operation over
+    all of them, for years of weather, is far too big to solve, so every large model has to work with a
+    coarser network. The question is how to make it coarser without throwing away what matters. The map
+    (network_before_clustering) shows a small network in full: six buses in two halves.
+  remedy: >-
+    Spatial clustering merges groups of buses into one bus each, usually buses that are close together
+    or have similar prices. Their plants and loads are added up, the lines inside a cluster disappear,
+    and the lines between two clusters are combined into one. In PyPSA a busmap says which bus goes
+    into which cluster and `n.cluster.spatial.cluster_by_busmap` builds the smaller network. It solves
+    much faster; the price is the detail inside each cluster.
+  figure: network_before_clustering
+  example: >-
+    Six buses and eight lines become two buses and one line (buses_and_lines). One layer deeper,
+    network_after_clustering shows the same country merged into its two halves, which is the natural
+    next picture; prices_nodal_vs_clustered compares the prices bus by bus.
+- concept: network-reduction
+  gap: >-
+    A clustered model looks like a smaller version of the real one, and it is tempting to read its
+    prices, flows and costs as if nothing had changed. But the constraints inside each cluster are gone,
+    and the merged tie line behaves differently from the real lines it replaces.
+  remedy: >-
+    Know what the clustered model cannot see: congestion inside a cluster (all its buses share one price),
+    and the physics of parallel lines, which never fill evenly because power splits by impedance, while
+    a merged line can be filled to its summed rating. So a clustered model tends to move more power
+    between regions, curtail less and cost less than the real network: it is optimistic about the grid.
+    The map of the merged country (network_after_clustering) shows what is left.
+  figure: network_after_clustering
+  builds_on_concept: spatial-clustering
+  example: >-
+    Clustering cuts the week's cost by about 12 %, moves about 84 GWh west to east instead of about 74, and
+    halves wind curtailment from about 9 % to 5 %; the west's price becomes one 43 EUR/MWh where the buses
+    had 32 to 41 (cost_difference_pct, tie_flow_mwh, wind_curtailed_pct, mean_price_eur_mwh). One layer
+    deeper, tie_flow shows the transfer hour by hour and line_loading the internal lines that vanish.
 numbers:
 - {id: cost_eur, label: Weekly dispatch cost, nodal and clustered, unit: EUR}
 - {id: cost_difference_pct, label: Clustered over nodal cost, unit: "%", note: "negative: the clustered model drops constraints"}

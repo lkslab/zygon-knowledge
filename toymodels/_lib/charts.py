@@ -857,6 +857,8 @@ MAP_TEXT = {"color": "#ffffff", "textShadowColor": "rgba(0,0,0,0.55)", "textShad
 # Bold needs a real family: the app's charts inherit the page font ("inherit"), which a
 # canvas rejects inside a bold font string, silently dropping the weight.
 MAP_BOLD = {"fontWeight": 700, "fontFamily": "sans-serif"}
+MAP_DARK_TEXT = "#3f3a45"  # on a region filled near the neutral middle of the scale
+PALE_BELOW = 0.3  # share of the scale's reach under which a region counts as pale
 
 
 @dataclass
@@ -889,7 +891,8 @@ class Site:
 class Link:
     """A line between two points. `capacity` sets its width (on the same MW scale as
     every other link and arrow); `flow` is signed along start -> end and moves arrows
-    that way; a flow above the capacity draws the link overloaded. `label` sits beside
+    that way; a flow at or above the capacity draws the link vermillion (full, or
+    overloaded). `outage` draws a tripped line: dashed, grey, no flow. `label` sits beside
     its middle, or at `label_at`."""
 
     name: str
@@ -899,6 +902,8 @@ class Link:
     flow: float | None = None
     label: str | None = None
     label_at: tuple[float, float] | None = None
+    outage: bool = False
+    width_mw: float | None = None  # draw at this MW instead of the capacity (a flow's share, say)
 
 
 @dataclass
@@ -937,15 +942,24 @@ def region_map(
     low_label: str,
     high_label: str,
     height: int = 520,
+    borders: list[list[tuple[float, float]]] | tuple = (),
+    reach: float | None = None,
+    map_name: str = "region",
 ) -> tuple[Option, Datasets]:
     """A made-up country split into subregions, for the geography behind a network effect.
 
     Subregions are filled on a diverging scale centred on zero (purple below, green
     above: short of power / power to spare, by default), separated by white borders,
     under the country's `outline` drawn as one strong edge. Links are wires whose width
-    is their capacity, grey within it, vermillion above it, with arrows moving along
-    the flow; an `Arrow` draws an intent on the same width scale. Every text is placed
-    explicitly and drawn level, never along a line or at ECharts' region centres.
+    is their capacity, grey within it, vermillion at or above it, dashed when tripped,
+    with arrows moving along the flow; an `Arrow` draws an intent on the same width
+    scale. Every text is placed explicitly and drawn level, never along a line or at
+    ECharts' region centres.
+
+    `borders` are extra strong edges drawn like the outline (a boundary between groups of
+    subregions, say); `reach` fixes the colour scale at plus and minus that value, so two
+    maps of one country compare by colour. Two maps of one model need distinct `map_name`s,
+    since the preview page registers every map under its own name.
 
     The GeoJSON rides in `option["_maps"]` (popped into the bundle's `maps` by
     `bundle.Figure`); coordinates are abstract, not degrees (`aspectScale` 1).
@@ -958,7 +972,7 @@ def region_map(
     ys = [p[1] for r in regions for p in r.polygon]
     pad = 0.04 * max(max(xs) - min(xs), max(ys) - min(ys))
     geo = {
-        "map": "region",
+        "map": map_name,
         "roam": False,
         "aspectScale": 1,
         "boundingCoords": [[min(xs) - pad, max(ys) + pad], [max(xs) + pad, min(ys) - pad]],
@@ -971,11 +985,11 @@ def region_map(
         "tooltip": {"show": False},
     }
     values = [r.value for r in regions if r.value is not None]
-    reach = max((abs(v) for v in values), default=1.0) or 1.0
+    reach = reach or max((abs(v) for v in values), default=1.0) or 1.0
     series: list[dict[str, Any]] = [{
         "type": "map",
         "name": f"{value_name} ({unit})" if unit else value_name,
-        "map": "region",
+        "map": map_name,
         "geoIndex": 0,
         "data": [{"name": r.name, "value": round(float(r.value), DECIMALS)} for r in regions if r.value is not None],
     }]
@@ -1002,8 +1016,14 @@ def region_map(
             "z": 3, "lineStyle": {"color": cs.NEUTRAL, "width": 2.5, "opacity": 1},
             "data": [{"coords": _ring(outline)}],
         })
+    if borders:
+        series.append({
+            "type": "lines", "name": "borders", "coordinateSystem": "geo", "polyline": True, "silent": True,
+            "z": 3, "lineStyle": {"color": cs.NEUTRAL, "width": 2.5, "opacity": 1},
+            "data": [{"coords": [[round(float(x), DECIMALS), round(float(y), DECIMALS)] for x, y in b]} for b in borders],
+        })
 
-    widest = max([ln.capacity for ln in links] + [a.value for a in arrows] + [1.0])
+    widest = max([ln.width_mw if ln.width_mw is not None else ln.capacity for ln in links] + [a.value for a in arrows] + [1.0])
     def width(mw: float) -> float:
         return round(max(LINK_MIN_PX, LINK_MAX_PX * mw / widest), 1)
 
@@ -1027,14 +1047,29 @@ def region_map(
         notes += [{"at": list(a.label_at) if a.label_at else _mid(a.start, a.end), "text": a.label, "bold": True}
                   for a in arrows if a.label]
 
+    tripped = [ln for ln in links if ln.outage]
+    if tripped:
+        series.append({
+            "type": "lines", "name": "tripped lines", "coordinateSystem": "geo", "silent": True, "z": 4,
+            "lineStyle": {"color": cs.NEUTRAL, "opacity": 0.8, "type": "dashed", "curveness": 0},
+            "data": [{"name": ln.name, "coords": [list(ln.start), list(ln.end)],
+                      "lineStyle": {"width": max(2.0, width(ln.capacity) / 2)}} for ln in tripped],
+        })
+        notes += [{"at": list(ln.label_at) if ln.label_at else _mid(ln.start, ln.end), "text": ln.label}
+                  for ln in tripped if ln.label]
+
+    def full(ln: Link) -> bool:
+        return ln.flow is not None and abs(ln.flow) >= ln.capacity * (1 - 1e-3)
+
     for overloaded in (False, True):
-        group = [ln for ln in links if (ln.flow is not None and abs(ln.flow) > ln.capacity) == overloaded]
+        group = [ln for ln in links if not ln.outage and full(ln) == overloaded]
         if not group:
             continue
         data = []
         for ln in group:
             a, b = (ln.start, ln.end) if (ln.flow or 0) >= 0 else (ln.end, ln.start)
-            data.append({"name": ln.name, "coords": [list(a), list(b)], "lineStyle": {"width": width(ln.capacity)}})
+            data.append({"name": ln.name, "coords": [list(a), list(b)],
+                         "lineStyle": {"width": width(ln.width_mw if ln.width_mw is not None else ln.capacity)}})
             if ln.label:
                 notes.append({"at": list(ln.label_at) if ln.label_at else _mid(ln.start, ln.end), "text": ln.label,
                               "bold": overloaded})
@@ -1064,17 +1099,21 @@ def region_map(
     for r in regions:
         if r.label_at is not None:
             body = "".join("\n{body|" + line + "}" for line in (r.label or "").split("\n") if line)
-            notes.append({"at": list(r.label_at), "text": "{head|" + r.name + "}" + body})
+            # a region near zero is filled almost white, where white text vanishes: dark text there
+            pale = r.value is not None and abs(r.value) < PALE_BELOW * reach
+            notes.append({"at": list(r.label_at), "text": "{head|" + r.name + "}" + body, "pale": pale})
     if notes:
         # rich repeated per item: an item's own label replaces the series' rich styles
         rich = {"head": {**MAP_TEXT, **MAP_BOLD, "fontSize": 13, "lineHeight": 20},
                 "body": {**MAP_TEXT, "fontFamily": "sans-serif", "lineHeight": 16}}
+        dark = {"color": MAP_DARK_TEXT, "textShadowBlur": 0}
+        rich_pale = {k: {**v, **dark} for k, v in rich.items()}
         series.append({
             "type": "scatter", "name": "labels", "coordinateSystem": "geo", "silent": True, "z": 6,
             "symbolSize": 0,
             "label": {"show": True, "position": "inside", "lineHeight": 16, **MAP_TEXT},
             "data": [{"name": n["text"].split("\n")[0].strip("{}").split("|")[-1], "value": n["at"],
-                      "label": {"formatter": n["text"], "rich": rich,
+                      "label": {"formatter": n["text"], "rich": rich_pale if n.get("pale") else rich,
                                 **({**MAP_BOLD, "fontSize": 12} if n.get("bold") else {})}}
                      for n in notes],
         })
@@ -1085,6 +1124,6 @@ def region_map(
         "visualMap": visual_map,
         "series": series,
         "_height": height,
-        "_maps": {"region": {"type": "FeatureCollection", "features": features}},
+        "_maps": {map_name: {"type": "FeatureCollection", "features": features}},
     }
     return option, {}

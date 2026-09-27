@@ -33,8 +33,12 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 1.95
+  runtime_s: 2.17
   figures:
+    rating_intuition:
+      title: How much a line may carry depends on the weather
+      file: figures/rating_intuition.json
+      height: 360
     flow_vs_limit:
       title: Line flow against its rating
       file: figures/flow_vs_limit.json

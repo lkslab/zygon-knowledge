@@ -196,6 +196,7 @@ models:
   - why nodal prices differ between buses
   - what congestion rent is and who collects it
   figures:
+  - {id: nodal_geography, shows: the triangle at peak load as a made-up country, the small line full, a price per bus}
   - {id: nodal_prices, shows: price per bus per load level}
   - {id: line_flows, shows: flow vs rating per line at peak}
   - {id: congestion_rent_by_line, shows: rent per line and load level}
@@ -342,6 +343,7 @@ models:
   - how much transmission is worth building to a wind region
   - whether an interconnector pays for itself from congestion rent
   figures:
+  - {id: transmission_geography, shows: the two zones as a made-up country, the north's spare wind against the link the optimum builds}
   - {id: capacity_vs_cost, shows: link and southern gas capacity vs link cost}
   - {id: system_cost_tradeoff, shows: stacked cost per case}
   - {id: flow_duration, shows: sorted link flows per case}
@@ -384,6 +386,7 @@ models:
   - what N-1 security means for dispatch and what it costs
   - how bad the overload after a line outage is with a plain OPF
   figures:
+  - {id: contingency_map, shows: the triangle's country the moment a line trips under the plain dispatch, its flow overloading the small line}
   - {id: post_contingency_plain, shows: post-outage loading per line, plain dispatch}
   - {id: post_contingency_secure, shows: post-outage loading per line, secure dispatch}
   - {id: nodal_prices, shows: bus prices plain vs N-1}
@@ -428,6 +431,7 @@ models:
   - how to give a line a time-varying rating
   - what dynamic line rating and a short overload allowance are worth
   figures:
+  - {id: rating_intuition, shows: the static rating against one that follows the weather, the room it wastes shaded}
   - {id: flow_vs_limit, shows: flow per case against the dashed limits}
   - {id: price_spread, shows: price spread across the line per case}
   - {id: cost_and_rent, shows: cost and congestion rent per case}
@@ -512,6 +516,8 @@ models:
   - what clustering to fewer buses does to prices and flows
   - how to cluster a PyPSA network with a busmap
   figures:
+  - {id: network_before_clustering, shows: the six buses as a made-up country, a price for every place}
+  - {id: network_after_clustering, shows: the same country clustered to two buses, one price per half, one summed tie line}
   - {id: prices_nodal_vs_clustered, shows: mean price per bus, nodal beside the region price}
   - {id: line_loading, shows: mean loading per line before and after}
   - {id: tie_flow, shows: west-to-east transfer over the week in both models}
@@ -571,6 +577,7 @@ models:
   - what flow-based market coupling is and how it differs from NTC
   - how to compute a PTDF and build a flow-based domain in PyPSA
   figures:
+  - {id: trade_split_map, shows: one sale from A to C split over every line by the PTDFs, on a made-up country}
   - {id: flow_based_domain, shows: the feasible net-position polygon, the NTC box and where each design clears}
   - {id: net_positions, shows: net export per zone per design}
   - {id: cost_by_design, shows: dispatch cost per design}

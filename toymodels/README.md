@@ -61,9 +61,21 @@ cd ../pypsa-app && uv run python ../zygon-knowledge/tools/check_toymodels.py [--
 - **Geography** goes through `charts.region_map`: a made-up country in abstract
   coordinates, split into `Region`s coloured on a diverging scale (purple short of power,
   green with power to spare), with `Site`s (plants, cities), `Link`s (wires, width their
-  capacity, vermillion when a flow runs over it) and `Arrow`s (an intent, such as what a
-  market plans to move, on the links' width scale). Use it for first principles that are
-  about where things are: where power is made and used, why a line congests.
+  capacity, vermillion when a flow reaches or runs over it, dashed when tripped) and
+  `Arrow`s (an intent, such as what a market plans to move, on the links' width scale).
+  `_lib/geography.country` smooths a hand-drawn outline and cuts it into subregions along
+  wavy borders; the triangle country of nodal-prices-lopf is reused by the other
+  three-bus cards so they share one map. Use it for first principles that are about where
+  things are: where power is made and used, why a line congests. The colours keep one
+  meaning on every map; prices and flows go in the labels.
+- **Market diagrams** go through `charts.xy_areas`: `Curve`s over a numeric x with the
+  `Area`s between them filled and named in the legend (green for what someone gains,
+  vermillion for what is lost or paid back), marked `Point`s, and stacked panels on one
+  x axis. Use it for the textbook pictures: a supply staircase and where the load cuts it,
+  surpluses either side of a price, cost lines over a load duration curve.
+- **An intuition figure** comes first in a card's `figures` and index row: the one picture
+  that makes the concept click, drawn for it rather than taken from the results, with a
+  `shows` text that says what to look at in plain words and with the model's numbers.
 - **Cards** are snake_case YAML with a fixed key set (`id, title, summary, concepts,
   answers, builds_on, setup, method, knobs, figures, numbers, limitations, sources,
   pypsa`) plus two optional keys, `teach` and `pypsa_example`. `id` equals the directory
