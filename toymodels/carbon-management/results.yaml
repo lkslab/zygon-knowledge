@@ -31,7 +31,7 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 6.13
+  runtime_s: 6.71
   figures:
     co2_sankey:
       title: Annual CO2 flows (kt)

@@ -109,14 +109,16 @@ def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
     techs = ["onwind", "solar", "battery", "H2 Electrolysis", "DAC", "methanolisation"]
     option, ds = charts.bars(techs, {"capacity": [round(float(cap.get(c, 0.0)), 1) for c in techs]}, "MW", category_name="technology")
     cb = bundle.Figure(option, ds, title="Optimal capacities",
-                       caption="Generation is oversized against the electrolyser so that it runs in most hours; the "
-                       "reactor is sized close to the flat demand and the stores decouple the two.")
+                       caption="Wind and solar are three times the electrolyser, so that it runs much of the time on "
+                       "whatever the weather gives; the reactor is sized well above the flat 10 MW demand, and the stores "
+                       "decouple the steps.")
     st = pd.DataFrame({"H2 Store": n.stores_t.e["H2 Store"], "methanol store": n.stores_t.e["methanol store"],
                        "methanol output": -n.links_t.p1["methanolisation"] * 100}).round(1)
     option, ds = charts.time_series(st[["H2 Store", "methanol store"]], "MWh", slider=False)
     sf = bundle.Figure(option, ds, title="Hydrogen and methanol stores over the year",
-                       caption="The hydrogen store buffers days of calm; the methanol store, far cheaper per MWh, "
-                       "carries the seasonal imbalance between summer solar and the flat demand.")
+                       caption="The hydrogen store buffers a few days of calm; the methanol store, far cheaper per MWh, "
+                       "carries the seasons: it fills through the windy spring and empties over the calm late summer, "
+                       "while the demand stays flat.")
     costs = cost_breakdown(n) / 1e6
     w = n.snapshot_weightings.generators
     meoh = float(n.loads.p_set["methanol demand"] * w.sum())
@@ -125,8 +127,9 @@ def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
     option, ds = charts.bars(comps, {"EUR per MWh methanol": [float(per_mwh[c]) for c in comps]}, "EUR/MWh", horizontal=True, category_name="component")
     lc = bundle.Figure(option, ds, title="Levelised cost of methanol by component",
                        caption="Annualised cost of each component divided by the methanol produced; the sum is the "
-                       "levelised cost. Electricity supply and the electrolyser dominate, the stores are cheap.")
-    return {"capacities": cb, "stores_over_year": sf, "lcom_breakdown": lc}
+                       "levelised cost. Wind and solar make up almost half, direct air capture a quarter, the "
+                       "electrolyser an eighth; the stores are cheap.")
+    return {"stores_over_year": sf, "lcom_breakdown": lc, "capacities": cb}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

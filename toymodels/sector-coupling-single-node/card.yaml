@@ -45,18 +45,46 @@ knobs:
 - {name: COP swing, in: profiles.cop, effect: "a flatter COP makes winter cheaper for the heat pump"}
 - {name: tank cost and loss, in: HEAT_TECH, effect: "cheap, tight tanks turn into seasonal heat storage"}
 figures:
+- id: flexible_load_week
+  file: figures/flexible_load_week.json
+  title: Flexible load in a winter week
+  shows: >-
+    A January week: the electricity price (blue, right axis) against the power drawn by the heat pump (green) and
+    the electrolyser (pink). While wind makes power cheap both run near full; on the expensive days, with
+    the price at about 500 EUR/MWh, both stop: hydrogen can wait in its store and the 7 GWh hot-water tank carries
+    the heat.
 - id: energy_balance_electricity
   file: figures/energy_balance_electricity.json
   title: Electricity balance, weekly means
-  shows: Supply stacked above zero and withdrawals below, per carrier, as weekly means over the year.
+  shows: >-
+    The electricity bus over the year in weekly means, supply above zero and withdrawals below. Below the ordinary
+    load sit the new loads coupling brings: the heat pump, largest in winter, and the electrolyser, largest in the
+    windy weeks. Together they raise electricity demand by about 70 %.
 - id: energy_balance_heat
   file: figures/energy_balance_heat.json
   title: Heat balance, weekly means
   shows: Heat pump, boiler and tank supply against the heat load, weekly means.
-- id: flexible_load_week
-  file: figures/flexible_load_week.json
-  title: Flexible load in a winter week
-  shows: Electric draw of the heat pump and the electrolyser against the electricity price for one January week.
+teach:
+- concept: sector-coupling
+  gap: >-
+    A power system heading for mostly wind and solar has plenty of energy in windy, sunny hours and too little in
+    calm ones. Batteries shift hours, not weeks, and dumping the surplus wastes it. Meanwhile heating and industry
+    burn gas and oil, and any energy they use has to come from somewhere. Treated separately, electricity curtails
+    its surplus while heating keeps burning fuel. The picture (flexible_load_week) shows what linking them does in
+    one winter week.
+  remedy: >-
+    Sector coupling connects electricity to heat and hydrogen: heat pumps turn power into heat, electrolysers turn
+    it into hydrogen, and both can be run when power is cheap because heat and hydrogen are cheap to store (a
+    hot-water tank, a hydrogen store). They become flexible loads that soak up the surplus and step back when power
+    is scarce. In PyPSA each sector is its own bus and the converters are links between them, with efficiencies
+    or a time-varying COP.
+  figure: flexible_load_week
+  example: >-
+    Coupling raises electricity demand by about 70 %; the heat pump covers all the heat at a mean COP of about
+    3, the electrolyser runs at about 45 % of its capacity, and the heat and hydrogen stores hold about 7 and 9 GWh
+    (electricity_demand_uplift_pct, heat_pump_share_of_heat_pct, seasonal_cop_mean,
+    electrolyser_capacity_factor_pct, storage_mwh). One layer deeper, energy_balance_electricity shows the whole
+    year and energy_balance_heat the heat side.
 numbers:
 - {id: total_cost_meur_a, label: Annual system cost, unit: MEUR/a}
 - {id: heat_pump_share_of_heat_pct, label: Heat pump share of heat supplied, unit: "%"}

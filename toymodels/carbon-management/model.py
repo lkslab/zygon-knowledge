@@ -176,7 +176,20 @@ def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
         ("captured CO2", "sequestered", f["captured -> sequestered"]),
         ("captured CO2", "methanol", f["captured -> methanol"]),
     ]
-    links = [{"source": a, "target": b, "value": round(v / 1e3, 2)} for a, b, v in edges if v > 1.0]
+    # node labels carry their tonnes, so the picture reads without hovering
+    total = {}
+    for a, b, v in edges:
+        total[a] = total.get(a, 0.0) + v
+        total[b] = total.get(b, 0.0)
+    for a, b, v in edges:
+        if b not in ("atmosphere", "captured CO2"):
+            total[b] += v
+    inflow_atm = sum(v for a, b, v in edges if b == "atmosphere")
+    total["captured CO2"] = sum(v for a, b, v in edges if b == "captured CO2")
+    label = {nm: f"{nm}\n{total[nm] / 1e3:.0f} kt" for nm in total}
+    outflow_atm = sum(v for a, b, v in edges if a == "atmosphere")
+    label["atmosphere"] = f"atmosphere\n{inflow_atm / 1e3:.0f} kt in\n{outflow_atm / 1e3:.0f} kt out"
+    links = [{"source": label[a], "target": label[b], "value": round(v / 1e3, 2)} for a, b, v in edges if v > 1.0]
     nodes = [{"name": nm} for nm in dict.fromkeys([e for l in links for e in (l["source"], l["target"])])]
     option = {
         "tooltip": {"trigger": "item", "formatter": "{b}: {c} kt"},

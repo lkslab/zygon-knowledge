@@ -47,7 +47,11 @@ figures:
 - id: chp_feasible_region
   file: figures/chp_feasible_region.json
   title: Feasible region of the extraction CHP
-  shows: Power against heat with the iso-fuel and backpressure lines and every hour's operating point.
+  shows: >-
+    What the extraction plant can do, power against heat. With full fuel it can make 90 MW of power and no heat
+    (top left) or trade power for heat along the iso-fuel line; the backpressure line is the most heat it can take
+    for the power it makes. It can run anywhere in the green region. The grey dots are its hours: most sit on the
+    backpressure line, making the most heat, and some move up into the region when power is dear.
 - id: heat_supply
   file: figures/heat_supply.json
   title: Heat supply over the fortnight
@@ -56,6 +60,27 @@ figures:
   file: figures/power_vs_heat.json
   title: Extraction CHP power and heat against the electricity price
   shows: The unit condenses more when the price is high and extracts more heat when wind pushes it down.
+teach:
+- concept: chp
+  gap: >-
+    A power plant burning gas turns less than half of the fuel into electricity; the rest leaves as heat up the
+    chimney or into a river. A boiler makes only heat. A combined heat and power plant makes both from the same fuel
+    and wastes far less, but it cannot choose them freely: taking more heat out of its steam leaves less to make
+    power. A model with separate power plants and boilers cannot see that trade-off. The picture
+    (chp_feasible_region) shows what one such plant can do.
+  remedy: >-
+    Model the plant's feasible region. A backpressure plant makes heat and power in a fixed ratio: one link from the
+    gas bus with two outputs, electricity and heat. An extraction plant can move within a region, between a line
+    of full fuel (more heat costs a little power) and a line of maximum heat extraction; in PyPSA that is two links
+    sharing one fuel budget, tied by two custom constraints. The optimiser then decides each hour where in the
+    region to run, depending on what power and heat are worth.
+  figure: chp_feasible_region
+  example: >-
+    The extraction plant sits on its backpressure line, making the most heat, in about 88 % of hours; both CHPs use
+    about 85 % of their fuel, and together they supply about 70 % of the heat and 58 % of the electricity; heat
+    costs between 10 and 33 EUR/MWh (hours_extraction_on_backpressure_line_pct,
+    extraction_fuel_utilisation_pct, heat_share_pct, electricity_from_chp_pct, heat_price_range_eur_mwh). One layer
+    deeper, heat_supply shows who makes the heat and power_vs_heat how the plant follows the electricity price.
 numbers:
 - {id: heat_share_pct, label: Share of heat from each source, unit: "%"}
 - {id: extraction_heat_to_power_ratio, label: Realised heat over power of the extraction unit, unit: ratio}

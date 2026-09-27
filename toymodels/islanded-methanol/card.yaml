@@ -46,18 +46,59 @@ knobs:
 - {name: DAC cost, in: TECH, effect: "a quarter of the levelised cost here"}
 - {name: resolution, in: EVERY_H, effect: "6 h keeps the year under fifteen seconds; 4 h refines the battery's role"}
 figures:
+- id: stores_over_year
+  file: figures/stores_over_year.json
+  title: Hydrogen and methanol stores over the year
+  shows: >-
+    The plant's two stores over the year. The small hydrogen store (pink) fills and empties every few days with the
+    weather, so the reactor keeps running through calm spells. The methanol store (blue), far cheaper per MWh,
+    carries the seasons: it fills to about 5.5 GWh through the windy spring and empties over the calm late summer,
+    while the customer takes the same 10 MW every hour.
+- id: lcom_breakdown
+  file: figures/lcom_breakdown.json
+  title: Levelised cost of methanol by component
+  shows: >-
+    What each part of the plant adds to the cost of a MWh of methanol; the bars sum to about 234 EUR/MWh. Wind is
+    the largest, about 74, then direct air capture, about 60, solar about 32, the electrolyser about 28; the stores
+    add little.
 - id: capacities
   file: figures/capacities.json
   title: Optimal capacities
   shows: Wind, solar, battery, electrolyser, DAC and reactor in MW.
-- id: stores_over_year
-  file: figures/stores_over_year.json
-  title: Hydrogen and methanol stores over the year
-  shows: The hydrogen store cycling on weather and the methanol store carrying the seasonal imbalance.
-- id: lcom_breakdown
-  file: figures/lcom_breakdown.json
-  title: Levelised cost of methanol by component
-  shows: EUR per MWh of methanol contributed by each component; the bars sum to the levelised cost.
+teach:
+- concept: off-grid
+  gap: >-
+    A plant that makes fuel from its own wind and solar, with no grid to lean on, gets power only when the weather
+    gives it. The chemistry downstream wants the opposite: a synthesis reactor that runs steadily, and a customer
+    who wants the same delivery every day of the year. Sizing each step for its own average leaves the reactor idle
+    in every calm spell and the customer short all summer. The picture (stores_over_year) shows how the plant
+    bridges the gap.
+  remedy: >-
+    Buffer at every step and size the chain as one: oversize wind and solar against the electrolyser, store
+    hydrogen for days of calm, and store the finished product for the seasons, since methanol is far cheaper to
+    keep than hydrogen or electricity. A capacity expansion with every component extendable finds the cheapest
+    combination of generation, conversion and storage against the flat demand. In PyPSA each product is its own bus,
+    the conversions are links and the stores are Stores.
+  figure: stores_over_year
+  example: >-
+    The optimum builds about 59 MW of wind and 46 of solar for a 33 MW electrolyser, a hydrogen store of about 0.7
+    GWh and a methanol store of about 5.5 GWh for a flat demand of 10 MW; the electrolyser runs at about 54 % of
+    its capacity and about 12 % of the wind and solar is curtailed (capacity_mw, store_capacity,
+    capacity_factor_pct, curtailment_pct). One layer deeper, capacities shows every component's size.
+- concept: levelised-cost
+  gap: >-
+    Such a plant has many parts, each with its own cost, and the question a buyer asks is simple: what does a MWh
+    of methanol cost?
+  remedy: >-
+    The levelised cost is the whole plant's annualised cost, capital plus running, divided by the methanol it
+    delivers in a year. Splitting it by component shows where the money goes and so what to work on: here the
+    energy, and the CO2 taken from the air.
+  figure: lcom_breakdown
+  builds_on_concept: off-grid
+  example: >-
+    Methanol costs about 234 EUR/MWh; wind is about 32 % of that, direct air capture about 26 %, solar 14 %, the
+    electrolyser 12 %, and each MWh of methanol takes about 2.3 MWh of electricity
+    (levelised_cost_of_methanol_eur_mwh, cost_share_pct, electricity_per_mwh_methanol).
 numbers:
 - {id: levelised_cost_of_methanol_eur_mwh, label: Objective over annual methanol, unit: EUR/MWh}
 - {id: cost_share_pct, label: Share of the annual cost per component, unit: "%"}

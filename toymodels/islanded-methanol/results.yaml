@@ -33,12 +33,8 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 10.77
+  runtime_s: 11.26
   figures:
-    capacities:
-      title: Optimal capacities
-      file: figures/capacities.json
-      height: 360
     stores_over_year:
       title: Hydrogen and methanol stores over the year
       file: figures/stores_over_year.json
@@ -47,3 +43,7 @@ meta:
       title: Levelised cost of methanol by component
       file: figures/lcom_breakdown.json
       height: 240
+    capacities:
+      title: Optimal capacities
+      file: figures/capacities.json
+      height: 360

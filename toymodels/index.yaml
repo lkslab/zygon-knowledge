@@ -333,9 +333,9 @@ models:
   - how to add heat and hydrogen to an electricity model
   - what electrification does to electricity demand and the mix
   figures:
+  - {id: flexible_load_week, shows: heat pump and electrolyser draw against the price in a winter week}
   - {id: energy_balance_electricity, shows: weekly electricity balance per carrier}
   - {id: energy_balance_heat, shows: weekly heat balance}
-  - {id: flexible_load_week, shows: heat pump and electrolyser draw against the price in a winter week}
   numbers: [heat_pump_share_of_heat_pct, seasonal_cop_mean, electricity_demand_uplift_pct, lcoh_eur_mwh, co2_price_eur_t, capacity_mw]
   runtime_s: 20
   builds_on: [capacity-expansion-single-node]
@@ -700,9 +700,9 @@ models:
   - what green methanol costs from a stand-alone wind and solar plant
   - how big the hydrogen and product stores of an off-grid fuel plant are
   figures:
-  - {id: capacities, shows: optimal capacity per technology}
   - {id: stores_over_year, shows: hydrogen and methanol store levels over the year}
   - {id: lcom_breakdown, shows: levelised cost of methanol by component}
+  - {id: capacities, shows: optimal capacity per technology}
   numbers: [levelised_cost_of_methanol_eur_mwh, cost_share_pct, electricity_per_mwh_methanol, capacity_factor_pct, store_capacity, curtailment_pct]
   runtime_s: 14
   builds_on: [capacity-expansion-single-node]

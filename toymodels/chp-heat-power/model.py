@@ -134,11 +134,23 @@ def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
     option["series"].append({"type": "scatter", "name": "operating points", "datasetId": "points", "encode": {"x": "heat", "y": "power"},
                              "symbolSize": 6, "itemStyle": {"color": "#6b7280", "opacity": 0.6}})
     option["legend"]["data"].append("operating points")
+    # the region itself, filled between the two lines with the stack trick (a transparent lower edge, the depth on top)
+    qs = np.linspace(0, q_star, 20)
+    lower, upper = C_M * qs, P_MAX - C_V * qs
+    ds["region"] = charts.dataset(["heat", "lower", "depth"], [[q, lo, hi - lo] for q, lo, hi in zip(qs, lower, upper)])
+    option["dataset"].append({"id": "region"})
+    edge = {"type": "line", "name": "what the unit can do", "datasetId": "region", "showSymbol": False, "silent": True,
+            "stack": "region", "stackStrategy": "all", "lineStyle": {"width": 0, "opacity": 0},
+            "itemStyle": {"color": charts.BAND_BELOW}}
+    option["series"][:0] = [{**edge, "encode": {"x": "heat", "y": "lower"}},
+                            {**edge, "encode": {"x": "heat", "y": "depth"}, "areaStyle": {"color": charts.BAND_BELOW, "opacity": 0.18}}]
+    option["legend"]["data"].insert(0, "what the unit can do")
     option["tooltip"] = {"trigger": "item"}
     reg = bundle.Figure(option, ds, title="Feasible region of the extraction CHP",
                         caption="Power against heat: the iso-fuel line is full fuel, giving up c_v MW of power per MW of "
-                        "heat; the backpressure line is the most heat the turbine can extract. Operating points cluster "
-                        "on the backpressure line in cold hours and slide up the iso-fuel line when power is dear.")
+                        "heat; the backpressure line is the most heat the turbine can extract for the power it makes. "
+                        "The unit can run anywhere in the green region. Most hours it sits on the backpressure line, "
+                        "making the most heat; when power is dear it moves up into the region, condensing more power.")
     heat_stack = pd.DataFrame({"CHP extraction": o["extraction Q"], "CHP": o["backpressure Q"], "gas boiler": o["boiler Q"], "heat pump": o["heat pump Q"]}).round(1)
     option, ds = charts.time_series(heat_stack, "MW thermal", stack=True, area=True, slider=False)
     hs = bundle.Figure(option, ds, title="Heat supply over the fortnight",

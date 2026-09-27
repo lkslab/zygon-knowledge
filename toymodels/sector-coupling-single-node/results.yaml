@@ -28,8 +28,12 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 22.46
+  runtime_s: 21.77
   figures:
+    flexible_load_week:
+      title: Flexible load in a winter week
+      file: figures/flexible_load_week.json
+      height: 360
     energy_balance_electricity:
       title: Electricity balance, weekly means
       file: figures/energy_balance_electricity.json
@@ -37,8 +41,4 @@ meta:
     energy_balance_heat:
       title: Heat balance, weekly means
       file: figures/energy_balance_heat.json
-      height: 360
-    flexible_load_week:
-      title: Flexible load in a winter week
-      file: figures/flexible_load_week.json
       height: 360

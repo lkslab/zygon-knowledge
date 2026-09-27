@@ -130,8 +130,9 @@ def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
     for s in option["series"]:  # withdrawal series carry the carrier's colour in the client via the base name
         s["name"] = s["name"]
     eb_el = bundle.Figure(option, ds, title="Electricity balance, weekly means",
-                          caption="Supply above zero, withdrawals below. The heat pump's draw peaks in winter, the "
-                          "electrolyser soaks up summer solar; the fuel cell returns a little of it in the dark weeks.")
+                          caption="Supply above zero, withdrawals below. The heat pump's draw peaks in winter; the "
+                          "electrolyser draws most in the windy weeks, when wind is in surplus, and the fuel cell "
+                          "returns a little of it in the calm ones.")
     heat = balance(n, "heat")
     hcols = [c for c in HEAT_CARRIERS + ["load"] if c in heat.columns]
     wh = _weekly(heat[hcols]).round(1)
@@ -146,9 +147,10 @@ def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
                          "price": n.buses_t.marginal_price.loc[week, "electricity"]}).round(2)
     option, ds = charts.dual_axis(flex, ["heat pump", "H2 Electrolysis"], ["price"], "MW electric", "EUR/MWh", step="middle")
     fl = bundle.Figure(option, ds, title="Flexible load in a winter week",
-                       caption="Electric draw of the heat pump and the electrolyser against the electricity price: the "
-                       "electrolyser stops when the price rises, the heat pump keeps going because the tank is small.")
-    return {"energy_balance_electricity": eb_el, "energy_balance_heat": eb_heat, "flexible_load_week": fl}
+                       caption="Electric draw of the heat pump and the electrolyser against the electricity price. Both "
+                       "run flat out while power is cheap and stop when it is dear: hydrogen can wait in its store, and "
+                       "the hot-water tank carries the heat through the expensive days.")
+    return {"flexible_load_week": fl, "energy_balance_electricity": eb_el, "energy_balance_heat": eb_heat}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

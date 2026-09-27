@@ -53,7 +53,10 @@ figures:
 - id: co2_sankey
   file: figures/co2_sankey.json
   title: Annual CO2 flows
-  shows: A sankey from gas combustion and the atmosphere into the captured pool and on to sequestration and methanol, in kt.
+  shows: >-
+    Where a year's carbon goes, in kt of CO2. The gas plants burn 296 kt worth: about 248 is captured and about 48
+    reaches the atmosphere. Biomass plants with capture take the same 48 back out of the atmosphere, so the net is
+    zero. The captured pool sends about 263 kt underground and about 33 into methanol.
 - id: capacity
   file: figures/capacity.json
   title: Optimal capacity
@@ -61,7 +64,42 @@ figures:
 - id: carbon_balance
   file: figures/carbon_balance.json
   title: Cumulative carbon balance
-  shows: The atmosphere store rising when gas runs and falling with BECCS, ending at the target; the captured pool alongside.
+  shows: >-
+    The atmosphere's running carbon balance over the period: it rises when unabated gas runs and falls when the
+    biomass plants with capture run, and it has to end at the target, zero. The captured pool alongside buffers
+    between capture and use.
+teach:
+- concept: co2-accounting
+  gap: >-
+    A simple CO2 cap counts one number, the tonnes emitted. Once carbon can be captured, buried, pulled out of the
+    air or turned into fuel, where each tonne goes matters: captured CO2 that is buried stays out of the
+    atmosphere, CO2 made into a fuel returns when the fuel is burned, and biomass with capture takes CO2 out. A
+    single emission number cannot tell these apart. The picture (co2_sankey) follows a year's carbon.
+  remedy: >-
+    Track carbon as a commodity with its own buses: the atmosphere, a pool of captured CO2, and permanent storage.
+    Every process becomes a link with several outputs that puts its CO2 where it goes: a gas plant with capture
+    sends 90 % to the pool and the rest to the atmosphere; biomass with capture draws from the atmosphere; a
+    synthesis plant takes CO2 from the pool. The target is a limit on the atmosphere store, and its bus price is
+    the CO2 price.
+  figure: co2_sankey
+  example: >-
+    Of about 296 kt from the gas plants, about 248 is captured and 48 emitted, and biomass with capture removes the
+    same 48; about 263 kt is buried and 33 goes into methanol; the CO2 price comes out at about 107 EUR per tonne,
+    and direct air capture is not built (co2_kt, co2_shadow_price_eur_t, capacity_mw). One layer deeper,
+    carbon_balance shows the atmosphere's balance through the period and capacity what is built.
+- concept: net-zero
+  gap: >-
+    Net zero does not mean emitting nothing: some emissions are too expensive to avoid. What matters is how the
+    last of them are balanced, and what that costs.
+  remedy: >-
+    Allow the atmosphere store to rise and fall through the period and require it to end at zero: whatever is still
+    emitted has to be taken back out by removals, here biomass with capture. The price of the constraint says what
+    one more tonne of net emissions would be worth; the cost against an unconstrained run says what net zero costs.
+  figure: carbon_balance
+  builds_on_concept: co2-accounting
+  example: >-
+    Unconstrained, the system would emit about 415 kt a year; net zero costs about 28 MEUR a year more, on a total
+    of about 103 (unconstrained_emissions_kt, cost_of_net_zero_meur_a, total_cost_meur_a).
 numbers:
 - {id: co2_kt, label: Gross emissions, captured from gas, removed by BECCS and DAC, sequestered, used in methanol, net, unit: kt/a}
 - {id: atmosphere_balance_end_t, label: Atmosphere store at the end (the target), unit: t}
