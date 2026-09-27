@@ -40,8 +40,16 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 11.35
+  runtime_s: 12.71
   figures:
+    cfd_intuition:
+      title: 'What a CfD does: the price against the strike'
+      file: figures/cfd_intuition.json
+      height: 360
+    ppa_intuition:
+      title: 'What a PPA does: a fixed price, and whose volume'
+      file: figures/ppa_intuition.json
+      height: 520
     revenue_by_scheme:
       title: Annual wind revenue by scheme
       file: figures/revenue_by_scheme.json
@@ -49,8 +57,4 @@ meta:
     monthly_revenue:
       title: 'Monthly revenue: market, CfD, premium'
       file: figures/monthly_revenue.json
-      height: 360
-    price_vs_strike_week:
-      title: Price, strike and CfD top-up in one February week
-      file: figures/price_vs_strike_week.json
       height: 360

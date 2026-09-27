@@ -1,0 +1,66 @@
+numbers:
+  no cap:
+    co2_cap_fraction: null
+    vre_share_pct: 49.4214
+    wind_capacity_mw: 155.1899
+    share_hours_zero_price_pct: 17.7169
+    share_wind_energy_at_zero_price_pct: 35.1735
+    mean_price_eur_mwh: 59.6772
+    wind_market_value_eur_mwh: 39.7215
+    wind_capture_rate: 0.6656
+    weekly_wind_value_min_eur_mwh: 5.7556
+    weekly_wind_value_max_eur_mwh: 384.2949
+    weekly_wind_value_cv: 0.9434
+  50%:
+    co2_cap_fraction: 0.5
+    vre_share_pct: 74.7914
+    wind_capacity_mw: 286.6904
+    share_hours_zero_price_pct: 49.589
+    share_wind_energy_at_zero_price_pct: 70.7776
+    mean_price_eur_mwh: 104.7973
+    wind_market_value_eur_mwh: 55.275
+    wind_capture_rate: 0.5274
+    weekly_wind_value_min_eur_mwh: 0.0
+    weekly_wind_value_max_eur_mwh: 444.9794
+    weekly_wind_value_cv: 0.9312
+  20%:
+    co2_cap_fraction: 0.2
+    vre_share_pct: 91.4264
+    wind_capacity_mw: 410.1023
+    share_hours_zero_price_pct: 64.6575
+    share_wind_energy_at_zero_price_pct: 83.0707
+    mean_price_eur_mwh: 151.7654
+    wind_market_value_eur_mwh: 59.6671
+    wind_capture_rate: 0.3932
+    weekly_wind_value_min_eur_mwh: 0.0
+    weekly_wind_value_max_eur_mwh: 735.4534
+    weekly_wind_value_cv: 1.3558
+  5%:
+    co2_cap_fraction: 0.05
+    vre_share_pct: 98.1271
+    wind_capacity_mw: 474.1304
+    share_hours_zero_price_pct: 79.589
+    share_wind_energy_at_zero_price_pct: 90.0139
+    mean_price_eur_mwh: 182.4985
+    wind_market_value_eur_mwh: 60.9094
+    wind_capture_rate: 0.3338
+    weekly_wind_value_min_eur_mwh: 0.0
+    weekly_wind_value_max_eur_mwh: 1386.4349
+    weekly_wind_value_cv: 2.186
+meta:
+  pypsa: 1.3.0
+  solver: highs
+  runtime_s: 54.98
+  figures:
+    zero_price_and_capture_rate:
+      title: 'More wind and solar: more zero-price hours, less per MWh for wind'
+      file: figures/zero_price_and_capture_rate.json
+      height: 360
+    weekly_wind_revenue:
+      title: What wind earns per MWh, week by week
+      file: figures/weekly_wind_revenue.json
+      height: 360
+    price_duration_by_case:
+      title: Price duration curves by wind and solar share
+      file: figures/price_duration_by_case.json
+      height: 360

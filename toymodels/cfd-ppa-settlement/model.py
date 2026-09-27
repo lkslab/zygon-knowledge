@@ -31,6 +31,9 @@ PREMIUM = 20.0  # EUR/MWh on top of the market price
 FLOOR, CAP = 30.0, 120.0  # cap-and-floor on the market price
 PPA_PRICE = 65.0  # pay-as-produced PPA
 BASELOAD_PRICE = 65.0  # baseload PPA: flat volume equal to the mean output
+# ten days with long zero-price stretches and a few scarcity spikes, top-up and payback
+# of similar size: the window the two intuition figures draw
+WINDOW = ("2025-03-26", "2025-04-05")
 
 
 def build() -> pypsa.Network:
@@ -106,16 +109,24 @@ def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
     month_fig = bundle.Figure(option, ds, title="Monthly revenue: market, CfD, premium",
                               caption="The market revenue follows the wind and the price; the CfD follows the wind only, "
                               "so windy months with low prices are where the top-up is largest.")
-    week = n.snapshots[(n.snapshots >= "2025-02-03") & (n.snapshots < "2025-02-10")]
-    df = pd.DataFrame({"price": price.loc[week].round(2), "strike": STRIKE,
-                       "top-up": (STRIKE - price.loc[week]).round(2)})
-    option, ds = charts.time_series(df, "EUR/MWh", step="middle", slider=False)
-    option["series"][1]["lineStyle"] = {**option["series"][1].get("lineStyle", {}), "type": "dashed"}
-    option["series"][2]["areaStyle"] = {"opacity": 0.25}
-    week_fig = bundle.Figure(option, ds, title="Price, strike and CfD top-up in one February week",
-                             caption="The top-up is strike minus price per MWh produced: positive in cheap hours, "
-                             "negative (paid back) in the scarcity hours above the strike.")
-    return {"revenue_by_scheme": annual, "monthly_revenue": month_fig, "price_vs_strike_week": week_fig}
+    window = n.snapshots[(n.snapshots >= WINDOW[0]) & (n.snapshots < WINDOW[1])]
+    df = pd.DataFrame({"price": price.loc[window], "onwind": p.loc[window]})
+    option, ds = charts.fill_between(df, charts.Band(
+        "price", STRIKE, "strike", below="top-up to the farm", above="farm pays back", unit="EUR/MWh"))
+    cfd_fig = bundle.Figure(option, ds, title="What a CfD does: the price against the strike",
+                            caption="Ten days of the year's price. Below the strike the farm is topped up to it, "
+                            "above it the farm pays the excess back: per MWh produced it earns the strike either way.")
+    flat = float((p * w).sum() / w.sum())
+    option, ds = charts.fill_between(df, [
+        charts.Band("price", PPA_PRICE, "PPA price", below="buyer tops up", above="farm hands back", unit="EUR/MWh"),
+        charts.Band("onwind", flat, "baseload volume", below="shortfall bought at spot", above="surplus sold at spot",
+                    unit="MW", below_color=charts.BAND_ABOVE, above_color=charts.BAND_BELOW),
+    ])
+    ppa_fig = bundle.Figure(option, ds, title="What a PPA does: a fixed price, and whose volume",
+                            caption="Top: a pay-as-produced PPA settles like a CfD, with a company in place of the "
+                            "state. Bottom: a baseload PPA promises a flat volume; in still hours the farm must buy the "
+                            "shortfall at spot, and still hours are the expensive ones.")
+    return {"cfd_intuition": cfd_fig, "ppa_intuition": ppa_fig, "revenue_by_scheme": annual, "monthly_revenue": month_fig}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

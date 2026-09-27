@@ -65,7 +65,56 @@ TOYMODEL_CARD_KEYS = {
     "id", "title", "summary", "concepts", "answers", "builds_on", "setup", "method",
     "knobs", "figures", "numbers", "limitations", "sources", "pypsa",
 }
+TOYMODEL_OPTIONAL = {"teach", "pypsa_example"}
 TOYMODEL_FORBIDDEN = {"models", "version_anchor", "schema_version"}
+TEACH_KEYS = {"concept", "gap", "remedy", "figure"}
+TEACH_OPTIONAL = {"example", "builds_on_concept"}
+
+
+def _check_teach(where: str, card: dict, figure_ids: set[str], vocabulary: set[str]) -> list[str]:
+    """`teach`: a list of {concept, gap, remedy, figure, example?, builds_on_concept?}."""
+    teach = card.get("teach")
+    if teach is None:
+        return []
+    if not isinstance(teach, list) or not teach:
+        return [f"{where}: teach must be a non-empty list"]
+    errors: list[str] = []
+    concepts = [e.get("concept") for e in teach if isinstance(e, dict)]
+    for i, entry in enumerate(teach):
+        at = f"{where}: teach[{i}]"
+        if not isinstance(entry, dict):
+            errors.append(f"{at} is not a mapping")
+            continue
+        for key in sorted(TEACH_KEYS - set(entry)):
+            errors.append(f"{at} lacks {key}")
+        for key in sorted(set(entry) - TEACH_KEYS - TEACH_OPTIONAL):
+            errors.append(f"{at} has unknown key {key}")
+        if entry.get("concept") not in vocabulary:
+            errors.append(f"{at}: concept {entry.get('concept')!r} not in the index vocabulary")
+        if entry.get("figure") not in figure_ids:
+            errors.append(f"{at}: figure {entry.get('figure')!r} is not one of the card's figures")
+        dep = entry.get("builds_on_concept")
+        if dep is not None and dep not in concepts:
+            errors.append(f"{at}: builds_on_concept {dep!r} is not a teach concept of this card")
+    return errors
+
+
+def _check_pypsa_example(where: str, example: dict, rows: dict, dirs: set[str]) -> list[str]:
+    """`pypsa_example`: {model, why, figures}, the model a toy model and its figure ids."""
+    import yaml
+
+    if not isinstance(example, dict) or set(example) != {"model", "why", "figures"}:
+        return [f"{where}: pypsa_example must be {{model, why, figures}}"]
+    slug = example["model"]
+    if slug not in dirs or slug not in rows:
+        return [f"{where}: pypsa_example model {slug!r} is not a toy model"]
+    other = yaml.safe_load((TOYMODELS / slug / "card.yaml").read_text())
+    ids = {f["id"] for f in other.get("figures") or []}
+    return [
+        f"{where}: pypsa_example figure {fid!r} is not a figure of {slug}"
+        for fid in example.get("figures") or []
+        if fid not in ids
+    ]
 
 
 def validate_toymodels() -> list[str]:
@@ -108,7 +157,7 @@ def validate_toymodels() -> list[str]:
             errors.append(f"{where}: card lacks {key}")
         for key in sorted(keys & TOYMODEL_FORBIDDEN):
             errors.append(f"{where}: card must not carry {key}")
-        for key in sorted(keys - TOYMODEL_CARD_KEYS):
+        for key in sorted(keys - TOYMODEL_CARD_KEYS - TOYMODEL_OPTIONAL):
             errors.append(f"{where}: card has unknown key {key}")
         if not isinstance(card.get("pypsa"), str):
             errors.append(f"{where}: pypsa must be a version string")
@@ -147,6 +196,12 @@ def validate_toymodels() -> list[str]:
                 errors.append(f"{where}/{path.name}: not a version-1 figure bundle")
             elif "title" in doc["option"]:
                 errors.append(f"{where}/{path.name}: option carries a title")
+        errors += _check_teach(where, card, set(card_figs), vocabulary)
+        example = card.get("pypsa_example")
+        if example is not None:
+            errors += _check_pypsa_example(where, example, rows, dirs)
+        if row.get("pypsa_example") != (example or {}).get("model"):
+            errors.append(f"{where}: pypsa_example differs between card and index")
         meta_figs = set((results.get("meta") or {}).get("figures") or {})
         if meta_figs and meta_figs != set(card_figs):
             errors.append(f"{where}: results.yaml figures {sorted(meta_figs)} differ from the card")

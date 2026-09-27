@@ -38,21 +38,79 @@ method: |
   minus the market revenue. The revenue-neutral strike is the market value (revenue per
   MWh), and the capture rate is market value over the time-weighted mean price.
 knobs:
-- {name: strike, premium, floor, cap, PPA price, in: module constants, effect: "move the cheques; the market revenue and the physical dispatch never change"}
-- {name: cap fraction, in: BASE (price-duration-and-cost-recovery), effect: "more zero-price hours lower the capture rate and raise the CfD's cost"}
+- {name: "STRIKE, PREMIUM, FLOOR, CAP, PPA_PRICE, BASELOAD_PRICE", in: module constants, effect: "move the cheques; the market revenue and the physical dispatch never change"}
+- {name: cap_fraction, in: "BASE.build (price-duration-and-cost-recovery)", effect: "more zero-price hours lower the capture rate and raise the CfD's cost"}
+- {name: WINDOW, in: module constant, effect: "the ten days the two intuition figures draw"}
 figures:
+- id: cfd_intuition
+  file: figures/cfd_intuition.json
+  title: "What a CfD does: the price against the strike"
+  shows: >-
+    Ten days of the year's price, mostly zero with a few scarcity spikes to about 450 EUR/MWh,
+    against the 70 EUR/MWh strike. Green is the top-up the farm receives while the price is below
+    the strike, orange what it pays back while the price is above: per MWh produced it earns the
+    strike either way.
+- id: ppa_intuition
+  file: figures/ppa_intuition.json
+  title: "What a PPA does: a fixed price, and whose volume"
+  shows: >-
+    Top: the same ten days against a 65 EUR/MWh PPA price; a pay-as-produced PPA settles like a
+    CfD, with a company in place of the state. Bottom: the farm's output against the flat volume
+    a baseload PPA promises; the orange shortfall (bought at spot) falls in the still hours, which
+    are the spike hours: that is shape risk.
 - id: revenue_by_scheme
   file: figures/revenue_by_scheme.json
   title: Annual wind revenue by scheme
-  shows: One bar per scheme; the gap to the market bar is the support cost or the shape-risk loss.
+  shows: >-
+    One bar per scheme, same output and prices. The CfD and the pay-as-produced PPA remove price
+    risk; the premium and the floor add to it; the baseload PPA goes negative because the farm buys
+    back the flat volume in still, expensive hours.
 - id: monthly_revenue
   file: figures/monthly_revenue.json
-  title: Monthly revenue under market, CfD and premium
-  shows: Market revenue follows wind and price; the CfD follows wind only.
-- id: price_vs_strike_week
-  file: figures/price_vs_strike_week.json
-  title: Price, strike and top-up in one February week
-  shows: The top-up per MWh, positive in cheap hours and negative above the strike.
+  title: "Monthly revenue: market, CfD, premium"
+  shows: >-
+    Market revenue follows wind and price; the CfD follows wind only, so windy months with low
+    prices are where the top-up is largest.
+teach:
+- concept: cfd
+  gap: >-
+    A wind farm is paid the market price for what it produces, and it has to pay back its
+    capital over twenty years. In a system full of wind and solar the price sits at zero much of
+    the time (whenever renewables alone cover demand) and spikes rarely, so the farm cannot know
+    what it will earn; lenders price that uncertainty in, and the farm gets expensive or is not built.
+  remedy: >-
+    A contract for difference fixes the price per MWh produced at a strike. When the market pays
+    less, the state tops the farm up to the strike; when it pays more, the farm hands the excess
+    back. The farm earns the strike either way and still sells its power on the market as usual.
+  figure: cfd_intuition
+  example: >-
+    In this toy year the price is zero in about 65 % of hours and wind earns about 60 EUR/MWh on
+    the market (capture rate about 0.4 of the mean price); a 70 EUR/MWh strike costs the state
+    about 8 MEUR a year net (share_hours_zero_price_pct, market_value_eur_mwh, capture_rate,
+    support_cost_meur_a).
+- concept: ppa
+  gap: >-
+    The same revenue risk as for a CfD, seen from a buyer who wants a stable electricity cost
+    for years ahead, such as a factory or a data centre.
+  remedy: >-
+    A power purchase agreement is the same hedge struck privately: the buyer pays a fixed price
+    for the farm's power, topping up when the market is low and keeping the difference when it is
+    high. What is new is the volume: pay-as-produced takes whatever the farm makes, so the buyer
+    carries the weather; baseload promises a flat amount, so the farm must buy the shortfall in
+    still hours, and those are the expensive ones.
+  figure: ppa_intuition
+  builds_on_concept: cfd
+  example: >-
+    Pay-as-produced at 65 EUR/MWh gives the farm exactly 65 per MWh; the baseload PPA at the same
+    price leaves it at about -21 MEUR for the year, because the shortfall is bought back in spike
+    hours (revenue_per_mwh_eur, revenue_meur_a).
+pypsa_example:
+  model: renewable-revenue-risk
+  why: >-
+    Where the zero-price hours that make CfDs and PPAs necessary come from: the same single-node
+    PyPSA model solved at rising renewable shares, showing the zero-price hours grow, wind's
+    capture rate fall and its week-to-week revenue swing harder.
+  figures: [zero_price_and_capture_rate, weekly_wind_revenue, price_duration_by_case]
 numbers:
 - {id: wind_energy_gwh, label: Wind output over the year, unit: GWh}
 - {id: mean_price_eur_mwh, label: Time-weighted mean price, unit: EUR/MWh}

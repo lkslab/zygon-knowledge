@@ -28,7 +28,7 @@ cd ../pypsa-app && uv run python ../zygon-knowledge/toymodels/_lib/run.py <slug>
 ```
 
 Outputs are deterministic (seeded profiles, fixed solver settings) and committed, so an
-agent can read numbers and figures without running anything. A full run of all 35 models
+agent can read numbers and figures without running anything. A full run of all 36 models
 takes about ten minutes; the year-long expansion, the rolling-horizon pair and the
 sampling models are the slow ones, everything else finishes in seconds. After editing a model, rerun
 it and commit the regenerated files. Models that build on `capacity-expansion-single-node`
@@ -57,8 +57,20 @@ cd ../pypsa-app && uv run python ../zygon-knowledge/tools/check_toymodels.py [--
   height 240..960, at most 50 series, option under 256 KiB.
 - **Cards** are snake_case YAML with a fixed key set (`id, title, summary, concepts,
   answers, builds_on, setup, method, knobs, figures, numbers, limitations, sources,
-  pypsa`). `id` equals the directory name. No `models:`, `version_anchor:` or
-  `schema_version:` keys: these are plain-PyPSA models, pinned by `pypsa: "1.3.0"`.
+  pypsa`) plus two optional keys, `teach` and `pypsa_example`. `id` equals the directory
+  name. No `models:`, `version_anchor:` or `schema_version:` keys: these are plain-PyPSA
+  models, pinned by `pypsa: "1.3.0"`.
+- **`teach`** is the material for an intuition-first explanation, one entry per concept
+  the model explains: `{concept, gap, remedy, figure, example?, builds_on_concept?}`. `gap`
+  is what goes wrong without the thing, in plain words; `remedy` what it does about it;
+  `figure` the card figure that makes it click; `example` a line of the model's own
+  numbers (with their ids) for when the conversation gets there; `builds_on_concept` a
+  concept of the same card to explain first. It is material, not a script: the agent
+  takes what the question needs, in its own words and at its own pace.
+- **`pypsa_example`** points at the toy model that shows the concept arising in an actual
+  PyPSA optimisation, for "how does this relate to PyPSA?": `{model, why, figures}`, the
+  model's slug, one sentence on what the experiment shows, and the figure ids of that model
+  to show first. The index row carries `pypsa_example: <slug>` too.
 - **Concepts** come from the vocabulary in `index.yaml`; add to the list when a new model
   needs a new tag.
 - **Numbers** are defined in the card (id, label, unit, formula) and valued in
@@ -96,6 +108,7 @@ The first twelve are the core; the rest were added on 2026-09-24 to cover the re
 | spatial-clustering | what clustering to fewer buses does to prices and flows | nodal-prices-lopf |
 | demand-elasticity | how to model price-elastic demand and what it does to the peak price | merit-order-dispatch |
 | cfd-ppa-settlement | what a wind farm earns under a CfD versus the market and what the CfD costs | price-duration-and-cost-recovery, capacity-expansion-single-node |
+| renewable-revenue-risk | why wind earns less, and less predictably, as wind and solar grow | capacity-expansion-single-node, price-duration-and-cost-recovery |
 | flow-based-market-coupling | what flow-based market coupling is and how it differs from NTC | nodal-prices-lopf |
 | imperfect-competition | how much a strategic generator withholds and what it does to the price | demand-elasticity |
 | tracing-infeasibilities | how to find out why a PyPSA model is infeasible with HiGHS | unit-commitment |

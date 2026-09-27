@@ -13,6 +13,7 @@ no colour, the client colours it; any other series gets the next Okabe-Ito colou
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -35,6 +36,10 @@ WITHDRAWAL_SUFFIX = " (withdrawal)"
 HORIZONTAL_ABOVE = 6
 LONG_LABEL = 18
 DECIMALS = 3
+# fill_between bands: what flows to the asset below the level, what flows back above it
+BAND_BELOW = "#009e73"  # Okabe-Ito bluish green
+BAND_ABOVE = "#d55e00"  # Okabe-Ito vermillion
+PANEL_GAP = 40
 
 Option = dict[str, Any]
 Datasets = dict[str, dict[str, Any]]
@@ -498,6 +503,116 @@ def duration_curves(curves: dict[str, pd.Series], unit: str, *, points: int = CU
     if len(names) > 1:
         option["legend"] = _legend(names)
     return option, {"curves": dataset(columns, rows)}
+
+
+@dataclass
+class Band:
+    """One panel of `fill_between`: a column of `df` against a constant level.
+
+    `below` and `above` name the two filled bands (the gap under the level where the
+    value falls short of it, the excess over it); the tooltip shows each band's depth,
+    not its edge. The colours default to green below and vermillion above (money to
+    the asset, money back); swap them when the level means the opposite.
+    """
+
+    value: str
+    level: float
+    level_name: str
+    below: str
+    above: str
+    unit: str
+    value_name: str | None = None
+    below_color: str = BAND_BELOW
+    above_color: str = BAND_ABOVE
+
+
+def _band_series(band: Band, j: int, palette: Palette, step: str | None) -> list[dict[str, Any]]:
+    idx = {"xAxisIndex": j, "yAxisIndex": j} if j else {}
+    name = band.value_name or band.value
+    value = {**line_series(name, "ts", "snapshot", palette, y=band.value, step=step), **idx}
+    level = {**line_series(band.level_name, "ts", "snapshot", palette, y=f"{band.value}.level", step=step, dashed=True), **idx}
+    level["lineStyle"] = {**level.get("lineStyle", {}), "color": cs.NEUTRAL, "width": 1.5}
+    level["itemStyle"] = {"color": cs.NEUTRAL}
+    fills = []
+    for side, colour in (("below", band.below_color), ("above", band.above_color)):
+        fills.append({
+            "type": "line",
+            "name": getattr(band, side),
+            "showSymbol": False,
+            "silent": True,
+            "datasetId": "ts",
+            # the line runs along the band's outer edge; the area closes onto the level
+            "encode": {"x": "snapshot", "y": f"{band.value}.{side}.edge", "tooltip": f"{band.value}.{side}"},
+            "lineStyle": {"width": 0, "opacity": 0},
+            "itemStyle": {"color": colour},
+            "areaStyle": {"color": colour, "opacity": 0.35, "origin": band.level},
+            **({"step": step} if step else {}),
+            **idx,
+        })
+    return [*fills, value, level]
+
+
+def fill_between(df: pd.DataFrame, bands: Band | list[Band], *, step: str | None = "middle") -> tuple[Option, Datasets]:
+    """A value against a constant level over a DatetimeIndex, the gap between them filled:
+    one colour where the value is below the level, another where it is above.
+
+    A list of bands stacks one panel per band on a shared time axis (the top panels'
+    time labels hidden), each with its own value axis; one legend below them all.
+    """
+    bands = [bands] if isinstance(bands, Band) else list(bands)
+    frame = pd.DataFrame(index=df.index)
+    for band in bands:
+        v = df[band.value].astype(float)
+        frame[band.value] = v
+        frame[f"{band.value}.level"] = band.level
+        frame[f"{band.value}.below.edge"] = v.clip(upper=band.level)
+        frame[f"{band.value}.above.edge"] = v.clip(lower=band.level)
+        frame[f"{band.value}.below"] = (band.level - v).clip(lower=0)
+        frame[f"{band.value}.above"] = (v - band.level).clip(lower=0)
+    palette = Palette()
+    series: list[dict[str, Any]] = []
+    names: list[str] = []
+    for j, band in enumerate(bands):
+        series += _band_series(band, j, palette, step)
+        for name in (band.value_name or band.value, band.level_name, band.below, band.above):
+            if name not in names:
+                names.append(name)
+    panel_h = 200
+    if len(bands) == 1:
+        grid: Any = _grid(bottom=24)
+        x_axis: Any = time_axis()
+        y_axis: Any = value_axis(bands[0].unit)
+        height = 360
+    else:
+        grid, x_axis, y_axis = [], [], []
+        for j, band in enumerate(bands):
+            last = j == len(bands) - 1
+            g = {**GRID, "left": AXIS_NAME_MARGIN, "top": GRID["top"] + j * (panel_h + PANEL_GAP)}
+            if last:
+                g["bottom"] = 24
+            else:
+                g.pop("bottom")
+                g["height"] = panel_h
+            grid.append(g)
+            ax = {**time_axis(), "gridIndex": j}
+            if not last:
+                ax["axisLabel"] = {**ax["axisLabel"], "show": False}
+            x_axis.append(ax)
+            y_axis.append({**value_axis(band.unit), "gridIndex": j})
+        height = GRID["top"] + len(bands) * panel_h + (len(bands) - 1) * PANEL_GAP + 56
+    option: Option = {
+        "dataset": [{"id": "ts"}],
+        "tooltip": LINE_TOOLTIP,
+        "grid": grid,
+        "xAxis": x_axis,
+        "yAxis": y_axis,
+        "series": series,
+        "legend": _legend(names),
+        "_height": height,
+    }
+    if len(bands) > 1:
+        option["axisPointer"] = {"link": [{"xAxisIndex": "all"}]}
+    return option, {"ts": dataset_from_frame(frame, "snapshot")}
 
 
 def status_steps(df: pd.DataFrame) -> tuple[Option, Datasets]:

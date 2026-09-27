@@ -128,6 +128,8 @@ concepts_vocabulary:
 - ppa
 - subsidy
 - capture-rate
+- cannibalisation
+- revenue-risk
 - price-risk
 - flow-based-market-coupling
 - ntc
@@ -532,12 +534,28 @@ models:
   - what a wind farm earns under a CfD versus the market and what the CfD costs
   - what strike makes a CfD revenue-neutral and what a capture rate is
   figures:
+  - {id: cfd_intuition, shows: "the price against the strike over ten days, top-up and payback filled"}
+  - {id: ppa_intuition, shows: "the price against a PPA price, and the farm's output against a flat baseload volume"}
   - {id: revenue_by_scheme, shows: annual revenue per scheme}
   - {id: monthly_revenue, shows: monthly revenue under market, CfD and premium}
-  - {id: price_vs_strike_week, shows: price, strike and top-up in one week}
   numbers: [revenue_meur_a, support_cost_meur_a, revenue_neutral_strike_eur_mwh, capture_rate, market_value_eur_mwh, share_wind_energy_at_zero_price_pct]
-  runtime_s: 16
+  runtime_s: 13
   builds_on: [price-duration-and-cost-recovery, capacity-expansion-single-node]
+  pypsa_example: renewable-revenue-risk
+- id: renewable-revenue-risk
+  title: Zero-price hours and wind revenue risk
+  summary: The single-node expansion at four CO2 caps, read from a wind farm's side; zero-price hours grow, wind's capture rate halves and its weekly earning swings harder as wind and solar approach the whole mix.
+  concepts: [cannibalisation, capture-rate, market-value, revenue-risk, price-duration-curve, capacity-expansion, co2-cap]
+  answers:
+  - why renewables earn less as their share grows
+  - why a wind farm's revenue is so uncertain, shown in a PyPSA optimisation
+  figures:
+  - {id: zero_price_and_capture_rate, shows: zero-price hours and wind capture rate against the wind and solar share}
+  - {id: weekly_wind_revenue, shows: wind's earning per MWh week by week, least vs most renewable case}
+  - {id: price_duration_by_case, shows: price duration curves per case}
+  numbers: [vre_share_pct, share_hours_zero_price_pct, wind_capture_rate, weekly_wind_value_cv]
+  runtime_s: 55
+  builds_on: [capacity-expansion-single-node, price-duration-and-cost-recovery]
 - id: flow-based-market-coupling
   title: NTC, flow-based and nodal market coupling
   summary: Three zones in a triangle cleared nodally, with fixed NTCs and flow-based through PTDF constraints on net positions; the domain polygon against the NTC box.
