@@ -211,6 +211,7 @@ models:
   - how start-up costs and minimum up times change dispatch
   - how to get prices out of a mixed-integer model
   figures:
+  - {id: commitment_intuition, shows: the gas plant dispatched like a tap against with commitment, the band below its minimum load off-limits}
   - {id: unit_status, shows: on/off bands per unit}
   - {id: dispatch_stack, shows: stacked dispatch with minimum part loads}
   - {id: price_uc_vs_relaxed, shows: fixed-commitment vs linearised prices}
@@ -225,6 +226,7 @@ models:
   - how much a battery earns from arbitrage
   - how many cycles a day a battery runs
   figures:
+  - {id: arbitrage_intuition, shows: the week's price with the hours the battery buys and sells filled, the average of each}
   - {id: charge_vs_price, shows: signed battery power against the price}
   - {id: state_of_charge, shows: energy in the battery over the week}
   - {id: daily_revenue, shows: revenue per day}
@@ -358,6 +360,7 @@ models:
   - what perfect foresight assumes and how much it flatters storage
   - how to dispatch a PyPSA model day by day with a rolling window
   figures:
+  - {id: foresight_intuition, shows: the battery's charge with the whole fortnight in view against one day at a time, day boundaries marked}
   - {id: state_of_charge, shows: battery state of charge per solve}
   - {id: price_comparison, shows: hourly price per solve}
   - {id: cost_and_revenue, shows: extra cost over foresight and battery revenue per solve}
@@ -416,6 +419,7 @@ models:
   - when a plant should schedule its outage
   - what maintainable, maintenance_duration and maintenance_events do
   figures:
+  - {id: outage_window_intuition, shows: the fortnight's load with the chosen and the forced outage window, the gas left while coal is out}
   - {id: unit_availability, shows: availability bands per unit with the chosen outage}
   - {id: dispatch_stack, shows: dispatch around the outage}
   - {id: price_series, shows: prices with optimal vs forced timing}
@@ -635,6 +639,7 @@ models:
   - what uncontrolled EV charging does to the evening peak
   - what smart charging and vehicle-to-grid save and earn
   figures:
+  - {id: peak_intuition, shows: two weekdays of demand with the fleet's charging on top, uncontrolled against smart}
   - {id: charging_vs_price, shows: fleet grid draw per case against the price}
   - {id: state_of_charge, shows: fleet battery level per case}
   - {id: cost_comparison, shows: system cost and the fleet's bill per case}
@@ -663,6 +668,7 @@ models:
   - how to chain reservoirs so the upper station feeds the lower one
   - what a water value is and where to read it
   figures:
+  - {id: cascade_intuition, shows: the river's water as a sankey through two reservoirs, two turbines and two spillways}
   - {id: reservoir_levels, shows: fill level of both reservoirs}
   - {id: turbine_and_spill_flows, shows: stacked turbine and spill flows}
   - {id: prices_and_water_values, shows: electricity price and the two water values}

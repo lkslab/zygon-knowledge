@@ -102,6 +102,27 @@ def numbers(nets: dict[str, pypsa.Network]) -> dict:
     }
 
 
+def foresight_intuition(nets: dict[str, pypsa.Network]) -> bundle.Figure:
+    """The battery's charge with the whole fortnight in view against one day at a time, the
+    edges of the rolling windows marked: at each edge the day-ahead solve has emptied it."""
+    soc = pd.DataFrame({
+        "sees the whole fortnight": nets["perfect foresight"].storage_units_t.state_of_charge["battery"].round(1),
+        "sees one day at a time": nets["rolling 24 h"].storage_units_t.state_of_charge["battery"].round(1),
+    })
+    option, ds = charts.time_series(soc, "MWh stored", slider=False)
+    option["series"][1]["lineStyle"] = {**option["series"][1].get("lineStyle", {}), "type": "dashed"}
+    edges = [s for s in soc.index if s.hour == 0 and s != soc.index[0]]
+    marks = charts.mark_lines([{"value": s.strftime("%Y-%m-%dT%H:%M:%S"), "label": ""} for s in edges])
+    marks["lineStyle"] = {**marks["lineStyle"], "opacity": 0.45}
+    option["series"][0]["markLine"] = marks
+    return bundle.Figure(
+        option, ds, title="Seeing a day ahead or the whole fortnight",
+        caption="The 8 GWh battery's charge. Knowing the whole fortnight, the optimiser carries energy across days to "
+        "the evenings that pay most. Solving one day at a time (dashed; the grey lines are the day boundaries), each "
+        "day's solve sees no value in stored energy beyond its own end, so it empties the battery at every boundary.",
+    )
+
+
 def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     soc = pd.DataFrame({k: n.storage_units_t.state_of_charge["battery"].round(1) for k, n in nets.items()})
     option, ds = charts.time_series(soc, "MWh")
@@ -122,7 +143,7 @@ def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
                          caption="Extra system cost over the perfect-foresight solve, and what the battery earned. "
                          "The overlap does not close the gap here: every window still ends with the battery worth "
                          "nothing, so it is emptied before the window closes whatever the next day looks like.")
-    return {"state_of_charge": soc_fig, "price_comparison": price_fig, "cost_and_revenue": bars}
+    return {"foresight_intuition": foresight_intuition(nets), "state_of_charge": soc_fig, "price_comparison": price_fig, "cost_and_revenue": bars}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

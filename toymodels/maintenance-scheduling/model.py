@@ -92,6 +92,42 @@ def numbers(nets: dict[str, pypsa.Network]) -> dict:
     }
 
 
+def outage_window_intuition(nets: dict[str, pypsa.Network]) -> bundle.Figure:
+    """The fortnight's load with both outage windows marked and the gas that is left while
+    coal is out: in the chosen window the load mostly fits under it."""
+    opt, forced = nets["optimal timing"], nets["forced timing"]
+    load = opt.loads_t.p_set["demand"]
+    gas = UNITS["CCGT"][0]
+    df = pd.DataFrame({"load": load.round(1)})
+    option, ds = charts.time_series(df, "MW", slider=False)
+    s = option["series"][0]
+    s["lineStyle"] = {**s.get("lineStyle", {}), "color": "#6b7280", "width": 1.8}
+    s["itemStyle"] = {"color": "#6b7280"}
+    fmt = "%Y-%m-%dT%H:%M:%S"
+    (w0, w1), (f0, f1) = outage_window(opt), outage_window(forced)
+    s["markArea"] = {
+        "silent": True,
+        "label": {"position": "insideTop", "fontSize": 11, "fontWeight": 600},
+        "data": [
+            [{"xAxis": f0.strftime(fmt), "name": f"forced: {f0:%A} to {f1:%A}",
+              "itemStyle": {"color": charts.BAND_ABOVE, "opacity": 0.16}, "label": {"color": charts.BAND_ABOVE}},
+             {"xAxis": f1.strftime(fmt)}],
+            [{"xAxis": w0.strftime(fmt), "name": f"chosen: {w0:%A} noon to {w1:%A} noon",
+              "itemStyle": {"color": charts.BAND_BELOW, "opacity": 0.18}, "label": {"color": charts.BAND_BELOW}},
+             {"xAxis": w1.strftime(fmt)}],
+        ],
+    }
+    s["markLine"] = charts.mark_lines([{"value": gas, "label": f"CCGT alone: {gas} MW; with coal out, the peaker covers the rest"}], axis="yAxis")
+    s["markLine"]["label"]["position"] = "insideStartBottom"
+    return bundle.Figure(
+        option, ds, title="When to take a plant off: where it is missed least",
+        caption=f"The fortnight's load, with a weekend dip. Coal must be off for {DURATION_H} hours; while it is, anything "
+        f"above the CCGT's {gas} MW comes from the peaker at 120 EUR/MWh. Forced into the first weekdays, the outage "
+        "meets the weekday evening peaks; the solver puts it over the second weekend, where the load mostly fits under "
+        "the gas.",
+    )
+
+
 def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     opt, forced = nets["optimal timing"], nets["forced timing"]
     avail = availability(opt)
@@ -112,7 +148,7 @@ def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
                        "on weekdays and puts the peaker on the margin for whole days.")
     option, ds = charts.bars(list(nets), {"dispatch cost": [round(float(opt.objective) / 1e3, 1), round(float(forced.objective) / 1e3, 1)]}, "kEUR", category_name="timing")
     cost = bundle.Figure(option, ds, title="Fortnight cost by outage timing", caption="The saving from choosing the window is the value of scheduling.")
-    return {"unit_availability": av, "dispatch_stack": disp, "price_series": pr, "cost_comparison": cost}
+    return {"outage_window_intuition": outage_window_intuition(nets), "unit_availability": av, "dispatch_stack": disp, "price_series": pr, "cost_comparison": cost}
 
 
 def _prices(n: pypsa.Network) -> pd.Series:

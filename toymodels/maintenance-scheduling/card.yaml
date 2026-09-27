@@ -41,6 +41,14 @@ knobs:
 - {name: weekend dip, in: "build(): weekend_factor", effect: "a flatter week makes the timing matter less"}
 - {name: forced start, in: FORCED_START_H, effect: "compare any fixed window with the optimum"}
 figures:
+- id: outage_window_intuition
+  file: figures/outage_window_intuition.json
+  title: "When to take a plant off: where it is missed least"
+  shows: >-
+    The fortnight's load, high on weekdays with evening peaks and low at the weekends. The coal plant must be
+    off for 72 hours. While it is, anything above the CCGT's 800 MW (dashed) has to come from the peaker at 120
+    EUR/MWh. Forced into the first Thursday to Saturday (orange), the outage meets weekday peaks; the solver
+    picks Friday noon to Monday noon of the second weekend (green), where the load mostly fits under the gas.
 - id: unit_availability
   file: figures/unit_availability.json
   title: Unit availability, optimal timing
@@ -57,6 +65,27 @@ figures:
   file: figures/cost_comparison.json
   title: Fortnight cost by outage timing
   shows: Dispatch cost with the optimal and the forced window.
+teach:
+- concept: maintenance
+  gap: >-
+    Every power plant has to stop now and then for inspection and repair, for days at a time. When it is
+    off, the rest of the fleet has to cover, and whether that is cheap or dear depends entirely on when:
+    a plant missed on a quiet weekend costs little, the same plant missed during a cold weekday peak can
+    force the most expensive units on or even cut demand. A model that treats every plant as always
+    available, or takes it out at a fixed date, misses this. The picture (outage_window_intuition) shows
+    two possible windows.
+  remedy: >-
+    Maintenance scheduling lets the optimiser choose the window: the plant must be off for a given number of
+    consecutive hours somewhere in the period, and the model picks the stretch where its absence costs least,
+    usually when demand is low or other plants have room to spare. It needs integer start decisions; in PyPSA
+    a generator gets `maintainable`, `maintenance_duration` and `maintenance_events`.
+  figure: outage_window_intuition
+  example: >-
+    The solver takes the 72 hours from Friday noon to Monday noon, when the load averages about 820 MW against
+    about 900 in the forced window; the fortnight costs about 11.60 MEUR against 11.99, 3.3 % less, and the
+    peaker makes about 5.1 GWh instead of 9.3 (chosen_window, mean_load_in_window_mw, cost_optimal_eur,
+    cost_forced_eur, saving_pct, peaker_energy_mwh). One layer deeper, dispatch_stack shows the gas covering
+    the outage and price_series the prices under both windows.
 numbers:
 - {id: chosen_window, label: Start and end of the optimised outage and its weekday}
 - {id: forced_window, label: Start and end of the forced outage}

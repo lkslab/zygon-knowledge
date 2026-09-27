@@ -133,6 +133,34 @@ def numbers(nets: dict[str, pypsa.Network]) -> dict:
     return out
 
 
+def peak_intuition(nets: dict[str, pypsa.Network]) -> bundle.Figure:
+    """Two weekdays of demand with the fleet's charging on top: plugged in after the evening
+    commute, uncontrolled charging lands on the peak; smart charging fills the night."""
+    days = nets["smart"].snapshots[:48]
+    base = nets["smart"].loads_t.p_set["demand"].loc[days]
+    df = pd.DataFrame({
+        "demand without the cars": base.round(1),
+        "with uncontrolled charging": (base + nets["uncontrolled"].links_t.p0["battery charger"].loc[days]).round(1),
+        "with smart charging": (base + nets["smart"].links_t.p0["battery charger"].loc[days]).round(1),
+    })
+    option, ds = charts.time_series(df, "MW", step="middle", slider=False)
+    looks = [("#6b7280", 1.5, "solid", 0.12), (charts.BAND_ABOVE, 2.5, "solid", 0.0), (charts.BAND_BELOW, 2.5, "dashed", 0.0)]
+    for s, (c, w, kind, area) in zip(option["series"], looks):
+        s["lineStyle"] = {"color": c, "width": w, "type": kind}
+        s["itemStyle"] = {"color": c}
+        if area:
+            s["areaStyle"] = {"color": c, "opacity": area}
+    peak = float(base.max())
+    option["series"][0]["markLine"] = charts.mark_lines([{"value": round(peak), "label": f"evening peak without the cars: {peak:,.0f} MW"}], axis="yAxis")
+    option["yAxis"]["min"] = 4000
+    return bundle.Figure(
+        option, ds, title="Same cars, same energy: when they charge is what matters",
+        caption=f"Two weekdays of demand. {N_EV:,} cars plug in after the evening commute; charged at once (orange) they "
+        "add about 560 MW on top of the evening peak. Charged when power is cheap (dashed green), the same energy "
+        "goes into the cheap hours, at night and around midday, and the peak does not grow at all.",
+    )
+
+
 def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     smart = nets["smart"]
     df = pd.DataFrame({c: nets[c].links_t.p0["battery charger"].round(1) for c in CASES})
@@ -157,7 +185,7 @@ def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     cost = bundle.Figure(option, ds, title="System cost and the fleet's electricity bill",
                          caption="Both fall from uncontrolled to smart to V2G: the fleet buys cheaper hours and, with "
                          "V2G, earns the peak spread back.")
-    return {"charging_vs_price": ch, "state_of_charge": soc_fig, "cost_comparison": cost}
+    return {"peak_intuition": peak_intuition(nets), "charging_vs_price": ch, "state_of_charge": soc_fig, "cost_comparison": cost}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

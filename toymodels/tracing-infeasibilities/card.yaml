@@ -45,7 +45,11 @@ figures:
 - id: load_vs_reachable
   file: figures/load_vs_reachable.json
   title: The load spike against what the fleet can reach
-  shows: Load, installed capacity and the served load after the repair.
+  shows: >-
+    Three days of load against the fleet's 1,500 MW (dashed). On the second evening a two-hour spike asks for
+    1,900 MW, more than the fleet has, and the hour before it ramps faster than the coal plant can follow. Green
+    is what the fleet can actually deliver once load may be shed; the vermillion block is the demand no dispatch
+    can meet, about 930 MWh.
 - id: iis_constraints
   file: figures/iis_constraints.json
   title: Constraint families in the irreducible infeasible subset
@@ -54,6 +58,38 @@ figures:
   file: figures/price_after_repair.json
   title: Price after adding load shedding
   shows: The value of lost load in the spike hours, scarcity around them from the ramps.
+teach:
+- concept: infeasibility
+  gap: >-
+    A model can ask for the impossible: more load than the plants can make, or a ramp faster than they can
+    follow. Then there is no answer at all, and the solver says only one word, infeasible, with no hint which
+    of the thousands of constraints are to blame. In a large model that can cost days. The picture
+    (load_vs_reachable) shows a small case where the cause is visible by eye.
+  remedy: >-
+    Two tools. The solver can compute an irreducible infeasible subset (IIS): the smallest set of constraints
+    that cannot all hold together, so removing any one of them makes the rest feasible, which points straight
+    at the hours and the limits in conflict. And for the fix, give the model a way out at a high price, load
+    shedding at the value of lost load, so it always solves and shows where and how much it had to shed. In
+    PyPSA with HiGHS the IIS is read back into PyPSA's constraint names and snapshots.
+  figure: load_vs_reachable
+  example: >-
+    The IIS holds 12 constraints and 8 bounds, all in the four hours around the spike: the bus balances,
+    the plants' capacity limits and the coal plant's ramp limits; the spike exceeds the fleet by 400 MW, and
+    with load shedding about 930 MWh is shed over two hours (iis_size, iis_constraints_by_name, iis_hours,
+    load_over_capacity_mw, shed_energy_mwh). One layer deeper, iis_constraints counts the families in the subset.
+- concept: value-of-lost-load
+  gap: >-
+    Adding load shedding makes the model solve, but at what price should shedding enter, and what does that
+    do to the results?
+  remedy: >-
+    Shedding is priced at the value of lost load, what consumers would pay to avoid an outage, typically
+    thousands of EUR per MWh. The model then sheds only when nothing else can serve the load, and in those
+    hours the price rises to that value: the price itself marks the hours the IIS pointed at.
+  figure: price_after_repair
+  builds_on_concept: infeasibility
+  example: >-
+    After the repair the price reaches 3,000 EUR/MWh, the value of lost load, in the two spike hours
+    (max_price_after_repair_eur_mwh, hours_at_voll).
 numbers:
 - {id: solver_condition, label: Termination condition of the broken solve}
 - {id: iis_size, label: Constraints and variable bounds in the subset, unit: count}

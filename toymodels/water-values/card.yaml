@@ -49,15 +49,42 @@ figures:
 - id: reservoir_level
   file: figures/reservoir_level.json
   title: Reservoir level over the year
-  shows: Stored energy under perfect foresight, the naive rolling solve and the rolling solve with water values.
+  shows: >-
+    The 48 GWh reservoir over a year of snowmelt-shaped inflow. Seeing the whole year (blue), the operator fills it
+    through the spring melt and draws it down slowly into autumn and winter. A two-week rolling solve that treats
+    water as free (orange) spends it at once, runs near empty for months and spills the melt it cannot hold. The
+    same rolling solve charging the water value as the cost of releasing water (green) keeps close to the
+    foresight path.
 - id: water_value
   file: figures/water_value.json
   title: Water value against the price
-  shows: The reservoir balance dual over the year next to the bus price from the perfect-foresight solve.
+  shows: >-
+    The reservoir balance's dual over the year, what one more stored MWh is worth: the gas plant's 60 EUR/MWh
+    most of the year, zero through the spring melt when the reservoir is full. The dashed price mostly follows it.
 - id: cost_comparison
   file: figures/cost_comparison.json
   title: Annual dispatch cost by approach
   shows: Cost per approach; the water value recovers most of the gap.
+teach:
+- concept: water-value
+  gap: >-
+    Water in a reservoir costs nothing to use, so a dispatch that sees only the next days treats it like wind:
+    run it whenever it saves fuel. But the reservoir only refills with the spring melt; a MWh released today
+    is one missing on a cold, calm week later, when it would have saved far more. Spent early, the reservoir
+    runs dry when it is needed and is too full to catch the melt. The picture (reservoir_level) shows a
+    short-sighted operator doing exactly that.
+  remedy: >-
+    The water value is what one more MWh in the reservoir is worth: the cost it will save when it is finally
+    used, an opportunity cost rather than a fuel cost. A model that sees the whole year computes it as the dual
+    of the reservoir's energy balance. Charged as the price of releasing water, it tells a short-sighted
+    operator to hold water unless today is worth more than the future, which is how real hydro operators bid.
+  figure: reservoir_level
+  example: >-
+    Treating water as free, the two-week rolling solve costs about 11.5 MEUR for the year against 8.0 MEUR with
+    perfect foresight, 45 % more, and spills about 79 GWh instead of 39; with the water value it costs about 9.5
+    MEUR and spills about 12 (cost_meur_a, cost_gap_pct, spill_gwh). The water value averages about 43 EUR/MWh,
+    60 most of the year and zero in the melt (water_value_eur_mwh). One layer deeper, water_value shows it
+    against the price and cost_comparison the three costs.
 numbers:
 - {id: "perfect foresight / rolling horizon / rolling + water value", label: Per-approach block with the fields below}
 - {id: cost_meur_a, label: Dispatch cost, unit: MEUR/a}

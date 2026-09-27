@@ -70,6 +70,7 @@ def linearised(n: pypsa.Network) -> pypsa.Network:
 def numbers(n: pypsa.Network) -> dict:
     fixed = fixed_status_lp(n)
     relaxed = linearised(n)
+    plain = plain_dispatch()
     status = n.generators_t.status[list(UNITS)]
     starts = (status.diff().fillna(0) > 0).sum()
     load = n.loads_t.p_set["demand"]
@@ -89,7 +90,48 @@ def numbers(n: pypsa.Network) -> dict:
         "avg_price_linearised_eur_mwh": float((p_relaxed * load).sum() / load.sum()),
         "min_price_linearised_eur_mwh": float(p_relaxed.min()),
         "peaker_energy_mwh": float(n.generators_t.p["OCGT"].sum()),
+        "total_cost_plain_dispatch_eur": float(plain.objective),
+        "hours_plain_ccgt_below_min_load": int(((plain.generators_t.p["CCGT"] > 1e-3)
+                                                & (plain.generators_t.p["CCGT"] < UNITS["CCGT"]["p_nom"] * UNITS["CCGT"]["p_min_pu"] - 1e-3)).sum()),
     }
+
+
+def plain_dispatch() -> pypsa.Network:
+    """The same day without commitment: every unit may run anywhere from zero to full, with no
+    start-up cost, the way merit-order-dispatch treats plants."""
+    m = build()
+    m.generators.loc[list(UNITS), "committable"] = False
+    m.generators.loc[list(UNITS), "p_min_pu"] = 0.0
+    run.solve(m)
+    return m
+
+
+def commitment_intuition(n: pypsa.Network) -> bundle.Figure:
+    """The CCGT over the two days, dispatched as if it could run at any level against with
+    commitment: the band below its minimum load is off-limits while it runs."""
+    lp = plain_dispatch()
+    p_min = UNITS["CCGT"]["p_nom"] * UNITS["CCGT"]["p_min_pu"]
+    df = pd.DataFrame({
+        "gas plant, simple dispatch": lp.generators_t.p["CCGT"].clip(lower=0).round(1),
+        "gas plant, with commitment": n.generators_t.p["CCGT"].clip(lower=0).round(1),
+        "peaker, with commitment": n.generators_t.p["OCGT"].clip(lower=0).round(1),
+    })
+    option, ds = charts.time_series(df, "MW", step="end", slider=False)
+    option["series"][0]["lineStyle"] = {**option["series"][0].get("lineStyle", {}), "type": "dashed"}
+    option["series"][1]["lineStyle"] = {**option["series"][1].get("lineStyle", {}), "width": 3}
+    option["series"][0]["markArea"] = {
+        "silent": True,
+        "itemStyle": {"color": charts.BAND_ABOVE, "opacity": 0.14},
+        "label": {"position": "insideTopLeft", "fontSize": 11, "color": charts.BAND_ABOVE,
+                  "formatter": f"below {p_min:.0f} MW: off-limits while the gas plant runs"},
+        "data": [[{"yAxis": 0}, {"yAxis": p_min}]],
+    }
+    return bundle.Figure(
+        option, ds, title="A plant is on or off, and on means at least its minimum",
+        caption=f"The CCGT over two days. Dispatched as if it could run at any level (dashed), it often idles at a few dozen "
+        f"MW. A real one runs at no less than {p_min:.0f} MW once on, and costs money to start: with commitment it either "
+        "holds its minimum, or switches off and lets the peaker cover the small gaps.",
+    )
 
 
 def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
@@ -112,7 +154,7 @@ def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
                               caption="With commitment frozen the price is the marginal cost of the flexible unit, and can "
                               "sit below every marginal cost when a unit is forced to its minimum. The linearised "
                               "problem prices start-up costs into the hours that trigger them.")
-    return {"unit_status": status_fig, "dispatch_stack": dispatch, "price_uc_vs_relaxed": price_fig}
+    return {"commitment_intuition": commitment_intuition(n), "unit_status": status_fig, "dispatch_stack": dispatch, "price_uc_vs_relaxed": price_fig}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

@@ -36,8 +36,12 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 1.29
+  runtime_s: 1.58
   figures:
+    cascade_intuition:
+      title: One river, two power stations
+      file: figures/cascade_intuition.json
+      height: 420
     reservoir_levels:
       title: Reservoir levels
       file: figures/reservoir_levels.json

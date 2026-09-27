@@ -43,8 +43,12 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 2.98
+  runtime_s: 3.39
   figures:
+    peak_intuition:
+      title: 'Same cars, same energy: when they charge is what matters'
+      file: figures/peak_intuition.json
+      height: 360
     charging_vs_price:
       title: Charging power against the price
       file: figures/charging_vs_price.json

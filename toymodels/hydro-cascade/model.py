@@ -104,6 +104,50 @@ def numbers(n: pypsa.Network) -> dict:
     }
 
 
+WATER = "#56b4e9"  # sankey colours: water, the turbines (power made on the way), the spillways (none made)
+TURBINE = "#0072b2"
+SPILL = "#9ca3af"
+
+
+def cascade_intuition(n: pypsa.Network) -> bundle.Figure:
+    """The river's water over the year as a sankey: it enters the upper reservoir, leaves by the
+    turbine or the spillway, and either way lands in the lower one, where it meets a second
+    turbine. What passes both turbines makes power twice."""
+    w = n.snapshot_weightings.generators
+    f = flows(n).mul(w, axis=0).sum() / 1e3
+    infl = {r: float((n.generators_t.p[f"inflow {r}"] * w).sum() / 1e3) for r in RES}
+    tu, su, tl, sl = (float(f[k]) for k in ("turbine upper", "spill upper", "turbine lower", "spill lower"))
+    # (name, colour, column): columns pinned so the side streams join where the lower reservoir is
+    spec = [
+        ("melt and rain", WATER, 0), ("upper reservoir", WATER, 1),
+        (f"upper turbine\n{tu:.0f} GWh of power", TURBINE, 2), ("upper spillway", SPILL, 2), ("side streams", WATER, 2),
+        ("lower reservoir", WATER, 3),
+        (f"lower turbine\n{tl:.0f} GWh of power", TURBINE, 4), ("lower spillway", SPILL, 4), ("river below", WATER, 5),
+    ]
+    names = [s[0] for s in spec]
+    edges = [
+        (names[0], names[1], infl["upper"]), (names[1], names[2], tu), (names[1], names[3], su),
+        (names[2], names[5], tu), (names[3], names[5], su), (names[4], names[5], infl["lower"]),
+        (names[5], names[6], tl), (names[5], names[7], sl), (names[6], names[8], tl), (names[7], names[8], sl),
+    ]
+    links = [{"source": a, "target": b, "value": round(v, 1)} for a, b, v in edges if v > 0.05]
+    option = {
+        "tooltip": {"trigger": "item"},
+        "series": [{"type": "sankey", "left": 8, "right": 90, "top": 16, "bottom": 16, "nodeGap": 18, "nodeWidth": 16,
+                    "data": [{"name": nm, "depth": d, "itemStyle": {"color": c}} for nm, c, d in spec],
+                    "links": links, "emphasis": {"focus": "adjacency"},
+                    "lineStyle": {"color": "source", "opacity": 0.35, "curveness": 0.5},
+                    "nodeAlign": "justify", "label": {"fontSize": 12}}],
+    }
+    return bundle.Figure(
+        option, {}, title="One river, two power stations", height=420,
+        caption=f"Water over the year, in the energy a turbine can make from it (GWh). The upper reservoir's water leaves "
+        f"by its turbine or its spillway and lands in the lower reservoir either way, so water that goes through the upper "
+        f"turbine can make power there and again below: {tu:.0f} and {tl:.0f} GWh from the two turbines. Spilled water "
+        "makes none, and a lot of the melt is spilled because the turbines are too small for it.",
+    )
+
+
 def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
     lvl = pd.DataFrame({f"reservoir {r}": (n.stores_t.e[f"reservoir {r}"] / RES[r]["e_nom"] * 100).round(1) for r in RES})
     option, ds = charts.time_series(lvl, "% full", slider=False)
@@ -124,7 +168,7 @@ def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
                        "water is nearly free (spill is the alternative); in the dry one it rises to the thermal "
                        "cost it displaces, and the lower reservoir's water is worth less than the upper's because "
                        "it can only pass one turbine.")
-    return {"reservoir_levels": levels, "turbine_and_spill_flows": fl, "prices_and_water_values": pf}
+    return {"cascade_intuition": cascade_intuition(n), "reservoir_levels": levels, "turbine_and_spill_flows": fl, "prices_and_water_values": pf}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

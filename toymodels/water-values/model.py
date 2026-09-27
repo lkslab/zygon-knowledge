@@ -140,12 +140,16 @@ def figures(nets: dict[str, pypsa.Network], wv: pd.Series) -> dict[str, bundle.F
                             "as the cost of releasing brings the rolling solve close to the foresight path.")
     pf = nets["perfect foresight"]
     wvdf = pd.DataFrame({"water value": wv.round(2), "price": pf.buses_t.marginal_price["grid"].round(2)})
-    option, ds = charts.time_series(wvdf, "EUR/MWh", slider=False)
-    option["yAxis"]["max"] = 200
+    option, ds = charts.time_series(wvdf, "EUR/MWh", slider=False, step="end")
+    option["yAxis"]["max"] = 80
+    option["series"][0]["lineStyle"] = {**option["series"][0].get("lineStyle", {}), "width": 4, "opacity": 0.6}
+    option["series"][1]["lineStyle"] = {**option["series"][1].get("lineStyle", {}), "width": 1.2, "type": "dashed"}
     wv_fig = bundle.Figure(option, ds, title="Water value against the price (perfect foresight)",
-                           caption="The dual of the reservoir balance: what one more stored MWh would save. It sits "
-                           "near the gas cost most of the year, falls toward zero when spill looms in spring and "
-                           "rises when the reservoir is the marginal source. Axis clipped at 200 EUR/MWh.")
+                           caption="The dual of the reservoir balance: what one more stored MWh would save. For most of "
+                           "the year it is the gas plant's 60 EUR/MWh, the fuel a stored MWh will displace later; "
+                           "through the spring melt it drops to zero, since the reservoir is full and water would "
+                           "be spilled anyway. The price mostly follows it, since the reservoir sets it; in windy hours the "
+                           "price drops to zero while the stored water keeps its value.")
     labels = list(nets)
     s = {k: summary(n) for k, n in nets.items()}
     option, ds = charts.bars(labels, {"dispatch cost": [round(s[k]["cost_meur_a"], 3) for k in labels]}, "MEUR/a", category_name="approach")

@@ -24,7 +24,7 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 1.2
+  runtime_s: 1.29
   figures:
     load_vs_reachable:
       title: The load spike against what the fleet can reach

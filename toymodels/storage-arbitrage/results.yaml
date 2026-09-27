@@ -12,8 +12,12 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 1.3
+  runtime_s: 1.17
   figures:
+    arbitrage_intuition:
+      title: 'Buy low, sell high: what a battery lives on'
+      file: figures/arbitrage_intuition.json
+      height: 360
     charge_vs_price:
       title: Battery power against the price
       file: figures/charge_vs_price.json

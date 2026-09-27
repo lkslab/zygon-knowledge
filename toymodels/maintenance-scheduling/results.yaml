@@ -26,8 +26,12 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 9.19
+  runtime_s: 9.32
   figures:
+    outage_window_intuition:
+      title: 'When to take a plant off: where it is missed least'
+      file: figures/outage_window_intuition.json
+      height: 360
     unit_availability:
       title: Unit availability, optimal timing
       file: figures/unit_availability.json

@@ -41,6 +41,14 @@ knobs:
 - {name: wind capacity, in: "build(wind_mw=...)", effect: "more wind means more zero-price hours and a wider spread"}
 - {name: fleet, in: FLEET, effect: "a thinner mid-merit widens the daily spread"}
 figures:
+- id: arbitrage_intuition
+  file: figures/arbitrage_intuition.json
+  title: "Buy low, sell high: what a battery lives on"
+  shows: >-
+    The week's price: about 25 EUR/MWh when it is windy, 55 most of the time, 110 at a few evening peaks.
+    The battery charges in the blue hours and discharges in the green ones; the dashed lines are the average
+    price it pays, about 36 EUR/MWh, and the average it earns, about 70. The gap between them, less the tenth
+    lost on the way in and out, is its income.
 - id: charge_vs_price
   file: figures/charge_vs_price.json
   title: Battery power against the price
@@ -53,6 +61,40 @@ figures:
   file: figures/daily_revenue.json
   title: Daily arbitrage revenue
   shows: Revenue per day; windy days with a deep trough pay best.
+teach:
+- concept: arbitrage
+  gap: >-
+    Power has to be made at the moment it is used, so its price swings with the hour: low when the wind
+    blows or demand sleeps, high at the evening peak. A plant can only sell into the hour it produces in,
+    and nobody can buy cheap power at night for use in the evening. The picture (arbitrage_intuition)
+    shows the week's swings and a battery working them.
+  remedy: >-
+    A store moves energy in time: it buys (charges) when power is cheap and sells (discharges) when it is
+    dear, and lives on the difference. In doing so it lifts the low prices a little and shaves the high
+    ones, so the whole system runs less of its dearest plants. In PyPSA a battery is a StorageUnit with a
+    power rating, hours of storage and charge and discharge efficiencies; the optimiser decides when it
+    charges.
+  figure: arbitrage_intuition
+  example: >-
+    The 500 MW, 4-hour battery buys at about 36 EUR/MWh on average and sells at about 70, runs about 5.6
+    full cycles in the week and earns about 331,000 EUR, some 660 EUR per MW (avg_charge_price_eur_mwh,
+    avg_discharge_price_eur_mwh, full_cycles, revenue_eur, revenue_per_mw_eur). One layer deeper,
+    charge_vs_price shows its power against the price hour by hour and daily_revenue what each day pays.
+- concept: round-trip-efficiency
+  gap: >-
+    A battery does not give back everything it takes in: some energy is lost as heat on the way in and on
+    the way out. A price gap that looks worth trading can vanish once that is counted.
+  remedy: >-
+    The round-trip efficiency is what comes out per unit that went in, here 0.95 times 0.95, about 90 %. A
+    store only cycles when the price it sells at, times that efficiency, beats the price it bought at plus
+    its wear cost, so small spreads are left alone. The two dashed lines in the same picture
+    (arbitrage_intuition) are the prices it actually paid and earned after that choice.
+  figure: arbitrage_intuition
+  builds_on_concept: arbitrage
+  example: >-
+    About 9.8 % of the energy stored is lost; the daily price spread averages about 41 EUR/MWh
+    (round_trip_loss_pct, mean_daily_price_spread_eur_mwh). One layer deeper, state_of_charge shows the
+    battery filling and emptying across the week.
 numbers:
 - {id: revenue_eur, label: Arbitrage revenue over the week, unit: EUR, formula: "sum_t price_t * p_t (p > 0 discharging)"}
 - {id: revenue_per_mw_eur, label: Revenue per MW of battery power over the week, unit: EUR/MW}

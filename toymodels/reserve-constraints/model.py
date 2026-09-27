@@ -30,6 +30,7 @@ BASE_MW, PEAK_MW = 5000, 9500
 DAYS = 3
 LOAD_SHARE, WIND_SHARE = 0.10, 0.20
 PROVIDERS = ["lignite", "CCGT", "OCGT"]  # nuclear and wind hold no reserve
+RESERVE_COLOUR = "#c9ced8"
 
 
 def build() -> pypsa.Network:
@@ -98,6 +99,11 @@ def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     stack = wr.generators_t.p[list(FLEET) + ["onwind"]].round(1)
     stack["reserve held"] = held.sum(axis=1).round(1)
     option, ds = charts.time_series(stack, "MW", stack=True, area=True)
+    for s in option["series"]:
+        if s["name"] == "reserve held":  # headroom, not energy: a pale neutral, clear of the carriers' colours
+            s["itemStyle"] = {"color": RESERVE_COLOUR}
+            s["lineStyle"] = {"color": "#6b7280", "width": 1, "type": "dashed"}
+            s["areaStyle"] = {"color": RESERVE_COLOUR, "opacity": 0.9}
     disp = bundle.Figure(option, ds, title="Dispatch with the reserve held on top",
                          caption="Energy dispatch stacked in merit order; the top band is the headroom kept in reserve. "
                          "To hold it, cheaper units run below capacity and the peaker fills in.")

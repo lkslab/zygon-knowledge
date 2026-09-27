@@ -39,6 +39,14 @@ knobs:
 - {name: battery size, in: BATTERY, effect: "a bigger, longer-duration battery widens the gap because more of its value is multi-day"}
 - {name: wind capacity, in: WIND_MW, effect: "more wind, more day-to-day price variation, more to forecast"}
 figures:
+- id: foresight_intuition
+  file: figures/foresight_intuition.json
+  title: Seeing a day ahead or the whole fortnight
+  shows: >-
+    The 8 GWh battery's charge over two windy weeks. Solved with the whole fortnight in view (blue), it
+    fills up in the windy days and carries the energy for days, down to the evenings that pay most. Solved one
+    day at a time (dashed orange; the grey lines are the day boundaries), every day's solve empties it by
+    midnight, since stored energy is worth nothing to a solve that cannot see tomorrow.
 - id: state_of_charge
   file: figures/state_of_charge.json
   title: Battery state of charge
@@ -51,6 +59,26 @@ figures:
   file: figures/cost_and_revenue.json
   title: Fortnight cost and battery revenue
   shows: Extra system cost over perfect foresight and the battery's revenue per solve.
+teach:
+- concept: foresight
+  gap: >-
+    An optimisation over a period knows everything in it at once: tomorrow's wind, next week's cold spell.
+    Real operators plan with forecasts a day or two ahead. For plants that just run or not this hardly
+    matters, but anything that stores energy decides now based on what it expects later, so a model with
+    perfect foresight flatters storage: it never charges on a hunch that proves wrong. The picture
+    (foresight_intuition) shows the same battery with and without that knowledge.
+  remedy: >-
+    A rolling horizon solves the period in short windows, one after another, each seeing only its own stretch
+    (and optionally a few hours beyond it), carrying the battery's charge from one window to the next. The
+    gap to the perfect-foresight solve is the value of the forecast the rolling solve lacks. In PyPSA it is
+    `n.optimize.optimize_with_rolling_horizon(horizon=..., overlap=...)`. Giving the stored energy a value at
+    each window's end, as water-values does for a reservoir, closes most of the gap.
+  figure: foresight_intuition
+  example: >-
+    Solved a day at a time, the fortnight costs about 0.5 % more and the battery earns about 780,000 EUR
+    instead of 970,000; a six-hour look-ahead does not help here, because every window still sees its stored
+    energy as worthless at its end (cost_gap_pct, battery_revenue_eur). One layer deeper, price_comparison shows
+    where the prices differ and cost_and_revenue the totals.
 numbers:
 - {id: cost_eur, label: Dispatch cost per solve, unit: EUR}
 - {id: cost_gap_pct, label: Extra cost over perfect foresight, unit: "%"}

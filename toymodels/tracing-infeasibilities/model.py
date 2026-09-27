@@ -126,13 +126,29 @@ def numbers(n_infeasible: pypsa.Network, diag: dict, repaired: pypsa.Network) ->
 def figures(n_infeasible: pypsa.Network, diag: dict, repaired: pypsa.Network) -> dict[str, bundle.Figure]:
     load = n_infeasible.loads_t.p_set["demand"]
     reach = pd.Series(sum(u["p_nom"] for u in UNITS.values()), index=load.index)
-    df = pd.DataFrame({"load": load.round(1), "fleet capacity": reach, "served after repair": (load - repaired.generators_t.p["load shedding"]).round(1)})
+    served = (load - repaired.generators_t.p["load shedding"]).round(1)
+    df = pd.DataFrame({"load": load.round(1), "fleet capacity": reach, "served after repair": served,
+                       "demand no dispatch can meet": (load - served).round(1)})
     option, ds = charts.time_series(df, "MW", step="middle")
-    option["series"][1]["lineStyle"] = {**option["series"][1].get("lineStyle", {}), "type": "dashed"}
+    grey = "#6b7280"
+    styles = {
+        "load": {"lineStyle": {"color": grey, "width": 1.5}, "itemStyle": {"color": grey}},
+        "fleet capacity": {"lineStyle": {"color": grey, "width": 1.2, "type": "dashed"}, "itemStyle": {"color": grey}},
+        "served after repair": {"lineStyle": {"color": charts.BAND_BELOW, "width": 2.5}, "itemStyle": {"color": charts.BAND_BELOW},
+                                "stack": "gap"},
+        # stacked on the served load, so its fill is exactly the gap up to the load
+        "demand no dispatch can meet": {"lineStyle": {"width": 0, "opacity": 0}, "itemStyle": {"color": charts.BAND_ABOVE},
+                                        "areaStyle": {"color": charts.BAND_ABOVE, "opacity": 0.45}, "stack": "gap",
+                                        "silent": True},
+    }
+    for s in option["series"]:
+        s.update(styles[s["name"]])
+    option["series"] = [option["series"][i] for i in (2, 3, 0, 1)]  # the stack first, the load and capacity lines on top
     spike = bundle.Figure(option, ds, title="The load spike against what the fleet can reach",
                           caption="The spike exceeds the installed capacity and arrives faster than the ramp limits "
-                          "allow, so no dispatch satisfies every constraint. After the repair the served load is "
-                          "what the fleet can physically deliver.")
+                          "allow, so no dispatch satisfies every constraint and the solver can only say infeasible. "
+                          "Letting load be shed at a high price makes it solvable: green is what the fleet can "
+                          "deliver, vermillion the demand it cannot.")
     counts = pd.Series([r["constraint"] for r in diag["constraints"]]).value_counts() if diag["constraints"] else pd.Series(dtype=int)
     cats = list(counts.index) if len(counts) else ["none"]
     option, ds = charts.bars(cats, {"constraints in the IIS": [int(v) for v in counts.values] or [0]}, "count", horizontal=True, category_name="constraint")

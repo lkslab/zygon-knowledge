@@ -45,7 +45,10 @@ figures:
 - id: dispatch_with_reserve
   file: figures/dispatch_with_reserve.json
   title: Dispatch with the reserve held on top
-  shows: Energy dispatch stacked by carrier with the total reserve held as the top band.
+  shows: >-
+    Three days of dispatch stacked by carrier, with the reserve held drawn as the pale band on top: capacity
+    that is running or ready but deliberately not used, about 1,170 MW on average (a tenth of the load plus a
+    fifth of the wind). To keep it, the cheaper units run below their capacity and the peaker fills in.
 - id: reserve_provision
   file: figures/reserve_provision.json
   title: Reserve provision by unit
@@ -54,6 +57,41 @@ figures:
   file: figures/prices.json
   title: Energy price with and without reserve, and the reserve price
   shows: The energy price under both solves and the requirement's dual.
+teach:
+- concept: reserve
+  gap: >-
+    The cheapest way to meet demand runs the cheapest plants flat out and keeps nothing spare. But a large
+    plant can trip, or the wind can drop, within minutes, far faster than a stopped plant can start. If
+    every running plant is already at full output, nothing can cover the loss and demand is cut. A model that
+    only minimises cost ignores this. The picture (dispatch_with_reserve) shows the dispatch once spare room
+    is required.
+  remedy: >-
+    Operators require operating reserve: headroom on plants that are running or ready, enough to cover the
+    likely losses, here a tenth of the load plus a fifth of the wind output. Holding it means running some
+    cheaper plants below their capacity and using dearer ones instead, so it costs money, and the reserve
+    price, what one more MW of headroom would cost, says how scarce it is in each hour.
+  figure: dispatch_with_reserve
+  example: >-
+    About 1,170 MW is held on average, two thirds of it by the peaker and a third by the CCGT; holding it adds
+    about 141,000 EUR, 1.3 % of the three days' cost, and the reserve price is zero except in one tight hour
+    (requirement_mw, reserve_held_share_pct, reserve_cost_eur, reserve_cost_share_pct,
+    reserve_price_eur_mw_h). One layer deeper, reserve_provision shows who holds it hour by hour.
+- concept: custom-constraint
+  gap: >-
+    PyPSA has no attribute for a reserve requirement, and the same is true of many real rules: a minimum
+    share of local generation, a joint limit on a group of plants, a policy target. A model that can only use
+    built-in attributes cannot state them.
+  remedy: >-
+    `n.optimize(extra_functionality=...)` hands you the optimisation problem (a linopy model) after PyPSA has
+    built it and before it is solved: you can add variables, here a reserve per unit and hour, and
+    constraints, here headroom and the requirement, in a dozen lines. The dual of a new constraint is its
+    price, which is how the reserve price comes out. `read_toy_code` shows the hook, `add_reserve`.
+  figure: prices
+  builds_on_concept: reserve
+  example: >-
+    The requirement's dual is the reserve price, averaging about 40 EUR per MW and hour and reaching about
+    2,890 in the one tight hour (reserve_price_eur_mw_h); the prices figure puts it beside the energy price
+    with and without the reserve.
 numbers:
 - {id: reserve_cost_eur, label: Objective with reserve minus without, unit: EUR}
 - {id: reserve_cost_share_pct, label: Reserve cost over the baseline cost, unit: "%"}

@@ -42,6 +42,14 @@ knobs:
 - {name: availability, in: "PLUGGED_HOURS, DRIVING_HOURS", effect: "workplace charging (plugged at midday) is what lets solar in"}
 - {name: minimum state of charge, in: MIN_SOC, effect: "the driver's comfort margin; higher floors cut V2G revenue"}
 figures:
+- id: peak_intuition
+  file: figures/peak_intuition.json
+  title: "Same cars, same energy: when they charge is what matters"
+  shows: >-
+    Two weekdays of demand without the cars (grey), then with 100,000 electric cars added. Charged the moment
+    they plug in after the evening commute (orange), they add about 560 MW on top of the evening peak of about
+    10,000 MW. Charged in the cheap hours instead (dashed green), the same energy goes in at night and around
+    midday, and the peak does not grow.
 - id: charging_vs_price
   file: figures/charging_vs_price.json
   title: Charging power against the price
@@ -54,6 +62,42 @@ figures:
   file: figures/cost_comparison.json
   title: System cost and the fleet's electricity bill
   shows: Dispatch cost of the whole system and the fleet's net charging cost per case.
+teach:
+- concept: smart-charging
+  gap: >-
+    Electric cars add a lot of demand, and people plug them in when they get home, just as everyone else turns
+    on lights, cookers and heating. Charged at once, a fleet lands its whole demand on the evening peak, the
+    most expensive hours, the ones that decide how many power plants and how much grid are needed. Yet a car
+    parked overnight rarely needs to charge at 18:00. The picture (peak_intuition) shows the same cars charged
+    both ways.
+  remedy: >-
+    Smart charging lets the car wait: it only has to be ready by morning, so it charges when power is cheap and
+    plentiful, overnight or when the wind blows. The energy is the same; its timing moves out of the peak into
+    the troughs, so the peak does not grow and the fleet pays less. In PyPSA the fleet is a store (the
+    batteries) behind a charger link that is only available while the cars are plugged in, with the driving as
+    a load on the battery bus.
+  figure: peak_intuition
+  example: >-
+    Charging at once adds about 560 MW to the week's peak and costs the fleet about 380,000 EUR at about 69
+    EUR/MWh; charging smartly adds nothing to the peak and costs about 140,000 at 25 EUR/MWh, and the whole
+    system saves about 206,000 EUR in the week (peak_load_increase_mw, charging_cost_eur,
+    avg_charging_price_eur_mwh, system_cost_saving_vs_uncontrolled_eur). One layer deeper, charging_vs_price
+    shows each case's charging against the price.
+- concept: vehicle-to-grid
+  gap: >-
+    Smart charging only shifts when the cars take power. But a parked fleet is also a large battery that sits
+    idle most of the day.
+  remedy: >-
+    Vehicle-to-grid lets the plugged-in cars also sell power back into the evening peak and refill later, like
+    a stationary battery, as long as they are charged enough for the next drive. The fleet then earns the price
+    spread, and the system needs less peak generation, at the cost of more battery cycles.
+  figure: charging_vs_price
+  builds_on_concept: smart-charging
+  example: >-
+    With vehicle-to-grid the fleet sells about 8,300 MWh back in the week and its net electricity bill falls to
+    about 8,000 EUR; the system saves about 518,000 EUR against uncontrolled charging, but the batteries cycle
+    about 3.6 times instead of 1.25 (discharged_to_grid_mwh, net_ev_cost_eur,
+    system_cost_saving_vs_uncontrolled_eur, cycles). One layer deeper, state_of_charge and cost_comparison.
 numbers:
 - {id: "uncontrolled / smart / vehicle-to-grid", label: Per-case block with the fields below}
 - {id: system_cost_eur, label: Dispatch cost of the whole system for the week, unit: EUR}

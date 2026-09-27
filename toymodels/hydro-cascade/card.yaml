@@ -45,6 +45,15 @@ knobs:
 - {name: representative weeks, in: WEEKS, effect: "pick other fortnights of the synthetic hydrological year"}
 - {name: backup cost, in: CCGT_COST, effect: "the ceiling of the dry-season water value"}
 figures:
+- id: cascade_intuition
+  file: figures/cascade_intuition.json
+  title: One river, two power stations
+  shows: >-
+    The river's water over a year, measured in the energy a turbine can make from it. Melt and rain fill the
+    upper reservoir; its water leaves through the turbine (dark blue, about 250 GWh of power) or the spillway
+    (grey, none), and lands in the lower reservoir either way, joined by side streams. There a second turbine
+    makes about 315 GWh. Water passed through both turbines makes power twice; much of the melt is spilled
+    because the turbines cannot take it all.
 - id: reservoir_levels
   file: figures/reservoir_levels.json
   title: Reservoir levels
@@ -57,6 +66,39 @@ figures:
   file: figures/prices_and_water_values.json
   title: Electricity price and water values
   shows: The electricity price and the two water bus prices over the two fortnights.
+teach:
+- concept: cascade
+  gap: >-
+    Hydro plants often sit one below another on the same river. They are not independent stores: whatever the
+    upper plant releases, through its turbine or over its spillway, arrives at the lower reservoir, which then
+    has to use it or spill it. A model that gives each reservoir its own separate inflow misses that the
+    upper plant's decisions are the lower plant's inflow. The picture (cascade_intuition) follows the water
+    down the river.
+  remedy: >-
+    Model the water as flowing between reservoir buses: the upper turbine is a link with two outputs, power to
+    the grid and the same water on to the lower reservoir's bus, and the spillway is a link that passes water
+    down without making power. Each reservoir is a store on its own water bus. The optimiser then plans both
+    plants together, and water from the top is worth more because it can pass two turbines.
+  figure: cascade_intuition
+  example: >-
+    Over the year the two turbines make about 560 GWh, two thirds of the demand; the upper reservoir receives
+    about 720 GWh of water-energy and spills about 470, the lower spills about 600 of what reaches it
+    (hydro_energy_gwh, hydro_share_pct, inflow_gwh, spill_gwh). One layer deeper, reservoir_levels shows both
+    filling and emptying and turbine_and_spill_flows the flows hour by hour.
+- concept: water-value
+  gap: >-
+    Stored water has no fuel cost, yet using it now means not having it later. And on a cascade, a unit of
+    water at the top is not worth the same as one at the bottom.
+  remedy: >-
+    The water value is what one more unit in a reservoir would save: in PyPSA the price of its water bus. In a
+    wet fortnight it is about zero, since the alternative is spilling; in a dry one it is the fuel it displaces.
+    Upper water passes two turbines, each displacing gas, so it is worth twice the lower water.
+  figure: prices_and_water_values
+  builds_on_concept: cascade
+  example: >-
+    In the dry fortnight the upper water is worth about 120 EUR/MWh and the lower about 60, the gas plant's
+    cost once and twice; in the wet fortnight both are about zero (water_value_eur_mwh,
+    electricity_price_eur_mwh).
 numbers:
 - {id: hydro_energy_gwh, label: Energy from both turbines, unit: GWh/a}
 - {id: hydro_share_pct, label: Hydro over demand, unit: "%"}

@@ -40,6 +40,14 @@ knobs:
 - {name: min up/down times, in: UNITS dict, effect: "longer times force longer on/off blocks and more peaker use"}
 - {name: load range, in: "build(base_mw=..., peak_mw=...)", effect: "a deeper trough forces a cycling decision"}
 figures:
+- id: commitment_intuition
+  file: figures/commitment_intuition.json
+  title: A plant is on or off, and on means at least its minimum
+  shows: >-
+    The CCGT over two days. Dispatched as if it could run at any level (dashed blue), it spends 29 hours
+    at a few dozen to 240 MW, inside the shaded band a running CCGT cannot enter: below its 240 MW minimum.
+    With commitment (orange) it is either off or at 240 MW and above; in the hours it is off, the
+    expensive peaker (green) covers the small gaps, cheaper than starting the CCGT again.
 - id: unit_status
   file: figures/unit_status.json
   title: Commitment status
@@ -52,6 +60,45 @@ figures:
   file: figures/price_uc_vs_relaxed.json
   title: Prices, fixed vs linearised commitment
   shows: The fixed-commitment price is the flexible unit's marginal cost; the linearised price spikes in start-up hours.
+teach:
+- concept: unit-commitment
+  gap: >-
+    A simple dispatch model treats a power plant like a tap: it can run at any level from zero to full,
+    change every hour, and switch on and off for free. Real thermal plants cannot. Once on, a gas or coal
+    plant has a minimum it cannot go below, starting it costs fuel and wear, and once started or stopped it
+    must stay that way for a few hours. A tap-like model plans schedules no plant could follow. The picture
+    (commitment_intuition) shows the gas plant both ways.
+  remedy: >-
+    Unit commitment adds an on/off decision per plant and hour: a plant that is on runs between its
+    minimum and full output, a start costs a fixed amount, and minimum up and down times apply. The
+    optimiser then weighs keeping a plant at its minimum, switching it off and covering with something
+    dearer, or paying for another start. The on/off choices are integer variables, so the problem becomes a
+    mixed-integer programme; in PyPSA a generator gets `committable=True` with `p_min_pu`, `start_up_cost`
+    and `min_up_time`.
+  figure: commitment_intuition
+  example: >-
+    Dispatched as a tap, the CCGT would run below its 240 MW minimum in 29 of the 48 hours. With commitment it
+    starts 8 times, sits at its minimum for 13 hours, and the peaker makes about 690 MWh; the two days cost
+    about 2.08 MEUR instead of 2.00 (hours_plain_ccgt_below_min_load, start_ups, hours_at_min_load,
+    peaker_energy_mwh, total_cost_uc_eur, total_cost_plain_dispatch_eur). One layer deeper, unit_status shows
+    which unit is on when and dispatch_stack the whole schedule.
+- concept: uc-prices
+  gap: >-
+    Prices in a linear model are the duals of the energy balance: what one more MWh would cost. A model with
+    on/off decisions has no such duals, and the start-up costs and minimum loads that shape the schedule do
+    not show up in any single hour's marginal cost.
+  remedy: >-
+    Two common answers. Fix the commitment the integer problem chose and re-solve the dispatch as a linear
+    problem: its prices are the marginal cost of the flexible unit, sometimes below every plant's cost when a
+    unit is held at its minimum. Or relax the on/off variables to fractions (a linearised commitment), which
+    spreads start-up costs into the hours that cause them. Neither pays a plant exactly its start-up cost;
+    that gap is why markets add uplift payments.
+  figure: price_uc_vs_relaxed
+  builds_on_concept: unit-commitment
+  example: >-
+    With the commitment fixed the load-weighted price is about 69 EUR/MWh; the linearised commitment gives
+    about 58, and costs 3.5 % less than the integer schedule, the integrality gap (avg_price_fixed_status_eur_mwh,
+    avg_price_linearised_eur_mwh, integrality_gap_pct).
 numbers:
 - {id: total_cost_uc_eur, label: MILP objective, unit: EUR}
 - {id: total_cost_linearised_eur, label: Linearised-commitment objective, unit: EUR}
@@ -63,6 +110,8 @@ numbers:
 - {id: avg_price_fixed_status_eur_mwh, label: Load-weighted price from the fixed-status LP, unit: EUR/MWh}
 - {id: avg_price_linearised_eur_mwh, label: Load-weighted price from the linearised LP, unit: EUR/MWh}
 - {id: min_price_linearised_eur_mwh, label: Lowest linearised price, unit: EUR/MWh}
+- {id: total_cost_plain_dispatch_eur, label: The same two days dispatched without commitment, unit: EUR}
+- {id: hours_plain_ccgt_below_min_load, label: Hours the dispatch without commitment runs the CCGT between zero and its minimum load, unit: h}
 - {id: peaker_energy_mwh, label: OCGT energy over two days, unit: MWh}
 limitations:
 - No ramp limits and no reserve requirement; both are one attribute away (ramp_limit_up, and the reserve example).
