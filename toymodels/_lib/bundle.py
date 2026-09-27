@@ -3,8 +3,9 @@
 
 A figure bundle is pypsa-app's artifact contract (`figure_spec.py` there):
 `{"version": 1, "option": <ECharts option>, "datasets": {id: {columns, rows}},
-"height": px}`. The option holds no rows and no title; series bind to a dataset by
-`datasetId`. `check_figure` mirrors the app validator's structural rules so a model
+"height": px, "maps": {name: GeoJSON FeatureCollection}}`. The option holds no rows and
+no title; series bind to a dataset by `datasetId`; a `geo` component names one of the
+figure's maps, which the app registers before drawing. `check_figure` mirrors the app validator's structural rules so a model
 fails here, at build time, rather than in the app.
 """
 
@@ -23,7 +24,8 @@ MIN_HEIGHT, DEFAULT_HEIGHT, MAX_HEIGHT = 240, 360, 960
 MAX_SERIES = 50
 MAX_OPTION_BYTES = 256 * 1024
 MAX_TOTAL_CELLS = 200_000
-SERIES_TYPES = {"bar", "line", "scatter", "heatmap", "pie", "sankey", "boxplot", "graph", "map", "lines"}
+SERIES_TYPES = {"bar", "line", "scatter", "effectScatter", "heatmap", "pie", "sankey", "boxplot", "graph", "map", "lines"}
+GEOMETRY_TYPES = {"Polygon", "MultiPolygon"}
 BLOCKED_KEYS = {"toolbox", "graphic"}
 
 
@@ -38,16 +40,22 @@ class Figure:
     height: int | None = None
     unit: str = ""
     meta: dict[str, Any] = field(default_factory=dict)
+    maps: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        # `charts.bars` computes a height for horizontal bars and passes it this way.
+        # `charts.bars` computes a height for horizontal bars and passes it this way;
+        # `charts.region_map` passes its GeoJSON the same way.
         carried = self.option.pop("_height", None)
         if self.height is None:
             self.height = int(carried) if carried else DEFAULT_HEIGHT
         self.height = max(MIN_HEIGHT, min(MAX_HEIGHT, self.height))
+        self.maps = {**self.option.pop("_maps", {}), **self.maps}
 
     def bundle(self) -> dict[str, Any]:
-        return {"version": 1, "option": self.option, "datasets": self.datasets, "height": self.height}
+        out = {"version": 1, "option": self.option, "datasets": self.datasets, "height": self.height}
+        if self.maps:
+            out["maps"] = self.maps
+        return out
 
 
 def check_figure(fig: Figure) -> list[str]:
@@ -86,6 +94,27 @@ def check_figure(fig: Figure) -> list[str]:
             errors.append(f"series[{i}] datasetId {ds_id!r} does not resolve")
         if ds_id is None and s.get("type") != "sankey" and "data" not in s:
             errors.append(f"series[{i}] has neither datasetId nor data")
+
+    for name, collection in fig.maps.items():
+        features = collection.get("features") if isinstance(collection, dict) else None
+        if not isinstance(collection, dict) or collection.get("type") != "FeatureCollection" or not isinstance(features, list):
+            errors.append(f"maps.{name} is not a GeoJSON FeatureCollection")
+            continue
+        for j, feature in enumerate(features):
+            if (feature.get("geometry") or {}).get("type") not in GEOMETRY_TYPES:
+                errors.append(f"maps.{name}.features[{j}] is not a Polygon or MultiPolygon")
+            if not isinstance((feature.get("properties") or {}).get("name"), str):
+                errors.append(f"maps.{name}.features[{j}] has no string properties.name")
+    geos = option.get("geo") or []
+    geos = [geos] if isinstance(geos, dict) else geos
+    for j, g in enumerate(geos):
+        if g.get("map") not in fig.maps:
+            errors.append(f"geo[{j}].map {g.get('map')!r} is not one of the figure's maps")
+    for i, s in enumerate(series):
+        if s.get("type") == "map" and s.get("map") not in fig.maps:
+            errors.append(f"series[{i}].map {s.get('map')!r} is not one of the figure's maps")
+        if s.get("coordinateSystem") == "geo" and not geos:
+            errors.append(f"series[{i}] sits on the geo coordinate system but the option has no geo")
 
     def walk(node: Any, path: str) -> None:
         if callable(node):
@@ -176,6 +205,9 @@ function bound(fig) {
   for (const entry of entries) {
     const ds = fig.datasets[entry.id];
     if (ds && !entry.source) entry.source = [ds.columns, ...ds.rows];
+  }
+  for (const [name, geojson] of Object.entries(fig.maps || {})) {
+    if (!echarts.getMap(name)) echarts.registerMap(name, geojson);
   }
   for (const s of option.series || []) {
     const colour = CARRIER_COLOURS[s.name];

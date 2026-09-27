@@ -54,7 +54,16 @@ cd ../pypsa-app && uv run python ../zygon-knowledge/tools/check_toymodels.py [--
   than six categories go horizontal.
 - **Figure contract** (`_lib/bundle.py` checks it before writing): version 1, series bind
   to datasets by `datasetId`, no inline `source`, no functions, no `toolbox`/`graphic`,
-  height 240..960, at most 50 series, option under 256 KiB.
+  height 240..960, at most 50 series, option under 256 KiB. A map figure also carries
+  `maps` (named GeoJSON FeatureCollections of named Polygon features) that its `geo`
+  component draws on; a builder hands them over as `option["_maps"]`, as it does a height
+  as `option["_height"]`.
+- **Geography** goes through `charts.region_map`: a made-up country in abstract
+  coordinates, split into `Region`s coloured on a diverging scale (purple short of power,
+  green with power to spare), with `Site`s (plants, cities), `Link`s (wires, width their
+  capacity, vermillion when a flow runs over it) and `Arrow`s (an intent, such as what a
+  market plans to move, on the links' width scale). Use it for first principles that are
+  about where things are: where power is made and used, why a line congests.
 - **Cards** are snake_case YAML with a fixed key set (`id, title, summary, concepts,
   answers, builds_on, setup, method, knobs, figures, numbers, limitations, sources,
   pypsa`) plus two optional keys, `teach` and `pypsa_example`. `id` equals the directory

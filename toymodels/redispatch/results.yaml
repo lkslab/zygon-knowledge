@@ -1,28 +1,28 @@
 numbers:
   cost_nodal_eur: 2968253.6741
   cost_zonal_market_eur: 1602012.1666
-  cost_redispatch_eur: 2770242.384
-  cost_zonal_plus_redispatch_eur: 4372254.5507
-  efficiency_loss_pct: 47.3006
-  redispatch_up_mwh: 29920.8268
-  redispatch_down_mwh: 29920.8268
+  cost_redispatch_eur: 1961095.6563
+  cost_zonal_plus_redispatch_eur: 3563107.823
+  efficiency_loss_pct: 20.0405
+  redispatch_up_mwh: 29742.7074
+  redispatch_down_mwh: 29742.7074
   redispatch_by_unit_mwh:
     onwind N1:
       up: 0.0
-      down: 6520.8122
+      down: 6342.6928
     coal N2:
       up: 0.0
       down: 23400.0146
     CCGT S1:
-      up: 25370.9545
+      up: 25014.7158
       down: -0.0
     OCGT S2:
-      up: 4549.8723
+      up: 4727.9917
       down: -0.0
   wind_curtailed_mwh:
     nodal: 6525.5769
     zonal market: 0.0
-    after redispatch: 6520.8122
+    after redispatch: 6342.6928
   avg_price_eur_mwh:
     nodal:
       N1: 13.75
@@ -34,8 +34,20 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 2.84
+  runtime_s: 3.31
   figures:
+    redispatch_geography:
+      title: Where power is made, where it is used, and the lines between
+      file: figures/redispatch_geography.json
+      height: 520
+    redispatch_intuition:
+      title: 'What redispatch fixes: the market''s plan against the grid'
+      file: figures/redispatch_intuition.json
+      height: 360
+    price_by_bus:
+      title: One zonal price against a price per bus
+      file: figures/price_by_bus.json
+      height: 360
     cost_comparison:
       title: Daily system cost by market design
       file: figures/cost_comparison.json

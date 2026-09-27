@@ -512,29 +512,54 @@ class Band:
     `below` and `above` name the two filled bands (the gap under the level where the
     value falls short of it, the excess over it); the tooltip shows each band's depth,
     not its edge. The colours default to green below and vermillion above (money to
-    the asset, money back); swap them when the level means the opposite.
+    the asset, money back); swap them when the level means the opposite. A band named
+    None is not drawn, for a value that only ever falls on one side of the level.
+
+    `under` fills the value's part up to the level from zero instead (what a limit lets
+    through, say, with `above` the rest); the dashed level line then takes its colour
+    and its legend entry, so the level reads as the top of that fill.
     """
 
     value: str
     level: float
     level_name: str
-    below: str
-    above: str
+    below: str | None
+    above: str | None
     unit: str
     value_name: str | None = None
     below_color: str = BAND_BELOW
     above_color: str = BAND_ABOVE
+    under: str | None = None
+    under_color: str = BAND_BELOW
 
 
 def _band_series(band: Band, j: int, palette: Palette, step: str | None) -> list[dict[str, Any]]:
     idx = {"xAxisIndex": j, "yAxisIndex": j} if j else {}
     name = band.value_name or band.value
     value = {**line_series(name, "ts", "snapshot", palette, y=band.value, step=step), **idx}
-    level = {**line_series(band.level_name, "ts", "snapshot", palette, y=f"{band.value}.level", step=step, dashed=True), **idx}
-    level["lineStyle"] = {**level.get("lineStyle", {}), "color": cs.NEUTRAL, "width": 1.5}
-    level["itemStyle"] = {"color": cs.NEUTRAL}
+    level_colour = band.under_color if band.under else cs.NEUTRAL
+    level_name = band.under or band.level_name
+    level = {**line_series(level_name, "ts", "snapshot", palette, y=f"{band.value}.level", step=step, dashed=True), **idx}
+    level["lineStyle"] = {**level.get("lineStyle", {}), "color": level_colour, "width": 1.5}
+    level["itemStyle"] = {"color": level_colour}
     fills = []
+    if band.under:
+        fills.append({
+            "type": "line",
+            "name": band.under,
+            "showSymbol": False,
+            "silent": True,
+            "datasetId": "ts",
+            "encode": {"x": "snapshot", "y": f"{band.value}.under", "tooltip": f"{band.value}.under"},
+            "lineStyle": {"width": 0, "opacity": 0},
+            "itemStyle": {"color": band.under_color},
+            "areaStyle": {"color": band.under_color, "opacity": 0.3, "origin": 0},
+            **({"step": step} if step else {}),
+            **idx,
+        })
     for side, colour in (("below", band.below_color), ("above", band.above_color)):
+        if getattr(band, side) is None:
+            continue
         fills.append({
             "type": "line",
             "name": getattr(band, side),
@@ -569,13 +594,15 @@ def fill_between(df: pd.DataFrame, bands: Band | list[Band], *, step: str | None
         frame[f"{band.value}.above.edge"] = v.clip(lower=band.level)
         frame[f"{band.value}.below"] = (band.level - v).clip(lower=0)
         frame[f"{band.value}.above"] = (v - band.level).clip(lower=0)
+        if band.under:
+            frame[f"{band.value}.under"] = v.clip(upper=band.level)
     palette = Palette()
     series: list[dict[str, Any]] = []
     names: list[str] = []
     for j, band in enumerate(bands):
         series += _band_series(band, j, palette, step)
-        for name in (band.value_name or band.value, band.level_name, band.below, band.above):
-            if name not in names:
+        for name in (band.value_name or band.value, band.under or band.level_name, band.below, band.above):
+            if name is not None and name not in names:
                 names.append(name)
     panel_h = 200
     if len(bands) == 1:
@@ -629,3 +656,249 @@ def status_steps(df: pd.DataFrame) -> tuple[Option, Datasets]:
     }
     option["tooltip"] = {"trigger": "axis", "axisPointer": {"type": "line"}}
     return option, ds
+
+
+# ── region map: a hypothetical country, its subregions and the lines between them ──
+
+REGION_IMPORTS = ["#762a83", "#af8dc3"]  # PRGn: purple where a region is short
+REGION_NEUTRAL = "#ece7ef"
+REGION_EXPORTS = ["#7fbf7b", "#1b7837"]  # green where it has power to spare
+ARROW_COLOUR = "#0072b2"  # Okabe-Ito blue, the "plan" colour `fill_between` draws the value in
+LINK_MIN_PX, LINK_MAX_PX = 3.0, 16.0
+# Text sits on the coloured regions, so it is white with a soft dark shadow, legible on
+# every fill and in both themes (a text box would need a backgroundColor the app refuses).
+MAP_TEXT = {"color": "#ffffff", "textShadowColor": "rgba(0,0,0,0.55)", "textShadowBlur": 4, "fontSize": 11}
+# Bold needs a real family: the app's charts inherit the page font ("inherit"), which a
+# canvas rejects inside a bold font string, silently dropping the weight.
+MAP_BOLD = {"fontWeight": 700, "fontFamily": "sans-serif"}
+
+
+@dataclass
+class Region:
+    """One subregion: its outline (exterior ring, (x, y) pairs), the value that colours it
+    and the text shown at `label_at` (the name in bold, then `label`, one line per \\n)."""
+
+    name: str
+    polygon: list[tuple[float, float]]
+    value: float | None = None
+    label: str | None = None
+    label_at: tuple[float, float] | None = None
+
+
+@dataclass
+class Site:
+    """A point in the country, a plant or a city: a dot sized by `size`, coloured by
+    `carrier` (a carrier id) or neutral, with `label` beside it."""
+
+    name: str
+    x: float
+    y: float
+    size: float
+    carrier: str | None = None
+    label: str | None = None
+    label_position: str = "right"
+
+
+@dataclass
+class Link:
+    """A line between two points. `capacity` sets its width (on the same MW scale as
+    every other link and arrow); `flow` is signed along start -> end and moves arrows
+    that way; a flow above the capacity draws the link overloaded. `label` sits beside
+    its middle, or at `label_at`."""
+
+    name: str
+    start: tuple[float, float]
+    end: tuple[float, float]
+    capacity: float
+    flow: float | None = None
+    label: str | None = None
+    label_at: tuple[float, float] | None = None
+
+
+@dataclass
+class Arrow:
+    """A broad translucent arrow for an intent rather than a wire (what a market plans to
+    move, say), its width on the links' MW scale so the two compare by eye."""
+
+    name: str
+    start: tuple[float, float]
+    end: tuple[float, float]
+    value: float
+    label: str | None = None
+    label_at: tuple[float, float] | None = None
+
+
+def _ring(points: list[tuple[float, float]]) -> list[list[float]]:
+    ring = [[round(float(x), DECIMALS), round(float(y), DECIMALS)] for x, y in points]
+    if ring[0] != ring[-1]:
+        ring.append(ring[0])
+    return ring
+
+
+def _mid(a: tuple[float, float], b: tuple[float, float]) -> list[float]:
+    return [round((a[0] + b[0]) / 2, DECIMALS), round((a[1] + b[1]) / 2, DECIMALS)]
+
+
+def region_map(
+    regions: list[Region],
+    *,
+    outline: list[tuple[float, float]] | None = None,
+    sites: list[Site] | tuple = (),
+    links: list[Link] | tuple = (),
+    arrows: list[Arrow] | tuple = (),
+    value_name: str,
+    unit: str,
+    low_label: str,
+    high_label: str,
+    height: int = 520,
+) -> tuple[Option, Datasets]:
+    """A made-up country split into subregions, for the geography behind a network effect.
+
+    Subregions are filled on a diverging scale centred on zero (purple below, green
+    above: short of power / power to spare, by default), separated by white borders,
+    under the country's `outline` drawn as one strong edge. Links are wires whose width
+    is their capacity, grey within it, vermillion above it, with arrows moving along
+    the flow; an `Arrow` draws an intent on the same width scale. Every text is placed
+    explicitly and drawn level, never along a line or at ECharts' region centres.
+
+    The GeoJSON rides in `option["_maps"]` (popped into the bundle's `maps` by
+    `bundle.Figure`); coordinates are abstract, not degrees (`aspectScale` 1).
+    """
+    features = [
+        {"type": "Feature", "properties": {"name": r.name}, "geometry": {"type": "Polygon", "coordinates": [_ring(r.polygon)]}}
+        for r in regions
+    ]
+    xs = [p[0] for r in regions for p in r.polygon]
+    ys = [p[1] for r in regions for p in r.polygon]
+    pad = 0.04 * max(max(xs) - min(xs), max(ys) - min(ys))
+    geo = {
+        "map": "region",
+        "roam": False,
+        "aspectScale": 1,
+        "boundingCoords": [[min(xs) - pad, max(ys) + pad], [max(xs) + pad, min(ys) - pad]],
+        "left": 8, "right": 8, "top": 8, "bottom": 64,
+        "label": {"show": False},
+        "itemStyle": {"borderColor": "#ffffff", "borderWidth": 2.5, "shadowBlur": 14,
+                      "shadowColor": "rgba(0,0,0,0.22)", "shadowOffsetY": 3},
+        "emphasis": {"disabled": True},
+        "select": {"disabled": True},
+        "tooltip": {"show": False},
+    }
+    values = [r.value for r in regions if r.value is not None]
+    reach = max((abs(v) for v in values), default=1.0) or 1.0
+    series: list[dict[str, Any]] = [{
+        "type": "map",
+        "name": f"{value_name} ({unit})" if unit else value_name,
+        "map": "region",
+        "geoIndex": 0,
+        "data": [{"name": r.name, "value": round(float(r.value), DECIMALS)} for r in regions if r.value is not None],
+    }]
+    visual_map = {
+        "type": "continuous",
+        "seriesIndex": 0,
+        "min": -round(reach, 1),
+        "max": round(reach, 1),
+        "orient": "horizontal",
+        "left": "center",
+        "bottom": 8,
+        "itemWidth": 12,
+        "itemHeight": 200,
+        "calculable": False,
+        "text": [high_label, low_label],
+        "textGap": 8,
+        "inRange": {"color": [REGION_IMPORTS[0], REGION_IMPORTS[1], REGION_NEUTRAL, REGION_EXPORTS[0], REGION_EXPORTS[1]]},
+    }
+    notes: list[dict[str, Any]] = []  # level text, drawn last by one label-only scatter
+
+    if outline:
+        series.append({
+            "type": "lines", "name": "outline", "coordinateSystem": "geo", "polyline": True, "silent": True,
+            "z": 3, "lineStyle": {"color": cs.NEUTRAL, "width": 2.5, "opacity": 1},
+            "data": [{"coords": _ring(outline)}],
+        })
+
+    widest = max([ln.capacity for ln in links] + [a.value for a in arrows] + [1.0])
+    def width(mw: float) -> float:
+        return round(max(LINK_MIN_PX, LINK_MAX_PX * mw / widest), 1)
+
+    if arrows:
+        series.append({
+            "type": "lines", "name": "arrows", "coordinateSystem": "geo", "silent": True, "z": 2,
+            "lineStyle": {"color": ARROW_COLOUR, "opacity": 0.8, "curveness": 0},
+            "data": [{"name": a.name, "coords": [list(a.start), list(a.end)],
+                      "lineStyle": {"width": width(a.value)}} for a in arrows],
+        })
+        # the head is a rotated triangle at the tip: a lines series' own end symbol stays
+        # the width of the shaft, too small to read as an arrow on a broad one
+        series.append({
+            "type": "scatter", "name": "arrow heads", "coordinateSystem": "geo", "silent": True, "z": 2,
+            "symbol": "triangle",
+            "data": [{"name": a.name, "value": list(a.end),
+                      "symbolSize": [round(width(a.value) * 3.2, 1), round(width(a.value) * 2.2, 1)],
+                      "symbolRotate": round(math.degrees(math.atan2(a.end[1] - a.start[1], a.end[0] - a.start[0])) - 90, 1),
+                      "itemStyle": {"color": ARROW_COLOUR, "opacity": 0.8}} for a in arrows],
+        })
+        notes += [{"at": list(a.label_at) if a.label_at else _mid(a.start, a.end), "text": a.label, "bold": True}
+                  for a in arrows if a.label]
+
+    for overloaded in (False, True):
+        group = [ln for ln in links if (ln.flow is not None and abs(ln.flow) > ln.capacity) == overloaded]
+        if not group:
+            continue
+        data = []
+        for ln in group:
+            a, b = (ln.start, ln.end) if (ln.flow or 0) >= 0 else (ln.end, ln.start)
+            data.append({"name": ln.name, "coords": [list(a), list(b)], "lineStyle": {"width": width(ln.capacity)}})
+            if ln.label:
+                notes.append({"at": list(ln.label_at) if ln.label_at else _mid(ln.start, ln.end), "text": ln.label,
+                              "bold": overloaded})
+        series.append({
+            "type": "lines", "name": "overloaded lines" if overloaded else "lines", "coordinateSystem": "geo",
+            "silent": True, "z": 4,
+            "lineStyle": {"color": BAND_ABOVE if overloaded else cs.NEUTRAL, "opacity": 1, "curveness": 0, "cap": "round"},
+            "effect": {"show": True, "symbol": "arrow", "symbolSize": 7, "period": 2.5 if overloaded else 5,
+                       "trailLength": 0, "color": "#ffffff"},
+            "data": data,
+        })
+
+    if sites:
+        biggest = max(s.size for s in sites) or 1.0
+        series.append({
+            "type": "scatter", "name": "sites", "coordinateSystem": "geo", "silent": True, "z": 5,
+            "label": {"show": True, "position": "right", "distance": 6, **MAP_TEXT},
+            "data": [{
+                "name": s.name, "value": [s.x, s.y],
+                "symbolSize": round(10 + 18 * math.sqrt(s.size / biggest), 1),
+                "itemStyle": {"color": cs.colour(s.carrier) if s.carrier and cs.is_carrier(s.carrier) else cs.NEUTRAL,
+                              "borderColor": "#ffffff", "borderWidth": 2},
+                "label": {"formatter": s.label or s.name, "position": s.label_position},
+            } for s in sites],
+        })
+
+    for r in regions:
+        if r.label_at is not None:
+            body = "".join("\n{body|" + line + "}" for line in (r.label or "").split("\n") if line)
+            notes.append({"at": list(r.label_at), "text": "{head|" + r.name + "}" + body})
+    if notes:
+        # rich repeated per item: an item's own label replaces the series' rich styles
+        rich = {"head": {**MAP_TEXT, **MAP_BOLD, "fontSize": 13, "lineHeight": 20},
+                "body": {**MAP_TEXT, "fontFamily": "sans-serif", "lineHeight": 16}}
+        series.append({
+            "type": "scatter", "name": "labels", "coordinateSystem": "geo", "silent": True, "z": 6,
+            "symbolSize": 0,
+            "label": {"show": True, "position": "inside", "lineHeight": 16, **MAP_TEXT},
+            "data": [{"name": n["text"].split("\n")[0].strip("{}").split("|")[-1], "value": n["at"],
+                      "label": {"formatter": n["text"], "rich": rich,
+                                **({**MAP_BOLD, "fontSize": 12} if n.get("bold") else {})}}
+                     for n in notes],
+        })
+
+    option: Option = {
+        "tooltip": {"trigger": "item"},
+        "geo": geo,
+        "visualMap": visual_map,
+        "series": series,
+        "_height": height,
+        "_maps": {"region": {"type": "FeatureCollection", "features": features}},
+    }
+    return option, {}

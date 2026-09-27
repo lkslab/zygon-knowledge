@@ -280,6 +280,9 @@ models:
   - what redispatch is and how to model it
   - how much a zonal market with redispatch costs compared to nodal pricing
   figures:
+  - {id: redispatch_geography, shows: the made-up country with where power is made and used and the lines between}
+  - {id: redispatch_intuition, shows: the market's planned north-south transfer against what the lines carry}
+  - {id: price_by_bus, shows: nodal price per bus against the single zonal price}
   - {id: cost_comparison, shows: daily cost by market design}
   - {id: redispatch_volume, shows: ramp up and down per unit}
   - {id: line_loading, shows: overload implied by the market schedule}
