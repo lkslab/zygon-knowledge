@@ -31,6 +31,14 @@ knobs:
 - {name: averaging window, in: "_averaged(n, hours)", effect: "6 h keeps the daily cycle; 24 h removes it"}
 - {name: which weeks, in: FOUR_WEEKS and profiles.representative_weeks, effect: "the choice of weeks matters more than their number"}
 figures:
+- id: averaging_intuition
+  file: figures/averaging_intuition.json
+  title: What averaging throws away
+  shows: >-
+    A September week of load minus the wind and solar the full plan builds: below zero there is power to spare,
+    above zero something else must supply it. At the model's 4-hour resolution (grey) it swings by about 170 MW
+    a day, a solar surplus at midday and a shortfall at night. Averaged over 12 hours (orange) the swing shrinks to
+    about 65 MW, so the battery that would carry the midday surplus into the night looks worthless.
 - id: capacity_by_method
   file: figures/capacity_by_method.json
   title: Optimal capacity by aggregation method
@@ -43,6 +51,27 @@ figures:
   file: figures/price_duration_by_method.json
   title: Price duration curves by aggregation method
   shows: Sorted prices per variant, axis clipped at 400 EUR/MWh.
+teach:
+- concept: time-series-aggregation
+  gap: >-
+    A year of hourly weather and demand makes a large optimisation, and a real model multiplies that by hundreds
+    of regions and technologies. So models shrink time: average neighbouring hours, or pick a few representative
+    weeks and weight them up to a year. But the hours thrown away are not random: averaging smooths out the daily
+    swings that storage is built for, and a few typical weeks miss the rare calm, cold spells that decide how much
+    firm capacity is needed. The picture (averaging_intuition) shows what averaging removes from one week.
+  remedy: >-
+    Treat the time resolution as a modelling choice to test, not a detail: solve the same problem at full
+    resolution and in the reduced form and compare what changes. Averaging keeps the whole year but loses the
+    within-day shape; representative periods keep the shape but lose the extremes. Here even the total cost is
+    off by a tenth or more, and the capacities, storage above all, by far more. Choose the method by what the
+    question depends on.
+  figure: averaging_intuition
+  example: >-
+    Averaged to 12 hours, the battery disappears (44 MW at full resolution, none averaged), solar is overbuilt by
+    about 40 %, and the cost comes out 12 % low; two representative fortnights overbuild wind by about 80 % and
+    miss most of the hydrogen chain, with the cost 10 % high; they solve in about 2 s against 12 (capacity_mw,
+    capacity_error_pct, cost_error_pct, solve_s). One layer deeper, capacity_by_method compares every method's mix
+    and price_duration_by_method the prices each one produces.
 numbers:
 - {id: snapshots, label: Number of snapshots (per variant), unit: count}
 - {id: solve_s, label: Solve time, unit: s}

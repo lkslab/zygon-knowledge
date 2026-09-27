@@ -190,7 +190,7 @@ def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     om = bundle.Figure(option, ds, title="Expected vs worst-case cost as risk aversion grows",
                        caption="omega = 0 is the risk-neutral plan; omega = 1 minimises the tail alone. Expected cost "
                        "rises monotonically, the worst case falls: the price of insurance.")
-    return {"capacity_mix_by_strategy": mix, "cost_distribution": dist, "omega_sweep": om}
+    return {"cost_distribution": dist, "capacity_mix_by_strategy": mix, "omega_sweep": om}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

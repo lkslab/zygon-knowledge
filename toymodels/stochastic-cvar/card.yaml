@@ -46,18 +46,56 @@ knobs:
 - {name: alpha and omega, in: "ALPHA, OMEGAS, CVAR_OMEGA", effect: "omega 0 is risk-neutral, omega 1 minimises the tail alone; with three scenarios the tail is the worst one"}
 - {name: representative weeks, in: profiles.representative_weeks, effect: "more weeks for fidelity at the cost of solve time"}
 figures:
+- id: cost_distribution
+  file: figures/cost_distribution.json
+  title: Realised annual cost under each gas price
+  shows: >-
+    What a year costs under each plan once the gas price turns out low (40 EUR/MWh), mid (80) or high (160). The
+    plan built for the mid price is cheapest if the price is low or mid, and dearest, about 120 MEUR, if it is
+    high. The stochastic plan, built for all three at once, is never the best and never the worst; the CVaR plan
+    gives up a little more in the cheap years to cut the expensive one to about 112.
 - id: capacity_mix_by_strategy
   file: figures/capacity_mix_by_strategy.json
   title: Capacity by planning strategy
   shows: Stacked capacities for the three deterministic plans, the risk-neutral stochastic plan and the CVaR plan.
-- id: cost_distribution
-  file: figures/cost_distribution.json
-  title: Realised annual cost under each gas price
-  shows: What the mid-price plan, the stochastic plan and the CVaR plan cost once each price is revealed.
 - id: omega_sweep
   file: figures/omega_sweep.json
   title: Expected vs worst-case cost as risk aversion grows
   shows: Expected cost rises and the worst case falls as omega goes from 0 to 1.
+teach:
+- concept: stochastic-programming
+  gap: >-
+    Power plants are built for decades, but nobody knows what gas will cost over their lives. A plan optimised for
+    one expected price is the cheapest possible system if that price comes true, and can be expensive if it does
+    not; a plan that ignores the uncertainty cannot say how exposed it is. The picture (cost_distribution) shows
+    what each plan costs once the price is known.
+  remedy: >-
+    Stochastic programming plans for several futures at once. The capacities are decided now, the same in every
+    future (the first stage); the dispatch adapts to whichever future happens (the second stage); the objective is
+    the cost weighted by each future's probability. The plan hedges: a bit more wind than the mid-price plan, so a
+    high gas price hurts less. In PyPSA `n.set_scenarios` turns a network into such a scenario tree.
+  figure: cost_distribution
+  example: >-
+    With gas at 40, 80 or 160 EUR/MWh (probabilities 0.3, 0.4, 0.3) the stochastic plan builds about 190 MW of wind
+    against 150 for the mid-price plan and costs about 84 MEUR a year on average; knowing the price in advance would
+    save about 5.1 MEUR (the value of perfect information), planning for the mid price alone would lose about 0.3
+    MEUR (the value of the stochastic solution) (capacity_mw, expected_cost_meur_a, evpi_meur_a, vss_meur_a). One
+    layer deeper, capacity_mix_by_strategy shows every plan's mix.
+- concept: cvar
+  gap: >-
+    Minimising the average cost treats a painful expensive year the same as a mild cheap one, as long as they
+    average out. A utility or a country may care much more about the bad year.
+  remedy: >-
+    CVaR, the conditional value at risk, is the average cost of the worst outcomes, here the worst tenth, which is
+    the high-price year. Adding it to the objective with a weight omega trades a higher average for a lower worst
+    case: insurance. At omega 0 the plan is risk-neutral, at 1 it minimises the worst case alone. In PyPSA it is
+    `n.set_risk_preference(alpha, omega)`.
+  figure: omega_sweep
+  builds_on_concept: stochastic-programming
+  example: >-
+    At omega 0.5 the plan builds about 260 MW of wind, the average cost rises by about 1.3 MEUR a year and the
+    worst year falls from about 116 to 112 MEUR (capacity_mw, cvar_premium_meur_a, worst_case_cost_meur_a,
+    omega_sweep).
 numbers:
 - {id: capacity_mw, label: Capacity per carrier for every plan, unit: MW}
 - {id: expected_cost_meur_a, label: Wait-and-see, stochastic, mid-plan (EEV) and CVaR expected costs, unit: MEUR/a}

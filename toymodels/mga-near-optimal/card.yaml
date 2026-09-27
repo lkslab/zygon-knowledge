@@ -41,15 +41,43 @@ figures:
 - id: capacity_ranges
   file: figures/capacity_ranges.json
   title: Capacity ranges within 5 % of the optimal cost
-  shows: Minimum, optimum and maximum capacity per technology inside the slack.
+  shows: >-
+    For each technology the least (blue), the optimal (orange) and the most (green) that can be built while the
+    whole system costs at most 5 % more than the optimum. Wind can be anything from about 680 to 970 MW around an
+    optimum of about 810, solar from about 200 to 740 around 390, gas from about 70 to 170 around 95, and a battery
+    of up to about 70 MW where the optimum builds none.
 - id: alternative_mixes
   file: figures/alternative_mixes.json
   title: The near-optimal mixes
-  shows: One stacked bar per alternative; wind and solar trade against each other while gas hardly moves.
+  shows: >-
+    One stacked bar per alternative, each the mix that pushes one technology to its minimum or maximum while the
+    cost stays within 5 % of the optimum. Wind and solar trade against each other by several hundred MW; gas and
+    the battery move less.
 - id: range_vs_slack
   file: figures/range_vs_slack.json
   title: Wind capacity range against cost slack
   shows: Min and max wind capacity as the slack grows from 1 % to 10 %.
+teach:
+- concept: near-optimal
+  gap: >-
+    A capacity expansion returns one answer, the cheapest mix, to the megawatt, and it is easy to read it as the
+    plan. But the total cost is usually flat near the optimum: very different systems cost almost the same, and
+    the cost assumptions themselves are uncertain by more than those few percent. Other things that matter, such
+    as land, public acceptance or supply chains, are not in the cost at all. Reporting a single optimum hides how
+    much freedom there really is. The picture (capacity_ranges) shows how much.
+  remedy: >-
+    Modelling to generate alternatives (MGA): solve the optimum, then allow the cost to rise by a small slack, say
+    5 %, and re-solve to push each technology as low and as high as it can go within that budget. The ranges say
+    what the optimum really pins down (a technology with a narrow range is a must-have) and what is a choice
+    (a wide range means many near-equal systems). In PyPSA the re-solves keep the cost as a constraint
+    (`n.optimize.optimize_mga`).
+  figure: capacity_ranges
+  example: >-
+    Within 5 % of the optimal cost, about 6.5 MEUR a year, wind can range from about 680 to 970 MW, solar from 200
+    to 740, gas from 70 to 170, and a battery of up to 70 MW appears where the optimum has none; even at 1 % slack
+    wind can be anywhere from about 750 to 880 MW (capacity_range_mw, slack_cost_meur_a, wind_range_by_slack_mw).
+    One layer deeper, alternative_mixes shows each alternative mix and range_vs_slack how the wind range widens
+    with the slack.
 numbers:
 - {id: optimum_cost_meur_a, label: Optimal annual cost, unit: MEUR/a}
 - {id: slack_pct, label: Slack used for the ranges, unit: "%"}

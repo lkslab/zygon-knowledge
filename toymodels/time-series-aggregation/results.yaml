@@ -1,7 +1,7 @@
 numbers:
   full 4-hourly:
     snapshots: 2190
-    solve_s: 12.3
+    solve_s: 13.02
     cost_meur_a: 98.7714
     cost_error_pct: 0.0
     capacity_mw:
@@ -23,7 +23,7 @@ numbers:
     load_weighted_price_eur_mwh: 152.6405
   12-hour means:
     snapshots: 730
-    solve_s: 3.7
+    solve_s: 4.12
     cost_meur_a: 86.9387
     cost_error_pct: -11.98
     capacity_mw:
@@ -45,7 +45,7 @@ numbers:
     load_weighted_price_eur_mwh: 132.5606
   two fortnights:
     snapshots: 168
-    solve_s: 1.71
+    solve_s: 2.05
     cost_meur_a: 108.1667
     cost_error_pct: 9.5121
     capacity_mw:
@@ -67,7 +67,7 @@ numbers:
     load_weighted_price_eur_mwh: 188.8544
   four fortnights:
     snapshots: 336
-    solve_s: 2.05
+    solve_s: 2.29
     cost_meur_a: 124.8347
     cost_error_pct: 26.3875
     capacity_mw:
@@ -90,8 +90,12 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 31.1
+  runtime_s: 33.74
   figures:
+    averaging_intuition:
+      title: What averaging throws away
+      file: figures/averaging_intuition.json
+      height: 360
     capacity_by_method:
       title: Optimal capacity by aggregation method
       file: figures/capacity_by_method.json

@@ -49,7 +49,7 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 23.8
+  runtime_s: 29.17
   figures:
     capacity_ranges:
       title: Capacity ranges within 5 % of the optimal cost

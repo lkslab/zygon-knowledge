@@ -243,6 +243,7 @@ models:
   - when hydrogen storage enters
   figures:
   - {id: capacity_mix_by_cap, shows: stacked capacity per cap}
+  - {id: cost_of_the_cap, shows: the average cost of power and the CO2 price as the cap tightens}
   - {id: cost_breakdown_by_cap, shows: annual cost per technology per cap}
   - {id: price_duration, shows: price duration curve per cap}
   numbers: [total_cost_meur_a, avg_cost_eur_mwh, co2_price_eur_t, capacity_mw, curtailment_pct, vre_share_pct]
@@ -303,8 +304,8 @@ models:
   - how to plan capacity under an uncertain fuel price
   - what CVaR risk aversion does to the mix and what it costs in expectation
   figures:
-  - {id: capacity_mix_by_strategy, shows: capacity per plan}
   - {id: cost_distribution, shows: realised cost per scenario per plan}
+  - {id: capacity_mix_by_strategy, shows: capacity per plan}
   - {id: omega_sweep, shows: expected vs worst-case cost over omega}
   numbers: [evpi_meur_a, vss_meur_a, cvar_premium_meur_a, worst_case_cost_meur_a, capacity_mw, omega_sweep]
   runtime_s: 30
@@ -317,6 +318,7 @@ models:
   - how to run a sequence of horizons with capacity carried over
   - when existing coal retires and what replaces it
   figures:
+  - {id: pathway_intuition, shows: per horizon what is already there, what it builds new and what retired}
   - {id: capacity_by_horizon, shows: stacked capacity per horizon}
   - {id: emissions_path, shows: emissions against the cap}
   - {id: cost_by_horizon, shows: new capex, inherited capex and opex per horizon}
@@ -486,14 +488,14 @@ models:
   builds_on: [capacity-expansion-single-node, unit-commitment, price-duration-and-cost-recovery]
 - id: weather-year-uncertainty
   title: Weather-year uncertainty in investment
-  summary: Three weather years as scenarios with their own wind and solar series; deterministic vs stochastic plans, EVPI and VSS for weather.
+  summary: One weather pattern at three wind intensities as scenarios; deterministic vs stochastic plans, EVPI and VSS for weather.
   concepts: [stochastic-programming, scenarios, uncertainty, weather-year, evpi, vss, two-stage, curtailment]
   answers:
   - how to put different weather years into one stochastic problem
   - what planning on one weather year costs when another arrives
   figures:
-  - {id: capacity_by_plan, shows: capacity per deterministic and stochastic plan}
   - {id: cost_by_weather_year, shows: realised cost of the normal-year and stochastic plans per year}
+  - {id: capacity_by_plan, shows: capacity per deterministic and stochastic plan}
   - {id: curtailment_by_weather_year, shows: curtailment of both plans per year}
   numbers: [evpi_meur_a, vss_meur_a, expected_cost_meur_a, capacity_range_over_deterministic_plans_mw, cost_by_weather_meur_a]
   runtime_s: 18
@@ -506,6 +508,7 @@ models:
   - how coarse the time resolution can be before the mix is wrong
   - what representative weeks get right and wrong
   figures:
+  - {id: averaging_intuition, shows: a week of net load at full resolution against 12-hour means}
   - {id: capacity_by_method, shows: capacity per technology per aggregation}
   - {id: cost_by_method, shows: annual cost per aggregation}
   - {id: price_duration_by_method, shows: price duration curves per aggregation}

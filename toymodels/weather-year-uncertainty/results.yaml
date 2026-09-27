@@ -1,71 +1,71 @@
 numbers:
   capacity_mw:
     deterministic calm:
-      onwind: 254.2679
-      solar: 132.0068
-      CCGT: 90.32
+      onwind: 589.028
+      solar: 290.078
+      CCGT: 94.2984
       battery: 0.0
     deterministic normal:
-      onwind: 509.7148
-      solar: 322.0005
-      CCGT: 95.2534
+      onwind: 432.2758
+      solar: 253.7846
+      CCGT: 94.1725
       battery: 0.0
     deterministic windy:
-      onwind: 241.9538
-      solar: 0.0
-      CCGT: 121.4367
+      onwind: 340.4075
+      solar: 197.2837
+      CCGT: 93.9258
       battery: 0.0
     stochastic:
-      onwind: 530.1967
-      solar: 285.9816
-      CCGT: 95.2046
+      onwind: 588.6179
+      solar: 290.1282
+      CCGT: 92.0704
       battery: 0.0
   capacity_range_over_deterministic_plans_mw:
     onwind:
-    - 241.9538
-    - 509.7148
+    - 340.4075
+    - 589.028
     solar:
-    - 0.0
-    - 322.0005
+    - 197.2837
+    - 290.078
     CCGT:
-    - 90.32
-    - 121.4367
+    - 93.9258
+    - 94.2984
     battery:
     - 0.0
     - 0.0
   expected_cost_meur_a:
-    wait_and_see: 69.2446
-    stochastic: 92.6148
-    normal_plan_eev: 92.6784
-  evpi_meur_a: 23.3702
-  vss_meur_a: 0.0636
+    wait_and_see: 82.3233
+    stochastic: 97.7229
+    normal_plan_eev: 132.9073
+  evpi_meur_a: 15.3996
+  vss_meur_a: 35.1844
   cost_by_weather_meur_a:
     stochastic:
-      calm: 90.3371
-      normal: 98.3384
-      windy: 89.1689
+      calm: 99.9317
+      normal: 97.4719
+      windy: 95.7652
     normal_plan:
-      calm: 90.2261
-      normal: 98.2518
-      windy: 89.5574
+      calm: 240.2795
+      normal: 80.3378
+      windy: 78.1047
   curtailment_pct:
     stochastic:
-      calm: 52.3238
-      normal: 39.7963
-      windy: 67.3316
+      calm: 57.9149
+      normal: 63.2884
+      windy: 67.6192
     normal_plan:
-      calm: 51.9056
-      normal: 40.1392
-      windy: 66.9497
+      calm: 48.5275
+      normal: 53.7818
+      windy: 58.3995
   load_shed_mwh:
     stochastic:
-      calm: 0.0
-      normal: 0.0
-      windy: 589.1974
+      calm: 87.1921
+      normal: 49.7099
+      windy: 0.0
     normal_plan:
-      calm: 0.0
-      normal: 0.0
-      windy: 688.9096
+      calm: 53313.9033
+      normal: -0.0
+      windy: 0.0
   wind_mean_cf:
     calm: 0.28
     normal: 0.35
@@ -73,15 +73,15 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 14.25
+  runtime_s: 16.62
   figures:
-    capacity_by_plan:
-      title: Capacity by planning strategy
-      file: figures/capacity_by_plan.json
-      height: 360
     cost_by_weather_year:
       title: Realised annual cost under each weather year
       file: figures/cost_by_weather_year.json
+      height: 360
+    capacity_by_plan:
+      title: Capacity by planning strategy
+      file: figures/capacity_by_plan.json
       height: 360
     curtailment_by_weather_year:
       title: Wind and solar curtailment under each weather year

@@ -32,7 +32,7 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 21.32
+  runtime_s: 49.16
   figures:
     capacity_continuous_vs_modular:
       title: 'Capacity: continuous relaxation vs blocks with commitment'

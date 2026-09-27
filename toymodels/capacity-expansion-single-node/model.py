@@ -158,6 +158,32 @@ def numbers(networks: dict[str, pypsa.Network]) -> dict:
     return {label: summary(n) for label, n in networks.items()}
 
 
+def cost_of_the_cap(networks: dict[str, pypsa.Network]) -> bundle.Figure:
+    """Tightening the cap: the average cost of power climbs slowly then steeply, and the CO2
+    price, what the last tonne costs to avoid, explodes."""
+    s = {lab: summary(n) for lab, n in networks.items()}
+    xs = [100.0 if CAP_FRACTIONS[lab] is None else 100 * CAP_FRACTIONS[lab] for lab in networks]
+    cost = [s[lab]["avg_cost_eur_mwh"] for lab in networks]
+    price = [max(0.0, s[lab]["co2_price_eur_t"]) for lab in networks]
+    curves = [charts.Curve("average cost of power", xs, cost, color="#0072b2", width=2.5),
+              charts.Curve("CO2 price: the cost of avoiding the last tonne", xs, price, color=charts.BAND_ABOVE, width=2.5, panel=1)]
+    points = [charts.Point(f"{lab} cost", x, c, label=f"{c:.0f}", color="#0072b2", label_position="top")
+              for lab, x, c in zip(networks, xs, cost)]
+    points += [charts.Point(f"{lab} price", x, pr, label=f"{pr:,.0f}", color=charts.BAND_ABOVE, panel=1, label_position="top")
+               for lab, x, pr in zip(networks, xs, price)]
+    option, ds = charts.xy_areas(curves, points=points, x_name="CO2 allowed, % of what the system emits uncapped",
+                                 units=["EUR per MWh", "EUR per t CO2"], x_min=0, x_max=100)
+    for ax in option["xAxis"]:
+        ax["inverse"] = True  # tightening reads left to right
+    option["legend"]["data"] = [c.name for c in curves]
+    return bundle.Figure(
+        option, ds, title="The last tonnes are the dearest",
+        caption="The same system re-planned at ever tighter CO2 caps. Halving emissions raises the average cost of power "
+        "by a fifth; the last few percent cost more than everything before them. The CO2 price is what one more tonne "
+        "allowed would save: it climbs from a few hundred to thousands of EUR per tonne as the cheap options run out.",
+    )
+
+
 def figures(networks: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     labels = list(networks)
     caps = pd.DataFrame({lab: capacities_mw(n) for lab, n in networks.items()}).round(1)
@@ -179,7 +205,7 @@ def figures(networks: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
                         caption="Prices sorted from high to low over the share of hours (axis clipped at 400 EUR/MWh; "
                         "scarcity hours reach the value of lost load). More zero-price hours and a few very high ones "
                         "as the cap tightens: that is how wind and solar recover their capital cost.")
-    return {"capacity_mix_by_cap": mix, "cost_breakdown_by_cap": cost, "price_duration": pdc}
+    return {"capacity_mix_by_cap": mix, "cost_of_the_cap": cost_of_the_cap(networks), "cost_breakdown_by_cap": cost, "price_duration": pdc}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

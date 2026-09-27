@@ -53,7 +53,19 @@ figures:
 - id: capacity_mix_by_cap
   file: figures/capacity_mix_by_cap.json
   title: Optimal capacity by CO2 cap
-  shows: Stacked power capacities per cap; gas gives way to wind and solar, hydrogen appears for the last few percent.
+  shows: >-
+    What the optimiser builds at each CO2 cap, in MW. Uncapped: about 155 MW of wind and 120 of gas. As the cap
+    tightens, wind and solar grow far beyond the peak demand of about 140 MW, gas shrinks, a battery appears, and
+    for the last fifth of the emissions a hydrogen chain (electrolyser, store, fuel cell) that carries energy
+    across weeks. At zero there is no gas at all.
+- id: cost_of_the_cap
+  file: figures/cost_of_the_cap.json
+  title: The last tonnes are the dearest
+  shows: >-
+    The same system re-planned at ever tighter CO2 caps, from no cap on the left to zero emissions on the right.
+    Top: the average cost of power, 63 EUR/MWh uncapped, 75 at half the emissions, 113 at a fifth, 201 at
+    zero. Bottom: the CO2 price the cap implies, what one more tonne allowed would save: about 350 EUR per tonne
+    at half, about 1,070 at a fifth, about 7,950 for the very last tonnes.
 - id: cost_breakdown_by_cap
   file: figures/cost_breakdown_by_cap.json
   title: Annual system cost by technology
@@ -62,6 +74,42 @@ figures:
   file: figures/price_duration.json
   title: Price duration curves
   shows: Sorted prices over the share of hours per cap, axis clipped at 400 EUR/MWh; more zero hours and a few scarcity hours as the cap tightens.
+teach:
+- concept: capacity-expansion
+  gap: >-
+    A dispatch model takes the power plants as given and asks how to run them. Planning asks the harder question
+    of what to build, and the answers depend on each other: wind is cheap to run but only blows sometimes, so it
+    needs something for the calm hours; gas is cheap to build and dear to run; storage only pays if there is
+    surplus to store. Choosing capacities without the hour-by-hour operation that follows gets the mix wrong.
+    The picture (capacity_mix_by_cap) shows what the optimiser builds for one year of weather.
+  remedy: >-
+    Capacity expansion decides the capacities and the hourly operation in one optimisation: every MW built has a
+    yearly cost (its investment spread over its life as an annuity, plus fixed upkeep), every MWh run a running
+    cost, and the optimiser minimises the total over a whole year of load and weather. In PyPSA a component
+    becomes a choice with `p_nom_extendable=True` and a `capital_cost`; a CO2 cap is a global constraint.
+  figure: capacity_mix_by_cap
+  example: >-
+    Uncapped, the cheapest system is about 155 MW of wind and 120 MW of gas, with wind supplying about half the
+    energy; at zero emissions it is about 530 MW each of wind and solar, 85 MW of battery and 140 MW of
+    electrolysis with about 41 GWh of hydrogen storage, and 42 % of the wind and solar is curtailed
+    (capacity_mw, vre_share_pct, h2_store_mwh, curtailment_pct). One layer deeper, cost_breakdown_by_cap shows
+    where the money goes and price_duration how the prices change.
+- concept: co2-cap
+  gap: >-
+    A CO2 cap says how much may be emitted, not what reaching it costs, and the cost of cutting emissions is not
+    spread evenly: the first tonnes are cheap to avoid, the last are not.
+  remedy: >-
+    The cap's shadow price, the dual of the constraint, is what one more tonne allowed would save: the CO2 price
+    that would lead the same system to the same emissions. As the cap tightens the cheap options (more wind
+    instead of gas) run out, and the price climbs steeply, because the last tonnes need storage and hydrogen to
+    cover the calm weeks.
+  figure: cost_of_the_cap
+  builds_on_concept: capacity-expansion
+  example: >-
+    Halving emissions raises the average cost of power from about 63 to 75 EUR/MWh at a CO2 price of about 350
+    EUR per tonne; a fifth of the emissions costs 113 EUR/MWh at about 1,070 EUR per tonne; zero costs 201
+    EUR/MWh at about 7,950 per tonne (avg_cost_eur_mwh, co2_price_eur_t). One layer deeper, cost_breakdown_by_cap
+    shows the total climbing.
 numbers:
 - {id: total_cost_meur_a, label: Annual system cost (per cap), unit: MEUR/a, formula: "objective / 1e6"}
 - {id: avg_cost_eur_mwh, label: System cost per MWh of demand, unit: EUR/MWh}

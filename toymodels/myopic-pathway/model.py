@@ -163,6 +163,37 @@ def numbers(record: dict[int, dict]) -> dict:
     return out
 
 
+def pathway_intuition(record: dict[int, dict]) -> bundle.Figure:
+    """Each horizon's decision laid out: what it inherits, what it builds new, what retires
+    before it. The new builds are all a myopic horizon decides; the rest is history."""
+    years = [str(y) for y in HORIZONS]
+    inherited, retired = [], []
+    new: dict[str, list[float]] = {c: [] for c in CARRIERS}
+    prev = {c: 0.0 for c in CARRIERS}
+    for k, y in enumerate(HORIZONS):
+        cap, built = record[y]["capacity_mw"], record[y]["new_build_mw"]
+        kept = {c: cap[c] - built[c] for c in CARRIERS}
+        inherited.append(round(sum(kept.values()), 1))
+        retired.append(-round(sum(max(0.0, prev[c] - kept[c]) for c in CARRIERS), 1) if k else 0.0)
+        for c in CARRIERS:
+            new[c].append(round(built[c], 1))
+        prev = cap
+    data = {"already built: existing plants and earlier horizons": inherited, **{c: new[c] for c in CARRIERS if any(v > 0.05 for v in new[c])},
+            "retired since the last horizon": retired}
+    option, ds = charts.bars(years, data, "MW", stack=True, horizontal=False, category_name="horizon")
+    for s in option["series"]:
+        if s["name"] == "already built: existing plants and earlier horizons":
+            s["itemStyle"] = {"color": "#c9ced8"}
+        elif s["name"] == "retired since the last horizon":
+            s["itemStyle"] = {"color": "#6b7280"}
+    return bundle.Figure(
+        option, ds, title="Each decade decides only its own builds",
+        caption="Per horizon: the capacity it inherits (pale), what it builds new (coloured by technology) and what "
+        "retired since the last one (below zero). A myopic horizon sees only its own year: 2040 replaces the retiring "
+        "coal with new gas at a low CO2 price, and 2050, facing a far tighter cap, has to add most of the wind and solar at once.",
+    )
+
+
 def figures(record: dict[int, dict]) -> dict[str, bundle.Figure]:
     years = [str(y) for y in HORIZONS]
     option, ds = charts.bars(years, {c: [record[y]["capacity_mw"][c] for y in HORIZONS] for c in CARRIERS}, "MW", stack=True, horizontal=False, category_name="horizon")
@@ -181,7 +212,7 @@ def figures(record: dict[int, dict]) -> dict[str, bundle.Figure]:
     cost = bundle.Figure(option, ds, title="Annual cost by horizon",
                          caption="Capital cost of that horizon's new builds, the annuities still paid on inherited "
                          "assets, and fuel. Demand grows across the horizons, so the total rises.")
-    return {"capacity_by_horizon": cap, "emissions_path": emis, "cost_by_horizon": cost}
+    return {"pathway_intuition": pathway_intuition(record), "capacity_by_horizon": cap, "emissions_path": emis, "cost_by_horizon": cost}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

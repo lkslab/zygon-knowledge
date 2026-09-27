@@ -104,6 +104,37 @@ def numbers(res: dict) -> dict:
     return out
 
 
+AVERAGING_WEEK = ("2025-09-08", "2025-09-15")  # the week the intuition figure draws: net load crosses zero every day
+
+
+def averaging_intuition(res: dict) -> bundle.Figure:
+    """A summer week of net load (load minus the wind and solar the full plan builds) at the
+    model's own 4-hour resolution against 12-hour means: the daily swing a battery lives on
+    is averaged away."""
+    n = res["full 4-hourly"]["net"]
+    cap = n.generators.p_nom_opt
+    avail = n.generators_t.p_max_pu
+    net = n.loads_t.p_set["demand"] - avail["onwind"] * cap["onwind"] - avail["solar"] * cap["solar"]
+    week = net.loc[AVERAGING_WEEK[0]:AVERAGING_WEEK[1]].iloc[:-1]
+    coarse = week.resample("12h").mean().reindex(week.index, method="ffill")
+    df = pd.DataFrame({"every 4 hours": week.round(1), "12-hour means": coarse.round(1)})
+    option, ds = charts.time_series(df, "MW, load minus wind and solar", step="end", slider=False)
+    option["series"][0]["lineStyle"] = {"color": "#6b7280", "width": 1.5}
+    option["series"][0]["itemStyle"] = {"color": "#6b7280"}
+    option["series"][0]["areaStyle"] = {"color": "#6b7280", "opacity": 0.12}
+    option["series"][1]["lineStyle"] = {"color": charts.BAND_ABOVE, "width": 3}
+    option["series"][1]["itemStyle"] = {"color": charts.BAND_ABOVE}
+    swing = float((week.resample("D").max() - week.resample("D").min()).mean())
+    swing_coarse = float((coarse.resample("D").max() - coarse.resample("D").min()).mean())
+    return bundle.Figure(
+        option, ds, title="What averaging throws away",
+        caption=f"A September week of load minus the wind and solar the full-resolution plan builds: below zero there is "
+        f"power to spare, above zero something else must supply. Every 4 hours it swings by about {swing:.0f} MW a day, "
+        f"surplus at midday and shortfall at night; averaged over 12 hours the swing shrinks to about {swing_coarse:.0f} "
+        "MW, and the battery that would move the midday surplus into the night looks useless.",
+    )
+
+
 def figures(res: dict) -> dict[str, bundle.Figure]:
     labels = list(res)
     caps = {c: [round(float(BASE.capacities_mw(r["net"])[c]), 1) for r in res.values()] for c in CARRIERS}
@@ -116,15 +147,16 @@ def figures(res: dict) -> dict[str, bundle.Figure]:
              "solve time x 1": [round(r["solve_s"], 2) for r in res.values()]}
     option, ds = charts.bars(labels, {"cost": costs["cost"]}, "MEUR/a", category_name="aggregation")
     cost = bundle.Figure(option, ds, title="Annual system cost by aggregation method",
-                         caption="Cost is the most forgiving metric: aggregations that get capacities wrong by tens "
-                         "of percent land within a few percent on cost.")
+                         caption="The total cost of each method against the full resolution: averaging comes out low, "
+                         "because it smooths away the hard hours; the representative fortnights come out high, by an amount "
+                         "that depends on which weeks they include.")
     curves = {label: r["net"].buses_t.marginal_price["electricity"] for label, r in res.items()}
     option, ds = charts.duration_curves(curves, "EUR/MWh")
     option["yAxis"]["max"] = 400
     pdc = bundle.Figure(option, ds, title="Price duration curves by aggregation method",
                         caption="Axis clipped at 400 EUR/MWh. The coarse methods lose the scarcity spike and the "
                         "zero-price tail alike; both matter for anything that earns on price spreads.")
-    return {"capacity_by_method": cap, "cost_by_method": cost, "price_duration_by_method": pdc}
+    return {"averaging_intuition": averaging_intuition(res), "capacity_by_method": cap, "cost_by_method": cost, "price_duration_by_method": pdc}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

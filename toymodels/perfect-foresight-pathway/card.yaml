@@ -44,7 +44,11 @@ figures:
 - id: capacity_perfect_vs_myopic
   file: figures/capacity_perfect_vs_myopic.json
   title: Installed capacity per horizon, perfect foresight beside myopic
-  shows: Stacked capacity per horizon and foresight; perfect foresight shifts builds between decades.
+  shows: >-
+    The installed fleet per horizon, perfect foresight beside myopic. In 2030 the myopic plan builds about 140 MW
+    of wind and 120 of solar; with foresight only about 130 MW of solar and no wind at all, since wind gets
+    cheaper later and a farm built in 2030 is paid for in every decade it stands. By 2040 the two plans hold
+    almost the same wind, and by 2050 the same fleet.
 - id: cost_per_horizon
   file: figures/cost_per_horizon.json
   title: Annual cost per horizon
@@ -53,6 +57,26 @@ figures:
   file: figures/emissions_path.json
   title: Emissions against the cap, both foresights
   shows: Emissions per horizon for both plans with the dashed cap.
+teach:
+- concept: perfect-foresight
+  gap: >-
+    Planning a pathway one decade at a time means every decade builds what is cheapest for itself, blind to what
+    comes next: a tighter cap, cheaper technology later, plants that will be stranded. That may be realistic, but
+    it is not the cheapest route, and it cannot say what knowing the future would be worth. The picture
+    (capacity_perfect_vs_myopic) sets the two plans side by side.
+  remedy: >-
+    Perfect foresight solves all horizons as one optimisation (multi-investment periods): every build decision sees
+    every later cap and cost, and an asset's yearly capital cost is paid in each period it is alive. The plan
+    then times its builds, building early only when that pays over the whole pathway. It is the cheapest possible
+    pathway, a benchmark rather than a forecast, and its gap to the myopic plan is the value of foresight. In
+    PyPSA the snapshots get an investment-period level and `n.optimize(multi_investment_periods=True)` solves it.
+  figure: capacity_perfect_vs_myopic
+  example: >-
+    With foresight the 2030 plan builds no wind and only about 130 MW of solar, where the myopic one builds about
+    140 MW of wind and 120 of solar; the 2030 CO2 price is about 67 EUR per tonne instead of 57; by 2050 both hold
+    about 640 MW of wind, and the whole pathway costs about 1 % less (capacity_mw, co2_price_eur_t,
+    foresight_gap_pct). One layer deeper, cost_per_horizon shows where the money is spent and emissions_path that
+    both plans sit on the caps; myopic-pathway explains the decade-by-decade plan.
 numbers:
 - {id: perfect_foresight, label: Per-horizon block (capacity, new build, emissions, cap, CO2 price, cost, VRE share)}
 - {id: myopic_from_results, label: The same fields read from myopic-pathway/results.yaml}

@@ -42,6 +42,15 @@ knobs:
 - {name: load growth, in: MEAN_LOAD_MW, effect: "electrification; scales new build"}
 - {name: existing fleet, in: EXISTING, effect: "build years set when retirements happen"}
 figures:
+- id: pathway_intuition
+  file: figures/pathway_intuition.json
+  title: Each decade decides only its own builds
+  shows: >-
+    Per horizon, what is already there (pale: the existing coal and gas in 2030, earlier horizons' builds
+    after that), what that horizon builds new (coloured) and what retired since the last one (below zero). 2030
+    adds about 140 MW of wind and 120 of solar. 2040 loses the 100 MW of coal and, facing a CO2 price of only
+    about 26 EUR per tonne, replaces it mostly with 92 MW of new gas. 2050, with a cap at a quarter of 2030's
+    emissions, has to add about 470 MW of wind and 240 of solar in one go.
 - id: capacity_by_horizon
   file: figures/capacity_by_horizon.json
   title: Installed capacity by horizon
@@ -54,6 +63,27 @@ figures:
   file: figures/cost_by_horizon.json
   title: Annual cost by horizon
   shows: New-build capital, annuities still paid on inherited assets, and fuel per horizon.
+teach:
+- concept: myopic-foresight
+  gap: >-
+    The way to a low-carbon system takes decades, and the plants built along the way last for decades too. A
+    single optimisation of one future year says what the end state should look like, not how to get there: what
+    exists today, what retires when, what each decade should add. And real investors decide with what they know
+    now, not with certainty about 2050. The picture (pathway_intuition) shows a pathway planned one decade at a
+    time.
+  remedy: >-
+    A myopic pathway solves the horizons in order, each seeing only its own year: its demand, its costs, its CO2
+    cap. What a horizon builds is handed on to the next (brownfield), plants retire at the end of their lifetime,
+    and each horizon builds what is cheapest for itself. That is a realistic picture of decisions made without
+    foresight, and it shows the lock-in: a plant built for 2040 is still there, and still being paid for, in 2050.
+    In PyPSA the horizons are separate solves with `build_year` and `lifetime` on the components.
+  figure: pathway_intuition
+  example: >-
+    Emissions sit on the cap in every horizon, a 75 % cut from 2030 to 2050; the CO2 price falls from about 57 EUR
+    per tonne in 2030 to 26 in 2040 and jumps to about 586 in 2050, and by 2050 about 35 MEUR a year still goes on
+    annuities for plants built earlier (emissions_kt, emission_reduction_2050_vs_2030_pct, co2_price_eur_t,
+    cost_meur_a). One layer deeper, capacity_by_horizon shows the installed fleet and emissions_path the cap;
+    perfect-foresight-pathway solves the same pathway as one problem.
 numbers:
 - {id: "2030 / 2040 / 2050", label: Per horizon block with the fields below}
 - {id: capacity_mw, label: Installed capacity per carrier, unit: MW}

@@ -87,15 +87,15 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 27.37
+  runtime_s: 27.26
   figures:
-    capacity_mix_by_strategy:
-      title: Capacity by planning strategy
-      file: figures/capacity_mix_by_strategy.json
-      height: 360
     cost_distribution:
       title: Realised annual cost under each gas price
       file: figures/cost_distribution.json
+      height: 360
+    capacity_mix_by_strategy:
+      title: Capacity by planning strategy
+      file: figures/capacity_mix_by_strategy.json
       height: 360
     omega_sweep:
       title: Expected vs worst-case cost as risk aversion grows

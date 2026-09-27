@@ -2,7 +2,7 @@ id: weather-year-uncertainty
 title: Weather-year uncertainty in investment
 summary: >-
   Investment when the weather year itself is the unknown. Three weather scenarios
-  differ in their wind and solar time series (a calm, a normal and a windy year),
+  are the same weather at three wind intensities (a calm, a normal and a windy year),
   equally likely and unknown when capacities are chosen. Three deterministic plans,
   the two-stage stochastic plan and the normal-year plan evaluated across all three
   years give the value of the stochastic solution and of perfect information, for
@@ -18,8 +18,8 @@ setup:
   components:
   - extendable Generators onwind, solar, CCGT and an extendable StorageUnit battery, costs from the base model
   - a load-shedding Generator and one GlobalConstraint on CO2
-  snapshots: 112 snapshots (two fortnights at 3-hour resolution), weighted to a year
-  profiles: three seeded weather years with wind mean capacity factors 0.28, 0.35, 0.42 and matching solar noise; the same load in every scenario
+  snapshots: 224 snapshots (two fortnights at 3-hour resolution), weighted to a year
+  profiles: one seeded weather pattern, its wind scaled so the two sampled fortnights average capacity factors of 0.28, 0.35 and 0.42; the same solar and load in every scenario
   assumptions:
   - {name: probabilities, value: "1/3 each"}
   - {name: co2 cap, value: "30 % of the normal year's unconstrained emissions, the same tonnes in every scenario"}
@@ -36,22 +36,51 @@ method: |
   columns with `.to_numpy()` (the scenario frames share the plain snapshot index) and do
   it after `set_scenarios`, or the assignment lands on the wrong axis.
 knobs:
-- {name: weather years, in: WEATHER, effect: "mean capacity factors and seeds; wider spread raises EVPI"}
+- {name: weather years, in: WEATHER, effect: "mean capacity factors and seeds; a wider spread raises EVPI, different seeds also move when the lulls come"}
 - {name: cap fraction, in: CAP_FRACTION, effect: "a binding cap fixes the mix regardless of weather and shrinks VSS"}
 - {name: probabilities, in: PROB, effect: "skew toward the calm year to see firm capacity grow"}
 figures:
-- id: capacity_by_plan
-  file: figures/capacity_by_plan.json
-  title: Capacity by planning strategy
-  shows: Stacked capacity for the three deterministic plans and the stochastic plan.
 - id: cost_by_weather_year
   file: figures/cost_by_weather_year.json
   title: Realised annual cost under each weather year
-  shows: Cost of the normal-year plan and the stochastic plan in each year.
+  shows: >-
+    What a year costs once its weather is known, for the plan built for a normal year and for the stochastic
+    plan built for all three. The normal-year plan is the cheaper one in a normal or windy year, about 80 MEUR
+    against 97, but in a calm year it can only stay within the CO2 cap by cutting demand, and the year costs
+    about 240 MEUR. The stochastic plan costs about 100 in the calm year and stays near that in every year.
+- id: capacity_by_plan
+  file: figures/capacity_by_plan.json
+  title: Capacity by planning strategy
+  shows: >-
+    What each plan builds. The calmer the year it is built for, the more wind and solar: about 340 MW of wind for
+    the windy year, 430 for the normal one, 590 for the calm one. The stochastic plan builds almost exactly the
+    calm year's mix, since it must hold the cap whatever the weather.
 - id: curtailment_by_weather_year
   file: figures/curtailment_by_weather_year.json
   title: Wind and solar curtailment under each weather year
   shows: Curtailment of both plans per year.
+teach:
+- concept: weather-year
+  gap: >-
+    A system with a lot of wind and solar is planned on weather data, usually one year of it. But years differ:
+    a calm year has far less wind than a windy one, and a plan tuned to an average year can come up short when a
+    calm one arrives, burning more gas than allowed or cutting demand. Which year the planner picks quietly
+    decides how much is built. The picture (cost_by_weather_year) shows what happens when the year is not the one
+    planned for.
+  remedy: >-
+    Plan for several weather years at once: the capacities are chosen once, the same for every year, and the
+    dispatch adapts to each year's weather; the objective is the average cost over the years. The plan then
+    builds for the hard years instead of the typical one, and the gap to the single-year plan is the value of
+    taking the uncertainty seriously. In PyPSA `n.set_scenarios` holds the years in one problem, each with its
+    own wind and solar availability.
+  figure: cost_by_weather_year
+  example: >-
+    With the same CO2 tonnes allowed in every year, the normal-year plan meets a calm year only by shedding about
+    53 GWh of demand, and that year costs about 240 MEUR; the stochastic plan builds about 590 MW of wind against
+    430 and averages about 98 MEUR a year against 133 for the normal-year plan, a value of the stochastic solution
+    of about 35 MEUR; knowing the weather in advance would save another 15 (load_shed_mwh, cost_by_weather_meur_a,
+    capacity_mw, expected_cost_meur_a, vss_meur_a, evpi_meur_a). One layer deeper, capacity_by_plan shows every
+    plan's mix and curtailment_by_weather_year the price of the extra wind in windy years.
 numbers:
 - {id: capacity_mw, label: Capacity per carrier per plan, unit: MW}
 - {id: capacity_range_over_deterministic_plans_mw, label: Min and max capacity across the three deterministic plans, unit: MW}
@@ -63,7 +92,8 @@ numbers:
 - {id: load_shed_mwh, label: Lost load per year for both plans, unit: MWh}
 - {id: wind_mean_cf, label: Mean wind capacity factor per year, unit: fraction}
 limitations:
-- With the cap binding in every year the plans are similar and VSS is small; that is a finding, not a bug, and the knobs change it.
+- The CO2 cap is the same tonnes in every year, so a calm year can only be met with more wind and solar or by shedding load; that makes the normal-year plan's calm year very costly and the value of the stochastic solution large. A cap on the average across years, or a carbon price, would soften it.
+- The three years share one weather pattern at different intensities; real years also differ in when their lulls come, which matters as much as how windy they are on average.
 - Two fortnights per year; a real weather-year study needs full years and more of them.
 sources:
 - {title: "PyPSA user guide: Stochastic Optimization", url: "https://docs.pypsa.org/latest/user-guide/optimization/stochastic/"}

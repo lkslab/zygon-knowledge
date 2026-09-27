@@ -28,7 +28,8 @@ BASE = run.load_model("capacity-expansion-single-node")
 TECH = BASE.TECH
 MEAN_LOAD_MW = 100
 CAP_FRACTION = 0.3
-WEATHER = {"calm": dict(mean_cf=0.28, seed=11), "normal": dict(mean_cf=0.35, seed=42), "windy": dict(mean_cf=0.42, seed=7)}
+# one weather pattern at three intensities, so "calm" is calmer in every lull, not just on average
+WEATHER = {"calm": dict(mean_cf=0.28, seed=42), "normal": dict(mean_cf=0.35, seed=42), "windy": dict(mean_cf=0.42, seed=42)}
 PROB = {"calm": 1 / 3, "normal": 1 / 3, "windy": 1 / 3}
 CARRIERS = ["onwind", "solar", "CCGT", "battery"]
 
@@ -39,10 +40,16 @@ def _capex(tech: str) -> float:
 
 
 def weather_series(name: str) -> tuple[pd.Series, pd.Series]:
+    """The year's wind and solar on the two sampled fortnights, the wind rescaled so that its
+    mean over the sampled weeks, the only hours the model sees, is the year's capacity factor
+    (a seeded year's own fortnights can be far calmer or windier than its annual mean)."""
     index, _ = profiles.representative_weeks()
     year = profiles.year_index()
     w = WEATHER[name]
-    return profiles.wind(year, mean_cf=w["mean_cf"], seed=w["seed"]).loc[index], profiles.solar(year, seed=w["seed"]).loc[index]
+    wind = profiles.wind(year, mean_cf=w["mean_cf"], seed=w["seed"]).loc[index]
+    for _ in range(20):  # rescale, clip at full output, repeat until the clipped mean lands on target
+        wind = (wind * w["mean_cf"] / wind.mean()).clip(upper=1.0)
+    return wind, profiles.solar(year, seed=w["seed"]).loc[index]
 
 
 def build(*, weather: str = "normal", scenarios: dict[str, float] | None = None, co2_cap_t: float | None = None,
@@ -147,7 +154,7 @@ def numbers(res: dict) -> dict:
         "cost_by_weather_meur_a": {"stochastic": {s: rc[s]["total"] / 1e6 for s in WEATHER}, "normal_plan": {s: normal_plan[s]["total"] / 1e6 for s in WEATHER}},
         "curtailment_pct": {"stochastic": {s: rc[s]["curtailment_pct"] for s in WEATHER}, "normal_plan": {s: normal_plan[s]["curtailment_pct"] for s in WEATHER}},
         "load_shed_mwh": {"stochastic": {s: rc[s]["load_shed_mwh"] for s in WEATHER}, "normal_plan": {s: normal_plan[s]["load_shed_mwh"] for s in WEATHER}},
-        "wind_mean_cf": {s: WEATHER[s]["mean_cf"] for s in WEATHER},
+        "wind_mean_cf": {s: round(float(weather_series(s)[0].mean()), 4) for s in WEATHER},
     }
 
 
@@ -157,22 +164,24 @@ def figures(res: dict) -> dict[str, bundle.Figure]:
     caps = pd.DataFrame({name: capacities(n) for name, n in nets.items()}).round(1)
     option, ds = charts.bars(labels, {c: caps.loc[c].tolist() for c in CARRIERS}, "MW", stack=True, horizontal=False, category_name="plan")
     mix = bundle.Figure(option, ds, title="Capacity by planning strategy",
-                        caption="A plan for a calm year buys gas and solar, a plan for a windy year buys wind; the "
-                        "stochastic plan sits between and keeps a little more firm capacity than any single year asks for.")
+                        caption="Each deterministic plan builds for one year: the calmer the year, the more wind and solar "
+                        "it needs to stay within the CO2 cap. The stochastic plan must hold the cap in every year, so it "
+                        "builds almost what the calm year asks for.")
     normal_plan = evaluate_plan(capacities(nets["deterministic normal"]), cap_t)
     rc = realised(nets["stochastic"])
     scen = list(WEATHER)
     option, ds = charts.bars(scen, {"normal-year plan": [round(normal_plan[s]["total"] / 1e6, 2) for s in scen],
                                     "stochastic plan": [round(rc[s]["total"] / 1e6, 2) for s in scen]}, "MEUR/a", category_name="weather year")
     cost = bundle.Figure(option, ds, title="Realised annual cost under each weather year",
-                         caption="The normal-year plan pays for its optimism in the calm year, mostly through gas and "
-                         "lost load; the stochastic plan gives up a little in the windy year for that.")
+                         caption="The normal-year plan is cheapest in a normal or windy year; in a calm one it cannot burn "
+                         "more gas without breaking the CO2 cap, so it cuts demand at the value of lost load. The "
+                         "stochastic plan pays for more wind and solar every year to avoid that.")
     option, ds = charts.bars(scen, {"normal-year plan": [round(normal_plan[s]["curtailment_pct"], 1) for s in scen],
                                     "stochastic plan": [round(rc[s]["curtailment_pct"], 1) for s in scen]}, "%", category_name="weather year")
     curt = bundle.Figure(option, ds, title="Wind and solar curtailment under each weather year",
                          caption="Curtailment is the flip side of security: the plan that is safe in the calm year "
-                         "wastes more in the windy one.")
-    return {"capacity_by_plan": mix, "cost_by_weather_year": cost, "curtailment_by_weather_year": curt}
+                         "has more wind and solar than a windy year can use.")
+    return {"cost_by_weather_year": cost, "capacity_by_plan": mix, "curtailment_by_weather_year": curt}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

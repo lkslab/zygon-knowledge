@@ -169,8 +169,10 @@ def figures(n: pypsa.Network, rec: dict[int, dict]) -> dict[str, bundle.Figure]:
     data = {c: [round((rec if k == "perfect" else my)[h]["capacity_mw"][c], 1) for h in HORIZONS for k in ("perfect", "myopic")] for c in CARRIERS}
     option, ds = charts.bars(labels, data, "MW", stack=True, horizontal=False, category_name="horizon and foresight")
     cap = bundle.Figure(option, ds, title="Installed capacity per horizon, perfect foresight beside myopic",
-                        caption="Same horizons, same caps and costs. With foresight the plan front-loads wind and "
-                        "solar because it knows the 2050 cap and the cheaper later builds are coming.")
+                        caption="Same horizons, same caps and costs. With foresight the plan builds no wind in 2030: "
+                        "it knows wind will be cheaper in 2040, and a farm built in 2030 is paid for in every decade it "
+                        "stands, so it meets the 2030 cap with solar and a higher CO2 price and builds the wind a decade "
+                        "later. By 2050 both plans own the same fleet.")
     years = [str(h) for h in HORIZONS]
     costs = {"perfect foresight": [round(sum(rec[h]["cost_meur_a"].values()), 2) for h in HORIZONS],
              "myopic": [round(sum(my[h]["cost_meur_a"].values()), 2) for h in HORIZONS]}
@@ -183,8 +185,8 @@ def figures(n: pypsa.Network, rec: dict[int, dict]) -> dict[str, bundle.Figure]:
     option, ds = charts.xy_lines(em, "Horizon", "kt CO2 per year", symbols=True, x_extra={"min": 2025, "max": 2055, "interval": 10})
     option["series"][2]["lineStyle"] = {**option["series"][2].get("lineStyle", {}), "type": "dashed"}
     emis = bundle.Figure(option, ds, title="Emissions against the cap, both foresights",
-                         caption="Both plans sit on the cap where it binds; foresight can undershoot an early cap when "
-                         "building early is cheaper than building later.")
+                         caption="Both plans sit on the cap in every horizon: foresight changes when things are built, "
+                         "not how much is emitted.")
     return {"capacity_perfect_vs_myopic": cap, "cost_per_horizon": cost, "emissions_path": emis}
 
 

@@ -43,7 +43,11 @@ figures:
 - id: capacity_continuous_vs_modular
   file: figures/capacity_continuous_vs_modular.json
   title: Capacity, continuous relaxation vs blocks with commitment
-  shows: Capacity per technology for the LP and the MILP; gas snaps to a whole block.
+  shows: >-
+    What the optimiser builds when any size is allowed (blue) and when gas comes in 100 MW blocks that must be
+    committed with a minimum load and start-up costs (orange). Gas snaps from about 95 MW to one whole block; wind
+    grows from about 510 to 540 MW and solar from about 320 to 400, because a committed gas plant can no longer
+    follow every dip and the system leans on more wind and solar instead.
 - id: dispatch_with_commitment
   file: figures/dispatch_with_commitment.json
   title: Dispatch in the winter fortnight with commitment
@@ -51,7 +55,44 @@ figures:
 - id: cost_recovery_lp_vs_milp
   file: figures/cost_recovery_lp_vs_milp.json
   title: Revenue against cost, the zero-profit identity breaks
-  shows: Revenue and cost per technology in the LP (equal) and in the MILP (not).
+  shows: >-
+    Each technology's revenue at the model's own prices against its cost. With continuous sizes (LP) every pair
+    matches exactly: the zero-profit rule. With blocks and commitment (MILP) the gas plant earns about 11 MEUR
+    against about 39 MEUR of cost, and wind recovers only about two thirds of its cost.
+teach:
+- concept: modular-expansion
+  gap: >-
+    A linear capacity expansion can build any amount of anything: about 95 MW of gas, run at any level down to zero
+    whenever that suits. Real plants come in fixed sizes, and a gas turbine that is on must run above a minimum and
+    costs money to start. The tidy LP answer can be one no plant manufacturer or operator could deliver. The picture
+    (capacity_continuous_vs_modular) compares the two.
+  remedy: >-
+    Make the lumpiness part of the problem: gas can only be built in whole blocks, and each block is committed hour
+    by hour with a minimum load and start-up costs. The optimiser then chooses whole units and a schedule they can
+    follow, which makes it a mixed-integer problem, slower to solve and more expensive than the LP. In PyPSA a
+    generator gets `p_nom_mod` (the block size) and `committable=True`.
+  figure: capacity_continuous_vs_modular
+  example: >-
+    Gas becomes one 100 MW block, committed 46 % of the time with 21 starts in the two fortnights, and the system
+    costs about 109 MEUR a year instead of 98, 10.6 % more (capacity_mw, gas_blocks_built,
+    gas_hours_committed_pct, gas_start_ups_in_two_fortnights, cost_milp_meur_a, cost_relaxed_meur_a,
+    integrality_gap_pct). One layer deeper, dispatch_with_commitment shows the committed gas holding its minimum.
+- concept: zero-profit
+  gap: >-
+    In a linear model every technology that is built earns exactly its cost back from the prices the model itself
+    produces, which is what makes an optimum look like a working market. That neat identity rests on everything
+    being divisible.
+  remedy: >-
+    With blocks and commitment it breaks. An integer problem has no prices of its own; prices from re-solving with
+    the commitment fixed pay each hour's running cost but not the start-ups, minimum loads and lumpy capacity, so a
+    plant can be needed and still lose money. That is why real markets add uplift or make-whole payments and why
+    capacity mechanisms exist.
+  figure: cost_recovery_lp_vs_milp
+  builds_on_concept: modular-expansion
+  example: >-
+    In the LP every cost_recovery_ratio is 1.0; with blocks and commitment gas recovers about 27 % of its cost and
+    loses about 28 MEUR a year, wind about 67 %, solar just over 100 % (cost_recovery_ratio, gas_profit_meur_a).
+    price-duration-and-cost-recovery shows the identity holding in the LP.
 numbers:
 - {id: cost_relaxed_meur_a, label: LP annual cost, unit: MEUR/a}
 - {id: cost_milp_meur_a, label: MILP annual cost, unit: MEUR/a}

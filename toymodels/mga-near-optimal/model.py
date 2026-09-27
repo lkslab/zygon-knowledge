@@ -146,8 +146,8 @@ def figures(res: dict) -> dict[str, bundle.Figure]:
     option, ds = charts.bars(labels, mixes, "MW", stack=True, horizontal=True, category_name="alternative")
     alt = bundle.Figure(option, ds, title="The near-optimal mixes",
                         caption="Each row is one alternative: the mix that minimises or maximises one technology within "
-                        "the slack. Wind and solar trade against each other; gas capacity hardly moves because "
-                        "the cap and the dark weeks fix it.")
+                        "the slack. Wind and solar trade against each other, several hundred MW either way; gas and "
+                        "the battery move less, but none of them is pinned to its optimum.")
     sw = pd.DataFrame({"min wind": [res["sweep"][s]["min"] for s in SLACKS], "max wind": [res["sweep"][s]["max"] for s in SLACKS]},
                       index=pd.Index([100 * s for s in SLACKS], name="slack")).round(1)
     option, ds = charts.xy_lines(sw, "Cost slack (%)", "MW", symbols=True, x_extra={"min": 0})
