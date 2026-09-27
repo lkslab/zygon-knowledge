@@ -37,6 +37,14 @@ knobs:
 - {name: fleet, in: "FLEET dict or build(fleet=...)", effect: "change capacities or costs; a plant that never becomes marginal earns pure rent"}
 - {name: load shape, in: "build(base_mw=..., peak_mw=...)", effect: "push the peak above the fleet to see load shedding set the price"}
 figures:
+- id: merit_order_rent
+  file: figures/merit_order_rent.json
+  title: "One price for all: what the last unit needed sets"
+  shows: >-
+    The five plants sorted by running cost, a staircase from nuclear at 10 EUR/MWh to oil at 180, at
+    the evening peak of about 10,500 MW. The dashed line is the load: it cuts the OCGT step, so every
+    running plant is paid OCGT's 110 EUR/MWh. Blue is what each plant spends on fuel, green what the
+    cheaper ones earn above that: their producer rent, largest for nuclear and lignite.
 - id: merit_order_curve
   file: figures/merit_order_curve.json
   title: Merit order curve
@@ -52,6 +60,44 @@ figures:
   file: figures/price_series.json
   title: Hourly price
   shows: The bus marginal price, stepping between the marginal costs of CCGT and OCGT.
+teach:
+- concept: marginal-price
+  gap: >-
+    In any hour many plants run at once, each with a different running cost: nuclear at 10 EUR/MWh,
+    gas at 55 or 110. Demand has to be met by some mix of them, as cheaply as possible, and the
+    power needs one price. Paying each plant its own cost sounds fair, but then every plant would
+    simply claim a higher cost; so what should the price be, and who decides which plants run? The
+    staircase (merit_order_rent) pictures the answer: the plants sorted by cost, the load cutting it.
+  remedy: >-
+    The market takes the offers cheapest first, the merit order, until demand is met. The last plant
+    needed, the one the load line cuts, sets the price, and every running plant is paid it. That is
+    the marginal price: what one more MWh would cost. Offering at your true cost is then the best a
+    plant can do, since the price is set by someone else unless you are the last one needed.
+  figure: merit_order_rent
+  example: >-
+    At the evening peak of about 10,500 MW the load reaches the OCGT, so the price is 110 EUR/MWh; the
+    rest of the day CCGT is last and the price is 55 (peak_price_eur_mwh, min_price_eur_mwh, OCGT
+    marginal 3 hours, CCGT 21 in hours_marginal). The load-weighted average is about 64 EUR/MWh
+    (avg_price_eur_mwh). One layer deeper, price_series shows the price stepping between the two over
+    the day and dispatch_stack shows the plants stacked hour by hour.
+- concept: producer-rent
+  gap: >-
+    If every plant is paid the price of the most expensive one running, nuclear sells at 110 EUR/MWh
+    what costs it 10. That looks like a windfall, and it raises the question of how any plant pays for
+    building itself, since the running cost is all the price ever covers for the last plant needed.
+  remedy: >-
+    The difference between the price and a plant's own running cost is its producer rent, the green
+    area in the same picture (merit_order_rent). It is not a windfall on top of costs but what pays back
+    the plant's capital: cheap-to-run plants are expensive to build, and they recover that from rent.
+    The plant that sets the price earns no rent in that hour, so a peaker must earn its keep in the few
+    hours when even it is not enough (price-duration-and-cost-recovery shows those).
+  figure: merit_order_rent
+  builds_on_concept: marginal-price
+  example: >-
+    Over the day nuclear earns about 2.5 MEUR of rent and lignite about 2.7 MEUR, CCGT 0.7 MEUR, OCGT
+    and oil nothing; consumers pay about 12.2 MEUR for power that costs 6.4 MEUR to make
+    (producer_rent_eur, consumer_payment_eur, total_cost_eur). One layer deeper, merit_order_curve
+    marks both the night and the peak load on the staircase.
 numbers:
 - {id: total_cost_eur, label: Total dispatch cost for the day, unit: EUR, formula: "sum_t sum_g mc_g * p_{g,t}"}
 - {id: avg_price_eur_mwh, label: Load-weighted average price, unit: EUR/MWh, formula: "sum_t price_t * load_t / sum_t load_t"}

@@ -21,8 +21,12 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 0.55
+  runtime_s: 0.77
   figures:
+    merit_order_rent:
+      title: 'One price for all: what the last unit needed sets'
+      file: figures/merit_order_rent.json
+      height: 400
     merit_order_curve:
       title: Merit order curve
       file: figures/merit_order_curve.json

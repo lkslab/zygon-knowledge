@@ -181,6 +181,7 @@ models:
   - why the price is set by gas even when nuclear is running
   - how much baseload plants earn when a peaker sets the price
   figures:
+  - {id: merit_order_rent, shows: the staircase at the evening peak, one price for all, the cheaper units' rent shaded}
   - {id: merit_order_curve, shows: supply staircase with the day's min and peak load marked}
   - {id: dispatch_stack, shows: hourly dispatch stacked in merit order}
   - {id: price_series, shows: hourly bus price}
@@ -252,6 +253,7 @@ models:
   - how many full-load hours a CCGT needs to beat an OCGT
   - how to read the optimal mix off a load duration curve
   figures:
+  - {id: screening_intuition, shows: cost lines over full-load hours above the load duration curve, breakevens dropped through both, load bands per technology}
   - {id: screening_curves, shows: cost lines with breakeven hours}
   - {id: load_duration_curve, shows: load duration curve with capacity bands}
   - {id: optimal_mix, shows: LP vs analytic capacities}
@@ -266,6 +268,7 @@ models:
   - whether wind and solar recover their costs at market prices
   - where a wind farm's revenue comes from when the price is zero half the time
   figures:
+  - {id: margin_intuition, shows: sorted prices against the gas level, the scarcity margin that pays for a MW of gas shaded}
   - {id: price_duration, shows: log-scale price duration curve}
   - {id: revenue_vs_cost, shows: revenue beside stacked cost per technology}
   - {id: revenue_split, shows: scarcity vs ordinary-hour margin per generator}
@@ -523,6 +526,7 @@ models:
   - how to model price-elastic demand and what it does to the peak price
   - how to compute consumer and producer surplus from a dispatch
   figures:
+  - {id: welfare_intuition, shows: supply meets demand bids at the peak, the price between them, both surpluses shaded}
   - {id: supply_demand_curves, shows: supply and demand staircases crossing at the peak hour}
   - {id: price_by_case, shows: hourly price per demand case}
   - {id: welfare_by_case, shows: consumer and producer surplus per case}
@@ -581,6 +585,7 @@ models:
   - how much a strategic generator withholds and what it does to the price
   - how to put a smooth demand curve into PyPSA and solve a Cournot game with linopy
   figures:
+  - {id: market_power_intuition, shows: the demand line with the competitive and the Cournot outcome, withheld output and deadweight loss shaded}
   - {id: quantity_by_regime, shows: output per firm under competition, Cournot and monopoly}
   - {id: best_responses, shows: best-response functions crossing at the Nash equilibrium}
   - {id: welfare_by_regime, shows: consumer surplus, producer surplus and deadweight loss per regime}

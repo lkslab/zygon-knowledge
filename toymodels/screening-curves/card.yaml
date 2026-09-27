@@ -38,6 +38,16 @@ knobs:
 - {name: load duration curve, in: "PEAK_MW, BASE_MW, STEPS", effect: "a peakier curve builds more peaker; more steps tighten the analytic match"}
 - {name: value of lost load, in: VOLL, effect: "lower VOLL leaves more peak hours unserved and shrinks the peaker"}
 figures:
+- id: screening_intuition
+  file: figures/screening_intuition.json
+  title: From cost lines to the optimal mix
+  shows: >-
+    Top: what a MW of each plant costs per year against the hours it runs. Nuclear is dear to build
+    but cheap to run, so its line starts high and rises slowly; an open-cycle gas turbine is the
+    reverse. The thick line is the cheapest choice at each utilisation; it switches at about 670,
+    2,330 and 5,000 hours. Bottom: the year's load, sorted from the highest hour. Dropping the
+    switch points down onto it cuts the load into bands: the bottom 4,000 MW, present almost all
+    year, goes to nuclear; the thin top band, present a few hundred hours, to open-cycle gas.
 - id: screening_curves
   file: figures/screening_curves.json
   title: Screening curves
@@ -50,6 +60,45 @@ figures:
   file: figures/optimal_mix.json
   title: Optimal capacities, PyPSA vs screening-curve arithmetic
   shows: The LP's capacities beside the analytic ones per technology.
+teach:
+- concept: screening-curve
+  gap: >-
+    Every kind of power plant trades building cost against running cost: nuclear and coal cost a
+    lot to build and little to run, gas turbines the reverse. Which one is cheaper depends entirely
+    on how many hours a year the plant will run, and demand is not flat: some load is there all year,
+    some only on a few winter evenings. Picking one technology for everything wastes money either
+    way. The two-panel picture (screening_intuition) shows how to match them.
+  remedy: >-
+    Draw each technology's yearly cost per MW as a line against the hours it runs: its building
+    cost plus its running cost times the hours. The cheapest line at each utilisation, the lower
+    envelope, says which plant to use for load that is present that many hours. Where two lines cross
+    is a breakeven. Read those breakevens against the load sorted from its highest hour, and each band
+    of load gets the technology that is cheapest for the hours that band is present.
+  figure: screening_intuition
+  example: >-
+    Nuclear beats coal above 5,000 hours a year, coal beats CCGT above about 2,330, CCGT beats the gas
+    turbine above about 670; the load read at those hours gives about 4,100 MW of nuclear, 2,500 of
+    coal, 2,300 of CCGT and 1,000 of gas turbines (breakeven_full_load_hours, optimal_capacity_mw).
+    One layer deeper, screening_curves and load_duration_curve show each panel on its own, and
+    optimal_mix puts the arithmetic beside PyPSA's answer.
+- concept: load-duration-curve
+  gap: >-
+    A year of hourly load is 8,760 numbers that go up and down with the day and the season. For the
+    question of what to build, the order of the hours hardly matters; how many hours each level of
+    load is present does.
+  remedy: >-
+    Sort the hours from the highest load to the lowest: the load duration curve. Its width at any
+    height is the number of hours that much load is present, which is exactly the utilisation a plant
+    serving that band would get. That is why the breakevens from the cost lines can be read straight
+    off it, as in the lower panel of screening_intuition, and why a capacity expansion in PyPSA against
+    the same curve lands on the same mix.
+  figure: screening_intuition
+  builds_on_concept: screening-curve
+  example: >-
+    PyPSA's expansion against a 100-step load duration curve agrees with the breakeven arithmetic to
+    within about 90 MW per technology; nuclear then runs about 8,090 full-load hours and the gas
+    turbine about 350 (optimal_capacity_mw, analytic_capacity_mw, max_abs_deviation_mw,
+    full_load_hours). One layer deeper, optimal_mix shows the two side by side.
 numbers:
 - {id: breakeven_full_load_hours, label: Full-load hours at which each pair of neighbours breaks even, unit: h, formula: "(capex_i - capex_j) / (mc_j - mc_i)"}
 - {id: optimal_capacity_mw, label: LP capacities, unit: MW}

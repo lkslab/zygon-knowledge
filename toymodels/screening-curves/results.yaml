@@ -40,8 +40,12 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 0.76
+  runtime_s: 0.8
   figures:
+    screening_intuition:
+      title: From cost lines to the optimal mix
+      file: figures/screening_intuition.json
+      height: 560
     screening_curves:
       title: Screening curves
       file: figures/screening_curves.json

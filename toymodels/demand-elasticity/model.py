@@ -18,6 +18,7 @@ import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _lib import bundle, charts, profiles, run  # noqa: E402
+from _lib import carrier_style as cs  # noqa: E402
 
 SLUG = "demand-elasticity"
 TITLE = "Price-responsive demand and market clearing"
@@ -103,6 +104,64 @@ def numbers(nets: dict[str, pypsa.Network]) -> dict:
     return out
 
 
+def _staircase(steps: list[tuple[float, float, float]], upto: float) -> tuple[list[float], list[float]]:
+    """(x0, x1, y) steps cut at `upto`, as the corner points of one polyline."""
+    xs: list[float] = []
+    ys: list[float] = []
+    for x0, x1, y in steps:
+        if x0 >= upto:
+            break
+        xs += [x0, min(x1, upto)]
+        ys += [y, y]
+    return xs, ys
+
+
+def welfare_intuition(nets: dict[str, pypsa.Network]) -> bundle.Figure:
+    """The peak hour with bid blocks: supply meets demand, the price between them, and the
+    two surpluses as the areas either side of it."""
+    fixed, bids = nets["fixed load"], nets["bid blocks"]
+    peak = fixed.loads_t.p_set["demand"].idxmax()
+    load_peak = float(fixed.loads_t.p_set.loc[peak, "demand"])
+    price = float(bids.buses_t.marginal_price.loc[peak, "grid"])
+    served = float(consumption(bids)[peak])
+    fixed_price = float(fixed.buses_t.marginal_price.loc[peak, "grid"])
+    top = 400.0  # the inelastic core's value of lost load runs off the top
+    gens = fixed.generators.loc[list(FLEET)].sort_values("marginal_cost")
+    x1 = gens.p_nom.cumsum()
+    supply = [(float(x1[g] - gens.p_nom[g]), float(x1[g]), float(gens.marginal_cost[g])) for g in gens.index]
+    demand, q0 = [], 0.0
+    for share, wtp in CASES["bid blocks"]:
+        demand.append((q0, q0 + share * load_peak, min(float(wtp), top)))
+        q0 += share * load_peak
+    # a thin riser line under the carriers' coloured steps, so the staircase reads as one curve
+    ax, ay = _staircase(supply, float(x1.max()))
+    curves = [charts.Curve("supply offers", ax, ay, color=cs.NEUTRAL, width=1.2, legend=False)]
+    curves += [charts.Curve(g, [a, b], [y, y], width=4) for g, (a, b, y) in zip(gens.index, supply)]
+    dx, dy = _staircase(demand, load_peak)
+    curves.append(charts.Curve("demand bids", dx, dy, color=cs.NEUTRAL, width=2.5, dashed=True))
+    sx, sy = _staircase(supply, served)
+    cx, cy = _staircase(demand, served)
+    option, ds = charts.xy_areas(
+        curves,
+        [charts.Area("consumer surplus", cx, [price] * len(cx), cy, "#56b4e9"),
+         charts.Area("producer surplus", sx, sy, [price] * len(sx), charts.BAND_BELOW)],
+        [charts.Point("market clears", served, price, label=f"{price:.0f} EUR/MWh, {served:,.0f} MW",
+                      color=charts.BAND_ABOVE, label_position="top"),
+         charts.Point("fixed load would pay", load_peak, fixed_price, label=f"fixed load: {fixed_price:.0f}",
+                      color=cs.NEUTRAL, label_position="top")],
+        x_name="MW at the evening peak",
+        units="EUR/MWh",
+        x_max=float(x1.max()),
+        y_max=top,
+    )
+    return bundle.Figure(
+        option, ds, title="Where supply meets demand, and who gains",
+        caption=f"The plants' staircase against what consumers bid at the evening peak (the core's {VOLL} EUR/MWh "
+        f"runs off the top). They cross at {price:.0f} EUR/MWh and {served:,.0f} MW: the last bids drop out before "
+        "the peaker is needed. Blue is what consumers value above the price, green what plants earn above their cost.",
+    )
+
+
 def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     fixed = nets["fixed load"]
     peak = fixed.loads_t.p_set["demand"].idxmax()
@@ -144,7 +203,7 @@ def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
                                 caption="Consumer surplus is willingness to pay minus price over what is consumed, "
                                 "producer surplus is price minus marginal cost over what is generated. The fixed "
                                 "load values every MWh at the value of lost load, hence its large consumer surplus.")
-    return {"supply_demand_curves": curves, "price_by_case": price_fig, "welfare_by_case": welfare_fig}
+    return {"welfare_intuition": welfare_intuition(nets), "supply_demand_curves": curves, "price_by_case": price_fig, "welfare_by_case": welfare_fig}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

@@ -39,6 +39,16 @@ knobs:
 - {name: fleet, in: FLEET, effect: "the supply staircase the demand curves cross"}
 - {name: load, in: "BASE_MW, PEAK_MW", effect: "how far into the peaker the fixed load reaches"}
 figures:
+- id: welfare_intuition
+  file: figures/welfare_intuition.json
+  title: Where supply meets demand, and who gains
+  shows: >-
+    The evening peak with consumers bidding. The plants' staircase rises from nuclear to oil; the
+    dashed staircase falls from what consumers would pay for the first MWh (far off the top, 3000
+    EUR/MWh) to 40 for the last. They cross at 80 EUR/MWh and 9,000 MW, in the gap between CCGT and
+    OCGT, so the peaker never runs; a fixed load would have taken 10,500 MW at OCGT's 110. Blue is
+    what consumers value above the price they pay (consumer surplus), green what plants earn above
+    their running cost (producer surplus).
 - id: supply_demand_curves
   file: figures/supply_demand_curves.json
   title: Supply and demand curves at the peak hour
@@ -51,6 +61,45 @@ figures:
   file: figures/welfare_by_case.json
   title: Welfare by demand case
   shows: Consumer and producer surplus stacked per case.
+teach:
+- concept: demand-elasticity
+  gap: >-
+    Most models treat demand as a fixed line: whatever power costs, every MWh asked for is served.
+    At the evening peak that drags the price up to the dearest plant needed, the peaker, or to the
+    value of lost load when even it is not enough. Yet some consumers would gladly use less when
+    power is dear: a cold store that can wait an hour, a factory that can shift a shift. A fixed
+    load has no way to say so. The picture (welfare_intuition) shows the market once consumers do.
+  remedy: >-
+    Demand bids: consumers say how much they would pay for each block of power, a falling
+    staircase. The market crosses the plants' offers with those bids, and the price lands where
+    they meet. At the peak the last, least valued blocks drop out before the peaker is needed, so
+    the price is set by a consumer stepping back rather than by the most expensive plant. In PyPSA a
+    bid is a generator with sign -1 whose marginal cost is minus the willingness to pay.
+  figure: welfare_intuition
+  example: >-
+    At the evening peak the price falls from 110 EUR/MWh with a fixed load to 80 with bid blocks, and
+    peak consumption from about 10,500 MW to 9,000, 14 % less; the day's average price drops from
+    about 64 to 58 EUR/MWh (peak_price_eur_mwh, peak_consumption_mw, peak_demand_reduction_pct,
+    avg_price_eur_mwh). One layer deeper, price_by_case shows the whole day for the three demand
+    cases and supply_demand_curves adds the smoother linear demand.
+- concept: welfare
+  gap: >-
+    With a fixed load the model minimises cost, which is fine because the amount served is given.
+    Once demand can shrink, cost minimisation breaks: the cheapest system serves nobody. Something
+    has to weigh the value of consuming against the cost of producing.
+  remedy: >-
+    The market, and the model, maximises welfare: what consumers value the power at minus what it
+    costs to make. It splits at the price into consumer surplus (value above the price paid) and
+    producer surplus (price above running cost), the blue and green areas of the same picture
+    (welfare_intuition). A block is served exactly when it is worth more than it costs, which is
+    why the crossing is the welfare optimum.
+  figure: welfare_intuition
+  builds_on_concept: demand-elasticity
+  example: >-
+    With bid blocks the day's welfare is about 351 MEUR, of which producers get about 4.8 MEUR; the
+    fixed load shows about 570 MEUR only because it values every MWh at the 3000 EUR/MWh lost-load
+    price, so compare cases with the same demand model, not absolute levels (welfare_meur,
+    producer_surplus_meur). One layer deeper, welfare_by_case stacks the two surpluses per case.
 numbers:
 - {id: peak_hour, label: The hour of the day's peak}
 - {id: peak_price_eur_mwh, label: Price at the peak hour (per case), unit: EUR/MWh}

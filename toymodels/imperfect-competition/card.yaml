@@ -41,6 +41,15 @@ knobs:
 - {name: firm costs, in: FIRMS, effect: "asymmetric costs shift output to the cheaper firm; equal costs give the textbook symmetric Cournot"}
 - {name: capacity, in: CAPACITY, effect: "a binding capacity turns the game into a capacity-constrained one"}
 figures:
+- id: market_power_intuition
+  file: figures/market_power_intuition.json
+  title: Holding back to lift the price
+  shows: >-
+    One market hour: the grey line is what consumers would pay for each MW, falling from 200 EUR/MWh.
+    Under competition the cheaper firm sells until the price reaches its cost, 1,800 MW at 20. Two
+    firms that each hold back output sell only about 1,130 MW, and the price rises to about 87. Green
+    is the firms' margin, blue what consumers keep, and vermillion the deadweight loss: power worth
+    more than it costs that nobody makes, plus the dearer firm 2 producing where firm 1 could.
 - id: quantity_by_regime
   file: figures/quantity_by_regime.json
   title: Quantity supplied by regime
@@ -53,6 +62,45 @@ figures:
   file: figures/welfare_by_regime.json
   title: Welfare by regime
   shows: Consumer surplus, producer surplus and deadweight loss stacked to the competitive welfare.
+teach:
+- concept: market-power
+  gap: >-
+    An energy model, like a textbook market, assumes every plant offers its power at its running
+    cost, because no single seller can move the price. With only a few large generators that fails:
+    a firm that holds some capacity back pushes the price up, loses the margin on the withheld MWh
+    and gains a higher price on every MWh it still sells. When the gain is bigger, holding back pays,
+    and a cost-based model never sees it. The picture (market_power_intuition) shows how far the
+    outcome moves.
+  remedy: >-
+    A Cournot model gives each firm a choice of how much to offer, knowing its output moves the
+    price, and looks for the point where neither firm wants to change given what the other does (the
+    Nash equilibrium). It shows how much is withheld and how high the price climbs, which is what
+    market monitoring and bidding rules try to prevent. Here PyPSA solves the competitive benchmark,
+    the Cournot outcome comes from each firm's best response.
+  figure: market_power_intuition
+  example: >-
+    Competition sells 1,800 MW at 20 EUR/MWh; two Cournot firms sell about 1,133 MW at about 87, a
+    markup of about 47 EUR/MWh over the dearer firm's cost; a monopolist would sell 900 MW at 110
+    (total_quantity_mw, price_eur_mwh, markup_over_marginal_cost_eur_mwh, quantity_withheld_mw). One
+    layer deeper, best_responses shows each firm's reply to the other crossing at the equilibrium and
+    quantity_by_regime the output per firm.
+- concept: deadweight-loss
+  gap: >-
+    Withholding moves money from consumers to producers, which is a question of fairness. But
+    something is also lost outright, and that is the part an economist counts as the cost of market
+    power.
+  remedy: >-
+    The deadweight loss is the welfare no one gets: MWh that consumers valued above their cost but
+    that were not made, and output from the dearer firm where the cheaper one could have produced.
+    It is the vermillion area in the same picture (market_power_intuition), between the demand line
+    and the cost, beyond the withheld quantity.
+  figure: market_power_intuition
+  builds_on_concept: market-power
+  example: >-
+    Consumer surplus falls from about 162 kEUR per hour under competition to about 64 under Cournot,
+    producers gain about 66, and about 32 kEUR per hour is lost outright; a monopoly loses about 41
+    (consumer_surplus_keur_h, producer_surplus_keur_h, deadweight_loss_keur_h). One layer deeper,
+    welfare_by_regime stacks the three per regime.
 numbers:
 - {id: demand_curve, label: Intercept and slope of the inverse demand}
 - {id: marginal_cost_eur_mwh, label: Cost per firm, unit: EUR/MWh}

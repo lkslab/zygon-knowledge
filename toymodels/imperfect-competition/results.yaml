@@ -48,8 +48,12 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 3.32
+  runtime_s: 5.06
   figures:
+    market_power_intuition:
+      title: Holding back to lift the price
+      file: figures/market_power_intuition.json
+      height: 400
     quantity_by_regime:
       title: Quantity supplied by regime
       file: figures/quantity_by_regime.json

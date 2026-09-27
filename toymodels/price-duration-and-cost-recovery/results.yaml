@@ -52,6 +52,9 @@ numbers:
   max_price_eur_mwh: 1566.6676
   consumer_payment_meur_a: 133.7131
   system_cost_meur_a: 98.7714
+  scarcity_hours_h: 256.0
+  gas_scarcity_margin_eur_per_mw_a: 90527.7632
+  gas_capital_cost_eur_per_mw_a: 90527.7632
   scarcity_rent_share_pct:
     onwind: 4.2523
     solar: 2.6235
@@ -59,8 +62,12 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 11.79
+  runtime_s: 12.04
   figures:
+    margin_intuition:
+      title: The few hours that pay for the plants
+      file: figures/margin_intuition.json
+      height: 400
     price_duration:
       title: Price duration curve (log scale)
       file: figures/price_duration.json

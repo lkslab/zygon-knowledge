@@ -20,6 +20,7 @@ import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _lib import bundle, charts, finance, run  # noqa: E402
+from _lib import carrier_style as cs  # noqa: E402
 
 SLUG = "price-duration-and-cost-recovery"
 TITLE = "Price duration and cost recovery"
@@ -104,8 +105,51 @@ def numbers(n: pypsa.Network) -> dict:
         "max_price_eur_mwh": float(price.max()),
         "consumer_payment_meur_a": float((price * load * w).sum() / 1e6),
         "system_cost_meur_a": float(n.objective / 1e6),
+        "scarcity_hours_h": float(w[price > gas_level + 1e-3].sum()),
+        "gas_scarcity_margin_eur_per_mw_a": float(((price - gas_level).clip(lower=0) * w).sum()),
+        "gas_capital_cost_eur_per_mw_a": float(n.generators.capital_cost["CCGT"]),
         "scarcity_rent_share_pct": {g: float(100 * r["scarcity rent"] / (r["scarcity rent"] + r["infra-marginal rent"])) if (r["scarcity rent"] + r["infra-marginal rent"]) > 0 else None for g, r in revenue_split(n).iterrows()},
     }
+
+
+def margin_intuition(n: pypsa.Network) -> bundle.Figure:
+    """The price duration curve against the price gas sets: the area above that level is
+    what a MW of gas earns over its running cost, and it equals the MW's annualised cost."""
+    w = n.snapshot_weightings.generators
+    price = n.buses_t.marginal_price["electricity"]
+    level = gas_price_level(n)
+    order = price.sort_values(ascending=False).index
+    hours = w[order].cumsum()
+    xs: list[float] = [0.0]
+    ys: list[float] = [float(price[order[0]])]
+    for h0, h1, v in zip([0.0, *hours.iloc[:-1]], hours, price[order]):
+        # one step per snapshot, merged while the price holds
+        if abs(v - ys[-1]) > 1e-6:
+            xs.append(float(h0)); ys.append(float(v))
+        xs.append(float(h1)); ys.append(float(v))
+    view = 3500.0  # the rest of the year sits at zero
+    keep = [i for i, x in enumerate(xs) if x <= view]
+    xs, ys = [xs[i] for i in keep] + [view], [ys[i] for i in keep] + [ys[keep[-1] + 1] if keep[-1] + 1 < len(ys) else 0.0]
+    above = [i for i, y in enumerate(ys) if y > level + 1e-3]
+    ax = [xs[i] for i in above] + [xs[above[-1] + 1]]
+    ay = [ys[i] for i in above] + [ys[above[-1]]]
+    margin = float(((price - level).clip(lower=0) * w).sum())
+    capital = float(n.generators.capital_cost["CCGT"])
+    scarce = float(w[price > level + 1e-3].sum())
+    option, ds = charts.xy_areas(
+        [charts.Curve("price, sorted", xs, ys, color=cs.NEUTRAL, width=2.5),
+         charts.Curve("price when gas sets it (fuel plus CO2)", [0.0, view], [level, level], color="#0072b2", dashed=True)],
+        [charts.Area("what a MW of gas earns above its running cost", ax, [level] * len(ax), ay, charts.BAND_BELOW)],
+        x_name="Hours of the year, dearest first",
+        units="EUR/MWh",
+        x_max=view,
+    )
+    return bundle.Figure(
+        option, ds, title="The few hours that pay for the plants",
+        caption=f"Every hour of the year sorted by price, dearest first; the remaining {8760 - view:,.0f} hours sit at zero. "
+        f"Gas sets {level:.0f} EUR/MWh when it runs. In the {scarce:.0f} scarcity hours the price climbs above that, and "
+        f"the green area, {margin:,.0f} EUR per MW of gas, is exactly the {capital:,.0f} EUR a MW costs to build per year.",
+    )
 
 
 def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
@@ -136,7 +180,7 @@ def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
     rs = bundle.Figure(option, ds, title="Where the margin comes from",
                        caption="Margin above marginal cost (gas net of carbon) split into scarcity hours, when the price "
                        "is above the gas level and set by storage or lost load, and ordinary hours.")
-    return {"price_duration": pdc, "revenue_vs_cost": rc, "revenue_split": rs}
+    return {"margin_intuition": margin_intuition(n), "price_duration": pdc, "revenue_vs_cost": rc, "revenue_split": rs}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

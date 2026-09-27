@@ -19,6 +19,7 @@ import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _lib import bundle, charts, profiles, run  # noqa: E402
+from _lib import carrier_style as cs  # noqa: E402
 
 SLUG = "screening-curves"
 TITLE = "Screening curves and the optimal thermal mix"
@@ -116,6 +117,51 @@ def numbers(n: pypsa.Network) -> dict:
     }
 
 
+def screening_intuition(n: pypsa.Network) -> bundle.Figure:
+    """The two-panel textbook figure: cost lines over full-load hours above, the load duration
+    curve below on the same hours, the breakevens dropped through both, the load bands each
+    technology serves filled in its colour."""
+    be = {k: v for k, v in breakevens().items() if 100 < v < HOURS}  # the 14 h against lost load would crowd the axis
+    curves = [charts.Curve(t, [0.0, HOURS], [c / 1e3, (c + m * HOURS) / 1e3], width=1.5) for t, (c, m) in TECH.items()]
+    # the lower envelope is piecewise linear, with a vertex at every breakeven
+    grid = sorted({0.0, float(HOURS), *be.values()})
+    envelope = [min(c + m * h for c, m in TECH.values()) / 1e3 for h in grid]
+    curves.append(charts.Curve("cheapest at that utilisation", grid, envelope, color=cs.NEUTRAL, width=3.5))
+    levels, weights = profiles.load_duration_synthetic(STEPS, PEAK_MW, BASE_MW)
+    hx: list[float] = []
+    hy: list[float] = []
+    h0 = 0.0
+    for level, w in zip(levels.to_numpy(), weights.to_numpy()):
+        hx += [h0, h0 + float(w)]
+        hy += [float(level)] * 2
+        h0 += float(w)
+    curves.append(charts.Curve("load duration curve", hx, hy, color=cs.NEUTRAL, width=2, panel=1))
+    areas = []
+    lo = 0.0
+    caps = n.generators.p_nom_opt
+    for tech in TECH:
+        hi = lo + float(caps[tech])
+        xs = [x for x, y in zip(hx, hy) if y > lo + 1e-6]
+        ys = [min(y, hi) for x, y in zip(hx, hy) if y > lo + 1e-6]
+        if xs:
+            areas.append(charts.Area(tech, xs, [lo] * len(xs), ys, cs.colour(tech) or cs.NEUTRAL, panel=1))
+        lo = hi
+    option, ds = charts.xy_areas(
+        curves, areas,
+        x_name="Hours per year a plant runs (top) / the load is exceeded (bottom)",
+        units=["kEUR per MW per year", "MW"],
+        x_marks=[{"value": round(v), "label": f"{round(v):,} h"} for v in be.values()],
+        x_max=float(HOURS),
+        y_max=[400.0, None],
+    )
+    return bundle.Figure(
+        option, ds, title="From cost lines to the optimal mix",
+        caption="Top: what a MW of each technology costs per year if it runs a given number of hours, building cost "
+        "plus running cost; the thick line is the cheapest at each utilisation. Bottom: the load, sorted from the "
+        "highest hour; each band of it is served by the technology that is cheapest for the hours that band is present.",
+    )
+
+
 def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
     h = np.linspace(0, HOURS, 60)
     lines = pd.DataFrame({t: (c + m * h) / 1e3 for t, (c, m) in TECH.items()}, index=pd.Index(h.round(0), name="flh"))
@@ -145,7 +191,7 @@ def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
     option, ds = charts.bars(list(TECH), {"optimised": [round(float(caps[t]), 1) for t in TECH], "analytic": [round(analytic[t], 1) for t in TECH]}, "MW", category_name="technology")
     mix = bundle.Figure(option, ds, title="Optimal capacities: PyPSA vs screening-curve arithmetic",
                         caption="The LP and the breakeven arithmetic agree up to the load duration curve's step resolution.")
-    return {"screening_curves": sc, "load_duration_curve": ldc_fig, "optimal_mix": mix}
+    return {"screening_intuition": screening_intuition(n), "screening_curves": sc, "load_duration_curve": ldc_fig, "optimal_mix": mix}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

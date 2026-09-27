@@ -658,6 +658,192 @@ def status_steps(df: pd.DataFrame) -> tuple[Option, Datasets]:
     return option, ds
 
 
+# ── xy areas: the market diagram, curves over a numeric x with the areas between them ──
+
+AREA_OPACITY = 0.35
+
+
+@dataclass
+class Curve:
+    """A line through explicit (x, y) points; a step is drawn by repeating an x. A carrier
+    id as `name` takes the carrier's colour (the client's), anything else `color` or the
+    next Okabe-Ito colour. `legend=False` keeps a guide line out of the legend."""
+
+    name: str
+    x: list[float]
+    y: list[float]
+    color: str | None = None
+    dashed: bool = False
+    width: float = 2.0
+    panel: int = 0
+    legend: bool = True
+
+
+@dataclass
+class Area:
+    """A filled region between `lower` and `upper`, both read at the points `x` (repeat an
+    x for a vertical edge). The fill carries `name` in the legend, so the shading says what
+    it is."""
+
+    name: str
+    x: list[float]
+    lower: list[float]
+    upper: list[float]
+    color: str
+    panel: int = 0
+
+
+@dataclass
+class Point:
+    """A marked point (a market clearing, an equilibrium) with `label` beside it."""
+
+    name: str
+    x: float
+    y: float
+    label: str | None = None
+    color: str | None = None
+    panel: int = 0
+    label_position: str = "right"
+
+
+def xy_areas(
+    curves: list[Curve],
+    areas: list[Area] | tuple = (),
+    points: list[Point] | tuple = (),
+    *,
+    x_name: str,
+    units: list[str] | str,
+    x_marks: list[dict[str, Any]] | tuple = (),
+    y_marks: list[dict[str, Any]] | tuple = (),
+    x_min: float | None = 0,
+    x_max: float | None = None,
+    y_max: list[float | None] | float | None = None,
+    height: int | None = None,
+) -> tuple[Option, Datasets]:
+    """The textbook market diagram: curves over a numeric x with the areas between them filled.
+
+    Every curve, area and point sits on a panel; `units` names each panel's value axis (one
+    unit, one panel). Panels stack on a shared x axis (only the bottom one labelled), so a
+    breakeven read off the top panel drops straight onto the bottom one: `x_marks` (dashed
+    verticals, `{"value", "label"}`) run through every panel, `y_marks` (dashed horizontals,
+    `{"value", "label", "panel"?}`) through one.
+
+    An area is drawn with the stack trick, a transparent series along its lower edge and its
+    depth stacked on top with a fill, so it needs no custom series. Areas come first in the
+    legend, in their own colours (green for what someone gains, vermillion for what is lost
+    or paid, by the `Band` convention), then the curves and points.
+    """
+    units = [units] if isinstance(units, str) else list(units)
+    y_maxes = y_max if isinstance(y_max, list) else [y_max] * len(units)
+    palette = Palette()
+    datasets: Datasets = {}
+    series: list[dict[str, Any]] = []
+    names: list[str] = []
+
+    def idx(panel: int) -> dict[str, Any]:
+        return {"xAxisIndex": panel, "yAxisIndex": panel} if panel else {}
+
+    for k, area in enumerate(areas):
+        ds_id = f"area{k}"
+        datasets[ds_id] = dataset(["x", "lower", "depth"],
+                                  [[x, lo, hi - lo] for x, lo, hi in zip(area.x, area.lower, area.upper)])
+        common = {"type": "line", "name": area.name, "showSymbol": False, "silent": True, "datasetId": ds_id,
+                  "stack": ds_id, "stackStrategy": "all", "itemStyle": {"color": area.color}, "lineStyle": {"width": 0, "opacity": 0},
+                  **idx(area.panel)}
+        series.append({**common, "encode": {"x": "x", "y": "lower"}})
+        series.append({**common, "encode": {"x": "x", "y": "depth"},
+                       "areaStyle": {"color": area.color, "opacity": AREA_OPACITY}})
+        if area.name not in names:
+            names.append(area.name)
+
+    for k, curve in enumerate(curves):
+        ds_id = f"curve{k}"
+        datasets[ds_id] = dataset(["x", "y"], [[x, y] for x, y in zip(curve.x, curve.y)])
+        s = line_series(curve.name, ds_id, "x", palette, y="y")
+        if curve.color:
+            s["itemStyle"] = {"color": curve.color}
+        s["lineStyle"] = {**s.get("lineStyle", {}), "width": curve.width,
+                          **({"color": curve.color} if curve.color else {}),
+                          **({"type": "dashed"} if curve.dashed else {})}
+        s.update(idx(curve.panel))
+        series.append(s)
+        if curve.legend and curve.name not in names:
+            names.append(curve.name)
+
+    for j, p in enumerate(points):
+        ds_id = f"point{j}"
+        datasets[ds_id] = dataset(["x", "y"], [[p.x, p.y]])
+        colour = p.color or cs.NEUTRAL
+        series.append({
+            "type": "scatter", "name": p.name, "datasetId": ds_id, "encode": {"x": "x", "y": "y"},
+            "symbolSize": 12, "z": 5,
+            "itemStyle": {"color": colour, "borderColor": "#ffffff", "borderWidth": 2},
+            "label": {"show": bool(p.label), "formatter": p.label or "", "position": p.label_position,
+                      "fontSize": 11, "fontWeight": 600, "fontFamily": "sans-serif", "color": colour},
+            **idx(p.panel),
+        })
+        if p.name not in names:
+            names.append(p.name)
+
+    n_panels = len(units)
+    # the marks hang off the first series drawn on each panel; vertical labels only on the bottom one
+    first_on: dict[int, dict[str, Any]] = {}
+    for s in series:
+        first_on.setdefault(s.get("yAxisIndex", 0), s)
+    for panel, s in first_on.items():
+        data: list[dict[str, Any]] = [
+            {"xAxis": m["value"], "name": m.get("label", "") if panel == n_panels - 1 else ""} for m in x_marks
+        ]
+        data += [{"yAxis": m["value"], "name": m.get("label", "")} for m in y_marks if m.get("panel", 0) == panel]
+        if data:
+            s["markLine"] = {**mark_lines([]), "data": data}
+
+    panel_h = 200
+    x_extra: dict[str, Any] = {}
+    if x_min is not None:
+        x_extra["min"] = x_min
+    if x_max is not None:
+        x_extra["max"] = x_max
+    if n_panels == 1:
+        grid: Any = _grid(bottom=24)
+        x_axis: Any = x_value_axis(x_name, **x_extra)
+        y_axis: Any = value_axis(units[0], **({"max": y_maxes[0]} if y_maxes[0] is not None else {}))
+        default_height = 400
+    else:
+        grid, x_axis, y_axis = [], [], []
+        for j, unit in enumerate(units):
+            last = j == n_panels - 1
+            # fixed margins, not containLabel: the panels' value labels differ in width, and the
+            # x axes must line up for a mark to drop straight through them
+            g = {**GRID, "left": 72, "containLabel": False, "top": GRID["top"] + j * (panel_h + PANEL_GAP)}
+            if last:
+                g["bottom"] = 56
+            else:
+                g.pop("bottom")
+                g["height"] = panel_h
+            grid.append(g)
+            ax = {**x_value_axis(x_name if last else "", **x_extra), "gridIndex": j}
+            if not last:
+                ax["axisLabel"] = {"show": False}
+            x_axis.append(ax)
+            y_axis.append({**value_axis(unit, **({"max": y_maxes[j]} if y_maxes[j] is not None else {})),
+                           "gridIndex": j})
+        default_height = GRID["top"] + n_panels * panel_h + (n_panels - 1) * PANEL_GAP + 96
+    option: Option = {
+        "dataset": [{"id": ds_id} for ds_id in datasets],
+        "tooltip": {"trigger": "item"},
+        "grid": grid,
+        "xAxis": x_axis,
+        "yAxis": y_axis,
+        "series": series,
+        "legend": _legend(names),
+        "_height": height or default_height,
+    }
+    if n_panels > 1:
+        option["axisPointer"] = {"link": [{"xAxisIndex": "all"}]}
+    return option, datasets
+
+
 # ── region map: a hypothetical country, its subregions and the lines between them ──
 
 REGION_IMPORTS = ["#762a83", "#af8dc3"]  # PRGn: purple where a region is short

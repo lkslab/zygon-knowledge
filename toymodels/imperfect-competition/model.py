@@ -21,6 +21,7 @@ import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _lib import bundle, charts, run  # noqa: E402
+from _lib import carrier_style as cs  # noqa: E402
 
 SLUG = "imperfect-competition"
 TITLE = "Cournot competition against a linear demand curve"
@@ -125,6 +126,43 @@ def numbers(n: pypsa.Network) -> dict:
     return out
 
 
+def market_power_intuition(n: pypsa.Network) -> bundle.Figure:
+    """The demand line with the competitive and the Cournot outcome: output held back, the
+    price lifted, and the welfare lost shaded."""
+    reg = regimes(n)
+    (n1, c1), (n2, c2) = FIRMS.items()
+    comp, nash = reg["competitive"], reg["cournot"]
+    q_c, p_c = sum(comp.values()), price(comp)
+    q1, q2 = nash[n1], nash[n2]
+    q_n, p_n = q1 + q2, price(nash)
+    q_max = A / B
+    demand = charts.Curve("what consumers would pay", [0.0, q_max], [A, 0.0], color=cs.NEUTRAL, width=2.5)
+    cost1 = charts.Curve(f"{n1}'s cost", [0.0, CAPACITY], [c1, c1], color="#0072b2", dashed=True)
+    cost2 = charts.Curve(f"{n2}'s cost", [0.0, CAPACITY], [c2, c2], color="#cc79a7", dashed=True)
+    areas = [
+        charts.Area("consumer surplus", [0.0, q_n], [p_n, p_n], [A, p_n], "#56b4e9"),
+        # the firms' margin: firm 1 produces first, firm 2 on top of it
+        charts.Area("producer surplus", [0.0, q1, q1, q_n], [c1, c1, c2, c2], [p_n] * 4, charts.BAND_BELOW),
+        # lost: firm 2's output made at its higher cost, and the MWh no one makes at all
+        charts.Area("deadweight loss", [q1, q_n], [c1, c1], [c2, c2], charts.BAND_ABOVE),
+        charts.Area("deadweight loss", [q_n, q_c], [c1, c1], [p_n, p_c], charts.BAND_ABOVE),
+    ]
+    points = [
+        charts.Point("competitive outcome", q_c, p_c, label=f"competition: {p_c:.0f} EUR/MWh",
+                     color=cs.NEUTRAL, label_position="top"),
+        charts.Point("Cournot outcome", q_n, p_n, label=f"two strategic firms: {p_n:.0f} EUR/MWh, {q_n:,.0f} MW",
+                     color=charts.BAND_ABOVE, label_position="right"),
+    ]
+    option, ds = charts.xy_areas([demand, cost1, cost2], areas, points, x_name="Quantity (MW)", units="EUR/MWh",
+                                 x_max=q_max, y_max=A)
+    return bundle.Figure(
+        option, ds, title="Holding back to lift the price",
+        caption=f"Consumers' willingness to pay falls along the line. Competition would sell {q_c:,.0f} MW at firm 1's "
+        f"cost of {c1:.0f} EUR/MWh; two firms that each hold back output sell {q_n:,.0f} MW at {p_n:.0f}. Green is the "
+        "firms' margin, blue what is left for consumers, vermillion what is lost to everyone.",
+    )
+
+
 def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
     reg = regimes(n)
     labels = list(reg)
@@ -174,7 +212,7 @@ def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
     wf = bundle.Figure(option, ds, title="Welfare by regime",
                        caption="The stacks sum to the competitive welfare. Market power moves surplus from consumers "
                        "to producers and destroys the deadweight-loss slice outright.")
-    return {"quantity_by_regime": qty, "best_responses": brf, "welfare_by_regime": wf}
+    return {"market_power_intuition": market_power_intuition(n), "quantity_by_regime": qty, "best_responses": brf, "welfare_by_regime": wf}
 
 
 def main(outdir: Path | None = None, runtime_start: float | None = None) -> dict:

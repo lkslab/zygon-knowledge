@@ -34,8 +34,12 @@ numbers:
 meta:
   pypsa: 1.3.0
   solver: highs
-  runtime_s: 1.83
+  runtime_s: 2.05
   figures:
+    welfare_intuition:
+      title: Where supply meets demand, and who gains
+      file: figures/welfare_intuition.json
+      height: 400
     supply_demand_curves:
       title: Supply and demand curves at the peak hour
       file: figures/supply_demand_curves.json
