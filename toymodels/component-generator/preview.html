@@ -1,0 +1,78 @@
+<!doctype html>
+<html><head><meta charset='utf-8'><title>What a Generator is</title><meta name='viewport' content='width=device-width, initial-scale=1'><style>
+:root { --bg:#ffffff; --fg:#171717; --muted:#6b7280; --border:#e5e5e5; --card:#ffffff; }
+html.dark { --bg:#191919; --fg:#e5e5e5; --muted:#9ca3af; --border:#333333; --card:#222222; }
+body { margin:0; background:var(--bg); color:var(--fg);
+  font-family: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; font-size:12px; }
+main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+.sub { color: var(--muted); font-size: 12.5px; margin: 0 0 20px; }
+.card { border: 1px solid var(--border); border-radius: 24px; padding: 16px 20px; margin: 12px 0;
+  background: var(--card); }
+.title { font-size: 14px; font-weight: 600; }
+.caption { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+.chart { width: 720px; max-width: 100%; margin: 4px 0; }
+.bar { display:flex; justify-content: space-between; align-items: baseline; }
+button { font: inherit; background: none; color: var(--fg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+table.numbers { border-collapse: collapse; margin: 8px 0 16px; font-size: 12.5px; }
+table.numbers td { padding: 2px 12px 2px 0; border-bottom: 1px solid var(--border); }
+table.numbers td:nth-child(2) { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
+</style><script src='https://cdn.jsdelivr.net/npm/echarts@6/dist/echarts.min.js'></script></head><body><main><div class="bar"><h1>What a Generator is</h1><button id="theme">light / dark</button></div><p class="sub">One bus, one load, two Generators built from the same component: a wind farm whose
+availability changes every hour (`p_max_pu` a time series, `marginal_cost` 0) and a gas
+plant that is always available but costs 55 EUR/MWh to run. Each Generator is one decision
+per hour, bounded by its capacity times its availability, and the optimiser fills the load
+with the cheaper one first.</p><table class="numbers"><tr><td>wind_energy_mwh</td><td>16106.7988</td></tr><tr><td>wind_available_mwh</td><td>16800.0</td></tr><tr><td>wind_curtailed_mwh</td><td>693.2012</td></tr><tr><td>gas_energy_mwh</td><td>4850.1387</td></tr><tr><td>hours_gas_runs</td><td>17</td></tr><tr><td>total_cost_eur</td><td>266757.626</td></tr><tr><td>peak_load_mw</td><td>1098.9016</td></tr><tr><td>wind_p_max_pu_range</td><td>[0.1611, 0.5077]</td></tr></table><section class="card"><div class="title">Two Generators on one bus</div><div id="chart-generator_schematic" class="chart"></div><div class="caption">One component, two sets of attribute values: where it sits (bus), how much it can give (p_nom times p_max_pu, a time series for the wind farm, 1 for the gas plant) and what each MWh costs (marginal_cost). The load below is what they have to meet.</div></section><section class="card"><div class="title">Output stays inside p_nom times p_max_pu</div><div id="chart-dispatch_within_bounds" class="chart"></div><div class="caption">Wind output (area) follows its dashed upper bound whenever that is below the load, and the gas plant fills what is left; when the wind could give more than the load, the surplus is curtailed, since a Generator's output is a free variable between its bounds.</div></section></main><script>
+const FIGURES = {"generator_schematic": {"version": 1, "option": {"tooltip": {"show": false}, "series": [{"type": "graph", "name": "schematic", "layout": "none", "roam": false, "silent": true, "animation": false, "zlevel": 0, "z": 2, "left": 0, "right": 0, "top": 0, "bottom": 0, "lineStyle": {"color": "#6b7280", "curveness": 0}, "data": [{"name": "_anchor_nw", "x": 0, "y": 0, "symbolSize": 0, "label": {"show": false}}, {"name": "_anchor_se", "x": 720, "y": 300, "symbolSize": 0, "label": {"show": false}}, {"name": "grid:west", "x": 260.0, "y": 190, "symbolSize": 0, "label": {"show": false}}, {"name": "grid:east", "x": 460.0, "y": 190, "symbolSize": 0, "label": {"show": false}}, {"name": "onwind", "x": 262, "y": 86, "symbol": "circle", "symbolSize": 36, "itemStyle": {"color": "#235ebc", "borderColor": "#ffffff", "borderWidth": 2, "opacity": 1.0}, "label": {"show": true, "position": "inside", "formatter": "G", "color": "#ffffff", "fontWeight": 700, "fontSize": 15, "fontFamily": "sans-serif"}}, {"name": "CCGT", "x": 458, "y": 86, "symbol": "circle", "symbolSize": 36, "itemStyle": {"color": "#a85522", "borderColor": "#ffffff", "borderWidth": 2, "opacity": 1.0}, "label": {"show": true, "position": "inside", "formatter": "G", "color": "#ffffff", "fontWeight": 700, "fontSize": 15, "fontFamily": "sans-serif"}}, {"name": "demand", "x": 360, "y": 262, "symbol": "triangle", "symbolSize": 26, "itemStyle": {"color": "#110d63", "borderColor": "#ffffff", "borderWidth": 2, "opacity": 0.45}, "label": {"show": false}, "symbolRotate": 180}, {"name": "grid@onwind", "x": 262, "y": 190, "symbolSize": 0, "label": {"show": false}}, {"name": "grid@CCGT", "x": 458, "y": 190, "symbolSize": 0, "label": {"show": false}}, {"name": "grid@demand", "x": 360, "y": 190, "symbolSize": 0, "label": {"show": false}}, {"name": "grid:label", "x": 260.0, "y": 197, "symbolSize": 0, "label": {"show": true, "position": "bottom", "distance": 0, "formatter": "{head|grid}\n{body|Bus, carrier AC}", "rich": {"head": {"fontWeight": 700, "fontSize": 12, "lineHeight": 18}, "body": {"fontFamily": "ui-monospace, SFMono-Regular, Menlo, monospace", "fontSize": 11, "lineHeight": 16}}, "opacity": 1.0, "align": "left"}}, {"name": "onwind:label", "x": 238.0, "y": 86, "symbolSize": 0, "label": {"show": true, "position": "left", "distance": 0, "formatter": "{head|onwind}\n{body|bus: grid}\n{body|p_nom: 2000 MW}\n{body|marginal_cost: 0 EUR/MWh}\n{body|p_max_pu: 0.16..0.51 per hour}", "rich": {"head": {"fontWeight": 700, "fontSize": 12, "lineHeight": 18}, "body": {"fontFamily": "ui-monospace, SFMono-Regular, Menlo, monospace", "fontSize": 11, "lineHeight": 16}}, "opacity": 1.0}}, {"name": "CCGT:label", "x": 482.0, "y": 86, "symbolSize": 0, "label": {"show": true, "position": "right", "distance": 0, "formatter": "{head|CCGT}\n{body|bus: grid}\n{body|p_nom: 1200 MW}\n{body|marginal_cost: 55 EUR/MWh}\n{body|p_max_pu: 1 (default)}", "rich": {"head": {"fontWeight": 700, "fontSize": 12, "lineHeight": 18}, "body": {"fontFamily": "ui-monospace, SFMono-Regular, Menlo, monospace", "fontSize": 11, "lineHeight": 16}}, "opacity": 1.0}}, {"name": "demand:label", "x": 379.0, "y": 262, "symbolSize": 0, "label": {"show": true, "position": "right", "distance": 0, "formatter": "{head|demand}\n{body|Load, p_set 755..1099 MW}", "rich": {"head": {"fontWeight": 700, "fontSize": 12, "lineHeight": 18}, "body": {"fontFamily": "ui-monospace, SFMono-Regular, Menlo, monospace", "fontSize": 11, "lineHeight": 16}}, "opacity": 0.65}}], "links": [{"source": "grid:west", "target": "grid:east", "lineStyle": {"width": 7, "color": "#6b7280", "opacity": 1.0, "cap": "butt"}}, {"source": "onwind", "target": "grid@onwind", "lineStyle": {"width": 2.5, "color": "#6b7280", "opacity": 1.0, "curveness": 0}}, {"source": "CCGT", "target": "grid@CCGT", "lineStyle": {"width": 2.5, "color": "#6b7280", "opacity": 1.0, "curveness": 0}}, {"source": "grid@demand", "target": "demand", "lineStyle": {"width": 2.5, "color": "#6b7280", "opacity": 1.0, "curveness": 0}}]}]}, "datasets": {}, "height": 300}, "dispatch_within_bounds": {"version": 1, "option": {"dataset": [{"id": "ts"}], "tooltip": {"trigger": "axis", "axisPointer": {"type": "cross", "animation": false}}, "grid": {"left": 44, "right": 24, "top": 24, "bottom": 8, "containLabel": true}, "xAxis": {"type": "time", "boundaryGap": false, "axisLabel": {"hideOverlap": true, "showMinLabel": false, "showMaxLabel": false, "formatter": {"year": "{yyyy}", "month": "{MMM}", "day": "{d} {MMM}", "hour": "{HH}:{mm}", "minute": "{HH}:{mm}"}}}, "yAxis": {"type": "value", "name": "MW", "nameLocation": "middle", "nameGap": 40, "splitLine": {"lineStyle": {"opacity": 0.4}}}, "legend": {"icon": "roundRect", "itemWidth": 12, "itemHeight": 12, "itemGap": 14, "bottom": 0, "left": 0, "type": "plain", "data": ["onwind", "CCGT", "wind p_nom x p_max_pu", "load"]}, "series": [{"type": "line", "name": "onwind", "showSymbol": false, "emphasis": {"focus": "series"}, "datasetId": "ts", "encode": {"x": "snapshot", "y": "onwind"}, "stack": "supply", "areaStyle": {"opacity": 0.85}, "lineStyle": {"width": 0.5}}, {"type": "line", "name": "CCGT", "showSymbol": false, "emphasis": {"focus": "series"}, "datasetId": "ts", "encode": {"x": "snapshot", "y": "CCGT"}, "stack": "supply", "areaStyle": {"opacity": 0.85}, "lineStyle": {"width": 0.5}}, {"type": "line", "name": "wind p_nom x p_max_pu", "showSymbol": false, "emphasis": {"focus": "series"}, "datasetId": "ts", "encode": {"x": "snapshot", "y": "wind p_nom x p_max_pu"}, "itemStyle": {"color": "#6b7280"}, "lineStyle": {"color": "#6b7280", "width": 2, "type": "dashed"}}, {"type": "line", "name": "load", "showSymbol": false, "emphasis": {"focus": "series"}, "datasetId": "ts", "encode": {"x": "snapshot", "y": "load"}}]}, "datasets": {"ts": {"columns": ["snapshot", "onwind", "CCGT", "wind p_nom x p_max_pu", "load"], "rows": [["2025-01-01T00:00:00", 779.7, -0.0, 869.1, 779.7], ["2025-01-01T01:00:00", 660.2, 98.9, 660.2, 759.0], ["2025-01-01T02:00:00", 787.4, -0.0, 817.9, 787.4], ["2025-01-01T03:00:00", 792.8, -0.0, 1015.3, 792.8], ["2025-01-01T04:00:00", 615.7, 139.5, 615.7, 755.2], ["2025-01-01T05:00:00", 409.6, 374.0, 409.6, 783.6], ["2025-01-01T06:00:00", 443.3, 398.2, 443.3, 841.5], ["2025-01-01T07:00:00", 410.3, 471.3, 410.3, 881.6], ["2025-01-01T08:00:00", 422.5, 508.8, 422.5, 931.3], ["2025-01-01T09:00:00", 322.2, 611.6, 322.2, 933.8], ["2025-01-01T10:00:00", 460.4, 487.5, 460.4, 948.0], ["2025-01-01T11:00:00", 607.4, 293.7, 607.4, 901.0], ["2025-01-01T12:00:00", 629.4, 211.3, 629.4, 840.6], ["2025-01-01T13:00:00", 823.8, -0.0, 863.3, 823.8], ["2025-01-01T14:00:00", 799.2, -0.0, 961.0, 799.2], ["2025-01-01T15:00:00", 779.4, 10.1, 779.4, 789.5], ["2025-01-01T16:00:00", 858.8, 0.3, 858.8, 859.0], ["2025-01-01T17:00:00", 666.5, 261.8, 666.5, 928.4], ["2025-01-01T18:00:00", 850.9, 219.6, 850.9, 1070.4], ["2025-01-01T19:00:00", 841.3, 257.6, 841.3, 1098.9], ["2025-01-01T20:00:00", 804.3, 243.7, 804.3, 1048.1], ["2025-01-01T21:00:00", 671.2, 262.3, 671.2, 933.5], ["2025-01-01T22:00:00", 872.8, -0.0, 927.3, 872.8], ["2025-01-01T23:00:00", 797.7, -0.0, 892.8, 797.7]]}}, "height": 360}};
+const CARRIER_COLOURS = {"nuclear": "#ff8c00", "lignite": "#826837", "coal": "#545454", "CCGT": "#a85522", "OCGT": "#e0986c", "gas": "#e05b09", "oil": "#c9c9c9", "onwind": "#235ebc", "offwind-ac": "#6895dd", "solar": "#f9d002", "hydro": "#298c81", "ror": "#3dbfb0", "PHS": "#51dbcc", "battery": "#ace37f", "battery charger": "#88a75b", "battery discharger": "#5d4e29", "H2": "#bf13a0", "H2 Electrolysis": "#ff29d9", "H2 Fuel Cell": "#c251ae", "H2 Store": "#bf13a0", "AC": "#70af1d", "DC": "#8a1caf", "transmission lines": "#6c9459", "electricity": "#110d63", "load": "#110d63", "load shedding": "#dd2e23", "heat": "#cc1f1f", "heat pump": "#2fb537", "gas boiler": "#db6a25", "water tanks": "#e69487", "resistive heater": "#d8f9b8", "CHP": "#8a5751", "biomass": "#baa741", "solid biomass": "#baa741", "co2": "#f29dae", "co2 stored": "#f2385a", "co2 sequestered": "#f2682f", "DAC": "#ff5270", "methanolisation": "#83d6d5", "methanol": "#FF7B00", "EV battery": "#baf238", "BEV charger": "#baf238", "V2G": "#e5ffa8"};
+const NUMBERS = {"wind_energy_mwh": 16106.798769228022, "wind_available_mwh": 16800.0, "wind_curtailed_mwh": 693.2012307719775, "gas_energy_mwh": 4850.138655065523, "hours_gas_runs": 17, "total_cost_eur": 266757.6260286038, "peak_load_mw": 1098.9016299583025, "wind_p_max_pu_range": [0.16108072366176823, 0.5076545046036259]};
+const charts = [];
+function bound(fig) {
+  const option = JSON.parse(JSON.stringify(fig.option));
+  const entries = Array.isArray(option.dataset) ? option.dataset : (option.dataset ? [option.dataset] : []);
+  for (const entry of entries) {
+    const ds = fig.datasets[entry.id];
+    if (ds && !entry.source) entry.source = [ds.columns, ...ds.rows];
+  }
+  for (const [name, geojson] of Object.entries(fig.maps || {})) {
+    if (!echarts.getMap(name)) echarts.registerMap(name, geojson);
+  }
+  for (const s of option.series || []) {
+    const colour = CARRIER_COLOURS[s.name];
+    if (colour && !(s.itemStyle && s.itemStyle.color)) {
+      s.itemStyle = Object.assign({}, s.itemStyle, {color: colour});
+      if (s.type === "line") s.lineStyle = Object.assign({}, s.lineStyle, {color: colour});
+    }
+  }
+  // The app measures the bottom legend and pushes the grid up by its height; approximate that.
+  const legend = option.legend;
+  if (legend && legend.bottom === 0 && Array.isArray(legend.data)) {
+    const chars = legend.data.reduce((a, n) => a + String(n).length * 7.5 + 12 + 14, 0);
+    const rows = Math.max(1, Math.ceil(chars / 700));
+    const room = rows * 20 + 10;
+    const grids = Array.isArray(option.grid) ? option.grid : [option.grid || {}];
+    for (const g of grids) g.bottom = (typeof g.bottom === "number" ? g.bottom : 8) + room;
+    option.grid = Array.isArray(option.grid) ? grids : grids[0];
+    for (const z of option.dataZoom || []) if (typeof z.bottom === "number") z.bottom += room;
+  }
+  return Object.assign({backgroundColor: "transparent", textStyle: {fontFamily: "inherit"}}, option);
+}
+function render() {
+  const dark = document.documentElement.classList.contains("dark");
+  for (const c of charts) c.dispose();
+  charts.length = 0;
+  for (const [id, fig] of Object.entries(FIGURES)) {
+    const el = document.getElementById("chart-" + id);
+    el.style.height = (fig.height || 360) + "px";
+    const chart = echarts.init(el, dark ? "dark" : undefined);
+    chart.setOption(bound(fig), true);
+    charts.push(chart);
+  }
+}
+document.getElementById("theme").addEventListener("click", () => {
+  document.documentElement.classList.toggle("dark");
+  render();
+});
+window.addEventListener("resize", () => charts.forEach(c => c.resize()));
+render();
+</script></body></html>

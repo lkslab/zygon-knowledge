@@ -1127,3 +1127,150 @@ def region_map(
         "_maps": {map_name: {"type": "FeatureCollection", "features": features}},
     }
     return option, {}
+
+
+# ── component schematics ──────────────────────────────────────────────────────
+#
+# A one-line diagram of a toy network: buses as busbars, components hung off them by
+# stubs, each annotated with the attributes the card is about. The canvas is the app's
+# figure width (720 px) by the figure height, and node coordinates are pixels on it: two
+# invisible anchors pin the graph's bounding box to the whole canvas so ECharts' view fit
+# is the identity and symbol sizes (always pixels) line up with coordinates.
+
+DIAGRAM_WIDTH = 720
+# kind -> symbol; a Bus is drawn as an edge (the busbar), not a symbol
+DIAGRAM_SYMBOLS: dict[str, dict[str, Any]] = {
+    "generator": {"symbol": "circle", "symbolSize": 36, "letter": "G"},
+    "load": {"symbol": "triangle", "symbolSize": 26, "symbolRotate": 180},
+}
+BUSBAR_PX = 7
+STUB_PX = 2.5
+DIAGRAM_HEAD = {"fontWeight": 700, "fontSize": 12, "lineHeight": 18}
+DIAGRAM_BODY = {"fontFamily": "ui-monospace, SFMono-Regular, Menlo, monospace", "fontSize": 11, "lineHeight": 16}
+MUTED_OPACITY = 0.45
+
+
+@dataclass
+class Node:
+    """One component on the diagram. `kind` picks the symbol (`DIAGRAM_SYMBOLS`) or, for a
+    `bus`, a busbar from `x - width/2` to `x + width/2` at `y`. `carrier` colours the symbol
+    (a carrier id, else neutral grey). `label` is the attribute text under the bold name,
+    one line per `\\n`, placed to the `label_position` side; a muted (`focus=False`) node
+    is drawn translucent, so the component the card explains stands out."""
+
+    name: str
+    kind: str
+    x: float
+    y: float
+    carrier: str | None = None
+    label: str | None = None
+    label_position: str = "right"
+    focus: bool = True
+    width: float = 200.0  # bus only
+
+
+@dataclass
+class Edge:
+    """A stub or a wire between two nodes, by name; `at` attaches an end to a bus at that
+    x instead of the bus's centre."""
+
+    a: str
+    b: str
+    label: str | None = None
+    width: float = STUB_PX
+
+
+def network_diagram(nodes: list[Node], edges: list[Edge], *, height: int = 300) -> tuple[Option, Datasets]:
+    """A one-line diagram as one ECharts `graph` series with fixed node positions.
+
+    Coordinates are pixels on a `DIAGRAM_WIDTH` x `height` canvas (origin top-left, y
+    down). Buses are busbars (thick neutral edges between two invisible ends), other
+    components symbols from `DIAGRAM_SYMBOLS` filled with their carrier colour, a `G` on a
+    generator. An edge to a bus lands on the busbar directly below or above the other
+    node. Names and attribute lines sit beside each node as label-only nodes.
+    """
+    by_name = {n.name: n for n in nodes}
+    data: list[dict[str, Any]] = [
+        {"name": "_anchor_nw", "x": 0, "y": 0, "symbolSize": 0, "label": {"show": False}},
+        {"name": "_anchor_se", "x": DIAGRAM_WIDTH, "y": height, "symbolSize": 0, "label": {"show": False}},
+    ]
+    links: list[dict[str, Any]] = []
+    notes: list[dict[str, Any]] = []
+    for n in nodes:
+        opacity = 1.0 if n.focus else MUTED_OPACITY
+        if n.kind == "bus":
+            half = n.width / 2
+            data += [
+                {"name": f"{n.name}:west", "x": n.x - half, "y": n.y, "symbolSize": 0, "label": {"show": False}},
+                {"name": f"{n.name}:east", "x": n.x + half, "y": n.y, "symbolSize": 0, "label": {"show": False}},
+            ]
+            links.append({"source": f"{n.name}:west", "target": f"{n.name}:east",
+                          "lineStyle": {"width": BUSBAR_PX, "color": cs.NEUTRAL, "opacity": opacity, "cap": "butt"}})
+            continue
+        spec = DIAGRAM_SYMBOLS[n.kind]
+        colour = cs.colour(n.carrier) if n.carrier and cs.is_carrier(n.carrier) else cs.NEUTRAL
+        node: dict[str, Any] = {
+            "name": n.name, "x": n.x, "y": n.y,
+            "symbol": spec["symbol"], "symbolSize": spec["symbolSize"],
+            "itemStyle": {"color": colour, "borderColor": "#ffffff", "borderWidth": 2, "opacity": opacity},
+            "label": {"show": False},
+        }
+        if "symbolRotate" in spec:
+            node["symbolRotate"] = spec["symbolRotate"]
+        if "letter" in spec:
+            node["label"] = {"show": True, "position": "inside", "formatter": spec["letter"],
+                             "color": "#ffffff", "fontWeight": 700, "fontSize": 15, "fontFamily": "sans-serif"}
+        data.append(node)
+    for n in nodes:
+        head = "{head|" + n.name + "}"
+        body = "".join("\n{body|" + line + "}" for line in (n.label or "").split("\n") if line)
+        if n.kind == "bus":
+            at = [n.x - n.width / 2, n.y + BUSBAR_PX]
+            position = "bottom" if n.label_position == "bottom" else "top"
+            if position == "top":
+                at[1] = n.y - BUSBAR_PX
+            align = "left"
+        else:
+            r = DIAGRAM_SYMBOLS[n.kind]["symbolSize"] / 2 + 6
+            dx = {"right": r, "left": -r}.get(n.label_position, 0)
+            dy = {"top": -r, "bottom": r}.get(n.label_position, 0)
+            at = [n.x + dx, n.y + dy]
+            position = n.label_position
+            align = None
+        label: dict[str, Any] = {
+            "show": True, "position": position, "distance": 0, "formatter": head + body,
+            "rich": {"head": DIAGRAM_HEAD, "body": DIAGRAM_BODY},
+            "opacity": 1.0 if n.focus else MUTED_OPACITY + 0.2,
+        }
+        if align:
+            label["align"] = align
+        notes.append({"name": f"{n.name}:label", "x": at[0], "y": at[1], "symbolSize": 0, "label": label})
+    for e in edges:
+        a, b = by_name[e.a], by_name[e.b]
+        ends = []
+        for this, other in ((a, b), (b, a)):
+            if this.kind == "bus":
+                ends.append({"name": f"{this.name}@{other.name}", "x": other.x, "y": this.y, "symbolSize": 0, "label": {"show": False}})
+            else:
+                ends.append({"name": this.name})
+        for end in ends:
+            if "x" in end:
+                data.append(end)
+        focus = a.focus or b.focus
+        link: dict[str, Any] = {
+            "source": ends[0]["name"], "target": ends[1]["name"],
+            "lineStyle": {"width": e.width, "color": cs.NEUTRAL, "opacity": 1.0 if focus else MUTED_OPACITY, "curveness": 0},
+        }
+        if e.label:
+            link["label"] = {"show": True, "formatter": e.label, **DIAGRAM_BODY}
+        links.append(link)
+    series = {
+        "type": "graph", "name": "schematic", "layout": "none",
+        "roam": False, "silent": True, "animation": False, "zlevel": 0, "z": 2,
+        "left": 0, "right": 0, "top": 0, "bottom": 0,
+        "lineStyle": {"color": cs.NEUTRAL, "curveness": 0},
+        "data": data + notes,
+        "links": links,
+    }
+    option: Option = {"tooltip": {"show": False}, "series": [series], "_height": height}
+    return option, {}

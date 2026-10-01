@@ -172,7 +172,24 @@ concepts_vocabulary:
 - methanol
 - off-grid
 - levelised-cost
+- pypsa-component
+- generator
+- p-max-pu
+- marginal-cost
 models:
+- id: component-generator
+  title: What a Generator is
+  summary: One bus, one load, a wind farm and a gas plant built from the same component; what bus, p_nom, marginal_cost and p_max_pu do, on a one-line diagram.
+  concepts: [pypsa-component, generator, p-max-pu, marginal-cost]
+  answers:
+  - what a Generator is in PyPSA and what its attributes mean
+  - how a wind farm and a gas plant can be the same component
+  figures:
+  - {id: generator_schematic, shows: one-line diagram of the bus with the two Generators and their attributes, the load muted}
+  - {id: dispatch_within_bounds, shows: hourly output of each Generator against the wind bound and the load}
+  numbers: [wind_energy_mwh, wind_available_mwh, wind_curtailed_mwh, gas_energy_mwh, hours_gas_runs, total_cost_eur]
+  runtime_s: 1
+  builds_on: []
 - id: merit-order-dispatch
   title: Merit order and marginal pricing
   summary: One bus, five thermal units, one day; the price is the marginal cost of the last unit needed.

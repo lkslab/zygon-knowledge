@@ -68,6 +68,13 @@ cd ../pypsa-app && uv run python ../zygon-knowledge/tools/check_toymodels.py [--
   three-bus cards so they share one map. Use it for first principles that are about where
   things are: where power is made and used, why a line congests. The colours keep one
   meaning on every map; prices and flows go in the labels.
+- **Component schematics** go through `charts.network_diagram`: a one-line diagram on a
+  720 px canvas, buses as busbars, `Node`s hung off them by `Edge`s with a symbol per
+  component kind (`DIAGRAM_SYMBOLS`: a circle marked G for a Generator, a triangle for a
+  Load) in the carrier colour, the bold name and the attribute lines beside each one, the
+  components the card is not about muted. Coordinates are pixels (two invisible anchors pin
+  the graph to the whole canvas, so ECharts' view fit is the identity). Use it for the
+  `component-*` cards, which explain PyPSA's component classes one at a time.
 - **Market diagrams** go through `charts.xy_areas`: `Curve`s over a numeric x with the
   `Area`s between them filled and named in the legend (green for what someone gains,
   vermillion for what is lost or paid back), marked `Point`s, and stacked panels on one
@@ -99,10 +106,14 @@ cd ../pypsa-app && uv run python ../zygon-knowledge/tools/check_toymodels.py [--
 
 ## The models
 
-The first twelve are the core; the rest were added on 2026-09-24 to cover the remaining PyPSA example gallery.
+The `component-*` cards explain PyPSA's component classes one at a time (what a Generator
+is, with its attributes on a schematic) and come first in the index. Of the concept cards,
+the first twelve are the core; the rest were added on 2026-09-24 to cover the remaining
+PyPSA example gallery.
 
 | slug | question | builds on |
 |---|---|---|
+| component-generator | what a Generator is: one decision per hour between bounds, at a cost | |
 | merit-order-dispatch | why the price is the marginal cost of the last unit | |
 | nodal-prices-lopf | how prices split by bus when a line binds | |
 | unit-commitment | what start-up costs and minimum times do to dispatch and prices | merit-order-dispatch |
