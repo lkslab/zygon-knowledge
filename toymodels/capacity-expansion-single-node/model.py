@@ -17,7 +17,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, finance, profiles, run  # noqa: E402
+from _lib import bundle, charts, finance, names, profiles, run  # noqa: E402
 
 SLUG = "capacity-expansion-single-node"
 TITLE = "Single-node capacity expansion under a CO2 cap"
@@ -54,24 +54,24 @@ def build(*, co2_cap_t: float | None = None, mean_load_mw: float = MEAN_LOAD_MW,
     n.add("Carrier", "CCGT", co2_emissions=CO2_CCGT)
     n.add("Bus", "electricity", carrier="AC")
     n.add("Load", "demand", bus="electricity", carrier="load", p_set=profiles.annual_load(n.snapshots, mean_load_mw))
-    n.add("Generator", "onwind", bus="electricity", carrier="onwind", p_nom_extendable=True,
+    n.add("Generator", names.gen("onwind"), bus="electricity", carrier="onwind", p_nom_extendable=True,
           capital_cost=_capex("onwind"), marginal_cost=TECH["onwind"]["marginal_cost"], p_max_pu=profiles.wind(n.snapshots))
-    n.add("Generator", "solar", bus="electricity", carrier="solar", p_nom_extendable=True,
+    n.add("Generator", names.gen("solar"), bus="electricity", carrier="solar", p_nom_extendable=True,
           capital_cost=_capex("solar"), marginal_cost=TECH["solar"]["marginal_cost"], p_max_pu=profiles.solar(n.snapshots))
-    n.add("Generator", "CCGT", bus="electricity", carrier="CCGT", p_nom_extendable=True,
+    n.add("Generator", names.gen("CCGT"), bus="electricity", carrier="CCGT", p_nom_extendable=True,
           capital_cost=_capex("CCGT"), marginal_cost=TECH["CCGT"]["marginal_cost"], efficiency=1.0)
-    n.add("Generator", "load shedding", bus="electricity", carrier="load shedding", p_nom=1e6, marginal_cost=VOLL)
+    n.add("Generator", names.gen("load shedding"), bus="electricity", carrier="load shedding", p_nom=1e6, marginal_cost=VOLL)
     b = TECH["battery"]
-    n.add("StorageUnit", "battery", bus="electricity", carrier="battery", p_nom_extendable=True,
+    n.add("StorageUnit", names.unit("battery"), bus="electricity", carrier="battery", p_nom_extendable=True,
           capital_cost=_capex("battery"), max_hours=b["max_hours"], efficiency_store=b["eta"],
           efficiency_dispatch=b["eta"], cyclic_state_of_charge=True)
     if with_h2:
         n.add("Bus", "hydrogen", carrier="H2")
-        n.add("Link", "H2 Electrolysis", bus0="electricity", bus1="hydrogen", carrier="H2 Electrolysis",
+        n.add("Link", names.link("H2 Electrolysis"), bus0="electricity", bus1="hydrogen", carrier="H2 Electrolysis",
               p_nom_extendable=True, capital_cost=_capex("H2 Electrolysis"), efficiency=TECH["H2 Electrolysis"]["eta"])
-        n.add("Link", "H2 Fuel Cell", bus0="hydrogen", bus1="electricity", carrier="H2 Fuel Cell",
+        n.add("Link", names.link("H2 Fuel Cell"), bus0="hydrogen", bus1="electricity", carrier="H2 Fuel Cell",
               p_nom_extendable=True, capital_cost=_capex("H2 Fuel Cell"), efficiency=TECH["H2 Fuel Cell"]["eta"])
-        n.add("Store", "H2 Store", bus="hydrogen", carrier="H2 Store", e_nom_extendable=True, e_cyclic=True,
+        n.add("Store", names.unit("H2 Store"), bus="hydrogen", carrier="H2 Store", e_nom_extendable=True, e_cyclic=True,
               capital_cost=_capex("H2 Store"))
     if co2_cap_t is not None:
         n.add("GlobalConstraint", "co2_limit", type="primary_energy", carrier_attribute="co2_emissions",
@@ -85,7 +85,7 @@ def solve(n: pypsa.Network) -> pypsa.Network:
 
 def emissions_t(n: pypsa.Network) -> float:
     w = n.snapshot_weightings.generators
-    return float((n.generators_t.p["CCGT"] * w).sum() * CO2_CCGT)
+    return float((n.generators_t.p[names.gen("CCGT")] * w).sum() * CO2_CCGT)
 
 
 def capacities_mw(n: pypsa.Network) -> pd.Series:
@@ -134,8 +134,8 @@ def summary(n: pypsa.Network) -> dict:
     price = n.buses_t.marginal_price["electricity"]
     demand_mwh = float((load * w).sum())
     cap = capacities_mw(n)
-    supply = n.generators_t.p.mul(w, axis=0).sum()
-    avail = {c: float((n.generators_t.p_max_pu[c] * cap[c] * w).sum()) for c in ("onwind", "solar")}
+    supply = names.plain(n.generators_t.p).mul(w, axis=0).sum()
+    avail = {c: float((n.generators_t.p_max_pu[names.gen(c)] * cap[c] * w).sum()) for c in ("onwind", "solar")}
     vre = supply["onwind"] + supply["solar"]
     mu = float(n.global_constraints.mu.get("co2_limit", 0.0)) if len(n.global_constraints) else 0.0
     return {
@@ -145,7 +145,7 @@ def summary(n: pypsa.Network) -> dict:
         "co2_price_eur_t": float(-mu),
         "emissions_kt": float(emissions_t(n) / 1e3),
         "capacity_mw": {c: float(cap[c]) for c in CARRIERS_MW},
-        "h2_store_mwh": float(n.stores.e_nom_opt.get("H2 Store", 0.0)) if len(n.stores) else 0.0,
+        "h2_store_mwh": float(n.stores.e_nom_opt.get(names.unit("H2 Store"), 0.0)) if len(n.stores) else 0.0,
         "capacity_factor_pct": {c: float(100 * supply[c] / (cap[c] * 8760)) if cap[c] > 1e-3 else None for c in ("onwind", "solar", "CCGT")},
         "curtailment_pct": float(100 * (1 - vre / (avail["onwind"] + avail["solar"]))) if (avail["onwind"] + avail["solar"]) > 0 else 0.0,
         "vre_share_pct": float(100 * vre / demand_mwh),

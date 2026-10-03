@@ -18,7 +18,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, finance, profiles, run  # noqa: E402
+from _lib import bundle, charts, finance, names, profiles, run  # noqa: E402
 
 SLUG = "myopic-pathway"
 TITLE = "Myopic pathway with brownfield carry-over"
@@ -57,7 +57,7 @@ def build() -> pypsa.Network:
     n.add("Load", "demand", bus="electricity", carrier="load", p_set=profiles.annual_load(year, 1.0).loc[index])
     for name, (carrier, p_nom, by, life, mc) in EXISTING.items():
         n.add("Generator", name, bus="electricity", carrier=carrier, p_nom=p_nom, build_year=by, lifetime=life, marginal_cost=mc)
-    n.add("Generator", "load shedding", bus="electricity", carrier="load shedding", p_nom=1e6, marginal_cost=BASE.VOLL)
+    n.add("Generator", names.gen("load shedding"), bus="electricity", carrier="load shedding", p_nom=1e6, marginal_cost=BASE.VOLL)
     n._profiles = {"wind": profiles.wind(year).loc[index], "solar": profiles.solar(year).loc[index]}  # noqa: SLF001
     return n
 
@@ -149,7 +149,7 @@ def pathway() -> tuple[pypsa.Network, dict[int, dict]]:
             "cost_meur_a": {"new capex": capex_new / 1e6, "existing capex": capex_old / 1e6, "opex": opex / 1e6},
             "vre_share_pct": float(100 * (supply.get("onwind", 0) + supply.get("solar", 0)) / demand),
             "mean_load_mw": MEAN_LOAD_MW[year],
-            "load_shed_mwh": float((n.generators_t.p["load shedding"] * w).sum()),
+            "load_shed_mwh": float((n.generators_t.p[names.gen("load shedding")] * w).sum()),
         }
         freeze(n)
     return n, record

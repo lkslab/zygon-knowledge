@@ -19,9 +19,9 @@ numbers:
   total_cost_meur: 1.4863
   electricity_from_chp_pct: 57.7597
 meta:
-  pypsa: 1.3.0
+  pypsa: 0.35.1.post1.dev448+g0627ed820
   solver: highs
-  runtime_s: 1.02
+  runtime_s: 0.55
   figures:
     chp_feasible_region:
       title: Feasible region of the extraction CHP

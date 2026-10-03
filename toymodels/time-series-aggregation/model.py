@@ -17,7 +17,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, profiles, run  # noqa: E402
+from _lib import bundle, charts, names, profiles, run  # noqa: E402
 
 SLUG = "time-series-aggregation"
 TITLE = "Time series aggregation"
@@ -96,7 +96,7 @@ def numbers(res: dict) -> dict:
             "cost_error_pct": float(100 * (n.objective - full.objective) / full.objective),
             "capacity_mw": {c: float(cap[c]) for c in CARRIERS},
             "capacity_error_pct": {c: float(100 * (cap[c] - cap_full[c]) / cap_full[c]) if cap_full[c] > 1e-3 else None for c in CARRIERS},
-            "h2_store_mwh": float(n.stores.e_nom_opt.get("H2 Store", 0.0)),
+            "h2_store_mwh": float(n.stores.e_nom_opt.get(names.unit("H2 Store"), 0.0)),
             "co2_price_eur_t": float(-n.global_constraints.mu["co2_limit"]),
             "load_weighted_price_eur_mwh": float((n.buses_t.marginal_price["electricity"] * n.loads_t.p_set["demand"] * n.snapshot_weightings.generators).sum()
                                                  / (n.loads_t.p_set["demand"] * n.snapshot_weightings.generators).sum()),

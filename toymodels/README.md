@@ -44,6 +44,12 @@ cd ../pypsa-app && uv run python ../zygon-knowledge/tools/check_toymodels.py [--
 
 ## Conventions
 
+- **Component names never repeat a carrier id.** PyPSA refuses an `n.add` whose name another
+  component type already holds, so a Generator for the Carrier `onwind` is `onwind gen`, a
+  Link `<carrier> link`, a Store or StorageUnit `<carrier> unit`, a Bus `<carrier> bus`
+  (`_lib/names.py`); carriers keep their pypsa-eur names and figure labels and `numbers`
+  keys stay the carrier ids (`names.plain` maps a frame back). Snapshots are integer or
+  datetime, never strings.
 - **Series names are pypsa-eur carrier ids** (`onwind`, `solar`, `CCGT`, `battery`, `H2
   Electrolysis`, `heat pump`, ...; the table is `_lib/carrier_style.py`). A figure carries
   no colours for them: the app colours by carrier id. Any other series (a scenario, a

@@ -20,7 +20,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, profiles, run  # noqa: E402
+from _lib import bundle, charts, names, profiles, run  # noqa: E402
 
 SLUG = "chp-heat-power"
 TITLE = "Backpressure and extraction CHP against a boiler and a heat pump"
@@ -42,26 +42,26 @@ def build() -> pypsa.Network:
     n = pypsa.Network()
     n.set_snapshots(profiles.hourly_index(DAYS, start="2025-01-08"))
     n.add("Carrier", ["AC", "gas", "heat", "onwind", "OCGT", "CHP", "CHP extraction", "gas boiler", "heat pump", "load shedding"])
-    n.add("Bus", ["electricity", "heat", "gas"], carrier=["AC", "heat", "gas"])
-    n.add("Generator", "gas", bus="gas", carrier="gas", p_nom=1e4, marginal_cost=GAS_COST)
-    n.add("Generator", "onwind", bus="electricity", carrier="onwind", p_nom=WIND_MW, p_max_pu=profiles.wind(n.snapshots))
-    n.add("Generator", "OCGT", bus="electricity", carrier="OCGT", p_nom=OCGT_MW, marginal_cost=120.0)
-    n.add("Generator", "load shedding", bus="electricity", carrier="load shedding", p_nom=1e4, marginal_cost=3000)
-    n.add("Generator", "heat shedding", bus="heat", carrier="load shedding", p_nom=1e4, marginal_cost=3000)
+    n.add("Bus", ["electricity", names.bus("heat"), names.bus("gas")], carrier=["AC", "heat", "gas"])
+    n.add("Generator", names.gen("gas"), bus=names.bus("gas"), carrier="gas", p_nom=1e4, marginal_cost=GAS_COST)
+    n.add("Generator", names.gen("onwind"), bus="electricity", carrier="onwind", p_nom=WIND_MW, p_max_pu=profiles.wind(n.snapshots))
+    n.add("Generator", names.gen("OCGT"), bus="electricity", carrier="OCGT", p_nom=OCGT_MW, marginal_cost=120.0)
+    n.add("Generator", names.gen("load shedding"), bus="electricity", carrier="load shedding", p_nom=1e4, marginal_cost=3000)
+    n.add("Generator", "heat shedding", bus=names.bus("heat"), carrier="load shedding", p_nom=1e4, marginal_cost=3000)
     n.add("Load", "electricity demand", bus="electricity", carrier="load", p_set=profiles.daily_load(n.snapshots, EL_BASE, EL_PEAK))
     year = profiles.year_index(1)
     heat = profiles.heat(year, HEAT_MEAN_MW * 0.55).loc[n.snapshots]  # the January slice of a year-shaped demand
-    n.add("Load", "heat demand", bus="heat", carrier="heat", p_set=heat)
+    n.add("Load", "heat demand", bus=names.bus("heat"), carrier="heat", p_set=heat)
     # backpressure CHP: one link, two outputs, fixed ratio
     bp = BACKPRESSURE
-    n.add("Link", "CHP", bus0="gas", bus1="electricity", bus2="heat", carrier="CHP", p_nom=bp["fuel_mw"],
+    n.add("Link", names.link("CHP"), bus0=names.bus("gas"), bus1="electricity", bus2=names.bus("heat"), carrier="CHP", p_nom=bp["fuel_mw"],
           efficiency=bp["eta_el"], efficiency2=bp["eta_th"])
     # extraction CHP: two links drawing on the same fuel; the heat link's "efficiency" is
     # eta_el / c_v so that its fuel draw equals the power given up per unit of heat
-    n.add("Link", "CHP extraction power", bus0="gas", bus1="electricity", carrier="CHP extraction", p_nom=FUEL_MAX_EXTRACTION, efficiency=ETA_EL)
-    n.add("Link", "CHP extraction heat", bus0="gas", bus1="heat", carrier="CHP extraction", p_nom=FUEL_MAX_EXTRACTION, efficiency=ETA_EL / C_V)
-    n.add("Link", "gas boiler", bus0="gas", bus1="heat", carrier="gas boiler", p_nom=BOILER_MW_TH / BOILER_ETA, efficiency=BOILER_ETA)
-    n.add("Link", "heat pump", bus0="electricity", bus1="heat", carrier="heat pump", p_nom=HEAT_PUMP_MW_EL, efficiency=COP)
+    n.add("Link", "CHP extraction power", bus0=names.bus("gas"), bus1="electricity", carrier="CHP extraction", p_nom=FUEL_MAX_EXTRACTION, efficiency=ETA_EL)
+    n.add("Link", "CHP extraction heat", bus0=names.bus("gas"), bus1=names.bus("heat"), carrier="CHP extraction", p_nom=FUEL_MAX_EXTRACTION, efficiency=ETA_EL / C_V)
+    n.add("Link", names.link("gas boiler"), bus0=names.bus("gas"), bus1=names.bus("heat"), carrier="gas boiler", p_nom=BOILER_MW_TH / BOILER_ETA, efficiency=BOILER_ETA)
+    n.add("Link", names.link("heat pump"), bus0="electricity", bus1=names.bus("heat"), carrier="heat pump", p_nom=HEAT_PUMP_MW_EL, efficiency=COP)
     return n
 
 
@@ -89,11 +89,11 @@ def outputs(n: pypsa.Network) -> pd.DataFrame:
         "extraction P": -L.p1["CHP extraction power"],
         "extraction Q": -L.p1["CHP extraction heat"],
         "extraction fuel": L.p0["CHP extraction power"] + L.p0["CHP extraction heat"],
-        "backpressure P": -L.p1["CHP"],
-        "backpressure Q": -L.p2["CHP"],
-        "backpressure fuel": L.p0["CHP"],
-        "boiler Q": -L.p1["gas boiler"],
-        "heat pump Q": -L.p1["heat pump"],
+        "backpressure P": -L.p1[names.link("CHP")],
+        "backpressure Q": -L.p2[names.link("CHP")],
+        "backpressure fuel": L.p0[names.link("CHP")],
+        "boiler Q": -L.p1[names.link("gas boiler")],
+        "heat pump Q": -L.p1[names.link("heat pump")],
     })
 
 
@@ -111,9 +111,9 @@ def numbers(n: pypsa.Network) -> dict:
         "backpressure_fuel_utilisation_pct": float(100 * (p_bp + q_bp) / f_bp) if f_bp > 0 else None,
         "hours_extraction_on_backpressure_line_pct": float(100 * ((o["extraction P"] - C_M * o["extraction Q"]).abs() < 1e-3).mean()),
         "hours_extraction_full_condensing_pct": float(100 * ((o["extraction Q"] < 1e-3) & (o["extraction P"] > 1e-3)).mean()),
-        "mean_price_eur_mwh": {"electricity": float(price["electricity"].mean()), "heat": float(price["heat"].mean())},
-        "heat_price_range_eur_mwh": [float(price["heat"].min()), float(price["heat"].max())],
-        "gas_burned_gwh": float((n.generators_t.p["gas"]).sum() / 1e3),
+        "mean_price_eur_mwh": {"electricity": float(price["electricity"].mean()), "heat": float(price[names.bus("heat")].mean())},
+        "heat_price_range_eur_mwh": [float(price[names.bus("heat")].min()), float(price[names.bus("heat")].max())],
+        "gas_burned_gwh": float((n.generators_t.p[names.gen("gas")]).sum() / 1e3),
         "total_cost_meur": float(n.objective / 1e6),
         "electricity_from_chp_pct": float(100 * (p_ext + p_bp) / n.loads_t.p_set["electricity demand"].sum()),
     }

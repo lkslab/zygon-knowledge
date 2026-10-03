@@ -17,7 +17,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, profiles, run  # noqa: E402
+from _lib import bundle, charts, names, profiles, run  # noqa: E402
 
 SLUG = "demand-elasticity"
 TITLE = "Price-responsive demand and market clearing"
@@ -39,10 +39,10 @@ def build(*, blocks: list[tuple[float, float]] | None = None) -> pypsa.Network:
     n.add("Carrier", list(FLEET) + ["load shedding", "load", "AC"])
     n.add("Bus", "grid", carrier="AC")
     for carrier, (p_nom, mc) in FLEET.items():
-        n.add("Generator", carrier, bus="grid", carrier=carrier, p_nom=p_nom, marginal_cost=mc)
+        n.add("Generator", names.gen(carrier), bus="grid", carrier=carrier, p_nom=p_nom, marginal_cost=mc)
     load = profiles.daily_load(n.snapshots, BASE_MW, PEAK_MW)
     if blocks is None:
-        n.add("Generator", "load shedding", bus="grid", carrier="load shedding", p_nom=1e5, marginal_cost=VOLL)
+        n.add("Generator", names.gen("load shedding"), bus="grid", carrier="load shedding", p_nom=1e5, marginal_cost=VOLL)
         n.add("Load", "demand", bus="grid", carrier="load", p_set=load)
     else:
         # each block is a sink (sign -1) paid its willingness to pay: a negative marginal
@@ -63,7 +63,7 @@ def cases() -> dict[str, pypsa.Network]:
 
 def consumption(n: pypsa.Network) -> pd.Series:
     if "demand" in n.loads.index:
-        return n.loads_t.p_set["demand"] - n.generators_t.p["load shedding"]
+        return n.loads_t.p_set["demand"] - n.generators_t.p[names.gen("load shedding")]
     cols = [g for g in n.generators.index if g.startswith("demand block")]
     return n.generators_t.p[cols].sum(axis=1)
 
@@ -71,7 +71,7 @@ def consumption(n: pypsa.Network) -> pd.Series:
 def welfare(n: pypsa.Network) -> dict[str, float]:
     price = n.buses_t.marginal_price["grid"]
     gens = [g for g in FLEET]
-    producer = float(sum(((price - n.generators.marginal_cost[g]) * n.generators_t.p[g]).sum() for g in gens))
+    producer = float(sum(((price - n.generators.marginal_cost[names.gen(g)]) * n.generators_t.p[names.gen(g)]).sum() for g in gens))
     if "demand" in n.loads.index:
         served = consumption(n)
         consumer = float(((VOLL - price) * served).sum())
@@ -97,7 +97,7 @@ def numbers(nets: dict[str, pypsa.Network]) -> dict:
             "consumer_surplus_meur": w["consumer surplus"] / 1e6,
             "producer_surplus_meur": w["producer surplus"] / 1e6,
             "welfare_meur": w["welfare"] / 1e6,
-            "dispatch_cost_eur": float(sum((n.generators.marginal_cost[g] * n.generators_t.p[g]).sum() for g in FLEET)),
+            "dispatch_cost_eur": float(sum((n.generators.marginal_cost[names.gen(g)] * n.generators_t.p[names.gen(g)]).sum() for g in FLEET)),
         }
     out["peak_demand_reduction_pct"] = {name: float(100 * (1 - out[name]["peak_consumption_mw"] / out["fixed load"]["peak_consumption_mw"])) for name in nets}
     return out
@@ -107,7 +107,7 @@ def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     fixed = nets["fixed load"]
     peak = fixed.loads_t.p_set["demand"].idxmax()
     load_peak = float(fixed.loads_t.p_set.loc[peak, "demand"])
-    gens = fixed.generators.loc[list(FLEET)].sort_values("marginal_cost")
+    gens = names.plain(fixed.generators).loc[list(FLEET)].sort_values("marginal_cost")
     x1 = gens.p_nom.cumsum()
     seg = [pd.DataFrame({"x0": x1 - gens.p_nom, "x1": x1, "y": gens.marginal_cost, "name": gens.index})]
     for name in ("bid blocks", "linear demand"):

@@ -19,7 +19,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, finance, profiles, run  # noqa: E402
+from _lib import bundle, charts, finance, names, profiles, run  # noqa: E402
 
 SLUG = "weather-year-uncertainty"
 TITLE = "Weather-year uncertainty in investment"
@@ -58,15 +58,15 @@ def build(*, weather: str = "normal", scenarios: dict[str, float] | None = None,
     n.add("Load", "demand", bus="electricity", carrier="load", p_set=profiles.annual_load(year, MEAN_LOAD_MW).loc[index])
     wind, solar = weather_series(weather)
     ext = fixed is None
-    n.add("Generator", "onwind", bus="electricity", carrier="onwind", p_nom_extendable=ext, capital_cost=_capex("onwind"),
+    n.add("Generator", names.gen("onwind"), bus="electricity", carrier="onwind", p_nom_extendable=ext, capital_cost=_capex("onwind"),
           p_max_pu=wind, p_nom=0 if ext else fixed["onwind"])
-    n.add("Generator", "solar", bus="electricity", carrier="solar", p_nom_extendable=ext, capital_cost=_capex("solar"),
+    n.add("Generator", names.gen("solar"), bus="electricity", carrier="solar", p_nom_extendable=ext, capital_cost=_capex("solar"),
           p_max_pu=solar, p_nom=0 if ext else fixed["solar"])
-    n.add("Generator", "CCGT", bus="electricity", carrier="CCGT", p_nom_extendable=ext, capital_cost=_capex("CCGT"),
+    n.add("Generator", names.gen("CCGT"), bus="electricity", carrier="CCGT", p_nom_extendable=ext, capital_cost=_capex("CCGT"),
           marginal_cost=TECH["CCGT"]["marginal_cost"], p_nom=0 if ext else fixed["CCGT"])
-    n.add("Generator", "load shedding", bus="electricity", carrier="load shedding", p_nom=1e6, marginal_cost=BASE.VOLL)
+    n.add("Generator", names.gen("load shedding"), bus="electricity", carrier="load shedding", p_nom=1e6, marginal_cost=BASE.VOLL)
     b = TECH["battery"]
-    n.add("StorageUnit", "battery", bus="electricity", carrier="battery", p_nom_extendable=ext, capital_cost=_capex("battery"),
+    n.add("StorageUnit", names.unit("battery"), bus="electricity", carrier="battery", p_nom_extendable=ext, capital_cost=_capex("battery"),
           max_hours=b["max_hours"], efficiency_store=b["eta"], efficiency_dispatch=b["eta"], cyclic_state_of_charge=True,
           p_nom=0 if ext else fixed["battery"])
     if co2_cap_t is not None:
@@ -76,8 +76,8 @@ def build(*, weather: str = "normal", scenarios: dict[str, float] | None = None,
         # after set_scenarios the time-series columns are (scenario, name): assign each year's profiles
         for sc in scenarios:
             w_sc, s_sc = weather_series(sc)
-            n.generators_t.p_max_pu[(sc, "onwind")] = w_sc.to_numpy()
-            n.generators_t.p_max_pu[(sc, "solar")] = s_sc.to_numpy()
+            n.generators_t.p_max_pu[(sc, names.gen("onwind"))] = w_sc.to_numpy()
+            n.generators_t.p_max_pu[(sc, names.gen("solar"))] = s_sc.to_numpy()
     return n
 
 
@@ -90,7 +90,7 @@ def capacities(n: pypsa.Network) -> pd.Series:
     if isinstance(g.index, pd.MultiIndex):
         first = g.index.get_level_values(0)[0]
         g, s = g.xs(first, level="scenario"), s.xs(first, level="scenario")
-    return pd.Series({"onwind": g["onwind"], "solar": g["solar"], "CCGT": g["CCGT"], "battery": s["battery"]})
+    return pd.Series({"onwind": g[names.gen("onwind")], "solar": g[names.gen("solar")], "CCGT": g[names.gen("CCGT")], "battery": s[names.unit("battery")]})
 
 
 def realised(n: pypsa.Network) -> dict[str, dict[str, float]]:
@@ -102,7 +102,7 @@ def realised(n: pypsa.Network) -> dict[str, dict[str, float]]:
     out = {}
     scen = p.columns.get_level_values(0).unique() if isinstance(p.columns, pd.MultiIndex) else [None]
     for sc in scen:
-        col = (lambda g: (sc, g)) if sc is not None else (lambda g: g)
+        col = (lambda g: (sc, names.gen(g))) if sc is not None else names.gen
         mc = n.generators.marginal_cost
         gas = float(mc[col("CCGT")]); shed = float(mc[col("load shedding")])
         opex = float((p[col("CCGT")] * gas * w).sum() + (p[col("load shedding")] * shed * w).sum())

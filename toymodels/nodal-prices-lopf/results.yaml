@@ -18,9 +18,9 @@ numbers:
   first_congested_level: 90% load
   loop_flow_share_peak: 0.5238
 meta:
-  pypsa: 1.3.0
+  pypsa: 0.35.1.post1.dev448+g0627ed820
   solver: highs
-  runtime_s: 1.8
+  runtime_s: 0.93
   figures:
     nodal_prices:
       title: Nodal prices by load level

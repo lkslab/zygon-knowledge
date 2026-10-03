@@ -20,7 +20,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, finance, profiles, run  # noqa: E402
+from _lib import bundle, charts, finance, names, profiles, run  # noqa: E402
 
 SLUG = "stochastic-cvar"
 TITLE = "Stochastic investment and CVaR risk aversion"
@@ -58,21 +58,21 @@ def build(*, gas_price: float = GAS_PRICE["mid"], scenarios: dict[str, float] | 
     n.add("Bus", "electricity", carrier="AC")
     n.add("Load", "demand", bus="electricity", carrier="load", p_set=profiles.annual_load(year, MEAN_LOAD_MW).loc[index])
     ext = fixed is None
-    n.add("Generator", "onwind", bus="electricity", carrier="onwind", p_nom_extendable=ext, capital_cost=_capex("onwind"),
+    n.add("Generator", names.gen("onwind"), bus="electricity", carrier="onwind", p_nom_extendable=ext, capital_cost=_capex("onwind"),
           p_max_pu=profiles.wind(year).loc[index], p_nom=0 if ext else fixed["onwind"])
-    n.add("Generator", "solar", bus="electricity", carrier="solar", p_nom_extendable=ext, capital_cost=_capex("solar"),
+    n.add("Generator", names.gen("solar"), bus="electricity", carrier="solar", p_nom_extendable=ext, capital_cost=_capex("solar"),
           p_max_pu=profiles.solar(year).loc[index], p_nom=0 if ext else fixed["solar"])
-    n.add("Generator", "CCGT", bus="electricity", carrier="CCGT", p_nom_extendable=ext, capital_cost=_capex("CCGT"),
+    n.add("Generator", names.gen("CCGT"), bus="electricity", carrier="CCGT", p_nom_extendable=ext, capital_cost=_capex("CCGT"),
           marginal_cost=gas_price, p_nom=0 if ext else fixed["CCGT"])
-    n.add("Generator", "load shedding", bus="electricity", carrier="load shedding", p_nom=1e6, marginal_cost=BASE.VOLL)
+    n.add("Generator", names.gen("load shedding"), bus="electricity", carrier="load shedding", p_nom=1e6, marginal_cost=BASE.VOLL)
     b = TECH["battery"]
-    n.add("StorageUnit", "battery", bus="electricity", carrier="battery", p_nom_extendable=ext, capital_cost=_capex("battery"),
+    n.add("StorageUnit", names.unit("battery"), bus="electricity", carrier="battery", p_nom_extendable=ext, capital_cost=_capex("battery"),
           max_hours=b["max_hours"], efficiency_store=b["eta"], efficiency_dispatch=b["eta"], cyclic_state_of_charge=True,
           p_nom=0 if ext else fixed["battery"])
     if scenarios:
         n.set_scenarios(scenarios)
         for sc in scenarios:
-            n.generators.loc[(sc, "CCGT"), "marginal_cost"] = GAS_PRICE[sc]
+            n.generators.loc[(sc, names.gen("CCGT")), "marginal_cost"] = GAS_PRICE[sc]
         if risk:
             n.set_risk_preference(*risk)
     return n
@@ -88,7 +88,7 @@ def capacities(n: pypsa.Network) -> pd.Series:
     if isinstance(g.index, pd.MultiIndex):
         first = g.index.get_level_values(0)[0]
         g, s = g.xs(first, level="scenario"), s.xs(first, level="scenario")
-    return pd.Series({"onwind": g["onwind"], "solar": g["solar"], "CCGT": g["CCGT"], "battery": s["battery"]})
+    return pd.Series({"onwind": g[names.gen("onwind")], "solar": g[names.gen("solar")], "CCGT": g[names.gen("CCGT")], "battery": s[names.unit("battery")]})
 
 
 def realised_costs(n: pypsa.Network) -> dict[str, dict[str, float]]:
@@ -100,13 +100,13 @@ def realised_costs(n: pypsa.Network) -> dict[str, dict[str, float]]:
     p = n.generators_t.p
     if isinstance(p.columns, pd.MultiIndex):
         for sc in p.columns.get_level_values(0).unique():
-            gas = float(n.generators.loc[(sc, "CCGT"), "marginal_cost"])
-            shed = float(n.generators.loc[(sc, "load shedding"), "marginal_cost"])
-            opex = float((p[(sc, "CCGT")] * gas * w).sum() + (p[(sc, "load shedding")] * shed * w).sum())
+            gas = float(n.generators.loc[(sc, names.gen("CCGT")), "marginal_cost"])
+            shed = float(n.generators.loc[(sc, names.gen("load shedding")), "marginal_cost"])
+            opex = float((p[(sc, names.gen("CCGT"))] * gas * w).sum() + (p[(sc, names.gen("load shedding"))] * shed * w).sum())
             out[str(sc)] = {"capex": float(capex), "opex": opex, "total": float(capex) + opex}
     else:
-        gas = float(n.generators.loc["CCGT", "marginal_cost"])
-        opex = float((p["CCGT"] * gas * w).sum() + (p["load shedding"] * BASE.VOLL * w).sum())
+        gas = float(n.generators.loc[names.gen("CCGT"), "marginal_cost"])
+        opex = float((p[names.gen("CCGT")] * gas * w).sum() + (p[names.gen("load shedding")] * BASE.VOLL * w).sum())
         out["realised"] = {"capex": float(capex), "opex": opex, "total": float(capex) + opex}
     return out
 

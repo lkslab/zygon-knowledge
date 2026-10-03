@@ -19,7 +19,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, finance, run  # noqa: E402
+from _lib import bundle, charts, finance, names, run  # noqa: E402
 
 SLUG = "price-duration-and-cost-recovery"
 TITLE = "Price duration and cost recovery"
@@ -64,10 +64,10 @@ def revenue_split(n: pypsa.Network) -> pd.DataFrame:
     w = n.snapshot_weightings.generators
     price = n.buses_t.marginal_price["electricity"]
     scarcity = price > gas_price_level(n) + 1e-3
-    p = n.generators_t.p.mul(w, axis=0)
+    p = names.plain(n.generators_t.p).mul(w, axis=0)
     rows = {}
     for g in ("onwind", "solar", "CCGT"):
-        mc = n.generators.marginal_cost[g] + (co2_price(n) * BASE.CO2_CCGT if g == "CCGT" else 0.0)
+        mc = names.plain(n.generators.marginal_cost)[g] + (co2_price(n) * BASE.CO2_CCGT if g == "CCGT" else 0.0)
         margin = (price - mc) * p[g]
         rows[g] = {"scarcity rent": float(margin[scarcity].sum()), "infra-marginal rent": float(margin[~scarcity].sum())}
     return pd.DataFrame(rows).T

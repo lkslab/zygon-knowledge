@@ -18,7 +18,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, profiles, run  # noqa: E402
+from _lib import bundle, charts, names, profiles, run  # noqa: E402
 
 SLUG = "screening-curves"
 TITLE = "Screening curves and the optimal thermal mix"
@@ -44,8 +44,8 @@ def build() -> pypsa.Network:
     n.add("Carrier", list(TECH) + ["load shedding", "AC"])
     n.add("Bus", "grid", carrier="AC")
     for carrier, (capex, mc) in TECH.items():
-        n.add("Generator", carrier, bus="grid", carrier=carrier, p_nom_extendable=True, capital_cost=capex, marginal_cost=mc)
-    n.add("Generator", "load shedding", bus="grid", carrier="load shedding", p_nom=1e6, marginal_cost=VOLL)
+        n.add("Generator", names.gen(carrier), bus="grid", carrier=carrier, p_nom_extendable=True, capital_cost=capex, marginal_cost=mc)
+    n.add("Generator", names.gen("load shedding"), bus="grid", carrier="load shedding", p_nom=1e6, marginal_cost=VOLL)
     n.add("Load", "demand", bus="grid", carrier="load", p_set=levels)
     return n
 
@@ -96,9 +96,9 @@ def analytic_capacities() -> dict[str, float]:
 
 def numbers(n: pypsa.Network) -> dict:
     w = n.snapshot_weightings.generators
-    cap_opt = n.generators.p_nom_opt.reindex(list(TECH))
+    cap_opt = names.plain(n.generators.p_nom_opt).reindex(list(TECH))
     analytic = analytic_capacities()
-    supply = n.generators_t.p.mul(w, axis=0).sum()
+    supply = names.plain(n.generators_t.p).mul(w, axis=0).sum()
     price = n.buses_t.marginal_price["grid"]
     hours_at = price.groupby(price.round(2)).apply(lambda s: float(w[s.index].sum()))
     flh = {t: float(supply[t] / cap_opt[t]) if cap_opt[t] > 1e-3 else None for t in TECH}
@@ -129,7 +129,7 @@ def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
     ldc = pd.DataFrame({"load": levels.round(0).to_numpy()}, index=pd.Index(hours.to_numpy(), name="hours"))
     be = breakevens()
     cum = 0.0
-    caps = n.generators.p_nom_opt
+    caps = names.plain(n.generators.p_nom_opt)
     band_marks = []
     for t in TECH:
         cum += float(caps[t])

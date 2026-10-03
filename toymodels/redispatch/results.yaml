@@ -32,9 +32,9 @@ numbers:
     zonal market: 58.75
   max_line_loading_market_pct: 336.2544
 meta:
-  pypsa: 1.3.0
+  pypsa: 0.35.1.post1.dev448+g0627ed820
   solver: highs
-  runtime_s: 3.31
+  runtime_s: 1.56
   figures:
     redispatch_geography:
       title: Where power is made, where it is used, and the lines between

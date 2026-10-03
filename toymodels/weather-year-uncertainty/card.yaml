@@ -28,7 +28,7 @@ method: |
   `n.set_scenarios({calm: 1/3, normal: 1/3, windy: 1/3})` turns the network into a
   scenario tree; afterwards every time-series frame has columns (scenario, name), so
   each year's wind and solar availability is written into
-  `n.generators_t.p_max_pu[(scenario, "onwind")]` and `[(scenario, "solar")]`. Static
+  `n.generators_t.p_max_pu[(scenario, "onwind gen")]` and `[(scenario, "solar gen")]`. Static
   tables are indexed (scenario, name) and capacities are shared. The normal-year plan
   is evaluated in each year by freezing its capacities and solving dispatch. EVPI =
   stochastic cost minus the probability-weighted deterministic costs; VSS = expected

@@ -20,7 +20,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, finance, profiles, run  # noqa: E402
+from _lib import bundle, charts, finance, names, profiles, run  # noqa: E402
 
 SLUG = "carbon-management"
 TITLE = "Carbon management: capture, sequestration and synthetic fuel"
@@ -59,52 +59,52 @@ def build(*, net_target_t: float = NET_TARGET_T, constrained: bool = True) -> py
     n.snapshot_weightings.loc[:, :] = weight
     n.add("Carrier", ["AC", "gas", "biomass", "co2", "co2 stored", "H2", "methanol", "onwind", "solar", "battery", "CCGT", "CCGT CCS",
                       "BECCS", "DAC", "H2 Electrolysis", "methanolisation", "co2 sequestration", "load shedding"])
-    n.add("Bus", ["electricity", "gas", "biomass", "co2 atmosphere", "co2 captured", "co2 stored", "hydrogen", "methanol"],
+    n.add("Bus", ["electricity", names.bus("gas"), names.bus("biomass"), "co2 atmosphere", "co2 captured", names.bus("co2 stored"), "hydrogen", names.bus("methanol")],
           carrier=["AC", "gas", "biomass", "co2", "co2", "co2 stored", "H2", "methanol"])
     n.add("Load", "demand", bus="electricity", carrier="load", p_set=profiles.annual_load(year, MEAN_LOAD_MW).loc[index])
-    n.add("Load", "fuel demand", bus="methanol", carrier="methanol", p_set=FUEL_DEMAND_MW)
-    n.add("Generator", "gas", bus="gas", carrier="gas", p_nom=1e5, marginal_cost=GAS_COST)
-    n.add("Generator", "biomass", bus="biomass", carrier="biomass", p_nom=1e5, marginal_cost=BIOMASS_COST)
-    n.add("Generator", "load shedding", bus="electricity", carrier="load shedding", p_nom=1e5, marginal_cost=BASE.VOLL)
-    n.add("Generator", "onwind", bus="electricity", carrier="onwind", p_nom_extendable=True, capital_cost=BASE._capex("onwind"), p_max_pu=profiles.wind(year).loc[index])
-    n.add("Generator", "solar", bus="electricity", carrier="solar", p_nom_extendable=True, capital_cost=BASE._capex("solar"), p_max_pu=profiles.solar(year).loc[index])
+    n.add("Load", "fuel demand", bus=names.bus("methanol"), carrier="methanol", p_set=FUEL_DEMAND_MW)
+    n.add("Generator", names.gen("gas"), bus=names.bus("gas"), carrier="gas", p_nom=1e5, marginal_cost=GAS_COST)
+    n.add("Generator", names.gen("biomass"), bus=names.bus("biomass"), carrier="biomass", p_nom=1e5, marginal_cost=BIOMASS_COST)
+    n.add("Generator", names.gen("load shedding"), bus="electricity", carrier="load shedding", p_nom=1e5, marginal_cost=BASE.VOLL)
+    n.add("Generator", names.gen("onwind"), bus="electricity", carrier="onwind", p_nom_extendable=True, capital_cost=BASE._capex("onwind"), p_max_pu=profiles.wind(year).loc[index])
+    n.add("Generator", names.gen("solar"), bus="electricity", carrier="solar", p_nom_extendable=True, capital_cost=BASE._capex("solar"), p_max_pu=profiles.solar(year).loc[index])
     b = BASE.TECH["battery"]
-    n.add("StorageUnit", "battery", bus="electricity", carrier="battery", p_nom_extendable=True, capital_cost=BASE._capex("battery"),
+    n.add("StorageUnit", names.unit("battery"), bus="electricity", carrier="battery", p_nom_extendable=True, capital_cost=BASE._capex("battery"),
           max_hours=b["max_hours"], efficiency_store=b["eta"], efficiency_dispatch=b["eta"], cyclic_state_of_charge=True)
     # plants: Link p_nom is fuel input, so capital cost per MW input = cost per MW electric x efficiency
     for name, bus0, ef in (("CCGT", "gas", EF_GAS), ("biomass", "biomass", EF_BIO)):
         eta = TECH[name]["eta"]
-        n.add("Link", name, bus0=bus0, bus1="electricity", bus2="co2 atmosphere", carrier=name, p_nom_extendable=True,
+        n.add("Link", names.link(name), bus0=names.bus(bus0), bus1="electricity", bus2="co2 atmosphere", carrier=name, p_nom_extendable=True,
               capital_cost=_capex(name) * eta, efficiency=eta, efficiency2=ef if name == "CCGT" else 0.0)
     eta = TECH["CCGT CCS"]["eta"]
-    n.add("Link", "CCGT CCS", bus0="gas", bus1="electricity", bus2="co2 captured", bus3="co2 atmosphere", carrier="CCGT CCS",
+    n.add("Link", names.link("CCGT CCS"), bus0=names.bus("gas"), bus1="electricity", bus2="co2 captured", bus3="co2 atmosphere", carrier="CCGT CCS",
           p_nom_extendable=True, capital_cost=_capex("CCGT CCS") * eta, efficiency=eta,
           efficiency2=CAPTURE_RATE * EF_GAS, efficiency3=(1 - CAPTURE_RATE) * EF_GAS)
     eta = TECH["BECCS"]["eta"]
     # biogenic carbon: the plant captures what the plant took from the air, so the captured
     # share is a removal from the atmosphere (negative efficiency = withdrawal from that bus)
-    n.add("Link", "BECCS", bus0="biomass", bus1="electricity", bus2="co2 captured", bus3="co2 atmosphere", carrier="BECCS",
+    n.add("Link", names.link("BECCS"), bus0=names.bus("biomass"), bus1="electricity", bus2="co2 captured", bus3="co2 atmosphere", carrier="BECCS",
           p_nom_extendable=True, capital_cost=_capex("BECCS") * eta, efficiency=eta,
           efficiency2=CAPTURE_RATE * EF_BIO, efficiency3=-CAPTURE_RATE * EF_BIO)
     # DAC: electricity in, CO2 from atmosphere to captured; p_nom in MW electric, 1 t per el_per_t MWh
     dac = TECH["DAC"]
-    n.add("Link", "DAC", bus0="electricity", bus1="co2 captured", bus2="co2 atmosphere", carrier="DAC", p_nom_extendable=True,
+    n.add("Link", names.link("DAC"), bus0="electricity", bus1="co2 captured", bus2="co2 atmosphere", carrier="DAC", p_nom_extendable=True,
           capital_cost=_capex("DAC") / dac["el_per_t"], efficiency=1 / dac["el_per_t"], efficiency2=-1 / dac["el_per_t"])
-    n.add("Link", "co2 sequestration", bus0="co2 captured", bus1="co2 stored", carrier="co2 sequestration", p_nom=1e5, marginal_cost=SEQ_COST)
-    n.add("Store", "co2 stored", bus="co2 stored", carrier="co2 stored", e_nom=1e9)
-    n.add("Store", "co2 captured", bus="co2 captured", carrier="co2", e_nom_extendable=True, capital_cost=finance.capital_cost(0.5, 30), e_cyclic=True)
+    n.add("Link", names.link("co2 sequestration"), bus0="co2 captured", bus1=names.bus("co2 stored"), carrier="co2 sequestration", p_nom=1e5, marginal_cost=SEQ_COST)
+    n.add("Store", names.unit("co2 stored"), bus=names.bus("co2 stored"), carrier="co2 stored", e_nom=1e9)
+    n.add("Store", names.unit("co2 captured"), bus="co2 captured", carrier="co2", e_nom_extendable=True, capital_cost=finance.capital_cost(0.5, 30), e_cyclic=True)
     # the atmosphere: a store that may go negative (removals); its final content is the net balance
     e_max = pd.Series(1.0, index=index)
     if constrained:
         e_max.iloc[-1] = net_target_t / 1e9
-    n.add("Store", "co2 atmosphere", bus="co2 atmosphere", carrier="co2", e_nom=1e9, e_min_pu=-1.0, e_max_pu=e_max, e_initial=0.0)
+    n.add("Store", names.unit("co2 atmosphere"), bus="co2 atmosphere", carrier="co2", e_nom=1e9, e_min_pu=-1.0, e_max_pu=e_max, e_initial=0.0)
     ely = TECH["H2 Electrolysis"]
-    n.add("Link", "H2 Electrolysis", bus0="electricity", bus1="hydrogen", carrier="H2 Electrolysis", p_nom_extendable=True, capital_cost=_capex("H2 Electrolysis"), efficiency=ely["eta"])
-    n.add("Store", "H2 Store", bus="hydrogen", carrier="H2", e_nom_extendable=True, capital_cost=BASE._capex("H2 Store"), e_cyclic=True)
+    n.add("Link", names.link("H2 Electrolysis"), bus0="electricity", bus1="hydrogen", carrier="H2 Electrolysis", p_nom_extendable=True, capital_cost=_capex("H2 Electrolysis"), efficiency=ely["eta"])
+    n.add("Store", names.unit("H2 Store"), bus="hydrogen", carrier="H2", e_nom_extendable=True, capital_cost=BASE._capex("H2 Store"), e_cyclic=True)
     me = TECH["methanolisation"]
-    n.add("Link", "methanolisation", bus0="hydrogen", bus1="methanol", bus2="co2 captured", carrier="methanolisation", p_nom_extendable=True,
+    n.add("Link", names.link("methanolisation"), bus0="hydrogen", bus1=names.bus("methanol"), bus2="co2 captured", carrier="methanolisation", p_nom_extendable=True,
           capital_cost=_capex("methanolisation") * me["eta"], efficiency=me["eta"], efficiency2=-CO2_PER_MWH_MEOH * me["eta"])
-    n.add("Store", "methanol", bus="methanol", carrier="methanol", e_nom_extendable=True, capital_cost=finance.capital_cost(2, 30), e_cyclic=True)
+    n.add("Store", names.unit("methanol"), bus=names.bus("methanol"), carrier="methanol", e_nom_extendable=True, capital_cost=finance.capital_cost(2, 30), e_cyclic=True)
     return n
 
 
@@ -121,23 +121,23 @@ def co2_flows_t(n: pypsa.Network) -> dict[str, float]:
         return float((col * w).sum())
 
     return {
-        "gas -> atmosphere (CCGT)": s(-L.p2["CCGT"]),
-        "gas -> atmosphere (CCS slip)": s(-L.p3["CCGT CCS"]),
-        "gas -> captured (CCS)": s(-L.p2["CCGT CCS"]),
-        "atmosphere -> captured (BECCS)": s(L.p3["BECCS"]),
-        "atmosphere -> captured (DAC)": s(L.p2["DAC"]),
-        "captured -> sequestered": s(L.p0["co2 sequestration"]),
-        "captured -> methanol": s(L.p2["methanolisation"]),
+        "gas -> atmosphere (CCGT)": s(-L.p2[names.link("CCGT")]),
+        "gas -> atmosphere (CCS slip)": s(-L.p3[names.link("CCGT CCS")]),
+        "gas -> captured (CCS)": s(-L.p2[names.link("CCGT CCS")]),
+        "atmosphere -> captured (BECCS)": s(L.p3[names.link("BECCS")]),
+        "atmosphere -> captured (DAC)": s(L.p2[names.link("DAC")]),
+        "captured -> sequestered": s(L.p0[names.link("co2 sequestration")]),
+        "captured -> methanol": s(L.p2[names.link("methanolisation")]),
     }
 
 
 def capacities(n: pypsa.Network) -> pd.Series:
     """MW per technology: generators by carrier (the fuel supply generators excluded), links by name."""
-    gens = n.generators.p_nom_opt.drop(["gas", "biomass", "load shedding"])
+    gens = n.generators.p_nom_opt.drop([names.gen(g) for g in ("gas", "biomass", "load shedding")])
     out = gens.groupby(n.generators.carrier).sum()
     out["battery"] = float(n.storage_units.p_nom_opt.sum())
     for lk in ("CCGT", "CCGT CCS", "biomass", "BECCS", "DAC", "H2 Electrolysis", "methanolisation"):
-        out[lk] = float(n.links.p_nom_opt[lk])
+        out[lk] = float(n.links.p_nom_opt[names.link(lk)])
     return out
 
 
@@ -153,7 +153,7 @@ def numbers(n: pypsa.Network) -> dict:
         "co2_kt": {"gross_emissions": gross / 1e3, "captured_from_gas": f["gas -> captured (CCS)"] / 1e3, "removed_by_beccs": f["atmosphere -> captured (BECCS)"] / 1e3,
                    "removed_by_dac": f["atmosphere -> captured (DAC)"] / 1e3, "sequestered": f["captured -> sequestered"] / 1e3,
                    "used_in_methanol": f["captured -> methanol"] / 1e3, "net_to_atmosphere": (gross - removals) / 1e3},
-        "atmosphere_balance_end_t": float(n.stores_t.e["co2 atmosphere"].iloc[-1]),
+        "atmosphere_balance_end_t": float(n.stores_t.e[names.unit("co2 atmosphere")].iloc[-1]),
         "co2_shadow_price_eur_t": float(-price["co2 atmosphere"].mean()),
         "captured_co2_price_eur_t": float((price["co2 captured"] * w).sum() / w.sum()),
         "cost_of_net_zero_meur_a": float((n.objective - unconstrained.objective) / 1e6),
@@ -161,9 +161,9 @@ def numbers(n: pypsa.Network) -> dict:
         "total_cost_meur_a": float(n.objective / 1e6),
         "capacity_mw": {c: float(cap.get(c, 0.0)) for c in ("onwind", "solar", "battery", "CCGT", "CCGT CCS", "biomass", "BECCS", "DAC", "H2 Electrolysis", "methanolisation")},
         "methanol_gwh_a": float(FUEL_DEMAND_MW * w.sum() / 1e3),
-        "methanol_price_eur_mwh": float((price["methanol"] * w).sum() / w.sum()),
+        "methanol_price_eur_mwh": float((price[names.bus("methanol")] * w).sum() / w.sum()),
         "electricity_price_eur_mwh": float((price["electricity"] * w).sum() / w.sum()),
-        "load_shed_mwh": float((n.generators_t.p["load shedding"] * w).sum()),
+        "load_shed_mwh": float((n.generators_t.p[names.gen("load shedding")] * w).sum()),
     }
 
 
@@ -193,7 +193,7 @@ def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
     cb = bundle.Figure(option, ds, title="Optimal capacity",
                        caption="Plants in MW of fuel input, DAC and the electrolyser in MW electric, methanolisation in MW "
                        "hydrogen. What the optimiser builds to hit net zero at least cost.")
-    bal = pd.DataFrame({"atmosphere": n.stores_t.e["co2 atmosphere"] / 1e3, "captured pool": n.stores_t.e["co2 captured"] / 1e3}).round(2)
+    bal = pd.DataFrame({"atmosphere": n.stores_t.e[names.unit("co2 atmosphere")] / 1e3, "captured pool": n.stores_t.e[names.unit("co2 captured")] / 1e3}).round(2)
     option, ds = charts.time_series(bal, "kt CO2 (cumulative)", slider=False)
     tb = bundle.Figure(option, ds, title="Cumulative carbon balance",
                        caption="The atmosphere store rises when gas runs and falls when BECCS and DAC run; it must end "

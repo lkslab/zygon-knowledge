@@ -149,9 +149,9 @@ numbers:
       solar: 384.2
       battery: 0.0
 meta:
-  pypsa: 1.3.0
+  pypsa: 0.35.1.post1.dev448+g0627ed820
   solver: highs
-  runtime_s: 5.44
+  runtime_s: 3.28
   figures:
     capacity_perfect_vs_myopic:
       title: Installed capacity per horizon, perfect foresight beside myopic

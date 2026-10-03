@@ -17,7 +17,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, profiles, run  # noqa: E402
+from _lib import bundle, charts, names, profiles, run  # noqa: E402
 
 SLUG = "rolling-horizon"
 TITLE = "Rolling horizon versus perfect foresight"
@@ -36,11 +36,11 @@ def build() -> pypsa.Network:
     n.add("Carrier", list(FLEET) + ["onwind", "battery", "load shedding", "AC"])
     n.add("Bus", "grid", carrier="AC")
     for carrier, (p_nom, mc) in FLEET.items():
-        n.add("Generator", carrier, bus="grid", carrier=carrier, p_nom=p_nom, marginal_cost=mc)
-    n.add("Generator", "onwind", bus="grid", carrier="onwind", p_nom=WIND_MW, marginal_cost=0, p_max_pu=profiles.wind(n.snapshots))
-    n.add("Generator", "load shedding", bus="grid", carrier="load shedding", p_nom=1e5, marginal_cost=3000)
+        n.add("Generator", names.gen(carrier), bus="grid", carrier=carrier, p_nom=p_nom, marginal_cost=mc)
+    n.add("Generator", names.gen("onwind"), bus="grid", carrier="onwind", p_nom=WIND_MW, marginal_cost=0, p_max_pu=profiles.wind(n.snapshots))
+    n.add("Generator", names.gen("load shedding"), bus="grid", carrier="load shedding", p_nom=1e5, marginal_cost=3000)
     # not cyclic: a rolling window cannot close a cycle it does not see; both solves start half full
-    n.add("StorageUnit", "battery", bus="grid", carrier="battery", cyclic_state_of_charge=False,
+    n.add("StorageUnit", names.unit("battery"), bus="grid", carrier="battery", cyclic_state_of_charge=False,
           state_of_charge_initial=BATTERY["p_nom"] * BATTERY["max_hours"] / 2, marginal_cost=0.5, **BATTERY)
     n.add("Load", "demand", bus="grid", carrier="load", p_set=profiles.daily_load(n.snapshots, BASE_MW, PEAK_MW))
     return n
@@ -64,17 +64,17 @@ def solve_rolling(n: pypsa.Network, *, horizon: int = 24, overlap: int = 0) -> p
 def cost(n: pypsa.Network) -> float:
     """Dispatch cost summed from the results, so both solves are scored the same way."""
     p = n.generators_t.p
-    return float((p * n.generators.marginal_cost).sum().sum() + (n.storage_units_t.p["battery"].clip(lower=0) * 0.5).sum())
+    return float((p * n.generators.marginal_cost).sum().sum() + (n.storage_units_t.p[names.unit("battery")].clip(lower=0) * 0.5).sum())
 
 
 def battery_stats(n: pypsa.Network) -> dict[str, float]:
     price = n.buses_t.marginal_price["grid"]
-    p = n.storage_units_t.p["battery"]
+    p = n.storage_units_t.p[names.unit("battery")]
     energy = BATTERY["p_nom"] * BATTERY["max_hours"]
     return {
         "revenue_eur": float((price * p).sum()),
         "cycles": float(p.clip(lower=0).sum() / energy),
-        "final_soc_mwh": float(n.storage_units_t.state_of_charge["battery"].iloc[-1]),
+        "final_soc_mwh": float(n.storage_units_t.state_of_charge[names.unit("battery")].iloc[-1]),
     }
 
 
@@ -96,14 +96,14 @@ def numbers(nets: dict[str, pypsa.Network]) -> dict:
         "battery_cycles": {k: v["cycles"] for k, v in b.items()},
         "final_state_of_charge_mwh": {k: v["final_soc_mwh"] for k, v in b.items()},
         "avg_price_eur_mwh": {k: float(n.buses_t.marginal_price["grid"].mean()) for k, n in nets.items()},
-        "peaker_energy_mwh": {k: float(n.generators_t.p["OCGT"].sum()) for k, n in nets.items()},
+        "peaker_energy_mwh": {k: float(n.generators_t.p[names.gen("OCGT")].sum()) for k, n in nets.items()},
         "cases": {k: {"horizon_h": h, "overlap_h": o} for k, (h, o) in CASES.items()},
         "windows": int(-(-len(nets["perfect foresight"].snapshots) // 24)),
     }
 
 
 def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
-    soc = pd.DataFrame({k: n.storage_units_t.state_of_charge["battery"].round(1) for k, n in nets.items()})
+    soc = pd.DataFrame({k: n.storage_units_t.state_of_charge[names.unit("battery")].round(1) for k, n in nets.items()})
     option, ds = charts.time_series(soc, "MWh")
     soc_fig = bundle.Figure(option, ds, title="Battery state of charge",
                             caption="Perfect foresight carries charge across days for the evenings that pay most; the "

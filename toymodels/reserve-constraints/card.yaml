@@ -33,7 +33,8 @@ method: |
   `reserve = n.model.add_variables(lower=0, coords=[snapshots, providers], name=
   "Generator-reserve")`; `n.model.add_constraints(reserve + p.sel(name=providers) <=
   p_nom, name="Generator-reserve-headroom")`; and the requirement `reserve.sum("name")
-  - 0.2 * p.sel(name="onwind") >= 0.1 * load`, named "Reserve-requirement". After the
+  - 0.2 * p.sel(name="onwind gen") >= 0.1 * load`, named "Reserve-requirement" (a generator is named
+  "<carrier> gen" because PyPSA refuses a name a Carrier already holds). After the
   solve the held reserve is `n.model["Generator-reserve"].solution` and the reserve
   price is `n.model.constraints["Reserve-requirement"].dual`; both live on the model,
   not on the network tables. A second solve without the hook gives the baseline.

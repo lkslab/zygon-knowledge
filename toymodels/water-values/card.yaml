@@ -32,7 +32,7 @@ setup:
   - {name: value_of_lost_load, value: 3000, unit: EUR/MWh}
 method: |
   Perfect foresight: `n.optimize(assign_all_duals=True)`; the water value is
-  `n.storage_units_t.mu_energy_balance["hydro"]`, the dual of the state-of-charge
+  `n.storage_units_t.mu_energy_balance["hydro unit"]` (the storage unit is "hydro unit", the carrier "hydro"), the dual of the state-of-charge
   balance, already in EUR per MWh of stored energy (absolute value taken). It is zero
   when the reservoir is about to spill, equals the fuel it displaces when the reservoir
   is the marginal source, and is constant across any stretch where neither bound binds.

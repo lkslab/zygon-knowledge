@@ -33,6 +33,9 @@ function bound(fig) {
     const ds = fig.datasets[entry.id];
     if (ds && !entry.source) entry.source = [ds.columns, ...ds.rows];
   }
+  for (const [name, geojson] of Object.entries(fig.maps || {})) {
+    if (!echarts.getMap(name)) echarts.registerMap(name, geojson);
+  }
   for (const s of option.series || []) {
     const colour = CARRIER_COLOURS[s.name];
     if (colour && !(s.itemStyle && s.itemStyle.color)) {

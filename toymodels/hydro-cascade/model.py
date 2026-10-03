@@ -19,7 +19,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, profiles, run  # noqa: E402
+from _lib import bundle, charts, names, profiles, run  # noqa: E402
 
 SLUG = "hydro-cascade"
 TITLE = "Chained hydro reservoirs: turbines, spill and water values"
@@ -52,8 +52,8 @@ def build() -> pypsa.Network:
     n.add("Bus", "electricity", carrier="AC")
     n.add("Bus", ["water upper", "water lower", "sea"], carrier="water")
     n.add("Load", "demand", bus="electricity", carrier="load", p_set=profiles.annual_load(year, LOAD_MEAN_MW).loc[index])
-    n.add("Generator", "CCGT", bus="electricity", carrier="CCGT", p_nom=CCGT_MW, marginal_cost=CCGT_COST)
-    n.add("Generator", "load shedding", bus="electricity", carrier="load shedding", p_nom=1e4, marginal_cost=3000)
+    n.add("Generator", names.gen("CCGT"), bus="electricity", carrier="CCGT", p_nom=CCGT_MW, marginal_cost=CCGT_COST)
+    n.add("Generator", names.gen("load shedding"), bus="electricity", carrier="load shedding", p_nom=1e4, marginal_cost=3000)
     for name, spec in RES.items():
         bus = f"water {name}"
         infl = inflow(year, INFLOW_MEAN_MW[name], seed=42 if name == "upper" else 43).loc[index]
@@ -66,7 +66,7 @@ def build() -> pypsa.Network:
     n.add("Link", "turbine lower", bus0="water lower", bus1="electricity", bus2="sea", carrier="hydro",
           p_nom=RES["lower"]["turbine_mw"], efficiency=1.0, efficiency2=1.0)
     n.add("Link", "spill lower", bus0="water lower", bus1="sea", carrier="spill", p_nom=1e4, efficiency=1.0, marginal_cost=0.01)
-    n.add("Store", "sea", bus="sea", carrier="water", e_nom=1e9)
+    n.add("Store", names.unit("sea"), bus="sea", carrier="water", e_nom=1e9)
     return n
 
 
@@ -97,10 +97,10 @@ def numbers(n: pypsa.Network) -> dict:
                                         "lower": float(100 * (f["spill lower"] * w).sum() / (infl["lower"] + ((f["turbine upper"] + f["spill upper"]) * w).sum()))},
         "water_value_eur_mwh": {r: {"mean": float((wv[r] * w).sum() / w.sum()), "wet_fortnight": float(wv[r].iloc[: len(wv[r]) // 2].mean()), "dry_fortnight": float(wv[r].iloc[len(wv[r]) // 2 :].mean())} for r in RES},
         "electricity_price_eur_mwh": {"mean": float((price["electricity"] * w).sum() / w.sum()), "wet_fortnight": float(price["electricity"].iloc[: len(price) // 2].mean()), "dry_fortnight": float(price["electricity"].iloc[len(price) // 2 :].mean())},
-        "thermal_hours_pct": float(100 * (n.generators_t.p["CCGT"] > 1e-3).mean()),
-        "thermal_energy_gwh": float((n.generators_t.p["CCGT"] * w).sum() / 1e3),
+        "thermal_hours_pct": float(100 * (n.generators_t.p[names.gen("CCGT")] > 1e-3).mean()),
+        "thermal_energy_gwh": float((n.generators_t.p[names.gen("CCGT")] * w).sum() / 1e3),
         "reservoir_level_range_pct": {r: [float(100 * n.stores_t.e[f"reservoir {r}"].min() / RES[r]["e_nom"]), float(100 * n.stores_t.e[f"reservoir {r}"].max() / RES[r]["e_nom"])] for r in RES},
-        "load_shed_mwh": float((n.generators_t.p["load shedding"] * w).sum()),
+        "load_shed_mwh": float((n.generators_t.p[names.gen("load shedding")] * w).sum()),
     }
 
 
