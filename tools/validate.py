@@ -263,9 +263,9 @@ def validate_payloads(root: Path) -> list[str]:
 def main() -> int:
     r = load_restructure()
     r.ANCHORS["pypsa-eur"] = EUR_ANCHOR
-    # .github/, CLAUDE.md, tools/ and toymodels/ postdate the frozen TOP_LEVEL set; baselines/
-    # was removed on 2026-09-11 when the app dropped baseline runs.
-    r.TOP_LEVEL |= {".github", "CLAUDE.md", "tools", "toymodels"}
+    # .github/, CLAUDE.md, pytest.ini, tools/ and toymodels/ postdate the frozen TOP_LEVEL set;
+    # baselines/ was removed on 2026-09-11 when the app dropped baseline runs.
+    r.TOP_LEVEL |= {".github", "CLAUDE.md", "pytest.ini", "tools", "toymodels"}
     r.TOP_LEVEL -= {"baselines"}
     errors: list[str] = []
 
