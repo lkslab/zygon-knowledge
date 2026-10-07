@@ -93,7 +93,11 @@ models:
     note: scales the chemicals demand; read in compose_network, scenario-safe.
   - kind: invocation
     note: >-
-      no target changes. Read the industrial demand off n.loads whose carrier contains
+      config only, no code: the shipped
+      scripts/build_industrial_production_per_country_tomorrow.py already reads every
+      route key above through snakemake.params.industry, so a bundle never rewrites or
+      patches it; a route pathway is a config override per scenario and nothing else.
+      No target changes. Read the industrial demand off n.loads whose carrier contains
       "for industry" (electricity, H2, gas, methanol, naphtha, solid biomass) and
       "industry" process emissions, per cluster, with
       resources/<run>/industrial_energy_demand_<horizon>.csv as the tabulated input the
