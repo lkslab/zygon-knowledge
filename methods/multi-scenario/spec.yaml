@@ -88,8 +88,9 @@ models:
 
       '
   - kind: payload
-    note: 'rules/zygon_collect.smk + scripts/zygon_collect.py; patches the Snakefile
-      include list and appends the zygon_collect: config section.
+    note: 'rules/zygon_collect.smk + scripts/zygon_collect.py; ships the zygon_collect:
+      config.yaml fragment, staged into the submission directory and included through
+      custom_rules.
       Rebased on a6c45e5 (2026-09-10), not yet re-run against an a6c45e5 install.
 
       '

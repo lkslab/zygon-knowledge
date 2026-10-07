@@ -92,7 +92,7 @@ models:
     source: hourly-matching
     note: 'SHARES the zygon_cfe payload shipped under methods/hourly-matching/payload/pypsa-eur
       (rules/zygon_cfe.smk, scripts/build_cfe_network.py, zygon_cfe_constraints.py,
-      zygon_cfe_collect.py, the two patches). Apply it once; both specs read one
+      zygon_cfe_collect.py, the config.yaml fragment). Stage it once; both specs read one
       zygon_cfe config block.
       Dry-run validated on 9a0c6bc5 (lkslab/pypsa-eur, 2026-09-16); not yet solved
       end to end.

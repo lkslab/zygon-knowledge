@@ -1,0 +1,13 @@
+# Zygon methods payload `multi-scenario` — harmonised collection.
+# Consumed by rules/zygon_collect.smk -> scripts/zygon_collect.py. Applies
+# every hook function in `hooks` (one per entry in `quantities`, agent-
+# authored, at the workflow root) to every network in `networks` (explicit
+# paths — ANY solvable network set composes: this method's scenario runs,
+# another method's horizon networks) and writes one long-format CSV per
+# quantity under results/zygon_collect/. Docs in
+# methods/multi-scenario/spec.yaml.
+zygon_collect:
+  networks: []
+  labels: []
+  quantities: []
+  hooks: zygon_hooks.py

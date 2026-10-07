@@ -48,8 +48,9 @@ models:
 
       '
   - kind: payload
-    note: 'distribute_investment.py + rules/investment_geography.smk; patches Snakefile
-      include + investment_geography: config section. Composes with the market payloads.
+    note: 'distribute_investment.py + rules/investment_geography.smk; ships the
+      investment_geography: config.yaml fragment, staged into the submission directory
+      and included through custom_rules. Composes with the market payloads.
       Rebased on a6c45e5 (2026-09-10), not yet re-run against an a6c45e5 install.
 
       '

@@ -25,6 +25,11 @@
 
 import os
 
+# This rule file's own directory, captured at parse time (a lambda runs later,
+# when the included-file stack no longer points here). The payload's scripts sit
+# beside it in ../scripts, wherever the tree is staged.
+_ZYGON_CFE_RULES_DIR = workflow.current_basedir.get_path_or_uri()
+
 
 def _zygon_cfe_solar_capacity_per_sqkm(w):
     # solve_network.py at 82b13507 reads params.solar_capacity_per_sqkm when
@@ -118,7 +123,7 @@ rule solve_cfe_network:
         # the payload's own hook: solve_network.py imports this module and
         # calls the function named like the file (zygon_cfe_constraints)
         custom_extra_functionality=lambda w: os.path.join(
-            workflow.basedir, "scripts", "zygon_cfe_constraints.py"
+            _ZYGON_CFE_RULES_DIR, "..", "scripts", "zygon_cfe_constraints.py"
         ),
     message:
         "Solving clean-procurement variant {wildcards.zcfe} for horizon {wildcards.horizon}"

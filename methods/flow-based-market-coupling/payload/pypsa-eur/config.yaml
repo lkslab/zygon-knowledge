@@ -1,0 +1,23 @@
+# Flow-based market coupling (zygon methods payload: flow-based-market-coupling)
+# Consumed by rules/fbmc.smk -> scripts/solve_fbmc_market.py; docs in the
+# method spec methods/flow-based-market-coupling/spec.yaml.
+fbmc:
+  snapshots:
+    start: "2013-03-01"
+    end: "2013-03-02"
+  zones:
+    mode: split          # country | split | busmap
+    n: 2                 # zones per country (mode: split, latitude quantiles)
+    busmap: {}           # bus -> zone mapping (mode: busmap)
+  gsk:
+    variant: optimized   # optimized | capacity | conventional | flat
+    eps_mw: 50.0         # optimized-GSK fallback threshold on |dNP_z|
+  frm: 0.1               # flow reliability margin, fraction of thermal rating
+  minram: 0.1            # numerical RAM floor (EU rule analogue: 0.7)
+  cnec:
+    threshold: 0.05      # zone-to-line PTDF sensitivity screen
+    ties_always: true
+  hybrid_coupling: advanced  # advanced | standard (DC folded into NTCs)
+  ntc_haircut: 0.7       # NTC = haircut * summed tie thermal capacity
+  line_scaling: 1.0      # extra derate on line ratings inside the FBMC chain
+  voll: 3000.0           # load-shedding cost in the market stages [EUR/MWh]

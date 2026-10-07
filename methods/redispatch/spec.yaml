@@ -45,8 +45,9 @@ models:
 
       '
   - kind: payload
-    note: 'redispatch_core.py + solve_redispatch.py + rules/redispatch.smk; patches
-      Snakefile include + redispatch: config section. File-disjoint from the FBMC
+    note: 'redispatch_core.py + solve_redispatch.py + rules/redispatch.smk; ships the
+      redispatch: config.yaml fragment, staged into the submission directory and
+      included through custom_rules. File-disjoint from the FBMC
       payload — the two compose.
       Rebased on a6c45e5 (2026-09-10), not yet re-run against an a6c45e5 install.
 

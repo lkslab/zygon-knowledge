@@ -70,8 +70,8 @@ models:
       '
   - kind: payload
     note: 'rules/zygon_storage_economics.smk + scripts/zygon_storage_economics.py;
-      patches the Snakefile include list and appends the zygon_storage_economics:
-      config section. File-disjoint from every other payload.
+      ships the zygon_storage_economics: config.yaml fragment, staged into the
+      submission directory and included through custom_rules. File-disjoint from every other payload.
       Rebased on a6c45e5 (2026-09-10), not yet re-run against an a6c45e5 install.
 
       '
