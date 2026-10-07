@@ -1,0 +1,122 @@
+id: carbon-management
+title: Carbon management
+question: >-
+  How much carbon capture and removal does a net-zero or net-negative target need, which
+  of CCS on point sources, direct air capture and BECCS the system buys and at what cost per
+  tonne, how much CO2 has to be moved and stored and where, and what happens when
+  sequestration capacity is limited — the question CCS developers, storage operators,
+  climate ministries and the bodies writing removal targets ask.
+when_to_use:
+- how much carbon removal does net zero need
+- CCS versus direct air capture versus BECCS
+- CO2 transport network and storage siting
+- limited sequestration capacity, what then
+- cost of a tonne removed / negative emissions target
+- residual emissions and how to offset them
+models:
+- model: pypsa-eur
+  approach: >-
+    pypsa-eur tracks CO2 as a commodity (scripts/prepare_sector_network.py:add_co2_tracking:
+    atmosphere, stored per cluster, sequestered) with capture a per-technology option on
+    gas and biomass plants, SMR, process emissions and waste, direct air capture a Link
+    per cluster that spends electricity and heat
+    (scripts/prepare_sector_network.py:add_dac), CO2 moved through candidate pipelines
+    (scripts/prepare_sector_network.py:add_co2_network) or used in fuel synthesis, and
+    sequestration capped per horizon in Mt/a
+    (scripts/solve_network.py:add_co2_sequestration_limit) and distributed regionally from
+    the CO2StoP atlas. Under the co2-budget cap the model buys the cheapest mix of
+    avoidance, capture and removal, so the removal a target needs is a result and the
+    storage cap's dual is the value of one more tonne of storage. The co2-management method
+    settles those keys — the sequestration potential dict (the binding lever of a
+    storage-limited scenario), DAC on/off, the network and the cost — all per-scenario,
+    with the atlas filters held for the submission. The target is co2-budget's (the
+    shipped 2050 cap is already net zero, so a removal question is a tighter cap, a
+    tighter storage potential, or both); CO2 utilisation competes through
+    fuel-switch-shares; the timing of storage readiness is pathway-myopic. The carrier
+    cards direct-air-capture, beccs, co2-transport-and-sequestration, industrial-ccs and
+    allam-cycle carry the levers. Results are read off the capture Links into the
+    atmosphere bus, the CO2 pipelines, the sequestered Store and the cap's dual.
+  trade_offs:
+  - >-
+    the storage cap is what the whole question hinges on, and it is an assumption: the
+    robust study runs the potential (and the cost per tonne) as a scenario dimension
+    rather than reading one value as the answer
+  - >-
+    CO2 transport exists only between clusters, so storage siting and pipeline questions
+    pin the cluster count the same way the hydrogen backbone does; a how-much question
+    does not need them
+  - >-
+    removal competes with every avoidance option across all sectors, so a carbon
+    management study keeps the coupled default and the full cap; narrowing the scope
+    removes the emitters the removal would offset
+  limitations:
+  - >-
+    DAC lives on heat buses, so sector.heating must stay on; co2_network needs
+    co2_spatial; the shipped 2050 cap is already net zero and the default run already
+    buys removal
+  - >-
+    enhanced weathering, biochar and ocean removal are not in the model (the carrier
+    cards record the gap); BECCS is the capture variant of the biomass plants, bounded by
+    the biomass potential; no land-use or forestry sink
+  - >-
+    storage is a per-cluster potential from the CO2StoP atlas (offshore by default, sites
+    between min_size and max_size), not a named storage project; the atlas filters are
+    held for the whole submission
+  - >-
+    cost per tonne is the system-cost difference between scenarios or the cap's dual,
+    never a technology's levelised cost on its own
+  methods:
+  - id: co2-management
+    role: >-
+      the sequestration potential and cost, DAC, the CO2 network and the capture rate —
+      what each key does and that a scenario may vary them
+  - id: co2-budget
+    role: >-
+      the emissions cap that creates the demand for removal; a net-negative target is a
+      cap below zero, a residual-emissions question is the cap with capture off
+  - id: fuel-switch-shares
+    role: >-
+      the utilisation side — synthesis routes compete with sequestration for captured
+      CO2, so a CCU question is a fuel-share scenario
+  - id: pathway-myopic
+    role: >-
+      when storage and transport have to be ready — horizons with carry-over for a
+      sequestration ramp through the 2030s and 2040s
+  defaults:
+  - aspect: sequestration-trajectory
+    is: >-
+      the shipped potential: 0 Mt/a until 2025, 40 in 2030, 180 in 2040, 250 in 2050, at
+      30 EUR per tonne, regional from the CO2StoP atlas, DAC on, CO2 network on
+    note: >-
+      the potential is a settled assumption per scenario, never a default to fall into:
+      the study names the Mt/a it assumes per horizon and the cost per tonne
+  - aspect: net-zero-cap
+    is: co2_budget.upper 2050 at 0.0 of 1990 — the shipped overnight 2050 run is already net zero
+    note: >-
+      a removal question states its cap explicitly (co2-budget); below zero for
+      net-negative, with capture options off for a residual-emissions question
+  plots:
+  - id: capacity_mix
+    role: capture and removal capacity by kind (point-source CC, DAC, BECCS) per scenario
+  - id: compare_system_cost
+    role: storage potentials and caps against each other, the cost of a tonne removed
+  - id: network_map
+    role: CO2 pipelines and sequestration per cluster
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+- model: pypsa-earth
+  approach: >-
+    The study runs on the carrier levers and the default config; no method spec is
+    verified for pypsa-earth yet. The levers it can describe live in the carrier cards
+    under carriers/ that carry a section for this model.
+  trade_offs: []
+  limitations:
+  - >-
+    no method spec is verified for pypsa-earth yet: the study runs on carrier levers and
+    default config, and its results are unverified for this model
+  methods: []
+  defaults: []
+  version_anchor:
+    ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
+    date: '2026-09-09'

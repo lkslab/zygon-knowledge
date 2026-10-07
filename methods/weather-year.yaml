@@ -1,0 +1,91 @@
+id: weather-year
+title: weather-year — run the system through a different year's weather
+family: grid-and-security
+what: >-
+  Every renewable profile, heat demand and hydro inflow in pypsa-eur comes from one
+  atlite cutout, and the year is set in two places that must move together: the
+  top-level snapshots block (start, end, inclusive) and atlite.default_cutout, which
+  rules/common.smk:input_cutout hands to rules/build_electricity.smk:build_renewable_profiles,
+  the hydro inflow and the heat demand and temperature rules. The archived cutouts
+  (data.cutout.source archive, fetched by the retrieve rule) exist for the years 1995,
+  1996, 2008, 2009, 2010, 2012, 2013, 2019, 2020, 2021, 2023, 2024 and 2025 as
+  europe-<year>-sarah3-era5, each about 6 GB; any other year needs a CDS build
+  (data.cutout.source build) that is out of a study's budget. Demand follows the
+  weather year too (load profiles are read for the snapshot year) unless load.fixed_year
+  pins it. Both keys are read by horizon-free rules, so a weather year is a full
+  rebuild of the pre-compose chain: under shared resources a scenario that changes
+  snapshots cannot share the base stack, and the app's harness turns sharing off for
+  it, so a two-year comparison costs two complete chains (correct, and the reason to
+  keep the cluster count and the resolution modest). The data block is global to a
+  submission, so the cutout source is the same for every scenario.
+when_to_use:
+- a bad weather year / dunkelflaute / cold spell stress test
+- how robust is the plan across weather years
+- 2010-style cold winter, 1996, a low-wind year
+- weather-year sensitivity of storage and firm capacity
+- does the result depend on 2013
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+  execution:
+  - kind: config
+    key: snapshots.start
+    value: '2010-01-01'
+    note: >-
+      with snapshots.end '2011-01-01' and inclusive left: one full year. 2010 is the
+      archived cold-winter year; pick from the archived list only. Read by every
+      horizon-free rule, so it holds for the base config and forces an unshared chain
+      when varied per scenario.
+  - kind: config
+    key: snapshots.end
+    value: '2011-01-01'
+    note: the day after the last snapshot (inclusive left).
+  - kind: config
+    key: atlite.default_cutout
+    value: europe-2010-sarah3-era5
+    note: >-
+      must name the same year as snapshots, in the archived naming
+      (europe-<year>-sarah3-era5); the retrieve rule fetches it when
+      data.cutout.source is archive (the shipped default). Mismatched years fail at
+      build_renewable_profiles.
+  - kind: config
+    key: load.fixed_year
+    value: false
+    note: >-
+      shipped false: demand follows the weather year. Set to a year (e.g. 2013) to keep
+      the demand profile fixed and isolate the supply-side weather effect.
+  - kind: invocation
+    note: >-
+      no target changes. The year is n.snapshots[0].year; compare years on the same
+      numbers (system cost, firm capacity built, storage energy, unserved energy with
+      load-shedding on) across the scenarios' networks. Leap years lose 29 February
+      (enable.drop_leap_day true).
+  invalidates:
+  - build_renewable_profiles
+  - build_electricity_demand
+  - compose_network
+  - solve_network
+  budget:
+    jobs: 40
+    class: hours
+  success_metric:
+  - name: one-weather-year
+    needs: prepared
+    check: len(set(n.snapshots.year)) == 1
+    expect: the network spans exactly one calendar year of snapshots
+  - name: profiles-follow-the-year
+    needs: prepared
+    check: n.generators_t.p_max_pu.shape[0] == len(n.snapshots)
+    expect: renewable availability is defined on every snapshot of the chosen year
+notes: >-
+  One year at a time: there is no multi-year chronology at this anchor, so a
+  weather-year study is a scenario per year, each a full chain, compared on the same
+  results. A cold spell inside a year is read off the solved network (the week of
+  lowest wind-plus-solar, the heat demand peak), never configured. River and sea water
+  heat sources pull per-year data downloads, so leave them out. Pairs with
+  [[load-shedding]] (what the bad year costs in unserved energy) and
+  [[component-outage]] (the bad year with a corridor lost); [[existing-fleet]] for a
+  fixed-fleet adequacy check rather than a re-optimised plan. The carrier cards
+  demand-temporal-profiles and electricity-load carry the demand side.

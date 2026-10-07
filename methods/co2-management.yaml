@@ -1,0 +1,129 @@
+id: co2-management
+title: co2-management — capture, removal, CO2 transport and the sequestration cap
+family: sector-coupling
+what: >-
+  pypsa-eur tracks CO2 as a commodity on its own buses
+  (scripts/prepare_sector_network.py:add_co2_tracking: "co2 atmosphere" for what is
+  emitted, "co2 stored" per cluster when sector.co2_spatial is on, and the "co2
+  sequestered" Store the cap applies to). Capture is a per-technology option, captured
+  at sector.cc_fraction on gas and biomass CHP, SMR, process emissions and waste; direct
+  air capture is scripts/prepare_sector_network.py:add_dac, a Link per cluster that
+  spends electricity and heat and so lives only on heat buses (sector.heating must stay
+  on); BECCS is the capture variant of the biomass plants. Captured CO2 is either used
+  (synthesis, methanation) or moved through
+  scripts/prepare_sector_network.py:add_co2_network, candidate pipelines along the
+  clustered grid when sector.co2_network is on (needs co2_spatial), and sequestered at
+  sector.co2_sequestration_cost per tonne. The volume is capped at solve time by
+  scripts/solve_network.py:add_co2_sequestration_limit from
+  sector.co2_sequestration_potential, a {year: Mt/a} dict, and distributed regionally
+  from the CO2StoP atlas when sector.regional_co2_sequestration_potential.enable is set
+  (rules/build_sector.smk:build_clustered_co2_sequestration_potentials). The removal a
+  target needs is then a result: under the co2-budget cap the model buys the cheapest
+  mix of avoidance, capture and removal. The sequestration cap, DAC, the network and the
+  cost are read in compose_network or solve_network, so a scenario may vary them (a
+  storage-constrained vs storage-abundant pair is two potential dicts); the regional
+  atlas filters (attribute, min_size) are read by a horizon-free rule and hold for the
+  whole submission.
+when_to_use:
+- how much carbon removal does net zero need
+- CCS versus direct air capture versus BECCS
+- CO2 transport network and storage siting
+- what if sequestration capacity is limited
+- cost of a tonne removed / negative emissions
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+  execution:
+  - kind: config
+    key: sector.co2_sequestration_potential
+    value:
+      2030: 40
+      2040: 180
+      2050: 250
+    note: >-
+      Mt CO2 per year that may be sequestered in the horizon (the shipped trajectory at
+      those years). The binding lever of a storage-limited scenario; read in
+      solve_network, scenario-safe. Its dual is the value of one more tonne of storage.
+  - kind: config
+    key: sector.co2_sequestration_cost
+    value: 30
+    note: EUR per tonne stored, the shipped default; read in compose_network.
+  - kind: config
+    key: sector.dac
+    value: true
+    note: >-
+      the shipped default; false removes direct air capture and is the no-DAC
+      counterfactual. DAC needs an urban central or services decentral heat bus, so
+      sector.heating stays true.
+  - kind: config
+    key: sector.co2_spatial
+    value: true
+    note: >-
+      the shipped default: a "co2 stored" bus per cluster, which the CO2 network and the
+      regional potentials need. Never false together with co2_network true (the network
+      would point at buses that do not exist).
+  - kind: config
+    key: sector.co2_network
+    value: true
+    note: >-
+      the shipped default: candidate CO2 pipelines between clusters, costed at
+      sector.co2_network_cost_factor. False is the no-transport counterfactual where
+      every cluster stores what it captures.
+  - kind: config
+    key: sector.regional_co2_sequestration_potential.enable
+    value: true
+    note: >-
+      the shipped default: the CO2StoP atlas sets a per-cluster storage potential
+      (offshore only unless include_onshore; min_size 3 and max_size 25 Mt per site).
+      enable and max_size/years_of_storage are read in compose_network; attribute,
+      include_onshore and min_size by a horizon-free rule, so those hold for the whole
+      submission.
+  - kind: config
+    key: sector.cc_fraction
+    value: 0.9
+    note: capture rate of every capture-equipped technology, the shipped default.
+  - kind: config
+    key: sector.co2_vent
+    value: false
+    note: >-
+      the shipped default; true lets captured CO2 be vented at no cost, which only makes
+      sense for a capture-without-storage counterfactual.
+  - kind: invocation
+    note: >-
+      no target changes. Read removal off the Links into "co2 atmosphere" with negative
+      flow (DAC, BECCS: carriers containing "DAC" and "CC"), transport off n.links with
+      carrier "CO2 pipeline", storage off n.stores[n.stores.carrier == 'co2 sequestered']
+      (e at the last snapshot is the volume stored in the horizon), and the storage
+      cap's value off the global constraint's dual (n.global_constraints.mu for
+      co2_sequestration_limit).
+  invalidates:
+  - compose_network
+  - solve_network
+  budget:
+    jobs: 2
+    class: hours
+  success_metric:
+  - name: capture-and-storage-present
+    needs: prepared
+    check: (n.links.carrier == 'DAC').any() and (n.stores.carrier == 'co2 sequestered').any()
+    expect: a DAC Link per heat-bus cluster and the sequestered CO2 Store the cap applies to
+  - name: co2-network-present
+    needs: prepared
+    check: (not n.meta.get('sector', {}).get('co2_network', True)) or (n.links.carrier == 'CO2 pipeline').any()
+    expect: candidate CO2 pipelines exist when co2_network is on
+  - name: removal-used-under-the-cap
+    needs: solved
+    check: n.stores_t.e.loc[:, n.stores.index[n.stores.carrier == 'co2 sequestered']].iloc[-1].sum() > 0
+    expect: the solver sequestered CO2 in the horizon under a binding emissions target
+notes: >-
+  The shipped 2050 cap is already net zero (co2_budget.upper 2050: 0.0 relative to
+  1990), so the default run already buys removal; a removal question is about how much
+  and where under a tighter cap or a tighter storage potential, which is [[co2-budget]]
+  plus this method's potential dict. Enhanced weathering, biochar and ocean removal are
+  not in the model (carrier cards record the gap); CO2 utilisation competes through the
+  synthesis routes of [[fuel-switch-shares]]. Pair with [[pathway-myopic]] when the
+  question is when storage has to be ready. The carrier cards direct-air-capture,
+  beccs, co2-transport-and-sequestration, industrial-ccs and allam-cycle carry the
+  levers.

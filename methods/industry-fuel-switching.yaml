@@ -1,0 +1,128 @@
+id: industry-fuel-switching
+title: industry-fuel-switching — production routes per horizon and the energy demand they imply
+family: sector-coupling
+what: >-
+  pypsa-eur does not optimise an industrial site's technology choice; it takes the
+  route mix as an input per horizon and derives the energy and feedstock demand from
+  it. The chain: rules/build_sector.smk:build_industrial_production_per_country_tomorrow
+  moves today's production (JRC-IDEES, Eurostat) to the configured route shares for the
+  horizon (industry.St_primary_fraction, DRI_fraction, Al_primary_fraction, the three
+  HVC_*_fraction keys), build_industry_sector_ratios_intermediate blends today's energy
+  intensities with the future ones by industry.sector_ratios_fraction_future, and
+  build_industrial_energy_demand_per_node distributes the result to clusters by the
+  Hotmaps and GEM site lists (build_industrial_distribution_key). compose_network then
+  adds the demand (scripts/prepare_sector_network.py:add_industry: electricity, "H2 for
+  industry", process heat as solid biomass, gas, methanol and naphtha loads, process
+  emissions with a capture option at sector.cc_fraction) and
+  scripts/prepare_sector_network.py:add_ammonia the ammonia chain when sector.ammonia
+  is set. The route shares and the ratio blend are {year: value} keys read by {horizon}
+  rules, so a scenario may vary them (a fast-vs-slow DRI pair is two DRI_fraction
+  dicts); the intensities behind them (industry.H2_DRI, elec_DRI, the MWh_* keys),
+  sector.ammonia and the site lists are read by horizon-free rules, so they hold for the
+  whole submission and a per-scenario change to them is silently dead under shared
+  resources.
+when_to_use:
+- industrial decarbonisation of steel / cement / chemicals / aluminium
+- hydrogen direct reduction (DRI) versus blast furnace
+- industrial hydrogen and electricity demand by region
+- process emissions and industrial carbon capture
+- electrification of industry and its grid impact
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+  execution:
+  - kind: config
+    key: industry.DRI_fraction
+    value:
+      2030: 0.0
+      2040: 0.5
+      2050: 1.0
+    note: >-
+      share of primary steel made by hydrogen direct reduction (the shipped trajectory
+      is 0 in 2030 rising to 1 in 2050). Per horizon, scenario-safe; this is the lever a
+      steel study varies.
+  - kind: config
+    key: industry.St_primary_fraction
+    value:
+      2030: 0.5
+      2040: 0.4
+      2050: 0.3
+    note: >-
+      share of steel from primary routes (the rest is scrap EAF); shipped default 0.6 in
+      2020 falling to 0.3 in 2050. Per horizon, scenario-safe.
+  - kind: config
+    key: industry.Al_primary_fraction
+    value:
+      2030: 0.3
+      2040: 0.25
+      2050: 0.2
+    note: shipped trajectory (0.4 to 0.2); per horizon, scenario-safe.
+  - kind: config
+    key: industry.HVC_primary_fraction
+    value:
+      2030: 0.7
+      2040: 0.55
+      2050: 0.4
+    note: >-
+      high-value chemicals from primary (naphtha) routes, the complement split between
+      industry.HVC_mechanical_recycling_fraction and HVC_chemical_recycling_fraction
+      (shipped 0.12 to 0.3 and 0 to 0.2); the three must sum to at most 1 per year.
+      Per horizon, scenario-safe.
+  - kind: config
+    key: industry.sector_ratios_fraction_future
+    value:
+      2030: 0.3
+      2040: 0.65
+      2050: 1.0
+    note: >-
+      how far each sector's energy intensities have moved from today's to the fully
+      transformed ones (the shipped trajectory, 0 in 2020, 1 in 2050). Per horizon,
+      scenario-safe; the electrification lever for the sectors without a route key.
+  - kind: config
+    key: sector.ammonia
+    value: true
+    note: >-
+      the shipped default: an explicit ammonia chain (Haber-Bosch from hydrogen,
+      ammonia cracker). "regional" puts a bus per cluster. Read by a horizon-free rule
+      as well as compose_network, so set it once in the base config, never per scenario.
+  - kind: config
+    key: sector.HVC_demand_factor
+    value: 1.0
+    note: scales the chemicals demand; read in compose_network, scenario-safe.
+  - kind: invocation
+    note: >-
+      no target changes. Read the industrial demand off n.loads whose carrier contains
+      "for industry" (electricity, H2, gas, methanol, naphtha, solid biomass) and
+      "industry" process emissions, per cluster, with
+      resources/<run>/industrial_energy_demand_<horizon>.csv as the tabulated input the
+      network was built from.
+  invalidates:
+  - build_industrial_production_per_country_tomorrow
+  - build_industrial_energy_demand_per_node
+  - compose_network
+  - solve_network
+  budget:
+    jobs: 6
+    class: hours
+  success_metric:
+  - name: industrial-hydrogen-demand-present
+    needs: prepared
+    check: (n.loads.carrier == 'H2 for industry').any()
+    expect: an H2-for-industry load exists per cluster with industrial sites
+  - name: route-shares-move-the-demand
+    needs: solved
+    check: n.loads_t.p_set.loc[:, n.loads.index[n.loads.carrier == 'H2 for industry']].sum().sum() > 0 if (n.loads.carrier == 'H2 for industry').any() and set(n.loads_t.p_set.columns) & set(n.loads.index[n.loads.carrier == 'H2 for industry']) else n.loads.loc[n.loads.carrier == 'H2 for industry', 'p_set'].sum() > 0
+    expect: a non-zero hydrogen demand in the horizon once DRI_fraction or the ratio blend is above zero
+notes: >-
+  Country totals, not sites: production is national and reaches a cluster through the
+  site lists, so the answer is the demand and the supply built around a cluster, never
+  a plant's business case. Process heat is split by fuel, not by temperature band, and
+  no route choice is endogenous at this anchor (the carrier card
+  industry-process-heat-endogenous records the gap). Pair with [[co2-budget]] for the
+  target that prices the routes, [[h2-network-expansion]] when the question is where
+  the hydrogen comes from, [[pathway-myopic]] when it is when the switch has to happen.
+  The carrier cards h2-dri-steel, electric-arc-furnace, low-clinker-cement,
+  electrolytic-chemicals, industrial-ccs, electric-process-heat and
+  industrial-process-heat-temperature-bands carry the levers.

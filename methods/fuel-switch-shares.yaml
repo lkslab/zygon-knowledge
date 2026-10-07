@@ -1,0 +1,122 @@
+id: fuel-switch-shares
+title: fuel-switch-shares — shipping and aviation fuel pathways and the synthesis behind them
+family: sector-coupling
+what: >-
+  pypsa-eur takes the fuel split of shipping and aviation as an input per horizon and
+  optimises the synthesis and its siting. Shipping: scripts/prepare_sector_network.py:add_shipping
+  splits the demand (rules/build_sector.smk:build_shipping_demand, by port attribution)
+  into "shipping methanol", hydrogen and oil loads by sector.shipping_methanol_share,
+  shipping_hydrogen_share and shipping_oil_share, {year: share} dicts that should sum
+  to 1 (the script only warns). Aviation: scripts/prepare_sector_network.py:add_aviation
+  is a "kerosene for aviation" load scaled by sector.aviation_demand_factor, met from
+  the oil bus, which Fischer-Tropsch synthesis feeds, or from methanol-to-kerosene when
+  sector.methanol.methanol_to_kerosene is on. The synthesis routes, "Fischer-Tropsch"
+  and "methanolisation" Links per cluster with minimum part loads
+  (sector.min_part_load_fischer_tropsch, min_part_load_methanolisation), are added
+  inside add_industry, so they exist only while sector.industry is true. Imports of the
+  finished fuel are the alternative side (sector.imports.enable with
+  sector.imports.price.methanol and .oil). Every key here is read in compose_network,
+  so a scenario may vary any of them: methanol-vs-ammonia-vs-oil for ships is three
+  share dicts, domestic-vs-imported e-kerosene is imports.enable.
+when_to_use:
+- e-fuels for shipping and aviation
+- methanol or ammonia or hydrogen ships
+- e-kerosene / sustainable aviation fuel cost and build-out
+- where should fuel synthesis sit, import or make
+- what does a fuel switch cost the power system
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+  execution:
+  - kind: config
+    key: sector.shipping_methanol_share
+    value:
+      2030: 0.15
+      2040: 0.5
+      2050: 1.0
+    note: >-
+      share of shipping energy from methanol (the shipped trajectory: 0 in 2020, 0.15
+      in 2030, 1 in 2050). Per horizon, read in compose_network, scenario-safe.
+  - kind: config
+    key: sector.shipping_hydrogen_share
+    value:
+      2030: 0.0
+      2040: 0.0
+      2050: 0.0
+    note: >-
+      shipped default zero; raise it for a hydrogen-ships scenario. With
+      sector.shipping_hydrogen_liquefaction true the hydrogen is liquefied first.
+  - kind: config
+    key: sector.shipping_oil_share
+    value:
+      2030: 0.85
+      2040: 0.5
+      2050: 0.0
+    note: >-
+      the remainder; the three shares should sum to 1 per year, the script warns and
+      scales otherwise. Set all three together in every scenario.
+  - kind: config
+    key: sector.aviation_demand_factor
+    value: 1.0
+    note: >-
+      scales aviation kerosene demand; a demand-management scenario lowers it. There is
+      no route split for aviation: the fuel is kerosene, synthetic or fossil, decided by
+      the oil balance under the emissions cap.
+  - kind: config
+    key: sector.methanol.methanol_to_kerosene
+    value: false
+    note: >-
+      shipped off; true adds a methanol-to-kerosene Link so the aviation fuel can come
+      from the methanol chain instead of Fischer-Tropsch.
+  - kind: config
+    key: sector.min_part_load_fischer_tropsch
+    value: 0.5
+    note: >-
+      the shipped minimum part load of the synthesis; with
+      sector.min_part_load_methanolisation (0.3) this is what makes the synthesis a
+      baseload consumer rather than a flexible one.
+  - kind: config
+    key: sector.imports.enable
+    value: false
+    note: >-
+      true adds import Generators for methanol and oil (and H2, NH3, gas) at
+      sector.imports.price.<carrier>, capped by sector.imports.limit in TWh/a; the
+      import half of a make-vs-buy pair.
+  - kind: invocation
+    note: >-
+      no target changes. Read the fuel balance off n.loads with carrier "shipping
+      methanol", "shipping oil", "H2 for shipping" and "kerosene for aviation", the
+      synthesis off n.links with carrier "Fischer-Tropsch" and "methanolisation"
+      (p_nom_opt and dispatched energy per cluster), and imports off the Generators
+      whose carrier contains "import".
+  invalidates:
+  - compose_network
+  - solve_network
+  budget:
+    jobs: 2
+    class: hours
+  success_metric:
+  - name: synthesis-routes-present
+    needs: prepared
+    check: (n.links.carrier == 'Fischer-Tropsch').any() and (n.links.carrier == 'methanolisation').any()
+    expect: both synthesis Links exist (sector.industry stayed true)
+  - name: fuel-loads-split
+    needs: prepared
+    check: (n.loads.carrier == 'kerosene for aviation').any() and n.loads.carrier.str.startswith('shipping').any()
+    expect: an aviation kerosene load and at least one shipping fuel load per the shares
+  - name: synthesis-dispatched
+    needs: solved
+    check: n.links.loc[n.links.carrier.isin(['Fischer-Tropsch', 'methanolisation']), 'p_nom_opt'].sum() > 0
+    expect: the solver built synthesis capacity to serve the e-fuel shares under the cap
+notes: >-
+  The fuel split is a decision the model does not take: it prices each split, so a
+  study of "which fuel" is a scenario set, one per candidate split, compared on system
+  cost. Ammonia for ships is not a shipping share at this anchor (the ammonia chain
+  exists for industry; a card-level gap). Synthesis sits where the model finds it
+  cheapest, which follows hydrogen and CO2 availability, so pair with
+  [[h2-network-expansion]] and [[co2-management]] when the siting is the question,
+  [[co2-budget]] for the target, [[pathway-myopic]] for the timing. The carrier cards
+  shipping-demand, aviation-demand, e-methanol, e-kerosene-saf,
+  e-diesel-fischer-tropsch, methanol-ships and green-ammonia carry the levers.

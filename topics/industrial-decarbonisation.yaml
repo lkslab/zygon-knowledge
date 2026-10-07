@@ -1,0 +1,124 @@
+id: industrial-decarbonisation
+title: Industrial decarbonisation
+question: >-
+  How does a region's industry — steel, chemicals, cement, aluminium, refining — get off
+  fossil fuels: which production routes, how much hydrogen and electricity they need and
+  where, what process emissions remain and whether to capture them, and what the switch
+  costs the energy system — the question industrial clusters, ports, sector bodies and the
+  ministries funding the transition ask.
+when_to_use:
+- industrial decarbonisation of steel / cement / chemicals / aluminium
+- hydrogen direct reduction versus blast furnace
+- industrial hydrogen and electricity demand by region
+- process emissions and industrial carbon capture
+- electrifying industrial process heat
+- what does an industrial cluster need from the energy system
+models:
+- model: pypsa-eur
+  approach: >-
+    pypsa-eur treats industry as demand whose shape the study decides: production per
+    country (JRC-IDEES, Eurostat) is moved to the configured route shares per horizon
+    (rules/build_sector.smk:build_industrial_production_per_country_tomorrow — primary vs
+    scrap steel, DRI share, primary aluminium, chemicals from naphtha vs recycling), energy
+    intensities blend from today's to the transformed ones
+    (industry.sector_ratios_fraction_future), and the result is distributed to clusters
+    by the Hotmaps and GEM site lists and added by
+    scripts/prepare_sector_network.py:add_industry as electricity, "H2 for industry",
+    process heat, gas, methanol and naphtha loads plus process emissions with a capture
+    option; the ammonia chain is explicit. The energy system then responds: where the
+    hydrogen is made, what the grid needs, what the cap does to process emissions. The
+    industry-fuel-switching method settles the route keys and says which may vary per
+    scenario (the route shares and the ratio blend, per horizon) and which hold for the
+    whole submission (the intensities, sector.ammonia, the site lists). The target comes
+    from co2-budget, the hydrogen supply from h2-network-expansion when that is the
+    question, the timing from pathway-myopic. The carrier cards h2-dri-steel,
+    electric-arc-furnace, low-clinker-cement, electrolytic-chemicals, industrial-ccs,
+    electric-process-heat and industrial-process-heat-temperature-bands carry the levers.
+    Results are read off the industry loads per cluster (the tabulated
+    industrial_energy_demand_<horizon>.csv) and what the system built to serve them.
+  trade_offs:
+  - >-
+    the route split is a decision the model prices, not one it finds — the study is a
+    scenario set, one per route pathway (fast DRI, slow DRI, scrap-heavy), compared on
+    system cost and hydrogen need, rather than one run read as the answer
+  - >-
+    industry demand lands on the clusters that hold the sites, so the cluster count
+    decides whether a steel region is its own node or part of a larger one — a cluster-level
+    question pins spatial_resolution and pays for it
+  - >-
+    the hydrogen question and the industry question pull on each other: scoping out the
+    backbone keeps the run small but leaves "where does the hydrogen come from" to a
+    per-node electrolyser answer
+  limitations:
+  - >-
+    country totals distributed by site lists, never a site: no plant business case, no
+    single works, no port cluster as an entity — the answer is the demand and the build
+    around a cluster
+  - >-
+    no endogenous route choice at this anchor, process heat split by fuel not by
+    temperature band (the carrier card industry-process-heat-endogenous records the
+    gap), no industrial flexibility or load shifting
+  - >-
+    the intensities behind the routes (industry.H2_DRI, elec_DRI, the MWh_* keys) and
+    sector.ammonia are read by horizon-free rules — a per-scenario change to them is
+    silently dead under shared resources, so they are settled once for the submission
+  - >-
+    cement and lime process emissions have one capture option at a fixed capture rate
+    (sector.cc_fraction); no clinker substitution, no CCU accounting beyond the
+    synthesis routes
+  methods:
+  - id: industry-fuel-switching
+    role: >-
+      the production route shares and intensity blend per horizon — what each key moves,
+      which vary per scenario, and the demand they produce
+  - id: co2-budget
+    role: >-
+      the emissions target that prices the routes; process emissions count against it,
+      which is what makes capture worth buying
+  - id: h2-network-expansion
+    role: >-
+      where the industrial hydrogen comes from — per-node electrolysis, a backbone, or
+      imports — when the supply side is part of the question
+  - id: pathway-myopic
+    role: >-
+      when the switch has to happen — horizons with carry-over so a 2030 DRI plant's
+      hydrogen demand persists into 2040
+  defaults:
+  - aspect: route-trajectory
+    is: >-
+      the shipped trajectories: DRI share 0 in 2030 rising to 1 in 2050, primary steel
+      falling to 0.3, primary aluminium to 0.2, chemicals to 0.4 primary with recycling
+      taking the rest, intensities fully transformed by 2050
+    note: >-
+      a route pathway is a settled assumption per scenario, never a default to fall
+      into: the study names the shares it assumes for each horizon
+  - aspect: ammonia-chain
+    is: sector.ammonia true — Haber-Bosch from hydrogen and an ammonia cracker, one EU bus
+    note: >-
+      "regional" puts an ammonia bus per cluster; either way it is set once for the
+      submission
+  plots:
+  - id: capacity_mix
+    role: hydrogen, electricity and capture capacity the industry demand pulls in, per scenario
+  - id: compare_system_cost
+    role: route pathways against each other on system cost and hydrogen need
+  - id: region_map
+    role: industrial hydrogen and electricity demand per cluster
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+- model: pypsa-earth
+  approach: >-
+    The study runs on the carrier levers and the default config; no method spec is
+    verified for pypsa-earth yet. The levers it can describe live in the carrier cards
+    under carriers/ that carry a section for this model.
+  trade_offs: []
+  limitations:
+  - >-
+    no method spec is verified for pypsa-earth yet: the study runs on carrier levers and
+    default config, and its results are unverified for this model
+  methods: []
+  defaults: []
+  version_anchor:
+    ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
+    date: '2026-09-09'

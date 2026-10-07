@@ -1,0 +1,125 @@
+id: municipal-heat
+title: Municipal heat
+question: >-
+  Should a city or region expand district heating or go building by building with heat
+  pumps, which heat sources should the network run on — large heat pumps, geothermal,
+  waste heat, CHP — how much heat storage does it need, and what does each path cost the
+  power system: the question municipal heat plans, city utilities and district-heating
+  operators have to answer under heat-planning laws.
+when_to_use:
+- district heating versus heat pumps for a city or region
+- municipal heat plan / heat zoning / heat planning law
+- which heat sources for district heating (geothermal, waste heat, large heat pumps)
+- heat storage and seasonal storage for a heat network
+- heat pump rollout and its impact on the power grid
+- decarbonising building heat
+models:
+- model: pypsa-eur
+  approach: >-
+    pypsa-eur carries building heat per cluster in three systems — urban central
+    (district heating), urban decentral and rural — with the district-heat share an
+    exogenous ramp (rules/build_sector.smk:build_district_heat_share towards
+    sector.district_heating.potential along sector.district_heating.progress) and the
+    supply behind each system optimised: per urban central bus a heat pump per listed
+    source (sector.heat_pump_sources; geothermal, river and sea water as limited sources
+    with per-cluster potentials), resistive heaters, gas and biomass CHP, boilers, solar
+    thermal, waste heat from electrolysis and fuel synthesis, and water tank or pit storage
+    (sector.tes); per decentral bus heat pumps, boilers and tanks, seeded with today's
+    heating stock. The district-heating-expansion method settles those keys and is where
+    the two study shapes live: the share question is a scenario pair of progress dicts
+    (expand vs hold), the source question is the supply mix the solver picks once the
+    sources are let in (geothermal is a no-op unless listed), and storage value is tes on
+    vs off. The emissions target comes from co2-budget, today's boilers and heat pumps from
+    existing-fleet, the timing from pathway-myopic. The carrier cards district-heating,
+    district-heating-demand-share, air-source-heat-pumps, ground-source-heat-pumps,
+    geothermal-conventional, waste-heat-recovery, thermal-storage and building-retrofit
+    carry the levers. Results are read off the urban central buses (supply by carrier,
+    storage, the share of total heat) and the decentral heat pump build.
+  trade_offs:
+  - >-
+    a node is a cluster of regions, never a city: the finer the clustering the closer a
+    cluster gets to the city in question, at the usual cost in solve time; the honest
+    framing is the cluster that contains the city, stated as such
+  - >-
+    heat is hourly and seasonal, so temporal resolution is the dial a heat study protects
+    (3-hourly at most, a full year) — coarser runs flatten the winter peak that sizes the
+    network and the storage
+  - >-
+    the district-heat share is an assumption the model prices, not a result it finds —
+    the robust study runs the share as a scenario dimension and compares system cost,
+    rather than reading one share as the answer
+  limitations:
+  - >-
+    no network layout, no street-level zoning: the answer is the share of a cluster's heat
+    on district heating and the supply mix behind it, never which streets get a pipe
+  - >-
+    supply temperatures and losses are country-level approximations; building retrofit
+    is exogenous unless sector.retrofitting.retro_endogen is turned on, which is costly
+    and reads horizon-free data
+  - >-
+    river and sea water heat sources pull extra per-year downloads (JRC HERA; Copernicus
+    Marine needs credentials) and sector.enhanced_geothermal reads a placeholder
+    capacity-factor path in compose_network at this anchor — both stay off
+  - >-
+    no individual building, no hydraulic or temperature feasibility of a network; waste
+    heat is the model's own (electrolysis, synthesis, fuel cells), not a named
+    industrial site's
+  methods:
+  - id: district-heating-expansion
+    role: >-
+      the district-heat share ramp, the heat sources let into the urban central system,
+      storage on or off — the keys a heat plan varies and what each does
+  - id: co2-budget
+    role: >-
+      the emissions target that retires the gas boilers; the baseline follows the heating
+      toggle, so a heat study is capped against economy-wide 1990 emissions
+  - id: existing-fleet
+    role: >-
+      today's heating stock per cluster (build_existing_heating_distribution) — the
+      boilers and heat pumps the plan starts from
+  - id: pathway-myopic
+    role: >-
+      when the network expands and the boilers retire — horizons with carry-over so a
+      2030 heat pump is still there in 2040
+  defaults:
+  - aspect: district-heating-share
+    is: >-
+      today's share moving towards sector.district_heating.potential (0.6) along the
+      shipped progress ramp (0.25 by 2030, 1.0 by 2050) — the shipped config already
+      expands district heating
+    note: >-
+      the share is a settled assumption, never a default to fall into: the study names
+      the ramp (or the per-country potential) it assumes, and a hold-vs-expand pair is
+      two ramps
+  - aspect: heat-sources
+    is: >-
+      air-source heat pumps only in the urban central system (sector.heat_pump_sources)
+      — no geothermal, river or sea water unless listed
+    note: >-
+      a source question lists the sources first; geothermal's potential is in the data
+      but reaches the model only through that list
+  plots:
+  - id: capacity_mix
+    role: district-heat supply capacity by carrier per scenario, and the decentral heat pump build
+  - id: dispatch_weeks
+    role: a winter week of the urban central heat balance — sources, storage, venting
+  - id: compare_system_cost
+    role: expand vs hold the network, with vs without storage, source sets
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+- model: pypsa-earth
+  approach: >-
+    The study runs on the carrier levers and the default config; no method spec is
+    verified for pypsa-earth yet. The levers it can describe live in the carrier cards
+    under carriers/ that carry a section for this model.
+  trade_offs: []
+  limitations:
+  - >-
+    no method spec is verified for pypsa-earth yet: the study runs on carrier levers and
+    default config, and its results are unverified for this model
+  methods: []
+  defaults: []
+  version_anchor:
+    ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
+    date: '2026-09-09'

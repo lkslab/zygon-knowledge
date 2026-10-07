@@ -1,0 +1,118 @@
+id: h2-network-expansion
+title: h2-network-expansion — the hydrogen backbone as candidate pipelines, retrofits and caverns
+family: sector-coupling
+what: >-
+  pypsa-eur builds the hydrogen grid as an expansion problem, not a fixed map:
+  scripts/prepare_sector_network.py:add_h2_gas_infrastructure adds one extendable
+  "H2 pipeline" Link per clustered corridor (every AC line, DC link and clustered gas
+  pipe gets a candidate, costed per MWkm), and with H2_retrofit true one "H2 pipeline
+  retrofitted" Link per existing gas pipe whose p_nom_max is H2_retrofit_capacity_per_CH4
+  times the gas pipe's capacity, while scripts/solve_network.py:add_pipe_retrofit_constraint
+  ties the two: gas capacity plus retrofitted hydrogen capacity may never exceed the
+  pipe that exists, so a repurposed pipe comes out of the gas grid. Electrolysers,
+  fuel cells and hydrogen turbines are per-node Links, storage is "H2 Store" (tank
+  everywhere, underground where rules/build_sector.smk:build_salt_cavern_potentials finds
+  a cavern site above 2 TWh and sector.hydrogen_underground_storage is on), and imports
+  are Generators at the gas-pipeline entry points that
+  scripts/prepare_sector_network.py:add_import_options adds at the configured price when
+  sector.imports.enable is set, capped in TWh/a by
+  scripts/solve_network.py:add_import_limit_constraint. The gas grid itself comes from
+  SciGRID_gas (rules/build_sector.smk:build_gas_network, cluster_gas_network) and is
+  downloaded whenever sector.enabled is true, gas_network on or off. Every key here is
+  read in compose_network or solve_network, so a scenario may vary any of them: the
+  backbone vs no-backbone pair is H2_network true/false, repurposing vs new-build is
+  H2_retrofit, imports vs domestic is imports.enable.
+when_to_use:
+- hydrogen backbone / hydrogen network build-out
+- repurposing gas pipelines for hydrogen
+- where should electrolysers and hydrogen storage go
+- hydrogen imports versus domestic electrolysis
+- cavern storage need for a hydrogen system
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+  execution:
+  - kind: config
+    key: sector.H2_network
+    value: true
+    note: >-
+      the shipped default; false removes every candidate pipeline
+      (scripts/prepare_sector_network.py:remove_h2_network) and is the counterfactual
+      half of a backbone study. Read in compose_network, so it may differ per scenario.
+  - kind: config
+    key: sector.H2_retrofit
+    value: true
+    note: >-
+      default false. True adds "H2 pipeline retrofitted" Links on every existing gas
+      pipe, extendable up to H2_retrofit_capacity_per_CH4 times the gas capacity. Needs
+      sector.gas_network true: without the gas pipes the retrofit constraint finds no
+      extendable gas Link and returns early, so repurposed capacity is free of any
+      decommissioning, a silent give-away.
+  - kind: config
+    key: sector.gas_network
+    value: true
+    note: >-
+      the shipped default; keeps per-node gas buses and the clustered SciGRID_gas pipes
+      the retrofit candidates and the import entry points hang off. Leave it on for
+      this method.
+  - kind: config
+    key: sector.hydrogen_underground_storage
+    value: true
+    note: >-
+      the shipped default; cavern "H2 Store" at the nodes build_salt_cavern_potentials
+      lists (onshore and nearshore by default,
+      sector.hydrogen_underground_storage_locations), tank storage everywhere else.
+  - kind: config
+    key: sector.H2_retrofit_capacity_per_CH4
+    value: 0.6
+    note: >-
+      the shipped default: hydrogen carries 60% of a pipe's methane energy capacity.
+      Read in both compose_network (p_nom_max) and solve_network (the retrofit
+      constraint), so a scenario may vary it.
+  - kind: config
+    key: sector.imports.enable
+    value: false
+    note: >-
+      flip to true for the import side of an imports-vs-domestic pair: one H2 import
+      Generator per gas entry point at sector.imports.price.H2 (74 EUR/MWh default),
+      total capped by sector.imports.limit in TWh/a (infinite by default, so set it
+      when the question is "how much import is worth it"). Both keys are read in
+      compose_network / solve_network, so they vary per scenario.
+  - kind: invocation
+    note: >-
+      no target changes: the backbone is part of the composed and solved sector network
+      the baseline profile already renders. Read the backbone off
+      n.links[n.links.carrier.isin(['H2 pipeline', 'H2 pipeline retrofitted'])] (p_nom_opt,
+      length, bus0/bus1) and the storage off n.stores[n.stores.carrier == 'H2 Store'].
+  invalidates:
+  - compose_network
+  - solve_network
+  budget:
+    jobs: 2
+    class: hours
+  success_metric:
+  - name: candidate-pipelines-present
+    needs: prepared
+    check: (n.links.carrier == 'H2 pipeline').any() and n.links.loc[n.links.carrier == 'H2 pipeline', 'p_nom_extendable'].all()
+    expect: one extendable H2 pipeline candidate per clustered corridor when H2_network is true
+  - name: retrofit-candidates-bounded
+    needs: prepared
+    check: (not (n.links.carrier == 'H2 pipeline retrofitted').any()) or (n.links.loc[n.links.carrier == 'H2 pipeline retrofitted', 'p_nom_max'] < float('inf')).all()
+    expect: every retrofitted pipe carries a finite p_nom_max derived from its gas pipe (H2_retrofit on)
+  - name: backbone-built
+    needs: solved
+    check: n.links.loc[n.links.carrier.str.startswith('H2 pipeline'), 'p_nom_opt'].sum() > 0
+    expect: the solver built hydrogen pipeline capacity somewhere under the emissions target
+notes: >-
+  Spatial resolution is the whole answer: a candidate pipeline exists only between
+  clusters, so a corridor question pins spatial_resolution high enough to separate its
+  ends, and results are not comparable across cluster counts. The retrofit side is
+  conservative by construction (no new-build compression, no partial repurposing of a
+  parallel string). Pair with [[co2-budget]] for the target that makes hydrogen worth
+  moving, [[existing-fleet]] for the gas plants that compete for the pipe, and
+  [[pathway-myopic]] when the question is when the backbone is needed rather than
+  whether. The carrier cards hydrogen-pipelines, hydrogen-pipeline-retrofitting,
+  hydrogen-storage-salt-caverns, electrolysers and green-energy-imports carry the
+  levers and their ladder.

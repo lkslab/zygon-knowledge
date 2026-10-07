@@ -1,0 +1,126 @@
+id: hydrogen-grid
+title: Hydrogen grid
+question: >-
+  Where does a hydrogen backbone pay off, which gas pipelines should be repurposed and
+  which built new, how much cavern storage does the system need, and when is importing
+  hydrogen cheaper than making it — the question gas and hydrogen network operators,
+  regulators and hydrogen-valley planners ask for the 2030s and 2040s.
+when_to_use:
+- hydrogen backbone / hydrogen network plan
+- repurpose gas pipelines for hydrogen
+- where should electrolysers and hydrogen storage sit
+- hydrogen imports versus domestic production
+- hydrogen demand and supply by region
+- gas network decline and stranded pipelines
+models:
+- model: pypsa-eur
+  approach: >-
+    The hydrogen grid is a built-in expansion problem in the sector-coupled default:
+    scripts/prepare_sector_network.py:add_h2_gas_infrastructure lays an extendable "H2
+    pipeline" candidate along every clustered corridor (AC, DC and gas) and, with
+    H2_retrofit on, a retrofit candidate on every existing gas pipe bounded by the pipe's
+    capacity and tied to the gas grid by scripts/solve_network.py:add_pipe_retrofit_constraint,
+    so repurposing takes capacity out of the gas system. Electrolysers, fuel cells, H2
+    turbines and SMR sit at every node, caverns where
+    rules/build_sector.smk:build_salt_cavern_potentials finds them, imports at the gas entry
+    points at a configured price and cap. The demand the backbone serves is what the other
+    sectors make of hydrogen — industry (DRI, ammonia, refining), fuel synthesis, shipping,
+    heavy transport, re-electrification — so the study scope is sector-coupled by nature,
+    and the h2-network-expansion method settles the network keys: the backbone pair
+    (H2_network on/off), repurposing (H2_retrofit), imports (sector.imports). The
+    emissions target is what makes hydrogen worth moving (co2-budget); the gas fleet it
+    competes with comes from existing-fleet; the timing of the backbone from
+    pathway-myopic. The carrier cards hydrogen-pipelines, hydrogen-pipeline-retrofitting,
+    hydrogen-storage-salt-caverns, electrolysers, green-energy-imports and
+    natural-gas-pipelines carry the levers and their ladder. Results are read off
+    n.links by carrier (H2 pipeline, H2 pipeline retrofitted: p_nom_opt per corridor),
+    n.stores (H2 Store) and the import Generators; the network map is the natural chart.
+  trade_offs:
+  - >-
+    corridors exist only between clusters, so the siting answer dies with the cluster
+    count — a backbone question pins spatial_resolution high enough to separate the
+    corridors it is about and pays in solve time, and results are not comparable across
+    counts
+  - >-
+    hydrogen demand is what the other sectors ask for: narrowing the sector scope to save
+    compute (no industry, no shipping) removes the demand the backbone would serve, so a
+    hydrogen study keeps the coupled default and spends elsewhere (temporal resolution,
+    fewer scenarios)
+  - >-
+    imports vs domestic is a price assumption the model cannot test — sector.imports.price
+    is set, not found — so the robust study runs the import price as a scenario dimension
+    rather than one value
+  limitations:
+  - >-
+    no named corridor: candidates follow the clustered topology, so "the Dutch-German
+    backbone" is whichever clustered links connect those regions, never a specific
+    pipeline project
+  - >-
+    repurposing is conservative by construction — one retrofit candidate per gas pipe at
+    a fixed 0.6 capacity ratio, no new compression, no partial repurposing of a parallel
+    string; and H2_retrofit without gas_network silently gives retrofit capacity away for
+    free (no decommissioning constraint)
+  - >-
+    SciGRID_gas and the GEM gas tracker are downloaded whenever sector.enabled is true,
+    gas_network on or off; the gas grid is the clustered IGGIELGN dataset, not an
+    operator's own
+  - >-
+    cavern storage only where the salt-cavern atlas lists a site above 2 TWh; no
+    depleted-field or lined-rock storage, no tank-vs-cavern siting below the cluster
+  methods:
+  - id: h2-network-expansion
+    role: >-
+      the network keys — candidate pipelines, retrofit candidates tied to the gas grid,
+      cavern storage, import entry points — and which of them a scenario may vary
+  - id: co2-budget
+    role: >-
+      the emissions target that prices hydrogen into the system; without a binding cap
+      the backbone is not worth building
+  - id: existing-fleet
+    role: >-
+      the gas plants and pipes that stand today — the capacity the hydrogen system
+      competes with and repurposes
+  - id: pathway-myopic
+    role: >-
+      when the backbone is needed, not only whether — horizons with capacity carry-over
+      so a 2030 retrofit is still there in 2040
+  defaults:
+  - aspect: sector-coupling
+    is: >-
+      every sector on, including the hydrogen demand of industry, shipping and transport,
+      and H2_network true — the shipped config already builds a backbone
+    note: >-
+      the counterfactual is H2_network false in a scenario, never a power-only run: with
+      sector.enabled false there is no hydrogen in the model at all
+  - aspect: imports-off
+    is: sector.imports.enable false — no hydrogen imports unless the study turns them on
+    note: >-
+      an import scenario names the price (sector.imports.price.H2, 74 EUR/MWh shipped)
+      and the cap (sector.imports.limit, TWh/a) as settled assumptions
+  plots:
+  - id: network_map
+    role: the backbone on the map — pipeline capacity per corridor, storage per node
+  - id: capacity_mix
+    role: electrolysis, storage and import capacity per scenario
+  - id: compare_system_cost
+    role: backbone vs no backbone, repurposed vs new-build, import vs domestic
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+- model: pypsa-earth
+  approach: >-
+    The study runs on the carrier levers and the default config; no method spec is
+    verified for pypsa-earth yet. The levers it can describe live in the carrier cards
+    under carriers/ that carry a section for this model (hydrogen export is the earth
+    case the v1 cards green-ammonia-exports and green-h2-export-cost-benchmarking,
+    archived under archive/cookbooks/pypsa-earth/topics/v1/, describe).
+  trade_offs: []
+  limitations:
+  - >-
+    no method spec is verified for pypsa-earth yet: the study runs on carrier levers and
+    default config, and its results are unverified for this model
+  methods: []
+  defaults: []
+  version_anchor:
+    ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
+    date: '2026-09-09'

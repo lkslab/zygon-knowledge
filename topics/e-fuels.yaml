@@ -1,0 +1,119 @@
+id: e-fuels
+title: E-fuels
+question: >-
+  What does it cost to run ships and aircraft on synthetic fuels — e-methanol, e-kerosene,
+  hydrogen — how much synthesis capacity, hydrogen and captured CO2 that takes and where
+  it should sit, and when importing the finished fuel beats making it: the question
+  shipping lines, airlines, ports, fuel traders and the regulators setting fuel mandates
+  ask.
+when_to_use:
+- e-fuels for shipping and aviation
+- methanol or ammonia or hydrogen ships
+- e-kerosene / sustainable aviation fuel cost and build-out
+- where should fuel synthesis sit, import or make
+- fuel mandates (FuelEU, ReFuelEU) and what they cost the energy system
+- green fuel demand and the power it needs
+models:
+- model: pypsa-eur
+  approach: >-
+    pypsa-eur takes the fuel split as an input and optimises the synthesis and its siting:
+    scripts/prepare_sector_network.py:add_shipping splits the shipping demand by the
+    methanol, hydrogen and oil shares per horizon,
+    scripts/prepare_sector_network.py:add_aviation adds the kerosene load (scaled by
+    sector.aviation_demand_factor, met from the oil balance or from methanol-to-kerosene),
+    and the synthesis routes — Fischer-Tropsch and methanolisation Links per cluster with
+    minimum part loads, fed by hydrogen and captured CO2 — compete with fossil fuel under
+    the emissions cap and with imports at a configured price. The fuel-switch-shares
+    method settles the share and synthesis keys, all per-scenario, so a "which fuel"
+    question is a scenario set, one per split, compared on system cost; the siting falls
+    out of hydrogen and CO2 availability per cluster. The target comes from co2-budget, the
+    hydrogen supply from h2-network-expansion and the CO2 supply from co2-management when
+    those are part of the question, the timing from pathway-myopic. The carrier cards
+    shipping-demand, aviation-demand, e-methanol, e-kerosene-saf,
+    e-diesel-fischer-tropsch, methanol-ships and green-ammonia carry the levers. Results
+    are read off the fuel loads per cluster, the synthesis Links (capacity, dispatch,
+    where) and the import Generators.
+  trade_offs:
+  - >-
+    the fuel split is priced, not found: the study spends its scenarios on candidate
+    splits (methanol ships vs hydrogen ships vs oil-with-offsets, SAF via FT vs via
+    methanol) rather than on resolution
+  - >-
+    synthesis siting follows hydrogen and CO2 — a siting answer needs the backbone and the
+    CO2 network in scope, which widens the run; a cost answer does not
+  - >-
+    import vs domestic is a price assumption (sector.imports.price) the model cannot
+    test, so the robust study runs the price as a scenario dimension
+  limitations:
+  - >-
+    ammonia as a shipping fuel is not a shipping share at this anchor (the ammonia chain
+    exists for industry), and aviation has no route split — kerosene, synthetic or fossil,
+    decided by the oil balance; hydrogen aircraft do not exist in the model
+  - >-
+    shipping and aviation demand is national, attributed to clusters by port and
+    population, never a route or an airport; the three shipping shares only warn when they
+    do not sum to one
+  - >-
+    Fischer-Tropsch and methanolisation are added inside add_industry, so sector.industry
+    must stay true — a scope that drops industry drops the synthesis routes
+  - >-
+    fuel mandates are not constraints the model enforces: a mandate becomes the share
+    dict the study assumes, and the cost of the mandate is the system-cost difference
+    against the unmandated split
+  methods:
+  - id: fuel-switch-shares
+    role: >-
+      the shipping shares, the aviation factor, the synthesis part loads and the import
+      switch — what each key does and that all of them vary per scenario
+  - id: co2-budget
+    role: >-
+      the emissions target that makes synthetic fuel compete with fossil; the fuel
+      sectors' emissions count against the cap, which is what prices the switch
+  - id: h2-network-expansion
+    role: >-
+      where the hydrogen for synthesis comes from — per-node electrolysis, backbone,
+      imports — when siting is part of the question
+  - id: co2-management
+    role: >-
+      where the CO2 for synthesis comes from and what it competes with (sequestration);
+      the second input the siting follows
+  - id: pathway-myopic
+    role: >-
+      when the synthesis has to be built — horizons with carry-over for a mandate that
+      ramps through the 2030s
+  defaults:
+  - aspect: fuel-split
+    is: >-
+      the shipped shares: shipping on methanol rising from 0.15 in 2030 to 1.0 in 2050
+      with oil the remainder and no hydrogen; aviation demand factor 1.0, all kerosene
+    note: >-
+      a split is a settled assumption per scenario, never a default to fall into: the
+      study names the shares it assumes per horizon for each candidate
+  - aspect: imports-off
+    is: sector.imports.enable false — the finished fuel is made domestically unless the study turns imports on
+    note: an import scenario names the price per carrier and the cap as settled assumptions
+  plots:
+  - id: capacity_mix
+    role: synthesis, electrolysis and capture capacity per scenario
+  - id: compare_system_cost
+    role: candidate fuel splits and make-vs-import on system cost
+  - id: region_map
+    role: where synthesis sits — Fischer-Tropsch and methanolisation capacity per cluster
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+- model: pypsa-earth
+  approach: >-
+    The study runs on the carrier levers and the default config; no method spec is
+    verified for pypsa-earth yet. The levers it can describe live in the carrier cards
+    under carriers/ that carry a section for this model.
+  trade_offs: []
+  limitations:
+  - >-
+    no method spec is verified for pypsa-earth yet: the study runs on carrier levers and
+    default config, and its results are unverified for this model
+  methods: []
+  defaults: []
+  version_anchor:
+    ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
+    date: '2026-09-09'

@@ -1,0 +1,100 @@
+id: load-shedding
+title: load-shedding — price the shortfall instead of refusing it, plus an operational reserve
+family: grid-and-security
+what: >-
+  A pypsa-eur run that cannot meet demand is infeasible and says nothing; with
+  solving.options.load_shedding.enable true,
+  scripts/solve_network.py:add_load_balance_components adds a Generator with carrier
+  "load", infinite p_nom and marginal cost solving.options.load_shedding.default_cost
+  (100,000 EUR/MWh by default, the value of lost load) on every bus of the carriers it
+  is told about (all of them when all_carriers is true: electricity, heat, hydrogen and
+  CO2 buses alike; only the ones in the carriers map otherwise, each at its own price),
+  so the solver sheds load when serving it would cost more than the VoLL, and the
+  dispatch of those generators is the unserved energy per bus and hour, the adequacy
+  metric. It is added in solve_network, after compose and after any adjustments, so it
+  cannot be reached by the adjustments block and may differ per scenario. The second
+  lever on the same card is the reserve: electricity.operational_reserve.activate adds
+  scripts/solve_network.py:add_operational_reserve_margin, a constraint that keeps
+  epsilon_load of the load plus epsilon_vres of the variable renewable feed-in plus a
+  contingency in MW as headroom on the dispatchable fleet every hour (the DTU/Eurostat
+  style margin), read in solve_network as well. Neither changes what is built on its
+  own: the VoLL makes the model weigh a last MW of capacity against hours of shedding,
+  the reserve forces it to hold more.
+when_to_use:
+- resource adequacy / loss of load risk
+- what does a shortfall cost, value of lost load
+- unserved energy under a stress scenario
+- reserve margin or operating reserve requirement
+- does the plan keep the lights on
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+  execution:
+  - kind: config
+    key: solving.options.load_shedding.enable
+    value: true
+    note: >-
+      shipped false. True adds the shedding Generators in solve_network; read per
+      scenario.
+  - kind: config
+    key: solving.options.load_shedding.default_cost
+    value: 100000
+    note: >-
+      EUR per MWh of unserved energy (EUR per tonne on CO2 buses), the shipped default.
+      This is the VoLL the study states; a lower value makes shedding part of the
+      least-cost plan, a higher one makes it a last resort.
+  - kind: config
+    key: solving.options.load_shedding.all_carriers
+    value: false
+    note: >-
+      shipped true, which puts a shedding Generator on every bus carrier (heat, H2, CO2
+      included) and muddles an electricity adequacy number. False with
+      solving.options.load_shedding.carriers set to {AC: 100000} restricts shedding to
+      the electricity buses; keep all_carriers true only when the question is
+      system-wide feasibility.
+  - kind: config
+    key: solving.options.load_shedding.carriers
+    value:
+      AC: 100000
+    note: >-
+      per-bus-carrier VoLL map, read when all_carriers is false; AC is the electricity
+      bus carrier.
+  - kind: config
+    key: electricity.operational_reserve.activate
+    value: false
+    note: >-
+      optional second lever: true adds the reserve margin constraint with epsilon_load
+      (0.02), epsilon_vres (0.02) and contingency (4000 MW) from the same block. Read in
+      solve_network, scenario-safe; off by default because it changes the build.
+  - kind: invocation
+    note: >-
+      no target changes. Unserved energy is
+      n.generators_t.p.loc[:, n.generators.carrier == 'load'].sum() per bus (MWh over
+      the stored snapshots) and its hours are where that series is above zero; the
+      loss-of-load expectation is the count of those hours. With the reserve on, its
+      dual is in the solver's constraint duals, not on a component.
+  invalidates:
+  - solve_network
+  budget:
+    jobs: 1
+    class: hour
+  success_metric:
+  - name: shedding-generators-present
+    needs: solved
+    check: (n.generators.carrier == 'load').any()
+    expect: a load-shedding Generator exists on every electricity bus (and every bus with all_carriers)
+  - name: unserved-energy-reported
+    needs: solved
+    check: n.generators_t.p.loc[:, n.generators.index[n.generators.carrier == 'load']].sum().sum() >= 0
+    expect: the unserved energy is a number the study reports, zero in an adequate plan
+notes: >-
+  Adequacy in a capacity-expansion LP is deterministic: one weather year, perfect
+  foresight within it, no forced outages, so the unserved energy is a lower bound and
+  the study says so; a stress year is [[weather-year]], a lost fleet or corridor is
+  [[component-outage]], and the three compose (shedding prices what the outage in the
+  cold year costs). The reserve margin is not N-1 and not a capacity mechanism; the
+  SAFE-style reserve some studies ask for is this constraint with a contingency in MW.
+  The carrier cards electricity-load and demand-temporal-profiles carry the demand
+  side.

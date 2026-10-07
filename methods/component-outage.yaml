@@ -1,0 +1,92 @@
+id: component-outage
+title: component-outage — take a fleet, a corridor or an import away by carrier
+family: grid-and-security
+what: >-
+  pypsa-eur has no outage model; what it has is the adjustments block, applied at the
+  very end of compose_network (scripts/compose_network.py, calling
+  scripts/prepare_network.py:maybe_adjust_costs_and_potentials and modify_attribute)
+  after the sector components, the existing fleet, the line caps and the CO2 budget are
+  in. Its shape is adjustments.electricity (and .sector) with a factor map and an
+  absolute map, each {Component: {carrier: {attribute: value or {year: value}}}}: rows
+  are selected by exact static carrier, factor multiplies the attribute, absolute sets
+  it, a {year: value} dict is resolved for the horizon. That is enough for the outage
+  shapes a security study asks: a fleet gone is absolute p_nom 0 and p_nom_max 0 on its
+  carrier, a corridor derated is a factor on Line s_max_pu or Link p_nom, an import
+  cut is absolute p_nom_max 0 on the import Generators' carrier, a gas supply shock is
+  a factor on the gas carrier's marginal cost. Static only: no time window, no single
+  named asset, no node, and an unknown carrier is skipped without a warning, so the
+  success metric must read the attribute back. For an extendable asset the cap is
+  p_nom_max (and p_nom_extendable false if it must not be rebuilt), since scaling p_nom
+  alone leaves the optimiser free to build it back. Read in compose_network, so every
+  scenario carries its own outage, and the with-vs-without pair is the study.
+when_to_use:
+- what if a corridor / interconnector / pipeline is lost
+- nuclear fleet or a gas supply unavailable
+- import dependence and a supply cut
+- stress test the plan against a lost asset
+- N-1 style question at fleet level
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+  execution:
+  - kind: config
+    key: adjustments.electricity
+    value:
+      absolute:
+        Generator:
+          nuclear:
+            p_nom: 0
+            p_nom_max: 0
+      factor: false
+    note: >-
+      the worked shape: the nuclear fleet unavailable. Replace the component, carrier
+      and attributes with the outage under study (Link "H2 pipeline" p_nom_max 0 for
+      no backbone; Line AC s_max_pu factor 0.5 for a derated grid; Generator carriers
+      containing "import" p_nom_max 0 for an import cut). Shipped value is false (no
+      adjustment); set per scenario, with the base left untouched for the reference.
+  - kind: config
+    key: adjustments.sector
+    value:
+      factor:
+        Link:
+          electricity distribution grid:
+            capital_cost: 1.0
+      absolute: false
+    note: >-
+      the shipped default, listed so a scenario that overrides the block keeps it
+      (overrides deep-merge, so the distribution-grid row persists unless replaced).
+      Sector-side outages (a gas pipeline carrier, a hydrogen import) go in this map's
+      absolute part with the same shape.
+  - kind: invocation
+    note: >-
+      no target changes. Verify the outage took: read the carrier's p_nom / p_nom_max /
+      s_max_pu back off the composed network before trusting the solve; then compare
+      the outage scenario against the reference on system cost, what was built instead,
+      and unserved energy when load-shedding is on.
+  invalidates:
+  - compose_network
+  - solve_network
+  budget:
+    jobs: 2
+    class: hours
+  success_metric:
+  - name: adjustment-recorded
+    needs: prepared
+    check: bool(n.meta.get('adjustments', {}).get('electricity')) or bool((n.meta.get('adjustments', {}).get('sector') or {}).get('absolute'))
+    expect: the composed network's config carries the outage block
+  - name: outage-applied
+    needs: prepared
+    check: (not (n.generators.carrier == 'nuclear').any()) or (n.generators.loc[n.generators.carrier == 'nuclear', 'p_nom_max'] == 0).all()
+    expect: the targeted carrier's capacity attribute equals the override (the worked nuclear shape)
+notes: >-
+  A carrier-level, static, horizon-wide outage: it answers "what does the system look
+  like without X" and "what does X's absence cost", not "what happens in the hour X
+  trips". A time-windowed or asset-level outage would need
+  solving.options.custom_extra_functionality, which is outside the card. There is no
+  N-1 security-constrained dispatch at this anchor (lines.s_max_pu 0.7 is the static
+  proxy). Pairs with [[load-shedding]] to price the shortfall and [[weather-year]] to
+  put the outage in a bad year; [[existing-fleet]] when the question is the fleet that
+  stands today, not a re-optimised one. The carrier cards natural-gas-pipelines,
+  hydrogen-pipelines and green-energy-imports describe the assets an outage targets.

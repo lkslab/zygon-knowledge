@@ -1,0 +1,116 @@
+id: transport-electrification
+title: Transport electrification
+question: >-
+  What does an EV uptake path do to the power system — the charging load by region, the
+  capacity and grid it needs, what smart charging and vehicle-to-grid are worth, and
+  whether heavy transport should go electric or hydrogen — the question transport
+  ministries, fleet operators, charging-network planners and the utilities serving them
+  ask.
+when_to_use:
+- EV uptake and its impact on the power system
+- smart charging / vehicle-to-grid value
+- electric versus hydrogen trucks and cars
+- charging load by region and the capacity it needs
+- transport electrification pathway
+- fleet electrification and the grid
+models:
+- model: pypsa-eur
+  approach: >-
+    pypsa-eur takes the drivetrain split as an input per horizon and optimises how the
+    electric share meets the grid: scripts/prepare_sector_network.py:add_land_transport
+    splits the hourly transport demand (rules/build_sector.smk:build_transport_demand,
+    from mobility profiles with temperature-dependent efficiency) by the electric,
+    fuel-cell and ICE shares, and scripts/prepare_sector_network.py:add_EVs adds per
+    cluster a charger sized by the fleet, with smart charging an aggregate battery that
+    shifts within the daily availability window (sector.bev_dsm) and V2G a discharge Link
+    on top (sector.v2g); the fuel-cell share is a hydrogen load, the ICE share oil. The
+    transport-shares method settles those keys, all per-scenario, so the pace question
+    is a scenario set of share dicts, the smart-charging value is bev_dsm on vs off, V2G
+    value is v2g on vs off, and the truck question is the fuel-cell share against the
+    electric one, compared on system cost. The target comes from co2-budget, the hydrogen
+    supply for fuel-cell trucks from h2-network-expansion when that is the question, the
+    timing from pathway-myopic. The carrier cards battery-electric-cars,
+    smart-ev-chargers, vehicle-to-grid, hydrogen-fuel-cell-trucks, electric-heavy-trucks
+    and land-transport-demand carry the levers. Results are read off the EV load, the
+    charger and V2G dispatch, the EV battery store and what the system built to serve
+    them.
+  trade_offs:
+  - >-
+    charging is a daily pattern, so temporal resolution is the dial a transport study
+    protects (hourly to 3-hourly); coarser runs hide the evening peak that the
+    smart-charging value comes from
+  - >-
+    the drivetrain split is priced, not found — scenarios go on candidate paths (fast
+    uptake, slow uptake, hydrogen trucks) rather than on cluster count, since the EV
+    fleet is an aggregate per cluster whatever the resolution
+  - >-
+    V2G and smart charging are valued against the rest of the flexibility in the model
+    (batteries, heat storage, hydrogen) — a transport-only scope overstates them, the
+    coupled default is the honest comparison
+  limitations:
+  - >-
+    one aggregate fleet per cluster: no charger siting, no distribution-grid effect
+    beyond the single distribution Link, no cars-vs-vans-vs-trucks inside the share (the
+    fuel-cell share is the only heavy-duty proxy)
+  - >-
+    the fleet behaviour behind the profile (availability, the DSM window) is read by the
+    horizon-free transport demand rule and holds for the whole submission; the shares,
+    bev_dsm and v2g vary per scenario
+  - >-
+    v2g is dead unless bev_dsm is true, and an electric share of zero removes the EV
+    components entirely; the three shares only warn when they do not sum to one
+  - >-
+    no rail, bus or aviation electrification as levers; rail is in the electricity demand
+    already, buses are part of land transport
+  methods:
+  - id: transport-shares
+    role: >-
+      the drivetrain shares per horizon, smart charging and V2G, the fleet sizing — what
+      each key does and that all of them vary per scenario
+  - id: co2-budget
+    role: >-
+      the emissions target that prices the ICE share out; the baseline follows the
+      transport toggle, so the cap counts transport emissions
+  - id: h2-network-expansion
+    role: >-
+      where the hydrogen for fuel-cell trucks comes from when the truck question is on
+      the table
+  - id: pathway-myopic
+    role: >-
+      when the capacity for the charging load has to be built — horizons with
+      carry-over along the uptake path
+  defaults:
+  - aspect: drivetrain-trajectory
+    is: >-
+      the shipped shares: electric 0.2 in 2030, 0.7 in 2040, 1.0 in 2050, ICE the
+      remainder, no fuel-cell share; smart charging and V2G both on with half the fleet
+      taking part
+    note: >-
+      an uptake path is a settled assumption per scenario, never a default to fall into:
+      the study names the shares per horizon and whether smart charging and V2G are in
+  plots:
+  - id: dispatch_weeks
+    role: a week of charging, V2G discharge and the EV battery state against the power balance
+  - id: capacity_mix
+    role: what the system built to serve the charging load, per scenario
+  - id: compare_system_cost
+    role: uptake paths, smart vs dumb charging, V2G on vs off, electric vs hydrogen trucks
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+- model: pypsa-earth
+  approach: >-
+    The study runs on the carrier levers and the default config; no method spec is
+    verified for pypsa-earth yet. The levers it can describe live in the carrier cards
+    under carriers/ that carry a section for this model (the pathway-myopic earth
+    section carries the land-transport share keys as part of its pathway).
+  trade_offs: []
+  limitations:
+  - >-
+    no method spec is verified for pypsa-earth yet: the study runs on carrier levers and
+    default config, and its results are unverified for this model
+  methods: []
+  defaults: []
+  version_anchor:
+    ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
+    date: '2026-09-09'

@@ -1,0 +1,131 @@
+id: security-of-supply
+title: Security of supply
+question: >-
+  Does the plan keep the lights on — through a bad weather year, a cold spell with no
+  wind, the loss of a fleet, a corridor or an import — what the shortfall would cost, how
+  much firm capacity, storage and reserve the system needs to avoid it, and how exposed
+  it is to imports: the question system operators, adequacy bodies, regulators and
+  energy ministries ask of every plan before they sign it.
+when_to_use:
+- resource adequacy / loss of load risk
+- a bad weather year, dunkelflaute, cold spell stress test
+- what if a corridor / interconnector / nuclear fleet / gas supply is lost
+- value of lost load, unserved energy, firm capacity need
+- import dependence and security of supply
+- reserve margin or operating reserve requirement
+models:
+- model: pypsa-eur
+  approach: >-
+    pypsa-eur is a deterministic capacity-expansion model — one weather year, perfect
+    foresight within it, no forced outages — so security of supply is studied as stress
+    scenarios against a reference, each priced rather than assumed infeasible. Three
+    methods compose: load-shedding adds a generator at the value of lost load on every
+    electricity bus (scripts/solve_network.py:add_load_balance_components), so the solver
+    sheds instead of failing and the unserved energy per bus and hour is the adequacy
+    number, with an optional operational reserve margin on top; weather-year swaps the
+    cutout and the snapshots for an archived stress year (2010's cold winter, 1996, a
+    low-wind year), a full chain rebuild per year; component-outage takes a fleet, a
+    corridor or an import away by carrier through the adjustments block, static for the
+    horizon. The study shape is the reference plan against the stressed one(s): what is
+    built instead, what it costs, what is shed; or, with existing-fleet, an adequacy check
+    of the fleet that stands today rather than a re-optimised plan. The target comes from
+    co2-budget. The carrier cards electricity-load and demand-temporal-profiles carry
+    the demand side, natural-gas-pipelines, hydrogen-pipelines and green-energy-imports
+    the assets an outage targets, grid-forming-inverters and synchronous-condensers the
+    stability questions the model does not answer. Results are read off the
+    load-shedding generators (unserved energy, its hours), the firm and storage capacity
+    built, and the system-cost difference.
+  trade_offs:
+  - >-
+    a weather year is a whole chain rebuild — two years cost two complete runs — so a
+    weather study keeps the cluster count and resolution modest and spends on years;
+    an outage study keeps one year and spends on cases
+  - >-
+    the stress of a cold spell shows at hourly resolution and in a full year; a 3-hourly
+    run softens the peak, and the honest study says which resolution the shortfall was
+    measured at
+  - >-
+    the value of lost load is the study's assumption, not the model's finding: the
+    shedding result moves with it, so the robust study states the VoLL and, where it
+    matters, runs two
+  limitations:
+  - >-
+    deterministic and perfectly foresighted within the year: no forced-outage
+    statistics, no loss-of-load probability, so the unserved energy is a lower bound and
+    the loss-of-load expectation is the count of shedding hours in one year, not a
+    probabilistic LOLE
+  - >-
+    no N-1 or security-constrained dispatch — lines.s_max_pu 0.7 is the static proxy;
+    outages are per carrier and static for the horizon, never a single asset, a node or
+    a time window (that would need solving.options.custom_extra_functionality)
+  - >-
+    archived cutouts exist for thirteen years only (1995, 1996, 2008-2010, 2012, 2013,
+    2019-2021, 2023-2025); any other year needs a CDS build outside a study's budget,
+    and a multi-year chronology does not exist at this anchor
+  - >-
+    inertia, frequency and voltage stability are not modelled; a "system strength"
+    question gets a limitation, not a run
+  methods:
+  - id: load-shedding
+    role: >-
+      price the shortfall — shedding generators at the VoLL so a stressed run says what
+      is unserved and where, plus an optional operational reserve margin
+  - id: weather-year
+    role: >-
+      the stress year — snapshots and cutout swapped together for an archived year, one
+      full chain per year
+  - id: component-outage
+    role: >-
+      the lost asset — a fleet, corridor or import removed or derated by carrier through
+      the adjustments block, per scenario
+  - id: existing-fleet
+    role: >-
+      the fleet that stands today, for an adequacy check of the current system rather
+      than a re-optimised plan
+  - id: co2-budget
+    role: >-
+      the emissions target the stressed plan still has to meet; without it the model
+      answers every stress with gas
+  defaults:
+  - aspect: no-shedding
+    is: >-
+      solving.options.load_shedding.enable false — the shipped run is infeasible rather
+      than priced when demand cannot be met, and reports nothing
+    note: >-
+      every security study turns shedding on and states its VoLL (100,000 EUR/MWh
+      shipped); the reference scenario carries it too, so the comparison is fair
+  - aspect: weather-year-2013
+    is: snapshots 2013 on the europe-2013-sarah3-era5 cutout, demand following the weather year
+    note: >-
+      a stress year is a settled assumption named by the study from the archived list;
+      the reference stays on 2013 unless the question is the year itself
+  - aspect: no-outage
+    is: adjustments.electricity false — nothing removed unless a scenario says so
+    note: the outage is a scenario's adjustments block, the reference leaves it untouched
+  plots:
+  - id: dispatch_weeks
+    role: the worst week — supply, storage and shedding against demand
+  - id: compare_system_cost
+    role: reference vs stressed scenarios on system cost and unserved energy
+  - id: capacity_mix
+    role: the firm and storage capacity the stressed plan buys beyond the reference
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+- model: pypsa-earth
+  approach: >-
+    The study runs on the carrier levers and the default config; no method spec is
+    verified for pypsa-earth yet. The levers it can describe live in the carrier cards
+    under carriers/ that carry a section for this model (the v1 cards resource-adequacy,
+    dunkelflaute-low-vre-risk and multi-year-weather-variability, archived under
+    archive/cookbooks/pypsa-earth/topics/v1/, are the starting point).
+  trade_offs: []
+  limitations:
+  - >-
+    no method spec is verified for pypsa-earth yet: the study runs on carrier levers and
+    default config, and its results are unverified for this model
+  methods: []
+  defaults: []
+  version_anchor:
+    ref: 8435f4c8cc05f30088933b37b7db497ff860dc53
+    date: '2026-09-09'

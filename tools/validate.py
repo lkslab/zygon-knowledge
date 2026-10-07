@@ -215,6 +215,17 @@ def main() -> int:
     # was removed on 2026-09-11 when the app dropped baseline runs.
     r.TOP_LEVEL |= {"CLAUDE.md", "tools", "toymodels"}
     r.TOP_LEVEL -= {"baselines"}
+    # The frozen slug list is the seven topics of the 2026-09 restructure; the
+    # sector and security doors added on 2026-10-07 extend it here.
+    r.TOPIC_SLUGS = r.TOPIC_SLUGS + (
+        "hydrogen-grid",
+        "municipal-heat",
+        "industrial-decarbonisation",
+        "e-fuels",
+        "carbon-management",
+        "transport-electrification",
+        "security-of-supply",
+    )
     errors: list[str] = []
 
     staged = subprocess.run(

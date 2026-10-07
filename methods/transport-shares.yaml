@@ -1,0 +1,115 @@
+id: transport-shares
+title: transport-shares — the land-transport drivetrain split, smart charging and V2G
+family: sector-coupling
+what: >-
+  pypsa-eur takes the drivetrain split of land transport as an input per horizon and
+  optimises how the electric share interacts with the grid.
+  scripts/prepare_sector_network.py:add_land_transport splits the transport demand
+  (rules/build_sector.smk:build_transport_demand, hourly from BASt mobility profiles
+  with temperature-dependent efficiency) by sector.land_transport_electric_share,
+  land_transport_fuel_cell_share and land_transport_ice_share, {year: share} dicts
+  that should sum to 1 (the script only warns and scales). The electric share is where
+  the modelling is: scripts/prepare_sector_network.py:add_EVs adds per cluster one "BEV
+  charger" Link sized by the fleet (sector.bev_charge_rate per car, the availability
+  profile from build_transport_demand), and with sector.bev_dsm true a battery Store
+  (sector.bev_energy per car, sector.bev_dsm_availability the share of the fleet that
+  shifts) that lets charging move within the day; with sector.v2g true on top, a "V2G"
+  Link lets that battery discharge back. The fuel-cell share becomes an "H2 for land
+  transport" load, the ICE share an oil load. All of these are read in compose_network,
+  so a scenario may vary them: smart-vs-dumb charging is bev_dsm, V2G value is v2g,
+  the electrification pace is the share dict. The fleet behaviour behind the profile
+  (sector.bev_avail_max, bev_avail_mean, bev_dsm_restriction_time and _value) is read
+  by the horizon-free transport demand rule and holds for the whole submission.
+when_to_use:
+- EV uptake and its impact on the power system
+- smart charging / vehicle-to-grid value
+- electric versus hydrogen trucks and cars
+- charging load by region
+- transport electrification pathway
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+  execution:
+  - kind: config
+    key: sector.land_transport_electric_share
+    value:
+      2030: 0.2
+      2040: 0.7
+      2050: 1.0
+    note: >-
+      share of land-transport energy served by battery-electric vehicles (the shipped
+      trajectory at those years). Zero skips the EV components entirely. Per horizon,
+      scenario-safe.
+  - kind: config
+    key: sector.land_transport_fuel_cell_share
+    value:
+      2030: 0.0
+      2040: 0.0
+      2050: 0.0
+    note: shipped default zero; raise it for a hydrogen-trucks scenario.
+  - kind: config
+    key: sector.land_transport_ice_share
+    value:
+      2030: 0.8
+      2040: 0.3
+      2050: 0.0
+    note: >-
+      the remainder on oil; the three shares should sum to 1 per year. Set all three
+      together in every scenario.
+  - kind: config
+    key: sector.bev_dsm
+    value: true
+    note: >-
+      the shipped default: a per-cluster EV battery Store lets charging shift within
+      the daily availability window. False is the dumb-charging counterfactual.
+  - kind: config
+    key: sector.v2g
+    value: true
+    note: >-
+      the shipped default: a V2G Link discharges the EV battery to the grid. Nested
+      under bev_dsm in the script, so it is dead unless bev_dsm is true.
+  - kind: config
+    key: sector.bev_dsm_availability
+    value: 0.5
+    note: >-
+      share of the fleet that takes part in smart charging and V2G (the shipped
+      default); with bev_charge_rate (0.011 MW per car), bev_energy (0.05 MWh per car)
+      and bev_charge_efficiency (0.9) the sizing of the aggregate battery.
+  - kind: invocation
+    note: >-
+      no target changes. Read the charging load off n.loads with carrier "land
+      transport EV", the charger and V2G capacity off n.links with carrier "BEV
+      charger" and "V2G" (p_nom_opt is fixed by the fleet; the dispatch is the result),
+      the shifted energy off n.stores with carrier "EV battery", and the hydrogen share
+      off the "H2 for land transport" load.
+  invalidates:
+  - compose_network
+  - solve_network
+  budget:
+    jobs: 2
+    class: hours
+  success_metric:
+  - name: ev-components-present
+    needs: prepared
+    check: (n.links.carrier == 'BEV charger').any() and (n.stores.carrier == 'EV battery').any()
+    expect: a BEV charger and an EV battery Store per cluster once the electric share and bev_dsm are set
+  - name: v2g-present-when-enabled
+    needs: prepared
+    check: (not (n.meta.get('sector', {}).get('v2g', True) and n.meta.get('sector', {}).get('bev_dsm', True))) or (n.links.carrier == 'V2G').any()
+    expect: a V2G Link exists when both v2g and bev_dsm are true
+  - name: v2g-used
+    needs: solved
+    check: (not (n.links.carrier == 'V2G').any()) or n.links_t.p0.loc[:, n.links.index[n.links.carrier == 'V2G']].abs().sum().sum() > 0
+    expect: the solver discharged EV batteries to the grid at some hour
+notes: >-
+  One aggregate fleet per cluster: there is no charger siting, no distribution-grid
+  effect beyond the single "electricity distribution grid" Link, and no distinction
+  between cars, vans and trucks inside the share (the fuel-cell share is the only
+  heavy-duty proxy). The drivetrain split is a decision the model prices, not one it
+  takes, so a "which drivetrain" question is a scenario set. Pair with [[co2-budget]]
+  for the target, [[h2-network-expansion]] when the hydrogen trucks need a supply
+  answer, [[pathway-myopic]] for the timing. The carrier cards battery-electric-cars,
+  smart-ev-chargers, vehicle-to-grid, hydrogen-fuel-cell-trucks, electric-heavy-trucks
+  and land-transport-demand carry the levers.

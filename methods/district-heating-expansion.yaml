@@ -1,0 +1,134 @@
+id: district-heating-expansion
+title: district-heating-expansion — the district-heat share, its sources and storage per cluster
+family: sector-coupling
+what: >-
+  pypsa-eur splits every cluster's heat demand into urban central (district heating),
+  urban decentral and rural systems. The district-heat share is an exogenous ramp:
+  rules/build_sector.smk:build_district_heat_share takes today's share from the energy
+  balances and moves it towards sector.district_heating.potential (0.6 by default, or a
+  per-country dict) along sector.district_heating.progress, a {year: fraction} dict of
+  how much of the gap is closed by each horizon, so the share a study assumes is a
+  settled input, never an optimisation result. What the model does optimise is the
+  supply mix behind that share: scripts/prepare_sector_network.py:add_heat adds, per
+  urban central bus, one heat pump per source listed in sector.heat_pump_sources
+  (air by default; geothermal, river_water and sea_water are the limited sources whose
+  potential rules/build_sector.smk:build_cop_profiles and
+  build_geothermal_heat_potential turn into a per-cluster cap), resistive heaters, gas
+  and biomass CHP, boilers, solar thermal, waste heat from electrolysis, fuel synthesis
+  and fuel cells (add_waste_heat), and water tank or pit storage when sector.tes is on.
+  Geothermal is the catch: the Fraunhofer ISI potential only reaches the model if
+  geothermal is listed under heat_pump_sources.urban central, and it is used directly
+  (no heat pump) only when it is also in direct_utilisation_heat_sources. The share
+  keys are read by a {horizon} build rule and the supply keys in compose_network, so all
+  of them may vary per scenario (a high-vs-low district heating pair is two progress
+  dicts).
+when_to_use:
+- district heating versus heat pumps for a city or region
+- municipal heat plan / heat zoning
+- which heat sources should district heating use (geothermal, waste heat, large heat pumps)
+- heat storage need for a district heating system
+- how far should the district heating network expand
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
+    date: '2026-09-09'
+  execution:
+  - kind: config
+    key: sector.district_heating.potential
+    value: 0.6
+    note: >-
+      the maximum share of a country's heat demand district heating can reach (the
+      shipped default; a {country: share} dict is accepted). Read by
+      build_district_heat_share, a {horizon} rule, so it may vary per scenario.
+  - kind: config
+    key: sector.district_heating.progress
+    value:
+      2030: 0.25
+      2040: 0.55
+      2050: 1.0
+    note: >-
+      how much of the gap between today's share and the potential is closed by each
+      horizon (the shipped values at those years; 2050 reaches the potential). A
+      conservative-vs-ambitious expansion pair is two of these dicts; read per horizon.
+  - kind: config
+    key: sector.heat_pump_sources
+    value:
+      urban central:
+      - air
+      - geothermal
+      urban decentral:
+      - air
+      rural:
+      - air
+      - ground
+    note: >-
+      the shipped list plus geothermal for the urban central system: that one word is
+      what lets the geothermal potential into the model. river_water and sea_water are
+      legal entries but pull extra per-year downloads (JRC HERA; Copernicus Marine
+      needs credentials), so leave them out unless the user brings the data.
+  - kind: config
+    key: sector.district_heating.direct_utilisation_heat_sources
+    value:
+    - geothermal
+    note: >-
+      the shipped default: geothermal heat enters the network directly where its
+      temperature allows, with a heat pump only for the rest. Keep in step with
+      heat_pump_sources.
+  - kind: config
+    key: sector.tes
+    value: true
+    note: >-
+      the shipped default; central water tank (and pit, sector.district_heating.ptes)
+      storage per urban central bus, decentral tanks elsewhere. False is the no-storage
+      counterfactual for a storage-value question.
+  - kind: config
+    key: sector.heat_vent.urban central
+    value: true
+    note: >-
+      the shipped default: a venting Generator at a small marginal cost so a district
+      heating bus never goes infeasible on oversupply. Leave on; the vented energy is a
+      diagnostic, not a result.
+  - kind: invocation
+    note: >-
+      no target changes. Read the district heat system off the urban central buses:
+      n.links with bus1 on an "urban central heat" bus give the supply mix (p_nom_opt
+      and dispatched energy per carrier), n.stores on the same buses the storage, and
+      the share itself is the ratio of the urban central heat load to total heat load in
+      n.loads_t.p_set.
+  invalidates:
+  - build_district_heat_share
+  - build_cop_profiles
+  - compose_network
+  - solve_network
+  budget:
+    jobs: 4
+    class: hours
+  success_metric:
+  - name: district-heat-system-present
+    needs: prepared
+    check: (n.loads.carrier == 'urban central heat').any() and n.links.carrier.str.startswith('urban central').any()
+    expect: an urban central heat load and at least one urban central supply technology per cluster
+  - name: geothermal-reaches-the-model
+    needs: prepared
+    check: n.links.carrier.str.contains('geothermal').any() or n.generators.carrier.str.contains('geothermal').any()
+    expect: a geothermal heat component exists once geothermal is listed under heat_pump_sources.urban central
+  - name: supply-mix-solved
+    needs: solved
+    check: n.links.loc[n.links.bus1.isin(n.buses.index[n.buses.carrier == 'urban central heat']), 'p_nom_opt'].sum() > 0
+    expect: the solver built district-heat supply capacity behind the assumed share
+notes: >-
+  A node is a cluster of regions, never a city: the district heating a study sees is
+  the clustered share of all the towns in that cluster, so the answer to a municipal
+  question is the share and the supply mix at the cluster's scale, stated as such.
+  Supply temperatures and losses are country-level approximations
+  (sector.district_heating.supply_temperature_approximation, district_heating_loss),
+  building retrofit is exogenous unless sector.retrofitting.retro_endogen is turned
+  on (costly, S-tier data), and sector.enhanced_geothermal is off and left off: at
+  this anchor compose_network reads a placeholder capacity-factor path when it is
+  enabled. Pair with [[co2-budget]] for the target, [[existing-fleet]] for today's
+  heating stock (build_existing_heating_distribution seeds the decentral boilers and
+  heat pumps), [[pathway-myopic]] when the question is when the network expands. The
+  carrier cards district-heating, district-heating-demand-share, air-source-heat-pumps,
+  ground-source-heat-pumps, geothermal-conventional, waste-heat-recovery and
+  thermal-storage carry the levers.
