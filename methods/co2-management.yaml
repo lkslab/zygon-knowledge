@@ -92,7 +92,10 @@ models:
       sense for a capture-without-storage counterfactual.
   - kind: invocation
     note: >-
-      no target changes. Read removal off the Links into "co2 atmosphere" with negative
+      config only: the sequestration cap, the regional potentials and the CO2 network are
+      all shipped machinery, so a bundle never adds a custom extra functionality or a
+      script for them. No target changes. Read removal off the Links into "co2
+      atmosphere" with negative
       flow (DAC, BECCS: carriers containing "DAC" and "CC"), transport off n.links with
       carrier "CO2 pipeline", storage off n.stores[n.stores.carrier == 'co2 sequestered']
       (e at the last snapshot is the volume stored in the horizon), and the storage

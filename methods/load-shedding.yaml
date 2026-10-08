@@ -70,7 +70,10 @@ models:
       solve_network, scenario-safe; off by default because it changes the build.
   - kind: invocation
     note: >-
-      no target changes. Unserved energy is
+      config only: no new rule, no script, no custom extra functionality; the shedding
+      generators come from the shipped solve_network and the numbers below are read off
+      the solved network after the run, never computed by a rule the bundle adds. No
+      target changes. Unserved energy is
       n.generators_t.p.loc[:, n.generators.carrier == 'load'].sum() per bus (MWh over
       the stored snapshots) and its hours are where that series is above zero; the
       loss-of-load expectation is the count of those hours. With the reserve on, its
