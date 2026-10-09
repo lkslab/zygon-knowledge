@@ -120,7 +120,7 @@ models:
       scenario: "{demand} + {planning_horizons} via CAGR; custom_data.industry_demand override per scenario"
 
   - model: pypsa-eur
-    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
+    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
     out_of_box:
       covers: >
         Cement, "Ceramics & other NMM" and Glass production as separate
@@ -146,14 +146,29 @@ models:
         "Non-metallic mineral products" cover the other two;
         prepare_sector_network:add_industry places the annual-constant
         gas/biomass/electricity/heat loads, the process-emission loads
-        and the "process emissions CC" link at cement capture cost.
+        and the "process emissions CC" link at cement capture cost. With
+        sector.endogenous_sectors.enable (cement listed; off by default, see
+        cement-routes-endogenous and the method industry-routes-endogenous)
+        build_industrial_energy_demand_per_node drops the Cement column from
+        both demand blocks and add_cement puts cement on the network instead:
+        a per-node cement load in tonnes met by "<node> cement production"
+        (cement finishing: clinker plus electricity) from a "<node> clinker
+        kiln" (technology-data "cement dry clinker": kiln heat, a little gas
+        and electricity per tonne of clinker, calcination CO2 at
+        sector.cement.calcination_emissions plus the fuel CO2 onto a "cement
+        emission" bus that is vented or captured by "<node> cement emission
+        CC"); the kiln heat comes from a "cement heat" bus fed by solid biomass,
+        gas, or (with sector.waste) the waste bus.
       not_covered: >
         Lime is not a separate product (inside Ceramics & other NMM);
         clinker-substitution / SCM shares are fixed inside the distribution-key
-        ratio, not a demand lever; no cement demand scaling factor (unlike HVC/
-        aviation); production volumes are frozen at the JRC reference year —
-        no tomorrow-transformation exists for NMM products.
-      provenance: "scripts/build_industrial_production_per_country.py:Cement (kt);scripts/build_industry_sector_ratios.py:def nonmetalic_mineral_products;scripts/build_industry_sector_ratios.py:Cement: Clinker production (kilns);scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_NMM_CM_E;scripts/build_industrial_distribution_key.py:prepare_gem_cement_database;scripts/build_industrial_distribution_key.py:clinker_cement_ratio;scripts/prepare_sector_network.py:process emissions CC"
+        ratio, not a demand lever (with the routes switch the production clinker
+        ratio is the "cement finishing" clinker-input row, changeable only
+        through data/custom_costs.csv); no electric or hydrogen kiln in either
+        mode; no clinker trade between nodes; no cement demand scaling factor
+        (unlike HVC/ aviation); production volumes are frozen at the JRC
+        reference year — no tomorrow-transformation exists for NMM products.
+      provenance: "scripts/build_industrial_production_per_country.py:Cement (kt);scripts/build_industry_sector_ratios.py:def nonmetalic_mineral_products;scripts/build_industry_sector_ratios.py:Cement: Clinker production (kilns);scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_NMM_CM_E;scripts/build_industrial_distribution_key.py:prepare_gem_cement_database;scripts/build_industrial_distribution_key.py:clinker_cement_ratio;scripts/prepare_sector_network.py:process emissions CC;scripts/prepare_sector_network.py:add_cement;scripts/build_industrial_energy_demand_per_node.py:route_endogenised_sectors"
     levers:
       - key: industry.sector_ratios_fraction_future
         effect: "Interpolates cement/ceramics/glass MWh/t from today's country values to best-in-class future ratios per horizon."
@@ -167,10 +182,24 @@ models:
         effect: "Geocode hotmaps sites without coordinates (affects glass/NMM siting completeness)."
         default: "false"
         provenance: "config/config.default.yaml:hotmaps_locate_missing;scripts/build_industrial_distribution_key.py:hotmaps_locate_missing"
+      - key: sector.endogenous_sectors
+        effect: "enable true with cement listed: cement becomes a per-node tonnage load met by clinker kiln and cement finishing links, kiln fuel chosen among biomass, gas and waste, kiln CO2 vented or captured; under myopic/perfect foresight the GEM cement plants enter as dated brownfield kilns."
+        default: "{enable: false, subsectors: [steel, cement]}"
+        provenance: "config/config.default.yaml:endogenous_sectors;scripts/prepare_sector_network.py:add_cement;scripts/add_existing_baseyear.py:add_existing_industry"
+      - key: sector.cement.calcination_emissions
+        effect: "Calcination CO2 per tonne of clinker on the endogenous kiln (IPCC EFDB value)."
+        default: "0.5071"
+        provenance: "config/config.default.yaml:calcination_emissions;scripts/prepare_sector_network.py:calcination_emissions"
     boundary:
       - variant: "endogenous kiln fuel choice (electrify / H2 / biomass per temperature band)"
         rung: L0
-        note: "sector.industry_t.endogen: true (method industry-heat-endogenous) on this fork: clinker, ceramics and glass heat is split by the Fleiter et al. 2025 process shares — kiln heat lands in heat500+ industry where gas, gas CC and hydrogen firing compete (no electric kiln); industry-process-heat-endogenous."
+        note: "two ways. sector.endogenous_sectors.enable with cement (see [[cement-routes-endogenous]] and the method [[industry-routes-endogenous]]): the clinker kiln's cement heat menu, solid biomass (under the biomass limit), gas and waste, the kiln CO2 vented or captured. Or, with only sector.industry_t.endogen: true (method industry-heat-endogenous), clinker, ceramics and glass heat is split by the Fleiter et al. 2025 process shares — kiln heat lands in heat500+ industry where gas, gas CC and hydrogen firing compete (industry-process-heat-endogenous); with both on, cement leaves the bands (no double count). No electric kiln either way."
+      - variant: "electric or hydrogen kiln on the endogenous cement route"
+        rung: L2
+        note: "add a pass-through link onto the '<node> cement heat' bus in add_cement, as 'cement heat gas' does; technology-data has no cost row for either, so a priced one needs data/custom_costs.csv rows too (L3); an electric calciner or plasma kiln as its own process (own capex, heat profile, CO2 stream) is bespoke (L5, see [[cement-routes-endogenous]])"
+      - variant: "lower clinker-to-cement ratio (clinker substitution) on the endogenous cement route"
+        rung: L3
+        note: "the ratio is the technology-data 'cement finishing' clinker-input; costs.overwrites only reaches the cost attributes (investment, lifetime, FOM, VOM, efficiency, fuel, standing losses, marginal and capital cost), so it takes a 'cement finishing,clinker-input' row in data/custom_costs.csv (costs.custom_cost_fn)"
       - variant: "faster intensity improvement"
         rung: L0
         note: "industry.sector_ratios_fraction_future."
@@ -199,6 +228,9 @@ models:
       - change: "process emissions + cement capture on network"
         anchor: "scripts/prepare_sector_network.py:add_industry (process emissions CC)"
         provenance: "scripts/prepare_sector_network.py:process emissions CC"
+      - change: "endogenous cement route (kiln, finishing, kiln fuels, vent and capture)"
+        anchor: "scripts/prepare_sector_network.py:add_cement (called from add_industry); existing kilns in scripts/add_existing_baseyear.py:add_existing_industry"
+        provenance: "scripts/prepare_sector_network.py:add_cement;scripts/add_existing_baseyear.py:add_existing_industry;rules/build_sector.smk:build_industry_plants"
     data_dependencies:
       - input: "JRC-IDEES NMM Industry + EnergyBalance sheets"
         required_for: "tonnage and intensities"

@@ -24,7 +24,7 @@ when_to_use:
   - "decarbonise steel production"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
+    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
     out_of_box:
       covers: >
         EAF steel is covered on the demand side, active by default in sector
@@ -50,7 +50,15 @@ models:
         steel_processes list). The resulting energy lands in
         prepare_sector_network::add_industry as flat loads: "industry
         electricity" on the AC bus, "gas for industry", and "low-temperature
-        heat for industry" on the district-heating heat bus.
+        heat for industry" on the district-heating heat bus. With
+        sector.endogenous_sectors.enable (steel listed; off by default, see
+        steel-routes-endogenous and the method industry-routes-endogenous) the
+        primary EAF becomes a network component: add_steel adds an extendable
+        "<node> EAF" link (technology-data "electric arc furnace": electricity
+        and hot briquetted iron in, steel out, with capital cost and lifetime)
+        fed by the DRI furnace, competing with the coal BOF for the per-node
+        primary steel load; the secondary (scrap) "Electric arc" route stays
+        an exogenous electricity demand as above.
       mechanism: >
         rule build_industry_sector_ratios (scripts/build_industry_sector_ratios.py::
         iron_and_steel) -> rule build_industry_sector_ratios_intermediate
@@ -63,26 +71,28 @@ models:
         and rescales national electricity demand downward by "current
         electricity" before re-adding "industry electricity".
       not_covered: >
-        There is no EAF component in the network — no capacity, capital cost,
-        dispatch or flexibility; steel is a fixed annual energy demand spread
-        flat over all snapshots (p_set = annual/8760). No scrap resource: scrap
-        availability never constrains the secondary share, which is purely the
-        residual of the config ramps. Route choice is not endogenous — the model
-        cannot trade EAF against blast furnace on cost or CO2. Route fractions
-        are single EU-wide scalars per horizon, not per country. Steel process
+        By default there is no EAF component in the network — no capacity,
+        capital cost, dispatch or flexibility; steel is a fixed annual energy
+        demand spread flat over all snapshots (p_set = annual/8760). The routes
+        switch adds a primary EAF link but not a secondary one: scrap EAF stays
+        an exogenous load in both modes. No scrap resource: scrap availability
+        never constrains the secondary share, which is purely the residual of
+        the config ramps. Route choice is endogenous only for primary steel and
+        only with the routes switch. Route fractions are single EU-wide scalars
+        per horizon, not per country. Steel process
         heat has no temperature resolution and no endogenous supply choice:
         like every other sector it arrives as flat per-carrier loads from
         build_industrial_energy_demand_per_node. No demand-side flexibility
         on EAF electricity.
-      provenance: "scripts/build_industry_sector_ratios.py:iron_and_steel; scripts/build_industrial_production_per_country_tomorrow.py:St_primary_fraction; scripts/build_industrial_distribution_key.py:Nominal EAF steel capacity (ttpa); scripts/build_industrial_energy_demand_per_node.py; scripts/prepare_sector_network.py:industry electricity"
+      provenance: "scripts/build_industry_sector_ratios.py:iron_and_steel; scripts/build_industrial_production_per_country_tomorrow.py:St_primary_fraction; scripts/build_industrial_distribution_key.py:Nominal EAF steel capacity (ttpa); scripts/build_industrial_energy_demand_per_node.py; scripts/prepare_sector_network.py:industry electricity; scripts/prepare_sector_network.py:add_steel"
     levers:
       - key: industry.St_primary_fraction
         effect: "Per-horizon fraction of total steel from primary routes; lowering it grows the scrap-EAF residual ('Electric arc' = total - DRI - Integrated)."
         default: "{2020: 0.6, ..., 2050: 0.3}"
         provenance: "config/config.default.yaml:St_primary_fraction; scripts/build_industrial_production_per_country_tomorrow.py:St_primary_fraction"
       - key: industry.DRI_fraction
-        effect: "Per-horizon fraction of persistent primary steel produced as 'DRI + Electric arc' (also an EAF-based route); the rest stays 'Integrated steelworks'."
-        default: "{2020: 0, ..., 2050: 1}"
+        effect: "Per-horizon fraction of persistent primary steel produced as 'DRI + Electric arc' (also an EAF-based route); the rest stays 'Integrated steelworks'. Dormant for primary steel with the routes switch on."
+        default: "{2020: 0, 2025: 0, 2030: 0.05, ..., 2050: 1}"
         provenance: "config/config.default.yaml:DRI_fraction; scripts/build_industrial_production_per_country_tomorrow.py:dri_fraction"
       - key: industry.sector_ratios_fraction_future
         effect: "Progress from today's country-specific steel energy intensities towards the future best-in-class EAF ratios (0 = today, 1 = fully future)."
@@ -96,6 +106,10 @@ models:
         effect: "Base year for today's industrial production statistics from which the future route split is derived."
         default: "2023"
         provenance: "config/config.default.yaml:reference_year; rules/build_sector.smk:build_industrial_production_per_country"
+      - key: sector.endogenous_sectors
+        effect: "enable true with steel listed: the primary EAF becomes an extendable link fed by DRI hbi, competing with the BOF on cost and CO2; secondary EAF unchanged."
+        default: "{enable: false, subsectors: [steel, cement]}"
+        provenance: "config/config.default.yaml:endogenous_sectors; scripts/prepare_sector_network.py:add_steel"
     boundary:
       - variant: "more/less scrap-EAF steel (change secondary share)"
         rung: L1
@@ -113,14 +127,14 @@ models:
         rung: L3
         note: "distribution follows the GEM steel tracker xlsx (retrieve_gem_steel_plant_tracker); supply an edited data/gem_gspt file or adjust prepare_gem_steel_database filters (L2)"
       - variant: "endogenous EAF vs blast-furnace choice on cost/CO2"
-        rung: L5
-        note: "requires modelling steel routes as competing Links with a steel demand bus — nothing in the workflow represents steel as a material flow in the network"
+        rung: L0
+        note: "primary steel only: sector.endogenous_sectors.enable (see [[steel-routes-endogenous]] and the method [[industry-routes-endogenous]]); the secondary (scrap) EAF stays an exogenous electricity demand"
       - variant: "scrap availability constraint on secondary steel"
         rung: L5
         note: "no scrap resource exists anywhere in the chain; needs new data and either a production-side constraint or network components"
       - variant: "flexible / load-shifting EAF operation"
         rung: L5
-        note: "steel demand is a flat Load; flexibility needs the demand converted to a Link+Store structure (bespoke)"
+        note: "steel demand is a flat Load in both modes (the routes switch puts a flat steel load behind the EAF link, with no hbi or steel store); flexibility needs a Link+Store structure (bespoke)"
     where:
       - change: "EAF / DRI+EAF / integrated route energy intensities"
         anchor: "scripts/build_industry_sector_ratios.py::iron_and_steel (rule build_industry_sector_ratios)"
@@ -134,6 +148,9 @@ models:
       - change: "attachment of steel energy as network loads"
         anchor: "scripts/prepare_sector_network.py::add_industry (rule compose_network)"
         provenance: "scripts/prepare_sector_network.py:add_industry"
+      - change: "primary EAF link of the endogenous routes"
+        anchor: "scripts/prepare_sector_network.py::add_steel"
+        provenance: "scripts/prepare_sector_network.py:add_steel"
     data_dependencies:
       - input: "JRC-IDEES Iron and steel sheets (FC_IND_IS_EA_E for Electric arc)"
         required_for: "today's and future EAF energy intensities"

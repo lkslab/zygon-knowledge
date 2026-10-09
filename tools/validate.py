@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Canonical pypsa-eur anchor: upstream master, "Streamline workflow" (#1838), 2026-09-09.
 # Must equal the models/pypsa-eur gitlink; checked below.
-EUR_ANCHOR = "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c"
+EUR_ANCHOR = "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8"
 
 
 def load_restructure():
@@ -213,7 +213,7 @@ def main() -> int:
     r.ANCHORS["pypsa-eur"] = EUR_ANCHOR
     # CLAUDE.md, tools/ and toymodels/ postdate the frozen TOP_LEVEL set; baselines/
     # was removed on 2026-09-11 when the app dropped baseline runs.
-    r.TOP_LEVEL |= {"CLAUDE.md", "tools", "toymodels"}
+    r.TOP_LEVEL |= {"CLAUDE.md", "tools", "toymodels", ".claude"}
     r.TOP_LEVEL -= {"baselines"}
     # The frozen slug list is the seven topics of the 2026-09 restructure; the
     # sector and security doors added on 2026-10-07 extend it here.

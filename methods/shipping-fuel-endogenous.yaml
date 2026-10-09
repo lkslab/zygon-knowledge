@@ -1,0 +1,112 @@
+id: shipping-fuel-endogenous
+title: shipping-fuel-endogenous — let the model choose the shipping fuel mix
+family: sector-coupling
+what: >-
+  With sector.shipping_endogenous the shipping fuel mix stops being a set of fixed
+  shares per horizon (shipping_oil_share, shipping_methanol_share,
+  shipping_hydrogen_share, shipping_lng_share) and becomes a choice: domestic plus
+  international navigation is one "<node> shipping demand" load on a "<node> shipping"
+  bus in oil-equivalent energy, and extendable links from oil ("<node> shipping oil"),
+  methanol ("<node> shipping methanol", engine efficiency 0.46 against 0.40 for oil),
+  LNG ("<node> shipping LNG", 0.45 less the methane slip, fed through a
+  "<node> CH4 liquefaction" link with its refrigeration electricity) and hydrogen
+  ("<node> H2 for shipping", fuel cell, optionally through H2 liquefaction) compete for
+  it. Each fuel is switched by its own key, flat or year-indexed. Oil and LNG emit to
+  the atmosphere, LNG at a CO2-equivalent that counts the slipped methane
+  (sector.shipping_lng_methane_slip, 3.1 % as in FuelEU Maritime Annex II) at
+  sector.shipping_methane_gwp100 (25, IPCC AR4); methanol emits the CO2 its synthesis
+  took in; hydrogen emits nothing at the point of use. The code is
+  scripts/prepare_sector_network.py:add_shipping and _add_shipping_endogenous, the port
+  of PyPSA/pypsa-eur#2317 onto the fork the app runs.
+when_to_use:
+- which shipping fuel at least cost under a CO2 target, methanol or LNG or hydrogen
+- LNG as a bridge fuel for shipping and its methane slip
+- e-methanol or e-fuel demand from shipping as a model result
+- shipping decarbonisation in a sector-coupled study
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: f55cdf34f0e67a797fd4327bed26c56dedcb5cb8
+    date: '2026-10-09'
+  execution:
+  - kind: config
+    key: sector.shipping_endogenous
+    value: true
+    note: >-
+      the switch. Read in compose_network only (shipping demand is built the same way
+      in both modes), so an exogenous-shares-vs-endogenous pair is a legitimate
+      two-scenario study; the sector chapter is also a parameter of several build
+      rules, so the harness then rebuilds resources per scenario.
+  - kind: config
+    key: sector.shipping_oil
+    value: true
+    note: >-
+      shipped default; true or a {year: bool} dict. At least one fuel must be on for
+      every horizon.
+  - kind: config
+    key: sector.shipping_methanol
+    value: true
+    note: >-
+      shipped default; methanol from the methanol bus, so bio-, e- and grey methanol all
+      count.
+  - kind: config
+    key: sector.shipping_lng
+    value: true
+    note: >-
+      shipped default; LNG always passes CH4 liquefaction (0.036 MWh electricity per
+      MWh, technology-data CH4 liquefaction). A {year: bool} dict bounds LNG to a bridge
+      window.
+  - kind: config
+    key: sector.shipping_hydrogen
+    value: false
+    note: >-
+      shipped default (off). true adds the fuel-cell hydrogen link from the nodal H2
+      bus; with sector.shipping_hydrogen_liquefaction it draws through an H2
+      liquefaction link instead.
+  - kind: config
+    key: sector.shipping_lng_methane_slip
+    value: 0.031
+    note: >-
+      shipped default, mass share of LNG that escapes unburnt (FuelEU Maritime Annex II,
+      LNG Otto dual-fuel medium speed); it lowers the useful efficiency and is charged
+      as CO2-equivalent. The slip and sector.shipping_methane_gwp100 (25.0) are the
+      sensitivity levers for LNG.
+  - kind: invocation
+    note: >-
+      config only, no code: the fork ships the links and the liquefaction, so a bundle
+      sets the keys and nothing else. Read the result off the links into the
+      "<node> shipping" buses (carriers shipping oil, shipping methanol, shipping LNG,
+      H2 for shipping): their dispatch split is the fuel mix; the upstream methanol and
+      hydrogen supply (methanolisation, electrolysis, biomass to methanol) is the rest
+      of the answer. The share keys (shipping_*_share) are ignored in this mode.
+  invalidates:
+  - compose_network
+  - solve_network
+  budget:
+    jobs: 2
+    class: hours
+  success_metric:
+  - name: competing-fuels-present
+    needs: prepared
+    check: n.links.loc[n.links.bus1.str.endswith(' shipping'), 'carrier'].nunique() >= 2
+    expect: a shipping bus per node fed by at least two fuel links once the switch is on
+  - name: fuel-mix-dispatched
+    needs: solved
+    check: n.links_t.p0.loc[:, n.links.index[n.links.bus1.str.endswith(' shipping')]].sum().sum() > 0
+    expect: the shipping demand is met by the fuel links; their split by carrier is the result
+notes: >-
+  Ammonia is not on the menu (see [[ammonia-ships]]); a study whose answer hinges on
+  ammonia versus methanol says so. The links carry no capital cost, so vessels and
+  engines are free and the choice rests on fuel cost, engine efficiency and the CO2
+  constraint alone; the mix is bounded only by the economy-wide CO2 limit, with no
+  fleet turnover or retrofit constraint. The LNG engine efficiency (0.45) is a
+  placeholder, and the slipped methane is charged as CO2-equivalent onto co2
+  atmosphere, so it counts against the [[co2-budget]] like CO2 (at GWP100, not GWP20).
+  Before endogenous mode, sector.shipping_lng_share (zeros by default) is the
+  exogenous bridge: a fixed LNG share with its own "<node> shipping LNG demand" load
+  and the same liquefaction and slip accounting. Shipping demand is flat per hour in
+  both modes, and the methanol link draws from the methanol bus whatever its origin.
+  Pairs with the [[e-fuels]] topic (methanol synthesis and its CO2 source decide how
+  clean methanol shipping is) and the [[hydrogen-grid]] topic when hydrogen shipping is
+  enabled; [[shipping-demand]] and [[methanol-ships]] carry the demand and fuel
+  detail.

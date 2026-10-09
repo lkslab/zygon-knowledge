@@ -1,0 +1,184 @@
+id: cement-routes-endogenous
+title: Endogenous cement production (kiln fuel, clinker kiln, finishing, capture)
+summary: >
+  Model-endogenous cement: a per-node cement demand in tonnes met by clinker
+  kilns and cement finishing, with the kiln heat chosen among biomass, waste
+  and gas, the calcination and fuel CO2 vented or captured, and today's
+  cement plants as dated brownfield capacity.
+when_to_use:
+  - "endogenous cement"
+  - "cement kiln fuel choice (biomass, waste, gas)"
+  - "cement carbon capture / CCS on clinker kilns"
+  - "calcination emissions as a modelled process"
+  - "cement as a material bus in tonnes"
+  - "existing cement plants as brownfield capacity"
+  - "endogenous_sectors cement"
+  - "where should cement CCS go"
+models:
+  - model: pypsa-eur
+    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
+    out_of_box:
+      covers: >
+        Implemented on this fork (the port of PyPSA/pypsa-eur#1719, open
+        upstream) and OFF by default (sector.endogenous_sectors.enable: false;
+        the method industry-routes-endogenous turns it on). Demand side: with
+        the switch on and "cement" in sector.endogenous_sectors.subsectors,
+        build_industrial_energy_demand_per_node drops the JRC-IDEES "Cement"
+        sector from BOTH the exogenous and the endogenous (industry_t) block of
+        industrial_energy_demand_<horizon>.csv (route_endogenised_sectors), so
+        its electricity, methane, biomass and process emission leave the flat
+        industry loads and the cement share of the industry_t heat bands
+        disappears. Network side (add_cement, called from add_industry): the
+        horizon's cement production (industrial_production_<horizon>.csv,
+        Mt/a) becomes a flat Load "<node> cement demand" (carrier cement, t/h)
+        on a "<node> cement" bus. Kiln heat: a "<node> cement heat" bus
+        (MWh_th) fed by fixed-size pass-through links "<node> cement heat
+        biomass" (from the solid biomass bus, so under the biomass limit,
+        efficiency 0.9, its CO2 onto the emission bus and balanced against the
+        atmosphere), "<node> cement heat waste" (from the waste bus, only with
+        sector.waste, efficiency 0.9, fossil CO2 of oil) and "<node> cement
+        heat gas" (efficiency 1, CO2 of gas). "<node> clinker kiln" (carrier
+        cement kiln, technology-data cement dry clinker: 0.9444 MWh heat,
+        0.0002 MWh gas and 0.0694 MWh electricity per t clinker) writes
+        sector.cement.calcination_emissions (0.5071 t CO2 per t clinker) plus
+        the gas CO2 onto "<node> cement emission"; "<node> cement production"
+        (carrier cement finishing: 0.656 t clinker and 0.1736 MWh electricity
+        per t cement) turns clinker into cement. The emission bus empties
+        through "<node> cement emission vent" to co2 atmosphere or "<node>
+        cement emission CC" (cement carbon capture retrofit: 90 % to the CO2
+        stored bus, 0.16 MWh electricity per t CO2, the rest vented). Because
+        the biomass CO2 is credited back to the atmosphere, capturing a
+        biomass-fired kiln's emission bus is negative emissions. Brownfield
+        (add_existing_industry, first horizon of myopic or perfect foresight
+        only, with the switch on): operating integrated plants of the GEM
+        Global Cement and Concrete Tracker (rule build_industry_plants;
+        grinding-only sites have no kiln and are left out) at nodes with a
+        cement load become non-extendable dated links "<node> clinker
+        kiln-<year>" and "<node> cement production-<year>", sized from the
+        plant's clinker capacity (kiln heat through the kiln heat input, the
+        plant's own grinding in t clinker/h), grouped by
+        existing_capacities.grouping_years_industry.
+      mechanism: >
+        rule build_industrial_production_per_country_tomorrow -> rule
+        build_industrial_production_per_node -> rule
+        build_industrial_energy_demand_per_node (params endogenous_sectors;
+        route_endogenised_sectors drops Cement before both blocks) -> rule
+        compose_network: add_industry -> add_cement (waste bus from add_waste
+        when sector.waste); under myopic/perfect the horizon-free rule
+        build_industry_plants (prepare_gem_cement_plants over the retrieved GEM
+        cement tracker) feeds add_existing_industry on the first horizon, and
+        add_brownfield carries the built links forward.
+      not_covered: >
+        No clinker or cement trade: every node with cement production must
+        make its own clinker, so a country without a kiln builds one (the
+        Netherlands has had no clinker kiln since ENCI Maastricht closed in
+        2019, yet an overnight NL run builds about 1.38 Mt/a of clinker for its
+        2.1 Mt/a of cement in 2040; the three Dutch GEM sites are grinding-only,
+        so a myopic NL run inherits no kiln either). Existing kilns carry their
+        nominal clinker capacity, which exceeds production (Spain: 28 integrated
+        plants with 28.8 Mt/a of clinker capacity against roughly 15-20 Mt/a of
+        cement production), and grinding-only sites add no grinding capacity
+        (finishing is cheap and extendable). The clinker ratio is fixed at the catalogue
+        0.656 with no clinker substitution technology (the catalogue's
+        slag-input row is unused; calcined clay or LC3 is absent), and the
+        calcination factor is one constant for every country and year. No
+        electric, plasma or hydrogen kiln: kiln heat comes from biomass, waste
+        or gas only, and the three fuel links cannot be switched off by
+        config. No clinker store, so the kiln follows the flat load every
+        hour. The capture retrofit charges electricity only (the catalogue's
+        0.76 MWh gas per t CO2 for solvent regeneration is unused). The
+        Europe-wide validation in the upstream PR found the kiln heat (106
+        TWh) almost entirely waste-fired at 365-hour resolution, since the
+        non-sequestered plastic waste must be burnt within the year anyway.
+      provenance: "scripts/prepare_sector_network.py:add_cement; scripts/prepare_sector_network.py:add_industry; scripts/build_industrial_energy_demand_per_node.py:route_endogenised_sectors; scripts/add_existing_baseyear.py:add_existing_industry; scripts/build_industry_plants.py:prepare_gem_cement_plants; rules/build_sector.smk:build_industry_plants; config/config.default.yaml:calcination_emissions; doc/release_notes.md:Endogenous steel and cement production routes"
+    levers:
+      - key: sector.endogenous_sectors.enable
+        effect: "Master switch: true drops the route sectors from the industry demand file and builds the cement (and steel) buses, loads and links; under myopic/perfect it also adds today's plants."
+        default: "false"
+        provenance: "config/config.default.yaml:endogenous_sectors; scripts/prepare_sector_network.py:add_industry"
+      - key: sector.endogenous_sectors.subsectors
+        effect: "Which subsectors are endogenised; removing cement keeps the exogenous Cement demand (and its industry_t heat band share)."
+        default: "[steel, cement]"
+        provenance: "config/config.default.yaml:subsectors; scripts/build_industrial_energy_demand_per_node.py:route_endogenised_sectors"
+      - key: sector.cement.calcination_emissions
+        effect: "Process CO2 per tonne of clinker written onto the cement emission bus by every kiln, new and existing."
+        default: "0.5071 (IPCC EFDB)"
+        provenance: "config/config.default.yaml:calcination_emissions; scripts/prepare_sector_network.py:add_cement"
+      - key: sector.waste
+        effect: "Gates the waste bus and with it the cement heat waste link; false leaves biomass and gas as the kiln fuels."
+        default: "true"
+        provenance: "config/config.default.yaml:waste; scripts/prepare_sector_network.py:add_waste"
+      - key: existing_capacities.grouping_years_industry
+        effect: "Build-year bins the existing plants are grouped into (one dated kiln and finishing link per region and bin)."
+        default: "[1995, 2000, 2005, 2010, 2015, 2020, 2025]"
+        provenance: "config/config.default.yaml:grouping_years_industry; scripts/add_existing_baseyear.py:add_existing_industry"
+      - key: costs.overwrites
+        effect: "Overrides investment, lifetime, FOM or VOM of cement dry clinker, cement finishing and cement carbon capture retrofit. It cannot reach the clinker ratio (clinker-input), the heat input or the capture rate, which only a data/custom_costs.csv row changes."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:prepare_costs"
+    boundary:
+      - variant: "kiln fuel choice (biomass, waste, gas)"
+        rung: L0
+        note: "sector.endogenous_sectors.enable: true, the method industry-routes-endogenous; the fuels compete on price, the CO2 constraint and the biomass limit"
+      - variant: "carbon capture on cement kilns"
+        rung: L0
+        note: "the cement emission CC link is built with the switch; no separate flag"
+      - variant: "endogenise cement only (keep steel exogenous)"
+        rung: L1
+        note: "sector.endogenous_sectors.subsectors: [cement]"
+      - variant: "different calcination factor"
+        rung: L1
+        note: "sector.cement.calcination_emissions (one value for every country and horizon)"
+      - variant: "kiln, finishing or capture capex, lifetime or fixed O&M"
+        rung: L1
+        note: "costs.overwrites {investment|lifetime|FOM|VOM: {cement dry clinker|cement finishing|cement carbon capture retrofit: value}}"
+      - variant: "lower clinker ratio (blended cements)"
+        rung: L3
+        note: "a 'cement finishing,clinker-input' row in data/custom_costs.csv (costs.custom_cost_fn); costs.overwrites only reaches investment, lifetime, FOM, VOM, efficiency, fuel, standing losses, marginal_cost and capital_cost. One ratio for every node and horizon; a per-horizon trajectory uses the file's planning_horizon column"
+      - variant: "different capture rate or kiln heat intensity"
+        rung: L3
+        note: "rows 'cement carbon capture retrofit,capture_rate' or 'cement dry clinker,heat-input' in data/custom_costs.csv"
+      - variant: "forbid a kiln fuel (e.g. no gas)"
+        rung: L2
+        note: "the three cement heat links are fixed-size pass-throughs with no flag; drop the n.add call in add_cement"
+      - variant: "hydrogen or electricity firing the existing kiln heat bus"
+        rung: L2
+        note: "a further pass-through link onto '<node> cement heat' in add_cement, like cement heat gas; the kiln capex stays the dry-clinker row"
+      - variant: "clinker or cement transport between regions, or clinker imports"
+        rung: L2
+        note: "links between the clinker or cement buses (or an import generator on the clinker bus) in add_cement; transport cost rows via data/custom_costs.csv (L3)"
+      - variant: "existing grinding-only sites as separate grinding capacity"
+        rung: L2
+        note: "prepare_gem_cement_plants keeps integrated plants only (Plant type, Clinker Capacity); grinding sites would need their own finishing links in add_existing_industry"
+      - variant: "electric or hydrogen kiln as its own technology (electric calciner, plasma kiln)"
+        rung: L5
+        note: "a distinct process with its own capex, heat profile and calcination CO2 stream; no cost data or structure exists"
+      - variant: "clinker substitution technologies (calcined clay, LC3, slag)"
+        rung: L5
+        note: "needs supplementary-material buses, potentials and process chains; only the clinker ratio itself is reachable (L3)"
+    where:
+      - change: "cement buses, load, kiln fuel links, kiln, finishing, vent and capture"
+        anchor: "scripts/prepare_sector_network.py::add_cement (called from add_industry)"
+        provenance: "scripts/prepare_sector_network.py:add_cement"
+      - change: "dropping the Cement sector from the demand blocks"
+        anchor: "scripts/build_industrial_energy_demand_per_node.py::route_endogenised_sectors (ROUTE_ENDOGENOUS_SECTORS)"
+        provenance: "scripts/build_industrial_energy_demand_per_node.py:ROUTE_ENDOGENOUS_SECTORS"
+      - change: "existing plants and their sizing"
+        anchor: "scripts/build_industry_plants.py::prepare_gem_cement_plants; scripts/add_existing_baseyear.py::add_existing_industry"
+        provenance: "scripts/build_industry_plants.py:prepare_gem_cement_plants; scripts/add_existing_baseyear.py:add_existing_industry"
+      - change: "kiln, finishing and capture cost and intensity rows"
+        anchor: "scripts/process_cost_data.py::prepare_costs; data/custom_costs.csv (costs.custom_cost_fn)"
+        provenance: "scripts/process_cost_data.py:overwrite_costs; config/config.default.yaml:custom_cost_fn"
+    data_dependencies:
+      - input: "GEM Global Cement and Concrete Tracker (retrieved, data/gem_gcct/)"
+        required_for: "existing cement plants under myopic/perfect foresight (operating integrated plants, clinker capacity, start year)"
+        availability: "retrieved by default (retrieve_gem_cement_concrete_tracker); read by build_industry_plants only when the switch is on and foresight is not overnight"
+      - input: "industrial_production_<horizon>.csv (Cement, JRC-IDEES chain)"
+        required_for: "the cement load"
+        availability: "must be built (build_industrial_production_per_country_tomorrow, build_industrial_production_per_node)"
+      - input: "cost rows: cement dry clinker, cement finishing, cement carbon capture retrofit"
+        required_for: "kiln and finishing intensities and capex, the capture retrofit"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data (technology-data v0.15.0)"
+      - input: "spatial solid biomass and gas buses, the waste bus (sector.waste), CO2 stored buses"
+        required_for: "kiln fuels and the capture output"
+        availability: "exists by default in sector runs"

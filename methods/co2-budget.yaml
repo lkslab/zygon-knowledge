@@ -32,7 +32,7 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c
+    ref: f55cdf34f0e67a797fd4327bed26c56dedcb5cb8
     date: '2026-10-09'
   # No execution entries on purpose: co2_budget.* is a study-frame key the bundle
   # sets citing the tracker's emissions_target, never a method lever. This card is
@@ -133,4 +133,4 @@ notes: >-
   either way: Gurobi reports "Numerical trouble ... Model may be infeasible or unbounded"
   or "Infeasible model" within minutes of barrier, then computes an IIS until the job's
   runtime kills it, so a solve_network job that dies at its time limit after an early
-  infeasible line is a scenario infeasibility, not a solver-size problem; check the sinks and the biomass balance of the selection before resizing anything. The structural fix for the biomass side on this fork is [[industry-heat-endogenous]] (the industrial biomass load becomes band heat supplied under the limit); and with solving.options.infeasibility_diagnosis.time_limit set (fork, backend config) the IIS computation stops after that many seconds instead of running to the job's kill.
+  infeasible line is a scenario infeasibility, not a solver-size problem; check the sinks and the biomass balance of the selection before resizing anything. The structural fix for the biomass side on this fork is [[industry-heat-endogenous]] (the industrial biomass load becomes band heat supplied under the limit); [[industry-routes-endogenous]] is a second, partial way out (steel and cement leave the flat demand, the kiln biomass competes under the limit; for NL 2040 that alone removes 0.35 of the 16.0 TWh/a, so it complements industry-heat-endogenous rather than replacing it). On the process-emission side, build_industrial_energy_demand_per_node clips a negative per-node process emission to zero with a warning: JRC-IDEES gives HVC a negative process emission in later horizons, three NL 2040 nodes summed negative, and compose_network would have turned that into a CO2 withdrawal no sink can serve, an infeasibility with the same symptom; and with solving.options.infeasibility_diagnosis.time_limit set (fork, backend config) the IIS computation stops after that many seconds instead of running to the job's kill.

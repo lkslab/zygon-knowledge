@@ -17,7 +17,7 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c
+    ref: f55cdf34f0e67a797fd4327bed26c56dedcb5cb8
     date: '2026-10-09'
   execution:
   - kind: config
@@ -160,6 +160,6 @@ notes: 'Substrate: [[existing-fleet]] ingestion feeds the baseyear cohorts. Eart
   data/costs/archive/v0.14.0/costs_{2025..2050 in 5y steps}.csv — any such milestone
   is a legal horizon; earth has resources/mexico-power/costs_2050.csv only
   (ceremonies 2026-08-01/04). Each horizon solves with its OWN cost year; only add_existing_baseyear
-  values existing stock at first-horizon costs. Perfect-foresight counterpart: [[pathway-perfect]]. Eur exception to the fixed carry-over: with [[industry-heat-endogenous]] on, add_brownfield carries the inherited industry_t band links shrink-only (p_nom_extendable with p_nom_max = built capacity, p_nom_min 0, capital cost = fixed O&M only), so a band demand that falls in a later horizon never collides with the must-run floor of fixed capacity; every other carried cohort stays fixed and non-extendable.
+  values existing stock at first-horizon costs. Perfect-foresight counterpart: [[pathway-perfect]]. Eur exception to the fixed carry-over: with [[industry-heat-endogenous]] on, add_brownfield carries the inherited industry_t band links shrink-only (p_nom_extendable with p_nom_max = built capacity, p_nom_min 0, capital cost = fixed O&M only), so a band demand that falls in a later horizon never collides with the must-run floor of fixed capacity; every other carried cohort stays fixed and non-extendable. Eur industry plants: with [[industry-routes-endogenous]] on (sector.endogenous_sectors.enable), the first horizon also seeds the existing industry fleet — the horizon-free rule rules/build_sector.smk:build_industry_plants locates the blast furnaces, gas DRI, ammonia and methanol units of the Fraunhofer ISI site database (EU27, GB, NO), the GEM cement tracker plants and data/ammonia_plants.csv elsewhere, and scripts/add_existing_baseyear.py:add_existing_industry adds them as dated non-extendable links (clinker kiln, cement production, gas DRI, BOF, plus Haber-Bosch with sector.ammonia and grey methanol with sector.methanol) grouped by existing_capacities.grouping_years_industry. Blast furnaces retire at their pledged phase-out year plus sector.steel_bof.pledge_delay (pledge true, the default) or at the catalogue lifetime (pledge false), so the BOF phase-out is a pledge assumption the study states, not a model outcome; cement capacities are GEM nominal capacities, above actual production.
 
   '

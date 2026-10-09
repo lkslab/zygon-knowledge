@@ -126,7 +126,7 @@ models:
       temporal: "Heat: degree-day daily x BDEW intraday; transport: weekly traffic x temperature correction; industry/aviation/shipping/agriculture: constant; residential/services fuels: inherit electricity shape"
       scenario: "Shapes are scenario-invariant; only annual totals scale with {demand}_{planning_horizons}"
   - model: pypsa-eur
-    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
+    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
     out_of_box:
       covers: >-
         (1) Heat: rule build_daily_heat_demand converts cutout temperature to
@@ -144,7 +144,7 @@ models:
         BEV availability (bev_availability_profile) and DSM
         (bev_dsm_profile) series consumed by add_land_transport. (3) Industry
         and most fuel demands are constant: annual totals divided by nhours in
-        add_industry (p_set = .../ nhours), including the temperature-banded process heat loads of the fork's sector.industry_t (annual / 8760 there, the same on full-year runs). (4) Baseline electricity keeps its measured hourly
+        add_industry (p_set = .../ nhours), including the temperature-banded process heat loads of the fork's sector.industry_t (annual / 8760 there, the same on full-year runs). The one exception is the "industry electricity" load: with industry.temporal_electricity_industry_load (off by default; method industry-load-profiles) add_industry multiplies each node's annual industry electricity by an hourly profile from build_industrial_energy_demand_per_node (FfE open data id 59, German 2017 normed load profiles per NACE branch, weighted by the node's JRC-IDEES sector electricity mix, shifted onto the target calendar with the country's own holidays). (4) Baseline electricity keeps its measured hourly
         shape (see electricity-load).
       mechanism: >-
         generate_periodic_profiles lives in scripts/_helpers.py and applies
@@ -154,12 +154,15 @@ models:
         (snapshots resampled to daily) and the atlite threshold is left at its
         default in build_daily_heat_demand.py.
       not_covered: >-
-        Industry has no load profiles (flat by construction); the traffic shape
+        Industry fuel and heat loads have no profiles (flat by construction),
+        and the optional industry electricity profile is German branch shapes
+        projected onto every country, one shape per branch with no plant-level
+        flexibility; the traffic shape
         is one German weekly profile for all countries; BDEW profiles are German
         standard load profiles applied Europe-wide; no explicit holiday
         calendar; space cooling exists only insofar as configured elsewhere, not
         as part of this heat-profile pipeline.
-      provenance: "rules/build_sector.smk:rule build_daily_heat_demand ; scripts/build_daily_heat_demand.py:cutout.heat_demand ; scripts/build_hourly_heat_demand.py:heat_dsm_profile ; scripts/build_transport_demand.py:transport_degree_factor ; scripts/prepare_sector_network.py:def build_heat_demand"
+      provenance: "rules/build_sector.smk:rule build_daily_heat_demand ; scripts/build_daily_heat_demand.py:cutout.heat_demand ; scripts/build_hourly_heat_demand.py:heat_dsm_profile ; scripts/build_transport_demand.py:transport_degree_factor ; scripts/prepare_sector_network.py:def build_heat_demand ; scripts/build_industrial_energy_demand_per_node.py:build_electricity_profiles ; scripts/prepare_sector_network.py:temporal_electricity_industry_load"
     levers:
       - key: sector.transport_heating_deadband_lower
         effect: "Temperature deadband bound for the vehicle heating correction (with _upper and ICE_/EV_ degree factor siblings)."
@@ -177,6 +180,10 @@ models:
         effect: "Base-year annual totals that the hourly heat/transport shapes are scaled to."
         default: "2023"
         provenance: "config/config.default.yaml:energy_totals_year ; rules/build_sector.smk:energy_totals_year"
+      - key: industry.temporal_electricity_industry_load
+        effect: "true gives the 'industry electricity' load an hourly shape (FfE branch profiles weighted by the node's sector mix) instead of annual / nhours; read in compose_network only, the profile file is always built."
+        default: "false"
+        provenance: "config/config.default.yaml:temporal_electricity_industry_load ; scripts/prepare_sector_network.py:temporal_electricity_industry_load"
     boundary:
       - variant: "Tune vehicle heating correction or EV DSM window"
         rung: L0
@@ -187,9 +194,12 @@ models:
       - variant: "Country-specific traffic shape"
         rung: L3
         note: "Replace the traffic_data_KFZ/Pkw count inputs of rule build_transport_demand; per-country differentiation would additionally need a small code edit (L2)."
-      - variant: "Time-varying industry loads"
+      - variant: "Hourly industry electricity load"
+        rung: L0
+        note: "industry.temporal_electricity_industry_load: true (method [[industry-load-profiles]]); German 2017 FfE branch shapes projected to every country."
+      - variant: "Time-varying industry fuel and heat loads"
         rung: L2
-        note: "add_industry sets p_set as annual / nhours constants; introducing profiles means editing those madd calls in prepare_sector_network.py."
+        note: "add_industry sets p_set as annual / nhours constants for every non-electricity carrier and the industry_t bands; introducing profiles means editing those n.add calls in prepare_sector_network.py."
       - variant: "Change the HDD threshold or use hourly heat conversion"
         rung: L2
         note: "build_daily_heat_demand.py calls cutout.heat_demand with defaults on daily-resampled snapshots; parameters/resolution are edited there."
@@ -209,6 +219,9 @@ models:
       - change: "Flat industry loads"
         anchor: "scripts/prepare_sector_network.py function add_industry (p_set = ... / nhours)"
         provenance: "scripts/prepare_sector_network.py:def add_industry ; scripts/prepare_sector_network.py:nhours"
+      - change: "Industry electricity profile (branch mapping, calendar shift, holidays)"
+        anchor: "scripts/build_industrial_energy_demand_per_node.py (INDUSTRY_SECTOR_TO_PROFILE, map_profiles_to_snapshots; rule build_industrial_energy_demand_per_node)"
+        provenance: "scripts/build_industrial_energy_demand_per_node.py:INDUSTRY_SECTOR_TO_PROFILE ; scripts/build_industrial_energy_demand_per_node.py:map_profiles_to_snapshots ; rules/retrieve.smk:retrieve_ffe_industry_load_profiles"
       - change: "Weekly-profile tiling helper"
         anchor: "scripts/_helpers.py function generate_periodic_profiles"
         provenance: "scripts/_helpers.py:generate_periodic_profiles"
@@ -222,11 +235,14 @@ models:
       - input: "Traffic count series (kfz.csv / pkw.csv, mobility_profiles dataset)"
         required_for: "Transport shape and BEV availability"
         availability: "exists by default (retrieved dataset; German counts applied Europe-wide)"
+      - input: "FfE open data id 59, Normed Industrial Electrical Load Profile (Germany) 2017, hourly per NACE branch (CC-BY-4.0, dataset ffe_industry_load_profiles in data/versions.csv)"
+        required_for: "the optional hourly industry electricity profile"
+        availability: "retrieved by rule retrieve_ffe_industry_load_profiles; Germany only, applied Europe-wide"
       - input: "Population layouts per cluster"
         required_for: "Population-weighted heat profiles"
         availability: "must be built (build_population_layouts rules)"
     demand_dimensions:
       driver: "Shapes from temperature, BDEW standard load profiles, traffic counts; levels from energy totals"
       spatial: "Profiles per clustered region via population-weighted cutout cells"
-      temporal: "Heat: daily HDD x BDEW intraday (+ optional thermal-mass DSM); transport: weekly traffic x temperature correction (+ BEV avail/DSM); industry: constant"
+      temporal: "Heat: daily HDD x BDEW intraday (+ optional thermal-mass DSM); transport: weekly traffic x temperature correction (+ BEV avail/DSM); industry: constant (electricity optionally hourly FfE branch profiles)"
       scenario: "Shapes scenario-invariant; totals and technology shares change per planning horizon"

@@ -150,7 +150,7 @@ models:
   - id: compare_system_cost
     role: 'what storage saves the system: total cost across variants or with/without'
   version_anchor:
-    ref: d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c
+    ref: f55cdf34f0e67a797fd4327bed26c56dedcb5cb8
     date: '2026-10-09'
 - model: pypsa-earth
   approach: >-

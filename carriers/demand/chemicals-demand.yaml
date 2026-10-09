@@ -17,7 +17,7 @@ when_to_use:
   - "plastic recycling (mechanical / chemical) scenarios"
   - "pharma / pharmaceutical industry energy"
   - "industrial feedstock emissions"
-  - "known in pypsa-eur as: industry methanol, non-sequestered HVC, HVC to air"
+  - "known in pypsa-eur as: industry methanol, non-sequestered HVC, waste to air (formerly HVC to air), methanol-to-olefins/aromatics"
 
 models:
   - model: pypsa-earth
@@ -137,7 +137,7 @@ models:
       scenario: "{demand} + {planning_horizons} wildcards through CAGR; sector.ammonia.production_year for the NH3 level; custom_data.industry_demand for full scenario overrides"
 
   - model: pypsa-eur
-    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
+    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
     out_of_box:
       covers: >
         Basic chemicals split into Ammonia, HVC, Chlorine and Methanol plus
@@ -145,9 +145,17 @@ models:
         production tonnage (kt/a), per-tonne energy/feedstock intensities,
         future HVC primary/mechanical-recycling/chemical-recycling split,
         naphtha feedstock loads with steam-cracker feedstock emissions, a
-        non-sequestered HVC waste chain, an industry methanol load, and
+        non-sequestered HVC waste chain (a must-use generator on the waste bus
+        of the waste sector, sector.waste default true, burnt via "waste to
+        air" or waste CHPs), an industry methanol load, and
         (with sector.ammonia) an NH3 carrier demand supplied by endogenous
-        Haber-Bosch.
+        Haber-Bosch. sector.methanol.meoh_to_oa (off by default) adds
+        methanol-to-olefins/aromatics links from the methanol bus to the
+        naphtha-for-industry bus, so HVC feedstock can come from methanol.
+        With sector.endogenous_sectors.enable under myopic or perfect
+        foresight, today's Haber-Bosch (sector.ammonia) and grey methanol
+        (sector.methanol) plants from build_industry_plants enter as dated
+        brownfield links in the first horizon.
       mechanism: >
         build_industrial_production_per_country reads JRC-IDEES CHI sheet basic
         chemicals tonnage and separate_basic_chemicals subtracts USGS ammonia
@@ -170,17 +178,19 @@ models:
         siting via hotmaps "Chemical industry" emissions keys and
         data/ammonia_plants.csv (prepare_ammonia_database);
         prepare_sector_network:add_industry adds naphtha for industry (scaled by
-        sector.HVC_demand_factor, feedstock emissions to process-emission buses,
-        non-sequestered HVC store/links), industry methanol, H2 for industry,
-        NH3 load, and process emissions; add_ammonia builds Haber-Bosch,
-        ammonia cracker and NH3 storage.
+        sector.HVC_demand_factor, feedstock emissions to process-emission buses),
+        industry methanol, H2 for industry, NH3 load, and process emissions;
+        add_waste the non-sequestered HVC generator and its outlets;
+        add_ammonia builds Haber-Bosch, ammonia cracker and NH3 storage;
+        add_meoh_to_oa (from add_methanol) the methanol route to naphtha.
       not_covered: >
         Chlorine and methanol production stay proportional to non-ammonia basic
         chemicals (single EU-calibrated production_today scalars, not per-country
         statistics); no endogenous route choice between primary HVC and
-        recycling (fractions are exogenous per horizon); adipic acid and other
+        recycling (fractions are exogenous per horizon; only the primary
+        feedstock can come endogenously from methanol, with meoh_to_oa); adipic acid and other
         FORECAST-level individual products are not separate demands.
-      provenance: "scripts/build_industrial_production_per_country.py:separate_basic_chemicals;scripts/build_industry_sector_ratios.py:def chemicals_industry;scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_CPC_BC_E;scripts/build_industrial_production_per_country_tomorrow.py:HVC (mechanical recycling);scripts/build_industrial_distribution_key.py:prepare_ammonia_database;scripts/prepare_sector_network.py:non-sequestered HVC;scripts/prepare_sector_network.py:def add_ammonia"
+      provenance: "scripts/build_industrial_production_per_country.py:separate_basic_chemicals;scripts/build_industry_sector_ratios.py:def chemicals_industry;scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_CPC_BC_E;scripts/build_industrial_production_per_country_tomorrow.py:HVC (mechanical recycling);scripts/build_industrial_distribution_key.py:prepare_ammonia_database;scripts/prepare_sector_network.py:non-sequestered HVC;scripts/prepare_sector_network.py:def add_ammonia;scripts/prepare_sector_network.py:add_waste;scripts/prepare_sector_network.py:add_meoh_to_oa;scripts/add_existing_baseyear.py:add_existing_industry"
     levers:
       - key: sector.ammonia
         effect: "true/'regional'/false — NH3 as separate carrier with endogenous Haber-Bosch (regional = nodal NH3 buses); false converts ammonia demand to H2+electricity via electrolysis intensities."
@@ -238,6 +248,10 @@ models:
         effect: "EU methanol production (Mt) — sets industry methanol demand (MWh_MeOH_per_tMeOH)."
         default: "1.5"
         provenance: "config/config.default.yaml:methanol_production_today;scripts/build_industrial_energy_demand_per_country_today.py:MWh_CH4_per_tMeOH"
+      - key: sector.methanol.meoh_to_oa
+        effect: "true adds methanol-to-olefins/aromatics (methanol to naphtha for industry, 12.622 MWh naphtha per tonne HVC, with process emissions)."
+        default: "false"
+        provenance: "config/config.default.yaml:meoh_to_oa;scripts/prepare_sector_network.py:add_meoh_to_oa"
     boundary:
       - variant: "scale plastics/HVC demand"
         rung: L0
@@ -254,6 +268,12 @@ models:
       - variant: "endogenous process-heat supply for HVC"
         rung: L0
         note: "sector.industry_t.endogen: true (method industry-heat-endogenous) on this fork: HVC, pharmaceutical and other-chemicals heat is split into temperature bands with competing supply links (industry-process-heat-endogenous); the HVC recycling routes and the naphtha feedstock stay exogenous."
+      - variant: "HVC from methanol (methanol-to-olefins/aromatics)"
+        rung: L0
+        note: "sector.methanol.meoh_to_oa: true"
+      - variant: "existing ammonia and methanol plants as brownfield"
+        rung: L0
+        note: "sector.endogenous_sectors.enable under foresight myopic or perfect ([[industry-routes-endogenous]]): Haber-Bosch and grey methanol plants from the Fraunhofer ISI site database and data/ammonia_plants.csv"
       - variant: "add a new named chemical product (e.g. adipic acid) as its own demand"
         rung: L4
         note: "needs a new production column + sector ratio + distribution key through the whole rule chain."
@@ -265,8 +285,8 @@ models:
         anchor: "scripts/build_industry_sector_ratios.py:chemicals_industry"
         provenance: "scripts/build_industry_sector_ratios.py:def chemicals_industry"
       - change: "naphtha load, feedstock emissions, HVC waste chain"
-        anchor: "scripts/prepare_sector_network.py:add_industry (naphtha section)"
-        provenance: "scripts/prepare_sector_network.py:process_co2_per_naphtha"
+        anchor: "scripts/prepare_sector_network.py:add_industry (naphtha section); scripts/prepare_sector_network.py:add_waste (the waste bus)"
+        provenance: "scripts/prepare_sector_network.py:process_co2_per_naphtha;scripts/prepare_sector_network.py:add_waste"
       - change: "NH3 supply components"
         anchor: "scripts/prepare_sector_network.py:add_ammonia"
         provenance: "scripts/prepare_sector_network.py:def add_ammonia"

@@ -13,7 +13,7 @@ what: >-
   Hotmaps and GEM site lists (build_industrial_distribution_key). compose_network then
   adds the demand (scripts/prepare_sector_network.py:add_industry: electricity, "H2 for
   industry", process heat as solid biomass, gas, methanol and naphtha loads, process
-  emissions with a capture option at sector.cc_fraction) and
+  emissions with a capture option at the "cement capture" cost row's capture rate) and
   scripts/prepare_sector_network.py:add_ammonia the ammonia chain when sector.ammonia
   is set. The route shares and the ratio blend are {year: value} keys read by {horizon}
   rules, so a scenario may vary them (a fast-vs-slow DRI pair is two DRI_fraction
@@ -30,19 +30,20 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c
+    ref: f55cdf34f0e67a797fd4327bed26c56dedcb5cb8
     date: '2026-10-09'
   execution:
   - kind: config
     key: industry.DRI_fraction
     value:
-      2030: 0.0
+      2030: 0.05
       2040: 0.5
       2050: 1.0
     note: >-
       share of primary steel made by hydrogen direct reduction (the shipped trajectory
-      is 0 in 2030 rising to 1 in 2050). Per horizon, scenario-safe; this is the lever a
-      steel study varies.
+      is 0.05 in 2030, 0.4 in 2040, 1 in 2050). Per horizon, scenario-safe; this is the
+      lever a steel study varies on the exogenous path. Dormant for primary steel once
+      sector.endogenous_sectors routes steel endogenously ([[industry-routes-endogenous]]).
   - kind: config
     key: industry.St_primary_fraction
     value:
@@ -122,9 +123,16 @@ models:
 notes: >-
   Country totals, not sites: production is national and reaches a cluster through the
   site lists, so the answer is the demand and the supply built around a cluster, never
-  a plant's business case. Process heat is split by fuel, not by temperature band, unless [[industry-heat-endogenous]] is on (sector.industry_t.endogen, fork): then the endogenised sectors' heat becomes band demand the model supplies, and those sectors leave the sector_ratios_fraction_future blend (today's intensities); no production-route choice is endogenous either way. Pair with [[co2-budget]] for the
+  a plant's business case. Process heat is split by fuel, not by temperature band, unless [[industry-heat-endogenous]] is on (sector.industry_t.endogen, fork): then the endogenised sectors' heat becomes band demand the model supplies, and those sectors leave the sector_ratios_fraction_future blend (today's intensities); no production-route choice is endogenous on this method's own, only steel and cement under [[industry-routes-endogenous]] (below). Pair with [[co2-budget]] for the
   target that prices the routes, [[h2-network-expansion]] when the question is where
   the hydrogen comes from, [[pathway-myopic]] when it is when the switch has to happen.
   The carrier cards h2-dri-steel, electric-arc-furnace, low-clinker-cement,
   electrolytic-chemicals, industrial-ccs, electric-process-heat and
-  industrial-process-heat-temperature-bands carry the levers.
+  industrial-process-heat-temperature-bands carry the levers. With
+  [[industry-routes-endogenous]] (sector.endogenous_sectors.enable) primary steel and
+  cement leave this chain's demand tables and their routes become a model choice:
+  industry.DRI_fraction is then dormant for primary steel (St_primary_fraction still
+  sizes the primary load, which is Integrated plus DRI production), the Cement column's
+  fuels and process emissions move to the kiln links, and secondary EAF steel stays the
+  exogenous electricity demand this method produces; the other sectors' keys here act
+  as before.

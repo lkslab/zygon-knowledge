@@ -1,0 +1,76 @@
+id: industry-load-profiles
+title: industry-load-profiles — hourly industrial electricity demand instead of a flat load
+family: sector-coupling
+what: >-
+  With industry.temporal_electricity_industry_load the "<node> industry electricity"
+  load stops being the annual total spread flat over the year and follows an hourly
+  profile per node: the FfE normed industrial load profiles (open data id 59, Germany
+  2017, eleven NACE branches) weighted by the node's JRC-IDEES sector mix of industrial
+  electricity. The rule rules/build_sector.smk:build_industrial_energy_demand_per_node
+  always writes industrial_electricity_profile_<horizon>.csv (one profile per node,
+  summing to one): branch profiles mapped to sectors by
+  scripts/build_industrial_energy_demand_per_node.py:INDUSTRY_SECTOR_TO_PROFILE
+  (chemicals take the continuous paper, pulp and print profile, non-ferrous metals the
+  iron and steel one, pharmaceuticals the food one), shifted onto the target calendar so
+  weekdays coincide, German 2017 holidays replaced by weekday-hour means, the country's
+  own holidays given the Sunday shape. With the switch on,
+  scripts/prepare_sector_network.py:add_industry multiplies the annual electricity by
+  that profile; the annual energy is unchanged. The port of PyPSA/pypsa-eur#1875 onto
+  the fork the app runs; the data source is retrieved by
+  rules/retrieve.smk:retrieve_ffe_industry_load_profiles.
+when_to_use:
+- industrial electricity demand with a weekly and daily shape
+- weekday and weekend industrial load in an electrification or flexibility study
+- peak load and price spikes driven by industry
+- any electrification study where the timing of industrial demand matters
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: f55cdf34f0e67a797fd4327bed26c56dedcb5cb8
+    date: '2026-10-09'
+  execution:
+  - kind: config
+    key: industry.temporal_electricity_industry_load
+    value: true
+    note: >-
+      the switch. Read in compose_network only (the profile file is always built), so
+      scenarios share the profile; a flat-vs-hourly pair is a legitimate two-scenario
+      study. The industry chapter is also a parameter of the industry build rules, so
+      flipping it per scenario makes the harness rebuild resources per scenario.
+  - kind: invocation
+    note: >-
+      config only, no code: the fork ships the retrieve rule, the mapping and the
+      holiday handling (the holidays package), so a bundle sets the key and nothing
+      else. Read the result off n.loads_t.p_set for the "<node> industry electricity"
+      loads (carrier industry electricity) and compare peak, weekly swing and the
+      prices they meet with a flat run. Only the electricity load is shaped; heat,
+      hydrogen and fuel loads of industry stay flat.
+  invalidates:
+  - compose_network
+  - solve_network
+  budget:
+    jobs: 2
+    class: hours
+  success_metric:
+  - name: industry-electricity-shaped
+    needs: prepared
+    check: n.loads_t.p_set.filter(like=' industry electricity').std().gt(0).any()
+    expect: the industry electricity loads are time series that vary over the day and the week, not flat values
+notes: >-
+  The profiles are German (FfE, 2017) and projected onto every country; only the
+  holiday calendar and the sector mix are national, so a country whose industry runs
+  differently (shift patterns, seasonal plants) gets the German branch shape. One shape
+  per branch, no plant-level detail and no flexibility: the load is fixed per hour, and
+  demand response of industry is a separate question. The weighting uses the node's
+  exogenous sector mix, so chemical-heavy nodes are nearly flat and manufacturing-heavy
+  ones swing: in NL 2040 the Sunday share of the year ranges from 0.12 (NL0 0AC) to
+  0.086 (NL0 2AC) against about 0.14 for a flat load, and at NL0 2AC the hourly mean runs from
+  0.89 of the flat value at midnight to 1.10 at noon. The profile is weighted by the
+  exogenous block even when [[industry-routes-endogenous]] or [[industry-heat-endogenous]]
+  is on (the route sectors drop out of the weighting; the bands' electric options draw
+  through their own links, unshaped). Pairs with any electrification study:
+  [[industry-heat-endogenous]] (heat pumps and electric boilers on the same nodes),
+  [[industry-routes-endogenous]] (DRI and EAF electricity), [[industry-fuel-switching]]
+  (the size of the electricity load that gets shaped) and the price questions of
+  [[price-formation]]. See [[demand-temporal-profiles]] for the other demand shapes the
+  model carries.

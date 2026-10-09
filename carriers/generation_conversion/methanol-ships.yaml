@@ -18,7 +18,7 @@ when_to_use:
   - "known in pypsa-eur as: shipping methanol"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
+    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
     out_of_box:
       covers: >
         Fully covered and the DEFAULT deep-decarbonisation shipping fuel:
@@ -42,7 +42,13 @@ models:
         "biomass-to-methanol" (add_biomass_to_methanol,
         sector.methanol.biomass_to_methanol default true). Demand placement
         can be regionalised with sector.methanol.regional_methanol_demand
-        (nodal "shipping methanol" buses instead of one EU bus).
+        (nodal "shipping methanol" buses instead of one EU bus). With
+        sector.shipping_endogenous (off by default; method
+        shipping-fuel-endogenous) the shares are replaced by an endogenous
+        choice: an extendable "<node> shipping methanol" link from the methanol
+        bus onto the node's oil-equivalent "shipping" bus (efficiency
+        0.46/0.40, same CO2 booking) competes with shipping oil, shipping LNG
+        and, if sector.shipping_hydrogen is on, H2 for shipping.
       mechanism: >
         rule build_shipping_demand -> port-weighted international navigation;
         rule compose_network: add_methanol creates the methanol
@@ -52,8 +58,9 @@ models:
         horizon keys) and builds bus/Load/Link. Shares not summing to 1 with
         oil+hydrogen only warn and scale demand.
       not_covered: >
-        Fuel choice is exogenous — the optimiser never trades methanol against
-        oil/H2/ammonia shipping (shares are hand-set per horizon). The load is
+        By default fuel choice is exogenous — shares are hand-set per horizon;
+        with sector.shipping_endogenous methanol competes with oil, LNG and H2
+        on fuel cost and CO2, but never with ammonia (not on the menu). The load is
         a flat annual average (no seasonality, no voyage structure). No
         bunkering infrastructure, port storage or methanol transport between
         nodes (single EU methanol bus by default; even with
@@ -62,7 +69,7 @@ models:
         efficiency ratio is the whole vessel representation); no ammonia
         alternative exists at all (see ammonia-ships). Domestic and
         international navigation get the same fuel mix.
-      provenance: "scripts/prepare_sector_network.py:add_shipping; scripts/prepare_sector_network.py:add_methanol; scripts/prepare_sector_network.py:methanolisation; scripts/prepare_sector_network.py:add_biomass_to_methanol; scripts/build_shipping_demand.py:total international navigation; config/config.default.yaml:shipping_methanol_share"
+      provenance: "scripts/prepare_sector_network.py:add_shipping; scripts/prepare_sector_network.py:add_methanol; scripts/prepare_sector_network.py:methanolisation; scripts/prepare_sector_network.py:add_biomass_to_methanol; scripts/build_shipping_demand.py:total international navigation; config/config.default.yaml:shipping_methanol_share; scripts/prepare_sector_network.py:_add_shipping_endogenous"
     levers:
       - key: sector.shipping_methanol_share
         effect: "Per-horizon methanol fraction of navigation energy — THE lever; interpolated linearly between dict keys."
@@ -96,6 +103,10 @@ models:
         effect: "Gate for all shipping demand."
         default: "true"
         provenance: "config/config.default.yaml:shipping; scripts/prepare_sector_network.py:add_shipping"
+      - key: sector.shipping_endogenous
+        effect: "true makes methanol an endogenous choice against oil, LNG and (with sector.shipping_hydrogen) H2 on one oil-equivalent shipping bus per node; the share dicts are then ignored and sector.shipping_methanol (bool or year dict) keeps methanol on the menu."
+        default: "false"
+        provenance: "config/config.default.yaml:shipping_endogenous; config/config.default.yaml:shipping_methanol; scripts/prepare_sector_network.py:_add_shipping_endogenous"
     boundary:
       - variant: "methanol shipping ramp to 100% by 2050"
         rung: L0
@@ -119,12 +130,12 @@ models:
         rung: L3
         note: "p_set is a flat annual average; a time series needs external shipping-activity data replacing the constant in add_shipping"
       - variant: "endogenous fuel competition across shipping fuels"
-        rung: L5
-        note: "shares are exogenous; needs new decision variables/constraints replacing the share split"
+        rung: L0
+        note: "sector.shipping_endogenous: true (method [[shipping-fuel-endogenous]]): methanol, oil, LNG and optionally H2 compete; no vessel costs, ammonia not on the menu (see ammonia-ships)"
     where:
       - change: "shipping methanol bus/Load/Link creation and the efficiency conversion"
-        anchor: "scripts/prepare_sector_network.py::add_shipping (shipping_methanol_share block)"
-        provenance: "scripts/prepare_sector_network.py:add_shipping"
+        anchor: "scripts/prepare_sector_network.py::add_shipping (shipping_methanol_share block); endogenous mode in ::_add_shipping_endogenous"
+        provenance: "scripts/prepare_sector_network.py:add_shipping; scripts/prepare_sector_network.py:_add_shipping_endogenous"
       - change: "methanol carrier, store and supply technologies"
         anchor: "scripts/prepare_sector_network.py::add_methanol / ::add_carrier_buses; methanolisation in ::add_industry"
         provenance: "scripts/prepare_sector_network.py:add_methanol; scripts/prepare_sector_network.py:add_carrier_buses; scripts/prepare_sector_network.py:add_industry"

@@ -21,7 +21,7 @@ when_to_use:
   - "known in pypsa-eur as: CHP, CHP CC, CHP heat, CHP electric, urban central gas CHP, urban central gas CHP CC, urban central solid biomass CHP, urban central solid biomass CHP CC"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
+    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
     out_of_box:
       covers: >
         Sector runs build extendable greenfield CHP by default. With
@@ -45,7 +45,9 @@ models:
         decentral heat systems, and insert_electricity_distribution_grid /
         insert_gas_distribution_costs re-point them to the low-voltage bus and
         add gas distribution costs. Waste-burning CHP ("waste CHP") exists as
-        a separate chain — see the waste-to-energy carrier card. Existing fleet:
+        a separate chain on the waste bus (add_waste, behind
+        waste.waste_to_energy / waste.waste_to_energy_cc, both off by default)
+        — see the waste-to-energy carrier card. Existing fleet:
         with myopic/perfect foresight, add_existing_baseyear maps the
         powerplantmatching "Bioenergy" fleet to brownfield "urban central
         solid biomass CHP" Links WITH a heat output at district-heating nodes
@@ -135,7 +137,7 @@ models:
         note: "append 'coal'/'oil' to sector.chp.fuel — mechanically works (own fuel bus + CO2 intensity + CC variant) but is priced with the 'central gas CHP' cost row; correct economics need a code edit to key the costs.at lookups per fuel (L2) plus cost rows (L3)"
       - variant: "CHP without the carbon-capture variants"
         rung: L2
-        note: "no config switch — the CC add calls in add_heat and add_biomass are unconditional; comment them out or filter afterwards (contrast: waste CHP CC and coal CC DO have flags)"
+        note: "no config switch — the CC add calls in add_heat and add_biomass are unconditional; comment them out or filter afterwards (contrast: waste CHP CC, waste.waste_to_energy_cc, and coal CC DO have flags)"
       - variant: "control where central CHP can be built"
         rung: L1
         note: "CHP follows the district heating footprint — tune sector.district_heating.potential/progress (see district-heating carrier card); no direct per-node CHP siting key"

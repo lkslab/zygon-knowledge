@@ -35,12 +35,25 @@ models:
     endogenised sectors becomes three temperature-band loads per node (100-200,
     200-500, 500+ °C) that steam boilers, direct firing, an industrial heat pump, an
     electric boiler and hydrogen firing compete for under the carbon cap and the
-    biomass limit, so the study reads a technology choice instead of assuming one. The
+    biomass limit, so the study reads a technology choice instead of assuming one.
+    Steel and cement have a route branch on top: with the industry-routes-endogenous
+    method (sector.endogenous_sectors.enable) primary steel and cement leave the demand
+    tables and become per-node tonnage loads met by competing production links —
+    scripts/prepare_sector_network.py:add_steel (blast furnace on coal, H2 or gas DRI
+    feeding an electric arc furnace, the furnace CO2 vented or captured) and
+    scripts/prepare_sector_network.py:add_cement (clinker kiln fired by solid biomass,
+    gas or waste, cement finishing, kiln capture retrofit) — and under myopic or perfect
+    foresight today's plants from rules/build_sector.smk:build_industry_plants (the
+    Fraunhofer ISI site database, the GEM cement tracker) enter as dated brownfield
+    links with the blast furnaces retiring at their pledged year; secondary (scrap) EAF
+    steel stays an exogenous electricity load. Industry electricity is flat unless the
+    industry-load-profiles method gives it the hourly FfE branch shape. The
     target comes from co2-budget, the hydrogen supply from h2-network-expansion when
     that is the question, the timing from pathway-myopic. The carrier cards
     h2-dri-steel, electric-arc-furnace, low-clinker-cement, electrolytic-chemicals,
-    industrial-ccs, electric-process-heat, industrial-process-heat-temperature-bands
-    and industry-process-heat-endogenous carry the levers. Results are read off the
+    industrial-ccs, electric-process-heat, industrial-process-heat-temperature-bands,
+    industry-process-heat-endogenous, steel-routes-endogenous and
+    cement-routes-endogenous carry the levers. Results are read off the
     industry loads per cluster (the tabulated industrial_energy_demand_<horizon>.csv,
     its exogenous or endogenous block) and what the system built to serve them.
   trade_offs:
@@ -63,34 +76,54 @@ models:
     technology per temperature level but start from today's intensities for the
     endogenised sectors and add a must-run floor to every heat plant — a study whose
     question is the heat supply itself turns the method on and says which sectors
+  - >-
+    steel and cement routes by assumption or priced by the model: the shares
+    (DRI_fraction and the JRC-IDEES intensities) are the calibrated demand the study
+    assumes; industry-routes-endogenous lets the model pick BF vs DRI and the kiln fuel,
+    but at technology-data intensities that do not match JRC-IDEES (a Europe-wide
+    validation found steel coal at 7.5 TWh/a exogenous against 123 TWh/a once the blast
+    furnace is priced at 5.34 MWh coal per tonne), with flat steel and cement loads and
+    no clinker trade, so an NL run builds a kiln the country has not had since 2019 — the
+    study says which reading it wants and, for the priced one, reports the route outcome
+    against the exogenous demand it replaced
   limitations:
   - >-
     country totals distributed by site lists, never a site: no plant business case, no
     single works, no port cluster as an entity — the answer is the demand and the build
     around a cluster
   - >-
-    no endogenous production-route choice: the route shares are inputs. Process heat
-    is split by temperature band only with the industry-heat-endogenous method
-    (sector.industry_t.endogen, off by default), and then steel stays exogenous, the
-    endogenised sectors lose the exogenous efficiency and electrification blend
-    (today's intensities), there is no electric option above 200 °C and hydrogen firing
-    carries a placeholder cost; no industrial flexibility or load shifting either way
+    production routes are inputs except for primary steel and cement under
+    industry-routes-endogenous (off by default), and even then secondary (scrap) EAF
+    steel stays an exogenous electricity load with no scrap availability constraint and
+    no flexible EAF, there is no electric or hydrogen kiln, the clinker ratio is fixed
+    per finishing link, there is no clinker or steel trade between nodes, and
+    industry.DRI_fraction no longer acts on primary steel. Process heat is split by
+    temperature band only with the industry-heat-endogenous method
+    (sector.industry_t.endogen, off by default), and then steel stays out of the bands
+    (and cement too when its route is endogenous), the endogenised sectors lose the
+    exogenous efficiency and electrification blend (today's intensities), there is no
+    electric option above 200 °C and hydrogen firing carries a placeholder cost; no
+    industrial flexibility or load shifting either way (industry-load-profiles shapes the
+    electricity load by branch, it does not make it flexible, and its shapes are German
+    profiles projected to every country)
   - >-
     the intensities behind the routes (industry.H2_DRI, elec_DRI, the MWh_* keys) and
     sector.ammonia are read by horizon-free rules — a per-scenario change to them is
     silently dead under shared resources, so they are settled once for the submission
   - >-
     cement and lime process emissions have one capture option at a fixed capture rate
-    (sector.cc_fraction); no clinker substitution, no CCU accounting beyond the
-    synthesis routes
+    (the "cement capture" cost row; industry.process_emissions_cc false removes it), the
+    endogenous cement route one kiln retrofit; no clinker substitution, no CCU
+    accounting beyond the synthesis routes
   - >-
     a one-country run supplies industry's exogenous solid biomass demand from the
     country's own potential only (the biomass limit sums the selected countries): where
     the demand is larger the run is infeasible by construction (NL 2040: 16 TWh/a against
     3.5 TWh/a), so a single-country industry study turns on industry-heat-endogenous
     (the exogenous biomass load shrinks to the non-endogenised sectors' share and the
-    bands choose their fuel under the limit), or sector.solid_biomass_import, and says
-    which
+    bands choose their fuel under the limit; industry-routes-endogenous on top shrinks it
+    further, the kiln biomass then competing under the limit too), or
+    sector.solid_biomass_import, and says which
   methods:
   - id: industry-fuel-switching
     role: >-
@@ -114,10 +147,19 @@ models:
       band — the method for a question about electrifying, hydrogen-firing or keeping
       biomass in industrial heat, and for a one-country run the biomass limit cannot
       otherwise feed
+  - id: industry-routes-endogenous
+    role: >-
+      primary steel and cement routes as a model choice — BF vs H2 or gas DRI, kiln fuel,
+      vent or capture — with today's plants as brownfield under myopic foresight; the
+      method for a question about which steel route or whether to capture at kilns
+  - id: industry-load-profiles
+    role: >-
+      the hourly shape of industry electricity (FfE branch profiles) instead of a flat
+      load — when industrial demand timing matters to the power side
   defaults:
   - aspect: route-trajectory
     is: >-
-      the shipped trajectories: DRI share 0 in 2030 rising to 1 in 2050, primary steel
+      the shipped trajectories: DRI share 0.05 in 2030 rising to 1 in 2050, primary steel
       falling to 0.3, primary aluminium to 0.2, chemicals to 0.4 primary with recycling
       taking the rest, intensities fully transformed by 2050
     note: >-
@@ -136,6 +178,14 @@ models:
       industry-heat-endogenous switches to the temperature bands; the study says which
       treatment it runs, since the two read differently (an assumed mix versus a priced
       choice at today's intensities)
+  - aspect: industry-routes
+    is: exogenous (sector.endogenous_sectors.enable false) — steel and cement follow the route shares and the JRC-IDEES intensities
+    note: >-
+      industry-routes-endogenous switches primary steel and cement to priced routes at
+      technology-data intensities; the study says which treatment it runs
+  - aspect: industry-load-profiles
+    is: flat (industry.temporal_electricity_industry_load false)
+    note: industry-load-profiles gives industry electricity the hourly FfE branch shape
   plots:
   - id: capacity_mix
     role: hydrogen, electricity and capture capacity the industry demand pulls in, per scenario
@@ -144,7 +194,7 @@ models:
   - id: region_map
     role: industrial hydrogen and electricity demand per cluster
   version_anchor:
-    ref: d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c
+    ref: f55cdf34f0e67a797fd4327bed26c56dedcb5cb8
     date: '2026-10-09'
 - model: pypsa-earth
   approach: >-

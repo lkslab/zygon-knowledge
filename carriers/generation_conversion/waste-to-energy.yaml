@@ -13,7 +13,7 @@ when_to_use:
   - "energy from garbage / refuse"
   - "waste incineration with carbon capture"
   - "existing waste-fired power plants"
-  - "pypsa-eur carrier names: waste, waste CHP, waste CHP CC, municipal solid waste, non-sequestered HVC, HVC to air"
+  - "pypsa-eur carrier names: waste, waste CHP, waste CHP CC, municipal solid waste, non-sequestered HVC, waste to air (formerly HVC to air), waste transport"
   - "MSW power / municipal solid waste to electricity"
   - "energy from waste / EfW plant"
   - "waste-to-energy plant"
@@ -21,7 +21,7 @@ when_to_use:
   - "known in pypsa-eur as: municipal solid waste, waste, waste CHP, waste CHP CC"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
+    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
     out_of_box:
       covers: >
         Waste-to-energy is first-class in BOTH workflows. Electricity
@@ -30,41 +30,53 @@ models:
         attached as conventional Generators; rule process_cost_data
         synthesises the "waste" cost row by copying the "waste CHP" row and
         setting its CO2 intensity to the oil value (prepare_costs), so waste
-        dispatch carries costs and emissions. Sector workflow (two opt-in
-        chains): (1) Plastics chain — add_industry always builds a
-        "non-sequestered HVC" waste stream: the fraction of naphtha-derived
-        plastics that is neither process-emitted nor sequestered
-        (industry.HVC_environment_sequestration_fraction) accumulates in
-        population-distributed Stores that MUST be emptied by the final
-        snapshot, either through "HVC to air" links (decay to CO2) or — with
-        industry.waste_to_energy: true — through extendable "waste CHP" Links
-        (bus0 = non-sequestered HVC, bus1 = electricity, bus2 = urban central
-        heat where a district heating bus exists, bus3 = co2 atmosphere; cost
-        row "waste CHP" with efficiency-heat). industry.waste_to_energy_cc
-        adds a "waste CHP CC" variant capturing sector.cc_fraction of the oil
-        CO2 intensity into the co2 stored buses. (2) MSW chain —
-        sector.municipal_solid_waste: true adds "municipal solid waste" buses
-        and Generators whose potentials come from build_biomass_potentials
-        (ENSPRESO class "Municipal waste" under biomass.classes, plus the
-        eurostat "Renewable municipal waste" unsustainable share), with
-        e_sum_min = e_sum_max forcing full use; an MSW->non-sequestered-HVC
-        link (with a negative oil-CO2 offset because MSW is counted
-        carbon-neutral) feeds the same waste CHP fleet. MSW can be
-        transported between nodes when sector.biomass_transport is on.
+        dispatch carries costs and emissions. Sector workflow: a waste sector
+        of its own (the port of PyPSA/pypsa-eur#1654, completed on the fork),
+        ON by default (sector.waste: true). add_waste builds a "waste" bus
+        (MWh_LHV) per node (sector.waste_spatial: true, the default) or one
+        "EU waste" bus, fed by a "non-sequestered HVC" Generator: the share of
+        the naphtha-derived plastics that is neither process-emitted nor
+        sequestered (industry.HVC_environment_sequestration_fraction, scaled
+        by sector.HVC_demand_factor), distributed by population, with
+        e_sum_min = e_sum_max = that energy so it MUST be used within the year
+        — either burnt without energetic use through a "<node> waste to air"
+        link (CO2 at the oil intensity; it replaces the former "HVC to air"
+        store-and-vent) or, with waste.waste_to_energy: true, in extendable
+        "<node> waste CHP" Links (bus0 = waste bus, bus1 = electricity, bus2
+        = urban central heat where a district heating bus exists, bus3 = co2
+        atmosphere; cost row "waste CHP" with efficiency-heat).
+        waste.waste_to_energy_cc adds a "waste CHP CC" variant capturing
+        sector.cc_fraction of the oil CO2 intensity into the co2 stored
+        buses. The municipal solid waste potential is folded in only with
+        waste.waste_to_energy or waste.waste_to_energy_cc: a "municipal solid
+        waste" bus and Generator per node (potentials from
+        build_biomass_potentials: ENSPRESO class "Municipal waste" under
+        biomass.classes, plus the eurostat "Renewable municipal waste"
+        unsustainable share; e_sum_min = e_sum_max forcing full use) and a
+        "<node> municipal solid waste to waste" link onto the waste bus that
+        takes the oil CO2 intensity out of the atmosphere, since MSW is
+        counted carbon-neutral. waste.transport adds non-extendable "waste
+        transport" links along the network topology at the biomass transport
+        costs (needs waste_spatial). With sector.waste false the naphtha link
+        releases the non-sequestered HVC carbon directly. With
+        sector.endogenous_sectors (cement listed) the endogenous cement kiln
+        burns waste from the same bus ("<node> cement heat waste"). In the
+        default case the outcome equals the former HVC store, whose content
+        was forced to zero at the last snapshot.
       mechanism: >
         Electricity: rule build_powerplants + rule compose_network calling
         add_electricity.py (attach_conventional_generators). Sector: the
-        prepare_sector_network.py part of compose_network — add_industry creates the HVC waste stream and the waste CHP / CC
-        links (gated on cf_industry waste_to_energy flags, i.e. the industry:
-        config chapter passed as params); add_biomass creates MSW buses,
-        generators, transport links and the operational GlobalConstraint
-        ("msw limit"); define_spatial regionalises MSW (spatial.msw) with
-        biomass_spatial and the HVC stream with sector.regional_oil_demand.
-        A guard in add_biomass forces municipal_solid_waste to false unless
-        industry waste-to-energy is enabled alongside sector.industry.
+        prepare_sector_network.py part of compose_network — add_industry
+        builds the naphtha link (its non-sequestered carbon left to the waste
+        sector when sector.waste is on), add_waste (called when sector.waste
+        is true, with the waste: config chapter as params) builds the waste
+        bus, the HVC and MSW generators, waste to air, the waste CHP / CC
+        links and waste transport; define_spatial resolves spatial.waste per
+        node or EU-wide by sector.waste_spatial.
       not_covered: >
-        Both sector flags default to FALSE — the default sector run vents all
-        plastic waste carbon via "HVC to air" and has no MSW. The existing
+        Both waste-to-energy flags default to FALSE — the default sector run
+        burns all non-sequestered plastic waste through "waste to air" (its
+        carbon vented) and has no MSW. The existing
         waste fleet (electricity workflow "waste" generators) is power-only
         and is dropped in sector runs (remove_elec_base_techs keep-list) —
         there is no brownfield waste CHP; add_existing_baseyear has no waste
@@ -72,24 +84,32 @@ models:
         heat" bus (empty bus2 elsewhere — plants there are effectively
         electricity-only). No landfill gas, no anaerobic-digestion pathway
         distinct from biogas, no refuse-derived-fuel export, no gate-fee
-        (negative fuel price) representation: MSW marginal cost is hardcoded 0
-        with its costs-row fuel price commented out in add_biomass. The waste
+        (negative fuel price) representation: the MSW and HVC generators carry
+        marginal cost 0 in add_waste. The waste
         CHP has no back-pressure constraint (same dormancy as all CHP — see
         combined-heat-and-power carrier card).
-      provenance: "scripts/prepare_sector_network.py:waste CHP; scripts/prepare_sector_network.py:add_biomass; scripts/prepare_sector_network.py:non-sequestered HVC; scripts/process_cost_data.py:prepare_costs; scripts/add_electricity.py:attach_conventional_generators; scripts/build_biomass_potentials.py:enspreso_biomass_potentials"
+      provenance: "scripts/prepare_sector_network.py:waste CHP; scripts/prepare_sector_network.py:add_waste; scripts/prepare_sector_network.py:non-sequestered HVC; scripts/prepare_sector_network.py:waste to air; scripts/prepare_sector_network.py:municipal solid waste to waste; scripts/process_cost_data.py:prepare_costs; scripts/add_electricity.py:attach_conventional_generators; scripts/build_biomass_potentials.py:enspreso_biomass_potentials"
     levers:
-      - key: industry.waste_to_energy
-        effect: "true adds extendable 'waste CHP' Links burning non-sequestered HVC into electricity + district heat at every node."
+      - key: sector.waste
+        effect: "Builds the waste sector (add_waste): the waste bus, the must-use non-sequestered HVC generator and waste to air; false releases the non-sequestered HVC carbon at the naphtha link instead."
+        default: "true"
+        provenance: "config/config.default.yaml:waste; scripts/prepare_sector_network.py:add_waste"
+      - key: sector.waste_spatial
+        effect: "true resolves the waste bus (and HVC and MSW generators) per node, population-distributed; false pools everything on one EU waste bus."
+        default: "true"
+        provenance: "config/config.default.yaml:waste_spatial; scripts/prepare_sector_network.py:define_spatial"
+      - key: waste.waste_to_energy
+        effect: "true adds extendable 'waste CHP' Links burning the waste bus into electricity + district heat at every node, and folds the MSW potential into the waste bus."
         default: "false"
         provenance: "config/config.default.yaml:waste_to_energy; scripts/prepare_sector_network.py:waste CHP"
-      - key: industry.waste_to_energy_cc
-        effect: "true adds the 'waste CHP CC' variant (capture share sector.cc_fraction of the oil CO2 intensity to co2 stored)."
+      - key: waste.waste_to_energy_cc
+        effect: "true adds the 'waste CHP CC' variant (capture share sector.cc_fraction of the oil CO2 intensity to co2 stored), and folds the MSW potential in as well."
         default: "false"
         provenance: "config/config.default.yaml:waste_to_energy_cc; scripts/prepare_sector_network.py:waste CHP CC"
-      - key: sector.municipal_solid_waste
-        effect: "true adds MSW buses/generators from biomass potentials and the MSW->HVC-waste feed link; auto-disabled with a warning unless industry waste-to-energy and sector.industry are also on."
+      - key: waste.transport
+        effect: "true adds fixed-capacity 'waste transport' links between neighbouring nodes at the biomass transport costs (only with sector.waste_spatial)."
         default: "false"
-        provenance: "config/config.default.yaml:municipal_solid_waste; scripts/prepare_sector_network.py:add_biomass"
+        provenance: "config/config.default.yaml:transport; scripts/prepare_sector_network.py:waste transport"
       - key: electricity.conventional_carriers
         effect: "'waste' entry attaches the existing waste incineration fleet in the electricity workflow; remove it to drop them."
         default: "[nuclear, oil, OCGT, CCGT, coal, lignite, geothermal, waste, biomass]"
@@ -102,18 +122,14 @@ models:
         effect: "Capture rate of the waste CHP CC (and SMR CC) links."
         default: "0.9"
         provenance: "config/config.default.yaml:cc_fraction; scripts/prepare_sector_network.py:waste CHP CC"
-      - key: sector.regional_oil_demand
-        effect: "true distributes the non-sequestered HVC waste stream (and hence waste CHP fuel) across nodes by population; false pools it at one EU bus."
-        default: "true"
-        provenance: "config/config.default.yaml:regional_oil_demand; scripts/prepare_sector_network.py:define_spatial"
+      - key: sector.HVC_demand_factor
+        effect: "Scales the HVC (naphtha) demand and with it the non-sequestered HVC energy the waste bus must take."
+        default: "1.0"
+        provenance: "config/config.default.yaml:HVC_demand_factor; scripts/prepare_sector_network.py:add_waste"
       - key: biomass.classes
         effect: "The 'municipal solid waste' class maps ENSPRESO feedstock 'Municipal waste' into the MSW potential; edit to re-scope what counts as MSW."
         default: "municipal solid waste: [Municipal waste]"
         provenance: "config/config.default.yaml:biomass.classes; scripts/build_biomass_potentials.py:enspreso_biomass_potentials"
-      - key: sector.biomass_transport
-        effect: "true adds inter-node MSW transport links (with biomass transport costs) so waste can move to CHP sites."
-        default: "false (biomass_spatial: true gives regional MSW without transport)"
-        provenance: "config/config.default.yaml:biomass_transport; scripts/prepare_sector_network.py:add_biomass"
       - key: industry.HVC_primary_fraction
         effect: "Upstream: plastics production route shares (with mechanical/chemical recycling fractions) set how much naphtha — and therefore burnable HVC waste — exists per horizon."
         default: "ramps 0.88 (2020) to 0.4 (2050)"
@@ -124,22 +140,28 @@ models:
         note: "default — 'waste' in electricity.conventional_carriers, costs synthesised from the waste CHP row"
       - variant: "burn plastic waste in CHPs (sector run)"
         rung: L0
-        note: "industry.waste_to_energy: true (requires sector.industry true, default); heat side needs district heating nodes"
+        note: "waste.waste_to_energy: true (sector.waste on, the default); heat side needs district heating nodes"
       - variant: "waste CHP with carbon capture"
         rung: L1
-        note: "industry.waste_to_energy_cc: true (+ waste_to_energy for the unabated variant alongside); capture rate via sector.cc_fraction"
+        note: "waste.waste_to_energy_cc: true (+ waste.waste_to_energy for the unabated variant alongside); capture rate via sector.cc_fraction"
       - variant: "municipal solid waste as a fuel"
+        rung: L0
+        note: "comes with waste.waste_to_energy or waste.waste_to_energy_cc: the MSW potential joins the waste bus, carbon-neutral, and must be used in full"
+      - variant: "move waste between regions to the CHP sites"
         rung: L1
-        note: "sector.municipal_solid_waste: true together with industry.waste_to_energy: true and sector.biomass/industry on — the add_biomass guard silently disables MSW otherwise"
+        note: "waste.transport: true (with sector.waste_spatial true); links are fixed at 5e4 MW, not extendable"
+      - variant: "waste as a cement kiln fuel"
+        rung: L0
+        note: "sector.endogenous_sectors.enable with cement ([[cement-routes-endogenous]]): '<node> cement heat waste' draws from the waste bus"
       - variant: "change MSW potential or scope"
         rung: L3
         note: "edit biomass.classes 'municipal solid waste' membership (config, L1) only re-maps existing ENSPRESO categories; different totals need edited biomass_potentials data or another biomass.scenario"
       - variant: "gate fees (negative waste fuel price)"
         rung: L2
-        note: "MSW generator marginal_cost is hardcoded 0 in add_biomass (costs-row lookup commented out); set a negative marginal_cost there"
+        note: "the MSW generator marginal_cost is 0 in add_waste; set a negative marginal_cost there"
       - variant: "force or cap waste incineration capacity"
         rung: L2
-        note: "no config key; set p_nom_min/p_nom_max on the waste CHP n.add calls in add_industry — note the HVC store must still be emptiable (HVC to air remains the relief valve)"
+        note: "no config key; set p_nom_min/p_nom_max on the waste CHP n.add calls in add_waste — the must-use waste must still have an outlet (waste to air remains the relief valve)"
       - variant: "brownfield waste CHP fleet in sector runs"
         rung: L5
         note: "no waste mapping in add_existing_baseyear and the elec-workflow waste generators are dropped by remove_elec_base_techs; carrying them into sector networks with heat output is bespoke"
@@ -150,12 +172,12 @@ models:
         rung: L5
         note: "no such chains exist anywhere in the workflow"
     where:
-      - change: "waste CHP and waste CHP CC links; HVC waste stream (stores, HVC to air)"
-        anchor: "scripts/prepare_sector_network.py::add_industry (naphtha / non-sequestered HVC / waste_to_energy blocks)"
-        provenance: "scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:HVC to air"
-      - change: "MSW buses, generators, transport, msw limit constraint, MSW->HVC feed"
-        anchor: "scripts/prepare_sector_network.py::add_biomass (municipal_solid_waste blocks)"
-        provenance: "scripts/prepare_sector_network.py:add_biomass; scripts/prepare_sector_network.py:msw limit"
+      - change: "waste bus, non-sequestered HVC generator, waste to air, waste CHP and waste CHP CC links, MSW generator and feed link, waste transport"
+        anchor: "scripts/prepare_sector_network.py::add_waste (called when sector.waste is true)"
+        provenance: "scripts/prepare_sector_network.py:add_waste; scripts/prepare_sector_network.py:waste to air"
+      - change: "the naphtha link's carbon booking with and without the waste sector"
+        anchor: "scripts/prepare_sector_network.py::add_industry (naphtha for industry conversion)"
+        provenance: "scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:emitted_co2_per_naphtha"
       - change: "MSW potential from ENSPRESO + eurostat renewable municipal waste"
         anchor: "scripts/build_biomass_potentials.py::enspreso_biomass_potentials (rule build_biomass_potentials; biomass.classes config)"
         provenance: "scripts/build_biomass_potentials.py:enspreso_biomass_potentials; rules/build_sector.smk:build_biomass_potentials"
@@ -163,7 +185,7 @@ models:
         anchor: "scripts/add_electricity.py::attach_conventional_generators; scripts/process_cost_data.py::prepare_costs (waste = waste CHP row)"
         provenance: "scripts/add_electricity.py:attach_conventional_generators; scripts/process_cost_data.py:waste CHP"
       - change: "spatial resolution of the waste stream (regional vs EU)"
-        anchor: "scripts/prepare_sector_network.py::define_spatial (spatial.msw, spatial.oil.non_sequestered_hvc)"
+        anchor: "scripts/prepare_sector_network.py::define_spatial (spatial.waste, sector.waste_spatial)"
         provenance: "scripts/prepare_sector_network.py:define_spatial; scripts/prepare_sector_network.py:non_sequestered_hvc"
     data_dependencies:
       - input: "cost rows 'waste CHP', 'waste CHP CC' (efficiency, efficiency-heat, VOM) and 'biomass CHP capture'"
@@ -174,7 +196,7 @@ models:
         availability: "must be built (industry demand chain, default in sector workflow)"
       - input: "biomass_potentials CSV with 'municipal solid waste' column (ENSPRESO + eurostat)"
         required_for: "MSW potentials"
-        availability: "must be built (rule build_biomass_potentials); exists by default"
+        availability: "must be built (rule build_biomass_potentials); exists by default, read by add_waste only with a waste-to-energy flag on"
       - input: "urban central heat buses"
         required_for: "the heat output of waste CHP"
         availability: "must be built (heat workflow); waste CHP at non-DH nodes degrades to power-only"

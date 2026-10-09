@@ -82,7 +82,7 @@ models:
       power-only run with those toggles left true is capped against economy-wide 1990
       emissions (see the co2-budget method card)
   version_anchor:
-    ref: d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c
+    ref: f55cdf34f0e67a797fd4327bed26c56dedcb5cb8
     date: '2026-10-09'
 - model: pypsa-earth
   approach: >-

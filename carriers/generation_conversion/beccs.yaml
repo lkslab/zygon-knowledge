@@ -19,7 +19,7 @@ when_to_use:
   - "net negative emissions from bioenergy"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
+    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
     out_of_box:
       covers: >
         There is no standalone "BECCS" carrier; BECCS is a family of CC
@@ -28,18 +28,26 @@ models:
         (add_biomass; added unconditionally next to the plain CHP wherever
         urban central heat buses exist and "solid biomass" is in
         sector.chp.fuel), and (2) "solid biomass for industry CC"
-        (add_industry, unconditional — capture energetics from the "cement
-        capture" row). DEFAULT-OFF, single config flip each: "biomass to
+        (add_industry, behind industry.solid_biomass_for_industry_cc, default
+        true — capture energetics from the "cement capture" row). DEFAULT-OFF, single config flip each: "biomass to
         liquid CC" (sector.biomass_to_liquid_cc), "biomass-to-methanol CC"
         (sector.methanol.biomass_to_methanol_cc), "BioSNG CC"
         (sector.biosng_cc, independent of sector.biosng), carbon-negative
         hydrogen "solid biomass to hydrogen" (sector.bioH2 — CC by
         construction, capturing CO2-intensity x sector.cc_fraction), and "biogas
         to gas CC" (sector.biogas_upgrading_cc). By default industrial process heat has no temperature-resolved biomass CC route: "solid biomass for industry CC" is the only industrial biomass capture link; with sector.industry_t.endogen (fork) the band CC twins "heat100-200 industry solid biomass CC" and "heat200-500 industry solid biomass CC" add two more per node. "waste CHP CC"
-        (industry.waste_to_energy_cc) is
-        carbon-negative only for the municipal-solid-waste share
-        (sector.municipal_solid_waste), which the model books as 100%
-        biogenic. All captured CO2 goes to the per-node "co2 stored" buses;
+        (waste.waste_to_energy_cc) is
+        carbon-negative only for the municipal-solid-waste share, which joins
+        the waste bus only once a waste CHP is switched on
+        (waste.waste_to_energy or waste.waste_to_energy_cc) and which the
+        model books as carbon-neutral (its "municipal solid waste to waste"
+        link takes the CO2 the CHP later emits out of the atmosphere). With
+        sector.endogenous_sectors.enable (cement listed; off by default) the
+        cement kiln burns solid biomass through "<node> cement heat biomass"
+        (from the solid biomass buses, so under the biomass limit; its CO2
+        lands on the cement emission bus and is balanced against the
+        atmosphere), so the kiln's capture retrofit "cement emission CC" is a
+        BECCS route on the biogenic share. All captured CO2 goes to the per-node "co2 stored" buses;
         it only becomes REMOVAL by flowing through the "co2 sequestered"
         links/stores, bounded by sector.co2_sequestration_potential
         (solve_network.py::add_co2_sequestration_limit) and by the biomass
@@ -70,10 +78,10 @@ models:
         electricity assets are the CHP links (remove_elec_base_techs strips
         the electricity-workflow "biomass" conventional Generators, which
         have no capture option anyway) — a power-only biomass CC plant is a
-        code edit. The two default-on routes have NO off-switch: the CHP CC
-        and industry CC adds are unconditional (no sector.cc master flag as
-        in pypsa-earth) — disabling BECCS while keeping plain biomass means
-        editing code. "electrobiofuels" (default ON) is capture-and-USE, not
+        code edit. The CHP CC add has NO off-switch (no sector.cc master flag
+        as in pypsa-earth); the industry CC has one since #2357
+        (industry.solid_biomass_for_industry_cc) — disabling the CHP CC while
+        keeping plain biomass means editing code. "electrobiofuels" (default ON) is capture-and-USE, not
         BECCS: the FT-capture-rate carbon is recycled with H2 into more fuel,
         no co2 stored output. "solid biomass for industry CC" hardcodes
         conversion efficiency 0.9 ("TODO: make config option"). Captured
@@ -84,7 +92,7 @@ models:
         import-fed BECCS is less than fully negative; domestic potentials are
         sustainability-classed (ENSPRESO) but per-class supply curves beyond
         the phase-in shares do not exist.
-      provenance: "scripts/prepare_sector_network.py:add_biomass; scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:add_biomass_to_methanol_cc; scripts/prepare_sector_network.py:add_co2_tracking; scripts/prepare_sector_network.py:urban central solid biomass CHP CC; scripts/prepare_sector_network.py:solid biomass for industry CC; scripts/solve_network.py:add_co2_sequestration_limit"
+      provenance: "scripts/prepare_sector_network.py:add_biomass; scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:add_biomass_to_methanol_cc; scripts/prepare_sector_network.py:add_co2_tracking; scripts/prepare_sector_network.py:urban central solid biomass CHP CC; scripts/prepare_sector_network.py:solid biomass for industry CC; scripts/solve_network.py:add_co2_sequestration_limit; scripts/prepare_sector_network.py:add_waste; scripts/prepare_sector_network.py:add_cement"
     levers:
       - key: sector.biomass
         effect: "Gates add_biomass — false removes the entire biomass chain (and raises an error if industry is on, since industry demand includes solid biomass)."
@@ -118,14 +126,18 @@ models:
         effect: "true adds 'biogas to gas CC' — upgrading CO2 is captured to co2 stored and additionally credited off the atmosphere, making upgraded biomethane carbon-negative at the point of production."
         default: "false"
         provenance: "config/config.default.yaml:biogas_upgrading_cc; scripts/prepare_sector_network.py:biogas to gas CC"
-      - key: industry.waste_to_energy_cc
-        effect: "true adds 'waste CHP CC' links; carbon-negative only for the MSW-fed share (with sector.municipal_solid_waste), since MSW is booked as fully biogenic."
+      - key: industry.solid_biomass_for_industry_cc
+        effect: "true adds 'solid biomass for industry CC' (industrial BECCS on the exogenous biomass-for-industry load); false leaves only the unabated link."
+        default: "true"
+        provenance: "config/config.default.yaml:solid_biomass_for_industry_cc; scripts/prepare_sector_network.py:solid_biomass_for_industry_cc"
+      - key: waste.waste_to_energy_cc
+        effect: "true adds 'waste CHP CC' links on the waste bus and folds the municipal solid waste potential into it (a 'municipal solid waste to waste' link that credits the CO2 off the atmosphere), so the MSW-fed share of the captured CO2 is net-negative."
         default: "false"
-        provenance: "config/config.default.yaml:waste_to_energy_cc; scripts/prepare_sector_network.py:waste CHP CC"
-      - key: sector.municipal_solid_waste
-        effect: "true adds the MSW supply chain whose 'municipal solid waste' link credits -CO2 intensity on the atmosphere ('msw is co2 neutral'), enabling net-negative waste CHP CC."
-        default: "false"
-        provenance: "config/config.default.yaml:municipal_solid_waste; scripts/prepare_sector_network.py:msw is co2 neutral"
+        provenance: "config/config.default.yaml:waste_to_energy_cc; scripts/prepare_sector_network.py:waste CHP CC; scripts/prepare_sector_network.py:municipal solid waste to waste"
+      - key: sector.endogenous_sectors
+        effect: "enable true with cement listed: the endogenous kiln can burn solid biomass (under the biomass limit) and capture its CO2 with the 'cement emission CC' retrofit."
+        default: "{enable: false, subsectors: [steel, cement]}"
+        provenance: "config/config.default.yaml:endogenous_sectors; scripts/prepare_sector_network.py:cement heat biomass"
       - key: sector.co2_sequestration_potential
         effect: "Per-horizon cap (Mt/a) on flow into 'co2 sequestered' — the shared hard bound on all BECCS (and DAC) removals; 0 before 2030 by default."
         default: "{2020: 0, ..., 2050: 250}"
@@ -141,7 +153,7 @@ models:
     boundary:
       - variant: "biomass CHP with capture + industry biomass with capture"
         rung: L0
-        note: "default-on (needs urban central heat buses for the CHP; both added unconditionally alongside their plain variants)"
+        note: "default-on (needs urban central heat buses for the CHP; the CHP CC added unconditionally, the industry CC while industry.solid_biomass_for_industry_cc is true)"
       - variant: "carbon-capture biofuel plants (BtL CC / methanol CC / BioSNG CC)"
         rung: L0
         note: "flip sector.biomass_to_liquid_cc / sector.methanol.biomass_to_methanol_cc / sector.biosng_cc"
@@ -153,13 +165,16 @@ models:
         note: "sector.biogas_upgrading_cc: true"
       - variant: "negative-emission waste CHP"
         rung: L1
-        note: "combination: industry.waste_to_energy_cc + sector.municipal_solid_waste (+ sector.biomass); only the MSW share is biogenic-credited"
+        note: "waste.waste_to_energy_cc: true (the MSW potential joins the waste bus with it; sector.waste stays on by default); only the MSW share is credited, the non-sequestered HVC share is fossil"
+      - variant: "BECCS on cement kilns (biomass-fired kiln with capture)"
+        rung: L0
+        note: "sector.endogenous_sectors.enable with cement (see [[cement-routes-endogenous]] and the method [[industry-routes-endogenous]]): 'cement heat biomass' feeds the kiln from the solid biomass buses under the biomass limit, 'cement emission CC' captures the kiln CO2 including the biogenic share"
       - variant: "temperature-resolved industrial process-steam biomass CC"
         rung: L0
         note: "sector.industry_t.endogen: true (method industry-heat-endogenous) on this fork: 'heat100-200 industry solid biomass CC' (steam boiler) and 'heat200-500 industry solid biomass CC' (direct firing) per node, capture via the 'biomass CHP capture' row, biomass drawn from the spatial biomass buses under the biomass limit; no biomass option above 500 °C — industry-process-heat-endogenous"
       - variant: "remove the default-on BECCS routes but keep plain biomass"
         rung: L2
-        note: "no switch — the CHP CC add in add_biomass and the industry CC add in add_industry are unconditional; comment them out (contrast: every other CC route has a flag)"
+        note: "the industry CC is a flag (industry.solid_biomass_for_industry_cc: false, L0), but the CHP CC add in add_biomass is unconditional; comment it out (contrast: every other CC route has a flag)"
       - variant: "power-only BECCS plant"
         rung: L2
         note: "no such carrier; clone the 'urban central solid biomass CHP CC' block in add_biomass without the heat output (bus0 biomass, bus1 AC, atmosphere/stored efficiencies as-is)"
@@ -176,9 +191,12 @@ models:
       - change: "biomass CHP CC pair, BtL/BioSNG/bioH2/electrobiofuels/biogas CC links, biomass supply + import"
         anchor: "scripts/prepare_sector_network.py::add_biomass"
         provenance: "scripts/prepare_sector_network.py:add_biomass"
-      - change: "solid biomass for industry CC (unconditional) + waste CHP CC"
+      - change: "solid biomass for industry CC (industry.solid_biomass_for_industry_cc)"
         anchor: "scripts/prepare_sector_network.py::add_industry"
         provenance: "scripts/prepare_sector_network.py:add_industry"
+      - change: "waste CHP CC and the municipal solid waste supply on the waste bus"
+        anchor: "scripts/prepare_sector_network.py::add_waste"
+        provenance: "scripts/prepare_sector_network.py:add_waste"
       - change: "biomass-to-methanol CC"
         anchor: "scripts/prepare_sector_network.py::add_biomass_to_methanol_cc (via ::add_methanol, options sector.methanol)"
         provenance: "scripts/prepare_sector_network.py:add_biomass_to_methanol_cc; scripts/prepare_sector_network.py:add_methanol"
@@ -209,7 +227,7 @@ models:
         availability: "exists by default (add_co2_tracking; CO2Stop via rule retrieve_co2stop)"
       - input: "MSW potentials (biomass.classes municipal solid waste)"
         required_for: "the negative-emission waste CHP variant"
-        availability: "must be built (same biomass potentials rule); off by default"
+        availability: "must be built (same biomass potentials rule); folded into the waste bus only with waste.waste_to_energy or waste.waste_to_energy_cc (both off by default)"
   - model: pypsa-earth
     version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
     out_of_box:

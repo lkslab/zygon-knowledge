@@ -25,7 +25,12 @@ models:
     rules/build_sector.smk:build_salt_cavern_potentials finds them, imports at the gas entry
     points at a configured price and cap. The demand the backbone serves is what the other
     sectors make of hydrogen — industry (DRI, ammonia, refining), fuel synthesis, shipping,
-    heavy transport, re-electrification — so the study scope is sector-coupled by nature,
+    heavy transport, re-electrification — fixed loads by default, but two of them can be
+    made endogenous demand channels: with industry-routes-endogenous the H2 DRI reduction
+    link competes with gas DRI and the blast furnace for primary steel, and with
+    shipping-fuel-endogenous (sector.shipping_hydrogen on) H2 for shipping competes with
+    oil, methanol and LNG, so the hydrogen they take is found, not set. The study scope
+    is sector-coupled by nature,
     and the h2-network-expansion method settles the network keys: the backbone pair
     (H2_network on/off), repurposing (H2_retrofit), imports (sector.imports). The
     emissions target is what makes hydrogen worth moving (co2-budget); the gas fleet it
@@ -90,6 +95,15 @@ models:
     role: >-
       when the backbone is needed, not only whether — horizons with capacity carry-over
       so a 2030 retrofit is still there in 2040
+  - id: industry-routes-endogenous
+    role: >-
+      hydrogen for steel as a model choice: H2 DRI against gas DRI and the blast furnace,
+      so the DRI hydrogen the backbone serves is an outcome rather than the DRI_fraction
+      ramp
+  - id: shipping-fuel-endogenous
+    role: >-
+      hydrogen for shipping as a model choice against oil, methanol and LNG, when the
+      study puts hydrogen on the shipping menu (sector.shipping_hydrogen)
   defaults:
   - aspect: sector-coupling
     is: >-
@@ -106,6 +120,17 @@ models:
       NH3, methanol, gas and oil imports at their shipped prices, since a deep-merged
       config cannot drop a price key, so a hydrogen-only import case prices the others
       out (a very high sector.imports.price for each) and says so
+  - aspect: industry-routes
+    is: exogenous (sector.endogenous_sectors.enable false) — the DRI hydrogen follows the industry.DRI_fraction ramp
+    note: >-
+      with the routes on the steel hydrogen is endogenous and DRI_fraction is dormant for
+      primary steel; the study says which it assumes
+  - aspect: shipping-fuel
+    is: fixed shares (sector.shipping_endogenous false) — no hydrogen ships in the shipped shares
+    note: endogenous shipping still leaves hydrogen off the menu unless sector.shipping_hydrogen is true
+  - aspect: industry-load-profiles
+    is: flat (industry.temporal_electricity_industry_load false)
+    note: the hourly FfE industry electricity shape is method industry-load-profiles
   plots:
   - id: network_map
     role: the backbone on the map — pipeline capacity per corridor, storage per node
@@ -114,7 +139,7 @@ models:
   - id: compare_system_cost
     role: backbone vs no backbone, repurposed vs new-build, import vs domestic
   version_anchor:
-    ref: d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c
+    ref: f55cdf34f0e67a797fd4327bed26c56dedcb5cb8
     date: '2026-10-09'
 - model: pypsa-earth
   approach: >-

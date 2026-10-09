@@ -129,7 +129,7 @@ models:
       scenario: "grows with per-industry CAGRs like energy columns; custom csv per {demand}/{planning_horizons}"
 
   - model: pypsa-eur
-    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
+    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
 
     out_of_box:
       covers: >
@@ -144,7 +144,18 @@ models:
         "process emissions CC" link at cement-capture cost; feedstock
         emissions ride on the naphtha supply link (efficiency2) into the same
         buses; oil refining adds oil_refining_emissions per unit of primary
-        oil.
+        oil. build_industrial_energy_demand_per_node clips a node's negative
+        process emission to zero with a warning (JRC-IDEES gives HVC a
+        negative process emission in later horizons). With
+        sector.endogenous_sectors.enable (off by default; see
+        steel-routes-endogenous, cement-routes-endogenous) the steel and cement
+        process emissions leave this load and become link outputs: the BOF and
+        gas-DRI CO2 lands on per-node "steel emission" buses, the kiln's
+        calcination (sector.cement.calcination_emissions) plus fuel CO2 on a
+        "cement emission" bus, each with a vent link to the atmosphere and a
+        capture retrofit link (steel emission CC, cement emission CC), so they
+        scale with the route the model picks rather than with the route
+        shares.
       mechanism: >
         JRC-IDEES s_emi rows -> tCO2/t ratios -> x nodal production ->
         "process emission" columns in industrial_energy_demand_per_node ->
@@ -152,9 +163,10 @@ models:
         endogenously wherever CO2 transport/storage is available.
       not_covered: >
         Process emissions are fixed per tonne and route — no endogenous
-        abatement other than capture and exogenous route-share dicts; no
+        abatement other than capture and exogenous route-share dicts (and,
+        with the routes switch, the steel and cement route choice); no
         clinker-substitution or novel-cement chemistry options.
-      provenance: "scripts/build_industry_sector_ratios.py:Process emissions; scripts/build_industry_sector_ratios.py:NH3_process_emissions; scripts/prepare_sector_network.py:process emissions CC; scripts/prepare_sector_network.py:process emission from feedstock"
+      provenance: "scripts/build_industry_sector_ratios.py:Process emissions; scripts/build_industry_sector_ratios.py:NH3_process_emissions; scripts/prepare_sector_network.py:process emissions CC; scripts/prepare_sector_network.py:process emission from feedstock; scripts/build_industrial_energy_demand_per_node.py:Negative process emissions clipped; scripts/prepare_sector_network.py:add_steel; scripts/prepare_sector_network.py:add_cement"
 
     levers:
       - key: industry.NH3_process_emissions
@@ -177,11 +189,25 @@ models:
         effect: "Steel route shares change steel process emissions (with DRI_fraction; recycling routes carry less process CO2)."
         default: "0.6 (2020) falling to 0.3 (2050)"
         provenance: "config/config.default.yaml:St_primary_fraction; scripts/build_industrial_production_per_country_tomorrow.py:St_primary_fraction"
+      - key: industry.process_emissions_cc
+        effect: "true adds the 'process emissions CC' link on the process-emission buses; false leaves venting as the only outlet (the 'no process-emission capture' scenario)."
+        default: "true"
+        provenance: "config/config.default.yaml:process_emissions_cc; scripts/prepare_sector_network.py:process_emissions_cc"
+      - key: sector.endogenous_sectors
+        effect: "enable true: steel and cement process emissions leave the exogenous load and become outputs of the route links, vented or captured per node."
+        default: "{enable: false, subsectors: [steel, cement]}"
+        provenance: "config/config.default.yaml:endogenous_sectors; scripts/build_industrial_energy_demand_per_node.py:route_endogenised_sectors"
 
     boundary:
       - variant: "let the optimiser capture process emissions"
         rung: L0
-        note: "built-in: process emissions CC link competes with venting given CO2 storage; tune via sector.co2_sequestration_potential."
+        note: "built-in (industry.process_emissions_cc: true): process emissions CC link competes with venting given CO2 storage; tune via sector.co2_sequestration_potential."
+      - variant: "no capture of industrial process emissions"
+        rung: L0
+        note: "industry.process_emissions_cc: false (the vent link stays); with the routes switch on the steel and cement CC retrofits are separate links that this flag does not remove"
+      - variant: "steel and cement process CO2 as route outputs with vent-or-capture per node"
+        rung: L0
+        note: "sector.endogenous_sectors.enable (see [[steel-routes-endogenous]], [[cement-routes-endogenous]] and the method [[industry-routes-endogenous]])"
       - variant: "cut process emissions via route shift (more EAF/recycling)"
         rung: L1
         note: "St_primary_fraction / DRI_fraction / HVC_*_fraction per-year dicts."

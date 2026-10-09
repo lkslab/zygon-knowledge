@@ -1,0 +1,139 @@
+id: industry-routes-endogenous
+title: industry-routes-endogenous — let the model choose how primary steel and cement are made
+family: sector-coupling
+what: >-
+  With sector.endogenous_sectors.enable primary steel and cement stop being exogenous
+  energy demands and become material demands in tonnes per node that production routes
+  compete for. Steel: a coal blast furnace (BOF), or direct reduction of iron ore with
+  hydrogen or natural gas (H2 DRI, gas DRI, DRI) followed by an electric arc furnace
+  (EAF), the blast-furnace and gas-DRI CO2 vented or captured (steel emission CC).
+  Cement: a cement heat bus fed by biomass, waste or gas, a clinker kiln that adds the
+  calcination CO2 (sector.cement.calcination_emissions), cement finishing at the
+  catalogue clinker ratio, and the kiln CO2 vented or captured (cement emission CC).
+  The rule rules/build_sector.smk:build_industrial_energy_demand_per_node drops the
+  JRC-IDEES sectors Integrated steelworks, DRI + Electric arc and Cement from both
+  demand blocks, and compose_network builds the routes
+  (scripts/prepare_sector_network.py:add_steel and add_cement, from add_industry) on
+  the horizon's production. Under myopic or perfect foresight the first horizon also
+  receives today's blast furnaces and gas DRI plants (Fraunhofer ISI site database),
+  cement plants (GEM tracker), Haber-Bosch and grey methanol plants as dated links,
+  through the horizon-free rule rules/build_sector.smk:build_industry_plants. The port
+  of PyPSA/pypsa-eur#1719 onto the fork the app runs; the mechanism cards
+  steel-routes-endogenous and cement-routes-endogenous carry the detail.
+when_to_use:
+- green steel, hydrogen DRI versus blast furnace, decided by the model
+- natural-gas DRI as a bridge, or carbon capture on blast furnaces
+- cement decarbonisation, kiln fuel choice, cement carbon capture
+- how much hydrogen, electricity or CO2 storage steel and cement need at least cost
+- blast-furnace phase-out pledges in a pathway
+- relocating iron reduction to regions with cheap hydrogen
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: f55cdf34f0e67a797fd4327bed26c56dedcb5cb8
+    date: '2026-10-09'
+  execution:
+  - kind: config
+    key: sector.endogenous_sectors.enable
+    value: true
+    note: >-
+      the switch. Read by build_industrial_energy_demand_per_node (which drops the route
+      sectors from the demand file) and by compose_network; an exogenous-vs-endogenous
+      pair is a legitimate two-scenario study, but the harness then rebuilds the
+      resources per scenario.
+  - kind: config
+    key: sector.endogenous_sectors.subsectors
+    value:
+    - steel
+    - cement
+    note: >-
+      the shipped default, both subsectors. [steel] or [cement] endogenises one and
+      keeps the other's exogenous demand.
+  - kind: config
+    key: sector.steel_bof
+    value:
+      pledge: true
+      pledge_delay: 0
+    note: >-
+      the shipped default: existing blast furnaces retire at their pledged phase-out
+      year (ISI database), delayed by pledge_delay years; pledge false gives them the
+      40-year catalogue lifetime. Acts on the brownfield plants only, so it matters
+      under myopic or perfect foresight and is inert overnight.
+  - kind: config
+    key: sector.hbi_relocation
+    value: false
+    note: >-
+      the shipped default, nodal hot briquetted iron. true puts one EU hbi bus, so iron
+      is reduced where hydrogen or gas is cheapest and melted at any EAF with no
+      transport cost (an upper bound on relocation).
+  - kind: config
+    key: sector.cement.calcination_emissions
+    value: 0.5071
+    note: >-
+      the shipped default, t CO2 per t clinker (IPCC EFDB), one value for every country
+      and horizon. Only cement reads it.
+  - kind: invocation
+    note: >-
+      config only, no code: the fork ships the rules, the ISI site database
+      (data/1-s2.0-S0196890424010586-mmc2.xlsx), the GEM cement tracker retrieval and
+      add_steel / add_cement, so a bundle sets the keys and nothing else. Read the
+      result off the route links: carriers BOF, gas DRI, H2 DRI, DRI and EAF on the
+      "<node> steel" and "<node> hbi" buses, cement heat biomass / waste / gas, cement
+      kiln and cement finishing on the cement buses, steel emission CC and cement
+      emission CC for the captured CO2; the route split (tonnes per route, the energy
+      it draws) is the answer. The material buses are in tonnes, so a statistic summed
+      over all buses mixes units; filter by carrier. The clinker ratio is not a config
+      key (a data/custom_costs.csv row, see cement-routes-endogenous), and neither is
+      the iron ore price.
+  invalidates:
+  - build_industrial_energy_demand_per_node
+  - build_industry_plants
+  - compose_network
+  - solve_network
+  budget:
+    jobs: 3
+    class: hours
+  success_metric:
+  - name: material-demands-present
+    needs: prepared
+    check: n.loads.carrier.isin(['steel', 'cement']).any()
+    expect: a steel and a cement load per node with primary steel or cement production once the switch is on
+  - name: routes-built
+    needs: solved
+    check: n.links.loc[n.links.carrier.isin(['BOF', 'DRI', 'EAF', 'cement kiln', 'cement finishing']), 'p_nom_opt'].sum() > 0
+    expect: the optimiser built (or kept) route capacity; the carrier split of that capacity and its dispatch is the result
+notes: >-
+  build_industry_plants runs once, and only under myopic or perfect foresight
+  (compose_network asks for its output only then); overnight runs have no existing
+  plants and build every route from scratch. With [[industry-heat-endogenous]] on as
+  well, steel and cement leave the temperature bands (the route sectors are dropped
+  before both demand blocks), so nothing is counted twice; the bands keep the other
+  sectors. Against [[industry-fuel-switching]]: industry.DRI_fraction no longer decides
+  the steel route (the load is Integrated plus DRI production; the key only weights
+  where in a country that load sits), industry.H2_DRI and elec_DRI are dormant, and
+  industry.St_primary_fraction still sizes the primary pool, with the scrap EAF staying
+  an exogenous electricity load. Under [[pathway-myopic]] the existing blast furnaces
+  retire on their pledges (sector.steel_bof) and the dated cement kilns are the
+  integrated GEM plants at their clinker capacity (grinding-only sites have no kiln). Kiln
+  biomass is drawn from the solid biomass buses, so it competes under the biomass limit
+  with every other biomass use (see [[co2-budget]] note (i)); a biomass-fired kiln with
+  capture is a negative-emission option. No clinker or cement trade: a country without a
+  kiln builds one (an NL run builds about 1.38 Mt/a of clinker for its 2.1 Mt/a of cement
+  in 2040, although the Netherlands has had no kiln since 2019); state it for any
+  country that imports its clinker. The technology-data intensities do not match
+  JRC-IDEES: an all-blast-furnace solution prices coal at 5.34 MWh per tonne of steel
+  (NL 2040: about 10.4 TWh of coal for 1.94 Mt of primary steel, against 1.2 TWh of
+  coal and coke in the exogenous demand), so compare route energy with route energy,
+  not with the exogenous run's coal line. For NL 2040 the switch removes 2.34 TWh of
+  electricity, 1.02 TWh coke, 0.18 TWh coal, 2.05 TWh methane, 0.35 TWh biomass,
+  1.32 TWh hydrogen and 1.64 Mt of process emissions from the exogenous demand; an
+  all-H2-DRI answer would draw about 4.1 TWh of hydrogen and 3.2 TWh of electricity,
+  the kilns about 1.30 TWh of heat with 0.70 Mt of calcination CO2. Removing the DRI
+  hydrogen turns the exogenous "H2 for industry" load negative where chlorine is made
+  (a by-product credit, about -1.04 TWh in NL). sector.methanol.meoh_to_oa (default
+  false, same PR) adds methanol-to-olefins/aromatics as a route to the naphtha
+  feedstock and pairs naturally with this method. Any sector.* or industry.* key varied
+  per scenario makes the app rebuild the resources per scenario, which is correct and
+  costs runtime; set these keys in the base config unless the comparison is the study.
+  Pair with [[co2-budget]] for the target that prices coal and gas against hydrogen and
+  capture, and [[h2-network-expansion]] when the DRI hydrogen has to travel.

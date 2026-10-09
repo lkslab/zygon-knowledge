@@ -31,7 +31,7 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c
+    ref: f55cdf34f0e67a797fd4327bed26c56dedcb5cb8
     date: '2026-10-09'
   execution:
   - kind: config
@@ -112,6 +112,11 @@ notes: >-
   reaches them: their electricity baseline is today's, and efficiency progress has to
   come from the band technologies. The route keys of [[industry-fuel-switching]] still
   decide the production the bands are derived from, and steel stays entirely exogenous.
+  With [[industry-routes-endogenous]] on as well (sector.endogenous_sectors.enable),
+  steel and cement leave the bands: the per-node rule drops Integrated steelworks, DRI +
+  Electric arc and Cement from the endogenous block as well as the exogenous one, so
+  there is no double count, the kiln heat is chosen on the cement route's own heat bus
+  (solid biomass, gas, waste) and Cement's flag in endogenise_sectors no longer matters.
   For a one-country run the method is the structural way out of the biomass trap recorded
   in [[co2-budget]] note (i): the exogenous "solid biomass for industry" load that the
   biomass limit could not cover becomes band demand that biomass, gas, electricity and

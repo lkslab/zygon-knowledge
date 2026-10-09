@@ -28,7 +28,7 @@ when_to_use:
   - "known in pypsa-eur as: biomass, solid biomass, solid biomass import, solid biomass transport, unsustainable solid biomass, solid biomass to hydrogen, biomass boiler, residential rural biomass boiler, residential urban decentral biomass boiler, services rural biomass boiler, services urban decentral biomass boiler"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
+    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
     out_of_box:
       covers: >
         Sector runs carry a fully spatial, data-driven biomass resource.
@@ -74,8 +74,12 @@ models:
         off) — the BtX routes belong to the hydrogen-fuels family of
         carrier cards; biogas upgrading has its own carrier card
         (biogas-anaerobic-digestion); municipal solid waste has its own
-        chain (waste-to-energy carrier card, sector.municipal_solid_waste default
-        false). Electricity-only workflow: the existing bioenergy fleet
+        chain (waste-to-energy carrier card: the potential joins the waste bus
+        only with waste.waste_to_energy or waste.waste_to_energy_cc, both
+        default false). With sector.endogenous_sectors.enable (cement listed,
+        off by default) the endogenous cement kiln is a further solid biomass
+        consumer, "<node> cement heat biomass" drawing from the solid biomass
+        buses under the biomass limit. Electricity-only workflow: the existing bioenergy fleet
         enters as "biomass" conventional Generators ("Solid Biomass" and
         "Biogas" powerplantmatching fueltypes are folded into "Bioenergy",
         then carrier "biomass"); in myopic sector runs the same fleet
@@ -128,14 +132,21 @@ models:
         at 10 clusters, 16.0 TWh/a solid biomass for industry against a 3.54 TWh/a limit
         (ENS_Med sustainable potential, the unsustainable share already 0 in 2040), both
         scenarios infeasible with hydrogen imports on or off, and the solver's IIS ran
-        until the job's time limit. A Europe-wide run meets the same demand from the pooled continental limit, which is why the default never shows it. The structural way out on this fork is sector.industry_t.endogen (method industry-heat-endogenous): the endogenised sectors' heat leaves the flat biomass load and becomes band demand that biomass, gas, electricity and hydrogen compete for under the limit — for NL 2040 the exogenous 16.0 TWh/a solid biomass for industry falls to 0.04 TWh/a (the non-endogenised rest) and 42 TWh/a of band heat appears (21.3 / 5.5 / 15.5 TWh/a in 100-200 / 200-500 / 500+ °C), so the limit binds the biomass boilers instead of breaking the run. Before a one-
+        until the job's time limit. A Europe-wide run meets the same demand from the pooled continental limit, which is why the default never shows it. The structural way out on this fork is sector.industry_t.endogen (method industry-heat-endogenous): the endogenised sectors' heat leaves the flat biomass load and becomes band demand that biomass, gas, electricity and hydrogen compete for under the limit — for NL 2040 the exogenous 16.0 TWh/a solid biomass for industry falls to 0.04 TWh/a (the non-endogenised rest) and 42 TWh/a of band heat appears (21.3 / 5.5 / 15.5 TWh/a in 100-200 / 200-500 / 500+ °C), so the limit binds the biomass boilers instead of breaking the run. The second way
+        out is the routes switch, sector.endogenous_sectors.enable (method
+        industry-routes-endogenous): build_industrial_energy_demand_per_node drops steel
+        (Integrated, DRI) and cement from both demand blocks, so their biomass leaves the
+        flat load and the kiln's biomass competes under the limit with gas and waste —
+        partial on its own (for NL 2040 the exogenous block loses 0.35 TWh/a of biomass
+        against a 12.5 TWh/a gap), and on top of industry_t it shrinks the remaining flat
+        load further. Before a one-
         country sector study compare the solid biomass column sum of
         resources/<run>/biomass_potentials_<year>.csv with the solid biomass column of
         industrial_energy_demand_<year>.csv, and pair the selection with
         sector.solid_biomass_import.enable: true (54 EUR/MWh, 1390 TWh cap, 10% upstream
         emissions) or with industry fuel-switching assumptions that cut the biomass
         demand, and say which.
-      provenance: "scripts/build_biomass_potentials.py:enspreso_biomass_potentials; scripts/build_biomass_potentials.py:add_unsustainable_potentials; scripts/prepare_sector_network.py:add_biomass; scripts/prepare_sector_network.py:biomass limit; scripts/prepare_sector_network.py:remove_elec_base_techs; scripts/build_powerplants.py:\"Biogas\": \"Bioenergy\"; scripts/add_existing_baseyear.py:\"Bioenergy\": \"urban central solid biomass CHP\""
+      provenance: "scripts/build_biomass_potentials.py:enspreso_biomass_potentials; scripts/build_biomass_potentials.py:add_unsustainable_potentials; scripts/prepare_sector_network.py:add_biomass; scripts/prepare_sector_network.py:biomass limit; scripts/prepare_sector_network.py:remove_elec_base_techs; scripts/build_powerplants.py:\"Biogas\": \"Bioenergy\"; scripts/add_existing_baseyear.py:\"Bioenergy\": \"urban central solid biomass CHP\"; scripts/prepare_sector_network.py:cement heat biomass; scripts/build_industrial_energy_demand_per_node.py:route_endogenised_sectors"
     levers:
       - key: sector.biomass
         effect: "Master switch for the whole sector biomass chain (add_biomass and the biomass-to-methanol calls are gated on it). NOTE: false + sector.industry true raises a ValueError in add_industry."
@@ -162,7 +173,7 @@ models:
         default: "{2020: 0, 2025: 0, 2030: 0.33, 2035: 0.66, 2040: 1, 2045: 1, 2050: 1}"
         provenance: "config/config.default.yaml:share_sustainable_potential_available; scripts/build_biomass_potentials.py:add_unsustainable_potentials"
       - key: sector.biomass_spatial
-        effect: "true resolves solid biomass (and MSW, unsustainable carriers) per node with the faux-transport generators + 'biomass limit' GlobalConstraint; false pools everything on single EU buses."
+        effect: "true resolves solid biomass (and the unsustainable carriers; MSW now follows sector.waste_spatial on the waste bus) per node with the faux-transport generators + 'biomass limit' GlobalConstraint; false pools everything on single EU buses."
         default: "true"
         provenance: "config/config.default.yaml:biomass_spatial; scripts/prepare_sector_network.py:define_spatial"
       - key: sector.biomass_transport
@@ -235,7 +246,7 @@ models:
       - change: "biomass supply buses/generators, transport, boilers, CHP, BtX links"
         anchor: "scripts/prepare_sector_network.py::add_biomass (called from rule compose_network, gated by sector.biomass)"
         provenance: "scripts/prepare_sector_network.py:add_biomass"
-      - change: "nodal vs EU-pooled namespaces for biomass/biogas/MSW"
+      - change: "nodal vs EU-pooled namespaces for biomass/biogas (MSW: spatial.waste, sector.waste_spatial)"
         anchor: "scripts/prepare_sector_network.py::define_spatial (sector.biomass_spatial / biomass_transport / gas_network)"
         provenance: "scripts/prepare_sector_network.py:define_spatial"
       - change: "per-country transport cost derivation"

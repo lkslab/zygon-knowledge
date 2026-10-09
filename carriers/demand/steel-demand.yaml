@@ -137,7 +137,7 @@ models:
       scenario: "{demand} wildcard scenario + {planning_horizons} CAGR compounding; full override via custom_data.industry_demand file per scenario/horizon"
 
   - model: pypsa-eur
-    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
+    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
     out_of_box:
       covers: >
         Full production-tonnage chain with explicit routes: today's kton/a of
@@ -170,20 +170,28 @@ models:
         industry, gas for industry, industry electricity, low-temperature heat,
         process emissions).
       not_covered: >
-        Steel routes are exogenous fractions, not an optimisation choice — the
-        model cannot endogenously pick BF vs DRI vs EAF; process heat is part of
-        the fixed per-route carrier ratios. No total-steel-demand scaling factor
-        exists (unlike aviation/HVC demand factors). No scrap availability
-        constraint.
-      provenance: "scripts/build_industrial_production_per_country.py:Integrated steelworks;scripts/build_industrial_production_per_country_tomorrow.py:dri_fraction;scripts/build_industry_sector_ratios.py:def iron_and_steel;scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_IS_BF_E;scripts/build_industrial_energy_demand_per_country_today.py:add_coke_ovens;scripts/build_industrial_distribution_key.py:prepare_gem_steel_database;scripts/build_industrial_energy_demand_per_node.py;scripts/prepare_sector_network.py:mwh_coal_per_mwh_coke"
+        By default steel routes are exogenous fractions, not an optimisation
+        choice; process heat is part of the fixed per-route carrier ratios.
+        With sector.endogenous_sectors.enable (subsectors listing steel; off by
+        default, see steel-routes-endogenous and the method
+        industry-routes-endogenous) build_industrial_energy_demand_per_node
+        drops "Integrated steelworks" and "DRI + Electric arc" from the demand
+        blocks and add_steel puts primary steel on the network as a per-node
+        steel load in tonnes, met by competing BOF, H2-DRI and gas-DRI + EAF
+        links; industry.DRI_fraction is then dormant for primary steel
+        (St_primary_fraction still sizes the load) and secondary "Electric arc"
+        steel stays an exogenous electricity demand. No total-steel-demand
+        scaling factor exists (unlike aviation/HVC demand factors). No scrap
+        availability constraint in either mode.
+      provenance: "scripts/build_industrial_production_per_country.py:Integrated steelworks;scripts/build_industrial_production_per_country_tomorrow.py:dri_fraction;scripts/build_industry_sector_ratios.py:def iron_and_steel;scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_IS_BF_E;scripts/build_industrial_energy_demand_per_country_today.py:add_coke_ovens;scripts/build_industrial_distribution_key.py:prepare_gem_steel_database;scripts/build_industrial_energy_demand_per_node.py;scripts/prepare_sector_network.py:mwh_coal_per_mwh_coke;scripts/build_industrial_energy_demand_per_node.py:route_endogenised_sectors;scripts/prepare_sector_network.py:add_steel"
     levers:
       - key: industry.St_primary_fraction
         effect: "Fraction of steel from primary (ore-based) production per planning horizon; remainder becomes secondary EAF (scrap)."
         default: "{2020: 0.6, ..., 2050: 0.3}"
         provenance: "config/config.default.yaml:St_primary_fraction;scripts/build_industrial_production_per_country_tomorrow.py:st_primary_fraction"
       - key: industry.DRI_fraction
-        effect: "Fraction of the remaining primary steel produced via DRI + EAF instead of integrated steelworks, per horizon."
-        default: "{2020: 0, ..., 2050: 1}"
+        effect: "Fraction of the remaining primary steel produced via DRI + EAF instead of integrated steelworks, per horizon. Dormant for primary steel once sector.endogenous_sectors routes steel endogenously (the model picks the route; the split only feeds the summed primary load)."
+        default: "{2020: 0, 2025: 0, 2030: 0.05, ..., 2050: 1}"
         provenance: "config/config.default.yaml:DRI_fraction;scripts/build_industrial_production_per_country_tomorrow.py:dri_fraction"
       - key: industry.H2_DRI
         effect: "Hydrogen demand of the DRI route in MWh_H2/t steel."
@@ -201,13 +209,25 @@ models:
         effect: "Base year for production tonnage and today's energy intensities."
         default: "2023"
         provenance: "config/config.default.yaml:reference_year;scripts/build_industrial_production_per_country.py:reference_year"
+      - key: sector.endogenous_sectors
+        effect: "{enable, subsectors}: with enable true and steel listed, primary steel (Integrated + DRI) becomes a per-node steel load met by BOF / H2-DRI / gas-DRI + EAF links the model sizes; under myopic/perfect foresight the existing blast furnaces and gas DRI from build_industry_plants enter as dated brownfield links."
+        default: "{enable: false, subsectors: [steel, cement]}"
+        provenance: "config/config.default.yaml:endogenous_sectors;scripts/prepare_sector_network.py:add_steel;scripts/add_existing_baseyear.py:add_existing_industry"
+      - key: sector.steel_bof
+        effect: "With the routes on under myopic/perfect: pledge true retires each existing blast furnace at its pledged phase-out year (GEM 'Out') plus pledge_delay years; false keeps the 40-year catalogue lifetime."
+        default: "{pledge: true, pledge_delay: 0}"
+        provenance: "config/config.default.yaml:steel_bof;scripts/add_existing_baseyear.py:pledge_delay"
+      - key: sector.hbi_relocation
+        effect: "With the routes on: one EU-wide hbi bus instead of one per node, so iron can be reduced where hydrogen is cheap and moved free of cost to the EAFs at the steel sites."
+        default: "false"
+        provenance: "config/config.default.yaml:hbi_relocation;scripts/prepare_sector_network.py:hbi_relocation"
     boundary:
       - variant: "change primary vs recycled steel share"
         rung: L0
         note: "industry.St_primary_fraction per-year dict."
       - variant: "hydrogen-DRI rollout speed"
-        rung: L0
-        note: "industry.DRI_fraction per-year dict; H2_DRI / elec_DRI tune the intensity."
+        rung: L1
+        note: "reshape the industry.DRI_fraction per-year ramp (exogenous route mode only; dormant for primary steel with sector.endogenous_sectors on); H2_DRI / elec_DRI tune the intensity."
       - variant: "faster efficiency progress toward best-in-class intensities"
         rung: L0
         note: "industry.sector_ratios_fraction_future."
@@ -221,8 +241,11 @@ models:
         rung: L2
         note: "status/retirement filters per process hardcoded in prepare_gem_steel_database / build_nodal_distribution_key."
       - variant: "endogenous route choice (model optimises BF vs DRI)"
-        rung: L5
-        note: "steel is exogenous production tonnage per route times fixed ratios (build_industrial_energy_demand_per_node.py); making it a network component is bespoke logic."
+        rung: L0
+        note: "with sector.endogenous_sectors.enable (see [[steel-routes-endogenous]] and the method [[industry-routes-endogenous]]): add_steel builds BOF, H2 DRI, gas DRI, DRI and EAF links on a per-node steel bus, at technology-data intensities that do not match JRC-IDEES."
+      - variant: "existing steel plants sited from the Fraunhofer ISI site database (brownfield blast furnaces and gas DRI, pledged phase-out)"
+        rung: L0
+        note: "with sector.endogenous_sectors.enable under foresight myopic or perfect: build_industry_plants locates the units, add_existing_industry adds them as dated non-extendable links in the first horizon; sector.steel_bof sets the retirement."
     where:
       - change: "route split (primary/DRI/EAF fractions)"
         anchor: "scripts/build_industrial_production_per_country_tomorrow.py"
@@ -239,6 +262,9 @@ models:
       - change: "network loads (coal for industry, H2 for industry, ...)"
         anchor: "scripts/prepare_sector_network.py:add_industry"
         provenance: "scripts/prepare_sector_network.py:def add_industry"
+      - change: "endogenous primary steel routes (steel/hbi/DRI reduction buses, route links, vent and capture)"
+        anchor: "scripts/prepare_sector_network.py:add_steel (called from add_industry); existing plants in scripts/add_existing_baseyear.py:add_existing_industry"
+        provenance: "scripts/prepare_sector_network.py:add_steel;scripts/add_existing_baseyear.py:add_existing_industry;rules/build_sector.smk:build_industry_plants"
     data_dependencies:
       - input: "JRC-IDEES-2023 Industry + EnergyBalance workbooks (per country)"
         required_for: "production tonnage and energy intensities"
@@ -246,6 +272,9 @@ models:
       - input: "GEM Global Steel Plant Tracker xlsx (rules.retrieve_gem_steel_plant_tracker)"
         required_for: "process-specific nodal distribution keys"
         availability: "must be built (retrieved); Europe filter applied"
+      - input: "Fraunhofer ISI industry site database (data/1-s2.0-S0196890424010586-mmc2.xlsx, Neuwirth et al. 2024, CC-BY-4.0: blast furnaces and gas DRI with production, last relining year and pledged phase-out year)"
+        required_for: "brownfield steel plants under myopic/perfect foresight with the routes switch"
+        availability: "exists by default (checked into the repo); EU27 + GB + NO only"
       - input: "Eurostat energy balances + coke transformation output"
         required_for: "non-EU27 scaling and coke-oven energy in integrated route"
         availability: "must be built (retrieved)"
@@ -253,7 +282,7 @@ models:
       driver: "kton/a crude steel per route (Integrated / DRI + Electric arc / Electric arc) times MWh/t sector ratios"
       spatial: "GEM GSPT nominal capacities per process (EAF / DRI + EAF / Integrated); population fallback where absent"
       temporal: "annual-constant loads (p_set = annual / nhours)"
-      scenario: "per-planning-horizon dicts (St_primary_fraction, DRI_fraction, sector_ratios_fraction_future) resolved against the planning_horizons list (one compose_network run per horizon)"
+      scenario: "per-planning-horizon dicts (St_primary_fraction, DRI_fraction (exogenous route mode), sector_ratios_fraction_future) resolved against the planning_horizons list (one compose_network run per horizon)"
 
 reference_taxonomy:
   framework: "FORECAST (Fraunhofer ISI)"

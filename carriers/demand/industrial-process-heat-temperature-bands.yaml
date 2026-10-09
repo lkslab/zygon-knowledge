@@ -131,7 +131,7 @@ models:
       scenario: "{demand} wildcard + planning_horizons pick the growth path via industry_growth_cagr.csv or the custom csv per horizon"
 
   - model: pypsa-eur
-    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
+    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
 
     out_of_box:
       covers: >
@@ -155,7 +155,7 @@ models:
       not_covered: >
         No band-resolved heat demand, no industrial heat pumps, electric boilers
         or hydrogen firing as competing supply options, no must-run or storage
-        behaviour of process heat, no per-process temperature data. On this fork the industry_t temperature bands exist (heat100-200 / heat200-500 / heat500+ industry buses with competing supply links) behind sector.industry_t.endogen, off by default — see the industry-process-heat-endogenous carrier card and the industry-heat-endogenous method. With it on, the endogenised sectors get band-resolved heat demand (today's intensities, Fleiter et al. 2025 process shares) and competing supply per band; steel stays exogenous, loads stay flat and there is still no band heat store.
+        behaviour of process heat, no per-process temperature data. On this fork the industry_t temperature bands exist (heat100-200 / heat200-500 / heat500+ industry buses with competing supply links) behind sector.industry_t.endogen, off by default — see the industry-process-heat-endogenous carrier card and the industry-heat-endogenous method. With it on, the endogenised sectors get band-resolved heat demand (today's intensities, Fleiter et al. 2025 process shares) and competing supply per band; steel stays exogenous, loads stay flat and there is still no band heat store. With sector.endogenous_sectors.enable as well, steel and cement leave the bands (both demand blocks drop them, so there is no double count): primary steel heat sits inside the route links and the cement kiln draws its heat from its own "cement heat" bus (steel-routes-endogenous, cement-routes-endogenous).
       provenance: "scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:low-temperature heat for industry; scripts/build_industry_sector_ratios.py:load_idees_data; scripts/build_industry_sector_ratios_intermediate.py:build_industry_sector_ratios_intermediate; scripts/build_industrial_energy_demand_per_node.py"
 
     levers:
@@ -180,7 +180,7 @@ models:
         note: "sector.industry_t.endogen: true (method industry-heat-endogenous): the fork's rule build_industry_sector_ratios_endogenous splits the endogenised sectors' fuel use by the Fleiter et al. 2025 process shares into heat100-200 / heat200-500 / heat500+ industry loads per node with competing supply links (steam boilers, direct firing, industrial heat pump, electric boiler, hydrogen firing; CC twins); today's intensities, steel excluded, sector.industry_t.endogenise_sectors picks the sectors — see industry-process-heat-endogenous"
       - variant: "band-endogenise steel process heat"
         rung: L5
-        note: "steel runs through exogenous production routes (BF-BOF / DRI / EAF fractions); process modelling is bespoke on top of the L0 bands, which exclude steel by design."
+        note: "the bands exclude steel by design, and with sector.endogenous_sectors.enable the primary steel heat is inside the route links (BOF coal, DRI reduction agent, EAF electricity; [[steel-routes-endogenous]]), so splitting it into bands as well would double count; band heat for the exogenous secondary EAF route is bespoke."
       - variant: "country-specific temperature splits from national data"
         rung: L3
         note: "the bands exist on this fork with EU-wide Fleiter shares (no country dimension); national splits replace process_temperature_band_mapper / backup_temperature_band_shares in build_industry_sector_ratios_endogenous.py (L2 code, L3 data)."
@@ -203,9 +203,9 @@ models:
       - input: "JRC-IDEES industry sheets (per-sector fuel and end-use data)"
         required_for: "sector ratios"
         availability: "must be built (retrieved); EU-focused — non-EU countries use Eurostat fallbacks"
-      - input: "per-process temperature-level data (e.g. Fleiter et al. 2025 bands)"
+      - input: "per-process temperature-level data (Fleiter et al. 2025 bands, data/ente202300981-sup-0001-suppdata-s1.xlsx)"
         required_for: "any band-resolved variant"
-        availability: "absent from the workflow"
+        availability: "exists by default on this fork (checked into the repo), read only with sector.industry_t.endogen"
 
     demand_dimensions:
       driver: "kt/a physical production per sector x MWh/t sector ratios (JRC-IDEES) per carrier; no temperature dimension"

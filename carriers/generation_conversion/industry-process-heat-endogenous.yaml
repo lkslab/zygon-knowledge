@@ -16,7 +16,7 @@ when_to_use:
   - "which industries can pick their heat source"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
+    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
     out_of_box:
       covers: >
         Implemented on this fork (the port of PyPSA/pypsa-eur#1943, open
@@ -72,8 +72,15 @@ models:
       not_covered: >
         Steel is entirely outside the machinery (the ratios script does not
         cover the steel sector): integrated, EAF and DRI routes stay
-        exogenous, and "DRI + Electric arc", "HVC (mechanical recycling)"
+        exogenous here, and "DRI + Electric arc", "HVC (mechanical recycling)"
         and "HVC (chemical recycling)" are copied from the exogenous ratios.
+        With sector.endogenous_sectors.enable also on (steel-routes-endogenous,
+        cement-routes-endogenous) build_industrial_energy_demand_per_node drops
+        "Integrated steelworks", "DRI + Electric arc" and "Cement" from the
+        endogenous block as well as the exogenous one, so steel and cement
+        leave the heat bands (no double count): the cement kiln heat is then
+        served on its own "cement heat" bus (solid biomass, gas, waste) and the
+        primary steel heat sits inside the route links' intensities.
         IMPORTANT interaction: endogenised sectors are rebuilt from today's
         intensities for every carrier (electricity, coke, the heat bands), so
         the industry.sector_ratios_fraction_future efficiency/electrification
@@ -93,7 +100,7 @@ models:
         scenario is valid but makes the app rebuild the resources per
         scenario (sector.* is a base-shared chapter), since endogenise_sectors
         is read by a horizon-free rule.
-      provenance: "scripts/build_industry_sector_ratios_endogenous.py:build_industry_sector_ratios_endogenous; scripts/build_industry_sector_ratios_endogenous.py:backup_temperature_band_shares; scripts/prepare_sector_network.py:add_t_industry100_200; scripts/prepare_sector_network.py:add_t_industry200_500; scripts/prepare_sector_network.py:add_t_industry500; scripts/build_industrial_energy_demand_per_node.py:sectors_copied_from_exogenous; scripts/add_brownfield.py:INDUSTRY_T_HEAT_BUS_SUFFIXES; rules/build_sector.smk:build_industry_sector_ratios_endogenous; doc/release_notes.md:Endogenous industry process heat supply"
+      provenance: "scripts/build_industry_sector_ratios_endogenous.py:build_industry_sector_ratios_endogenous; scripts/build_industry_sector_ratios_endogenous.py:backup_temperature_band_shares; scripts/prepare_sector_network.py:add_t_industry100_200; scripts/prepare_sector_network.py:add_t_industry200_500; scripts/prepare_sector_network.py:add_t_industry500; scripts/build_industrial_energy_demand_per_node.py:sectors_copied_from_exogenous; scripts/add_brownfield.py:INDUSTRY_T_HEAT_BUS_SUFFIXES; rules/build_sector.smk:build_industry_sector_ratios_endogenous; doc/release_notes.md:Endogenous industry process heat supply; scripts/build_industrial_energy_demand_per_node.py:route_endogenised_sectors"
     levers:
       - key: sector.industry_t.endogen
         effect: "Master switch: true selects the endogenous demand block and builds the band buses/loads/technologies; false keeps the classic exogenous fuel-share treatment."
@@ -153,8 +160,11 @@ models:
         rung: L2
         note: "edit backup_temperature_band_shares / process_temperature_band_mapper in build_industry_sector_ratios_endogenous.py; wholly new source data replaces the Fleiter xlsx (L3)"
       - variant: "endogenise steel heat"
-        rung: L4
-        note: "steel is excluded by design in the ratios script and copied exogenous in the per-node rule; needs changes in both rules plus a decision how EAF/DRI route logic interacts — effectively new rule plumbing (a separate upstream PR)"
+        rung: L5
+        note: "not a band question any more: with sector.endogenous_sectors.enable the primary steel heat is inside the route links (BOF coal, DRI reduction agent, EAF electricity at technology-data intensities), and the steel route is chosen there ([[steel-routes-endogenous]]); splitting it into bands as well would double count. Band-resolved heat for secondary EAF steel would need it out of the exogenous copy and into the Fleiter mapping — bespoke"
+      - variant: "keep cement in the bands while steel and cement routes are endogenous"
+        rung: L2
+        note: "route_endogenised_sectors drops Cement from both blocks whenever cement is in sector.endogenous_sectors.subsectors; leave cement out of that list (L1) to keep it in the bands with the exogenous kiln"
       - variant: "future efficiency progress for endogenised sectors' band demand"
         rung: L2
         note: "endogenous ratios are today-based; blending towards future intensities (as the intermediate rule does for exogenous) needs an edit in build_industry_sector_ratios_endogenous"

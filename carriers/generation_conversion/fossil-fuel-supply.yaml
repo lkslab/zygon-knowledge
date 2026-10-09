@@ -28,7 +28,7 @@ when_to_use:
   - "known in pypsa-eur as: gas, fossil gas, natural gas, methane, oil primary, oil refining, imported oil"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
+    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
     out_of_box:
       covers: >
         Sector runs: add_carrier_buses creates, per fossil carrier, buses +
@@ -50,7 +50,12 @@ models:
         the gas Stores. Oil can carry refining emissions: with
         industry.oil_refining_emissions > 0, an "oil primary" bus + "oil
         refining" link releases process CO2 between crude supply and usable
-        oil. Electricity workflow: fuels are implicit — marginal cost = VOM +
+        oil. LNG as a ship fuel (an exogenous sector.shipping_lng_share, or
+        the endogenous menu of sector.shipping_endogenous) is drawn from the
+        node's gas bus through an extendable "<node> CH4 liquefaction" link
+        (technology-data electricity input and capital cost) onto a "<node>
+        LNG" bus; there is no LNG import path into it, only the gas bus.
+        Electricity workflow: fuels are implicit — marginal cost = VOM +
         fuel/efficiency from the costs file, optionally time-varying from
         World Bank monthly commodity prices (conventional.dynamic_fuel_price,
         rule build_fossil_fuel_prices, smoothing window

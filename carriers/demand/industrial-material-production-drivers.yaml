@@ -141,7 +141,7 @@ models:
       scenario: "{demand} wildcard selects custom csv variants; planning_horizons sets the compounding period"
 
   - model: pypsa-eur
-    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
+    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
 
     out_of_box:
       covers: >
@@ -153,7 +153,13 @@ models:
         route/recycling fractions: St_primary_fraction + DRI_fraction split
         steel into Integrated steelworks / DRI + Electric arc / Electric arc;
         Al_primary_fraction splits aluminium; HVC splits into primary /
-        mechanical recycling / chemical recycling.
+        mechanical recycling / chemical recycling. With
+        sector.endogenous_sectors.enable (off by default) the route shares
+        stop being the only lever for steel and cement: primary steel
+        (Integrated + DRI summed) and cement become per-node tonnage loads
+        whose production routes the model picks (steel-routes-endogenous,
+        cement-routes-endogenous); the tonnages themselves still come from
+        this chain.
         build_industrial_production_per_node distributes tonnes via per-sector
         site keys; energy = tonnes x MWh/t sector ratios.
       mechanism: >
