@@ -67,6 +67,13 @@ models:
   - >-
     cavern storage only where the salt-cavern atlas lists a site above 2 TWh; no
     depleted-field or lined-rock storage, no tank-vs-cavern siting below the cluster
+  - >-
+    a one-country run closes the border for everything the study does not import: no
+    electricity interconnector, and biomass, CO2 storage and the biomass limit are the
+    country's own, so a small country's exogenous industrial biomass demand can exceed its
+    potential and the run is infeasible by construction (NL 2040: 16 TWh/a against 3.5
+    TWh/a, both scenarios, imports on or off); a single-country hydrogen study turns on
+    sector.solid_biomass_import or widens countries to the neighbours, and says which
   methods:
   - id: h2-network-expansion
     role: >-
@@ -96,7 +103,10 @@ models:
     is: sector.imports.enable false — no hydrogen imports unless the study turns them on
     note: >-
       an import scenario names the price (sector.imports.price.H2, 74 EUR/MWh shipped)
-      and the cap (sector.imports.limit, TWh/a) as settled assumptions
+      and the cap (sector.imports.limit, TWh/a) as settled assumptions; enable also opens
+      NH3, methanol, gas and oil imports at their shipped prices, since a deep-merged
+      config cannot drop a price key, so a hydrogen-only import case prices the others
+      out (a very high sector.imports.price for each) and says so
   plots:
   - id: network_map
     role: the backbone on the map — pipeline capacity per corridor, storage per node

@@ -117,3 +117,21 @@ notes: >-
   not system targets. A price instead of a cap is costs.emission_prices, a different card.
   pypsa-earth still caps through the Co2L opts wildcard and electricity.co2limit; see the
   coal-power-plants carrier card.
+  (i) A one-country or small-selection sector run meets the cap with the selection's own
+  sinks: the Europe-wide annual injection cap (sector.co2_sequestration_potential, 180
+  Mt/a in 2040) is loose, what binds is the regional CO2Stop potential annualised over 25
+  years (NL at 10 clusters: 113 Mt in one offshore region, so 4.5 Mt/a), and under it must
+  fit the emissions nothing abates — coal for industry (no synthetic coal, no capture; NL
+  2040 1.7 TWh, 0.56 Mt) and the uncaptured 5% of process emissions (NL 2040 about 0.17
+  Mt) — while every other combustion is made neutral with captured CO2 through DAC-fed
+  Fischer-Tropsch and methanolisation, at a large electricity cost the country's own
+  potentials have to carry (there is no electricity import in a one-country run). For NL
+  2040 that arithmetic works (about 0.7 Mt unavoidable against 4.5 Mt/a), so net zero as
+  such did not make the 2026-10-09 NL hydrogen study infeasible; the biomass limit did
+  (the biomass-bioenergy carrier card has the trap: a single country's exogenous
+  industrial biomass demand against its own potential). Symptom of an infeasible cap
+  either way: Gurobi reports "Numerical trouble ... Model may be infeasible or unbounded"
+  or "Infeasible model" within minutes of barrier, then computes an IIS until the job's
+  runtime kills it, so a solve_network job that dies at its time limit after an early
+  infeasible line is a scenario infeasibility, not a solver-size problem; check the sinks
+  and the biomass balance of the selection before resizing anything.

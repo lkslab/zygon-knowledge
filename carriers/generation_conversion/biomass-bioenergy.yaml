@@ -118,7 +118,24 @@ models:
         other than the generic import store. No energy-crop cultivation or
         land-use competition modelling. Biomass transport links have a fixed
         arbitrary 5e4 MW capacity and cost but no capacity expansion or
-        distance-dependent losses.
+        distance-dependent losses. TRAP — the "biomass limit" constant is the sum of the SELECTED countries'
+        potentials, while the "solid biomass for industry" load is the selection's own
+        exogenous industrial biomass use (JRC-IDEES through the sector ratios,
+        industrial_energy_demand_<year>.csv), with no other source unless
+        sector.solid_biomass_import.enable is true. A small country with heavy industrial
+        biomass use therefore demands more than it may supply and the run is infeasible by
+        construction, before any CO2 or balancing question — hit 2026-10-09: NL-only 2040
+        at 10 clusters, 16.0 TWh/a solid biomass for industry against a 3.54 TWh/a limit
+        (ENS_Med sustainable potential, the unsustainable share already 0 in 2040), both
+        scenarios infeasible with hydrogen imports on or off, and the solver's IIS ran
+        until the job's time limit. A Europe-wide run meets the same demand from the
+        pooled continental limit, which is why the default never shows it. Before a one-
+        country sector study compare the solid biomass column sum of
+        resources/<run>/biomass_potentials_<year>.csv with the solid biomass column of
+        industrial_energy_demand_<year>.csv, and pair the selection with
+        sector.solid_biomass_import.enable: true (54 EUR/MWh, 1390 TWh cap, 10% upstream
+        emissions) or with industry fuel-switching assumptions that cut the biomass
+        demand, and say which.
       provenance: "scripts/build_biomass_potentials.py:enspreso_biomass_potentials; scripts/build_biomass_potentials.py:add_unsustainable_potentials; scripts/prepare_sector_network.py:add_biomass; scripts/prepare_sector_network.py:biomass limit; scripts/prepare_sector_network.py:remove_elec_base_techs; scripts/build_powerplants.py:\"Biogas\": \"Bioenergy\"; scripts/add_existing_baseyear.py:\"Bioenergy\": \"urban central solid biomass CHP\""
     levers:
       - key: sector.biomass

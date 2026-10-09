@@ -66,6 +66,12 @@ models:
     cement and lime process emissions have one capture option at a fixed capture rate
     (sector.cc_fraction); no clinker substitution, no CCU accounting beyond the
     synthesis routes
+  - >-
+    a one-country run supplies industry's exogenous solid biomass demand from the
+    country's own potential only (the biomass limit sums the selected countries): where
+    the demand is larger the run is infeasible by construction (NL 2040: 16 TWh/a against
+    3.5 TWh/a), so a single-country industry study turns on sector.solid_biomass_import or
+    settles fuel-switching assumptions that cut the biomass demand, and says which
   methods:
   - id: industry-fuel-switching
     role: >-
