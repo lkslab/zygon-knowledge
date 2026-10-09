@@ -67,9 +67,11 @@ the pypsa-eur section of every card and checks each `scripts/…:symbol`, `rules
 ## Anchors
 
 Both models' cards cite their `models/<model>` submodule commit. Eur cards cite
-`a6c45e5a` (upstream `PyPSA/pypsa-eur` master, "Streamline workflow" #1838, 2026-09-09):
-no `scenario` block or wildcards, `compose_network` -> `solve_network`, networks
-`composed_<horizon>.nc` / `solved_<horizon>.nc`. Earth cards cite `8435f4c8`. Until
-2026-09-10 the eur anchor was `849c8858`, a fork branch (`endogenous-industry-heat`) that
-is not in any public remote; its endogenous industrial process-heat content was dropped
-from the cards with the re-anchor. See `archive/fixtures/BASELINE.md` for the older history.
+`d31ad9fa`, the `lkslab/pypsa-eur` fork commit the app pins (branch `dev`: upstream
+`a6c45e5a` "Streamline workflow" #1838 plus the fork's fixes and the endogenous industry heat
+of PyPSA/pypsa-eur#1943): no `scenario` block or wildcards, `compose_network` ->
+`solve_network`, networks `composed_<horizon>.nc` / `solved_<horizon>.nc`. Earth cards cite
+`8435f4c8`. Between 2026-09-10 and 2026-10-09 the eur anchor was upstream `a6c45e5a` and the
+industry-heat content was described as a gap; before that it was `849c8858`, a fork branch
+(`endogenous-industry-heat`) not in any public remote. See `archive/fixtures/BASELINE.md` for
+the older history.

@@ -97,7 +97,7 @@ models:
       scenario: "Per-country CAGR csvs compounded from demand_data.base_year, selected by the {demand} wildcard"
 
   - model: pypsa-eur
-    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
+    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
     out_of_box:
       covers: >
         Rail energy is carried in the energy totals ('total rail', 'electricity rail',

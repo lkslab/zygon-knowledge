@@ -106,7 +106,7 @@ models:
       scenario: "{demand} wildcard naming different CAGR/custom-csv worlds per planning horizon"
 
   - model: pypsa-eur
-    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
+    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
 
     out_of_box:
       covers: >
@@ -118,8 +118,7 @@ models:
         today x (1 - f) + future x f. The route-share dicts
         (St_primary_fraction, DRI_fraction, Al_primary_fraction, HVC
         recycling fractions) act as hand-set technology-diffusion proxies.
-        Heat-supply technology inside industry is not an optimiser choice
-        either: the carrier split follows the same exogenous blend.
+        Heat-supply technology inside industry is not an optimiser choice either by default: the carrier split follows the same exogenous blend; with sector.industry_t.endogen (fork) the endogenised sectors leave that blend and their heat supply becomes a model choice per temperature band.
       mechanism: >
         build_industrial_energy_demand_per_country_today derives today's
         country ratios; build_industry_sector_ratios the future best-in-class
@@ -162,8 +161,8 @@ models:
         rung: L2
         note: "edit the electrification assumptions in the sector functions of build_industry_sector_ratios."
       - variant: "endogenous heat-tech uptake in industry with a diffusion-speed brake"
-        rung: L4
-        note: "upstream has no endogenous industrial heat supply (fixed carrier ratios placed by add_industry); the fork branch endogenous-industry-heat is the reference implementation, not part of this anchor. Once such links exist, sector.limit_max_growth is the existing blunt per-carrier growth brake."
+        rung: L1
+        note: "sector.industry_t.endogen: true (method industry-heat-endogenous) on this fork gives the endogenised sectors competing heat links (industry-process-heat-endogenous); sector.limit_max_growth is then the blunt per-carrier growth brake and sector.industry_t.must_run the duty floor. Note those sectors drop the fraction_future blend (today's intensities)."
       - variant: "explicit EEM catalogue with stock turnover and vintage retirement"
         rung: L5
         note: "honest answer: not implementable by config or data — needs a vintage-tracked demand-side model (FORECAST soft-link) or bespoke myopic-foresight components per industry."

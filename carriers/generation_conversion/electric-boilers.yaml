@@ -18,7 +18,7 @@ when_to_use:
   - "electrode boiler"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
+    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
     out_of_box:
       covers: >
         Heating side (on by default): with sector.resistive_heaters true,
@@ -47,9 +47,7 @@ models:
         electrification only enters via the exogenous future sector ratios
         (see the electric-process-heat carrier card). No temperature bands,
         so no electric option at any process temperature above the
-        district-heating level. The fork branch endogenous-industry-heat
-        carried a temperature-banded machinery with a "heat100-200 industry
-        electric boiler steam" link; it is not part of upstream a6c45e5.
+        district-heating level. On this fork the industry_t temperature bands exist (heat100-200 / heat200-500 / heat500+ industry buses with competing supply links) behind sector.industry_t.endogen, off by default — see the industry-process-heat-endogenous carrier card and the industry-heat-endogenous method. Its electric steam boiler sits in the 100-200 °C band only, on the AC node.
       provenance: "scripts/prepare_sector_network.py:resistive heater; scripts/prepare_sector_network.py:add_heat; scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:low-temperature heat for industry; config/config.default.yaml:resistive_heaters"
     levers:
       - key: sector.resistive_heaters
@@ -79,11 +77,11 @@ models:
         rung: L1
         note: "raise industry.sector_ratios_fraction_future — shifts the fixed industry loads from gas/biomass towards 'industry electricity' following the JRC-IDEES future ratios; no boiler asset, no dispatch"
       - variant: "industrial electric steam boiler competing for process steam"
-        rung: L4
-        note: "no process-steam bus exists upstream — needs a per-node steam demand split off the flat industry fuel loads (new demand rule) plus extendable boiler links in add_industry; reference implementation on the fork branch endogenous-industry-heat (temperature-banded 'heat100-200 industry electric boiler steam'), not part of this anchor"
+        rung: L0
+        note: "sector.industry_t.endogen: true (method industry-heat-endogenous) on this fork: '<node> heat100-200 industry electric boiler steam' (cost row 'electric boiler steam', AC node) competes with the industrial heat pump, gas and biomass steam boilers for the 100-200 °C band — industry-process-heat-endogenous"
       - variant: "hybrid gas-electric boiler switching on price"
-        rung: L4
-        note: "same prerequisite as above: only once industrial steam is a bus with competing supply links does dispatch split by marginal cost"
+        rung: L0
+        note: "with sector.industry_t.endogen the gas and electric boilers share the band bus and dispatch splits by marginal cost, within the must-run floor each built plant carries (sector.industry_t.must_run)"
     where:
       - change: "heating-system resistive heaters"
         anchor: "scripts/prepare_sector_network.py::add_heat (resistive heater block per heat system)"

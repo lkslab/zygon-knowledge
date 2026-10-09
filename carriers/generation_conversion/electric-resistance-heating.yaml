@@ -18,7 +18,7 @@ when_to_use:
   - "known in pypsa-eur as: resistive heater, residential rural resistive heater, residential urban decentral resistive heater, services rural resistive heater, services urban decentral resistive heater, urban central resistive heater"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
+    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
     out_of_box:
       covers: >
         On by default (sector.resistive_heaters: true). add_heat adds an
@@ -43,8 +43,7 @@ models:
         including the gas/heating efficiency ratio corrections from
         heating_efficiencies. Industry has a separate electrode boiler:
         "heat100-200 industry electric boiler steam" (cost row "electric boiler
-        steam") in the endogenous industry heat bands of add_industry — see
-        the electric-process-heat carrier card.
+        steam") in the endogenous industry heat bands of add_industry on this fork (behind sector.industry_t.endogen, off by default; it draws from the AC node and is not moved to low voltage) — see the industry-process-heat-endogenous carrier card.
       mechanism: >
         rule compose_network runs add_heat; the resistive heater block
         sits in the per-heat-system loop right after the heat pumps (key =
@@ -109,7 +108,7 @@ models:
         note: "no key; set p_nom_max on the n.add call in add_heat (per-country needs a small mapping there or a custom constraint, L5)"
       - variant: "industrial electrode boiler"
         rung: L0
-        note: "separate chain — 'heat100-200 industry electric boiler steam' is added in the endogenous industry heat bands (add_industry), not controlled by sector.resistive_heaters"
+        note: "separate chain — 'heat100-200 industry electric boiler steam' is added in the endogenous industry heat bands (add_industry) behind sector.industry_t.endogen (fork), not controlled by sector.resistive_heaters"
     where:
       - change: "resistive heater link creation (all systems)"
         anchor: "scripts/prepare_sector_network.py::add_heat (options['resistive_heaters'] block)"

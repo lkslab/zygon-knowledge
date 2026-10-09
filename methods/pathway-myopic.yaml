@@ -17,8 +17,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
-    date: '2026-09-09'
+    ref: d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c
+    date: '2026-10-09'
   execution:
   - kind: config
     key: foresight
@@ -160,6 +160,6 @@ notes: 'Substrate: [[existing-fleet]] ingestion feeds the baseyear cohorts. Eart
   data/costs/archive/v0.14.0/costs_{2025..2050 in 5y steps}.csv — any such milestone
   is a legal horizon; earth has resources/mexico-power/costs_2050.csv only
   (ceremonies 2026-08-01/04). Each horizon solves with its OWN cost year; only add_existing_baseyear
-  values existing stock at first-horizon costs. Perfect-foresight counterpart: [[pathway-perfect]].
+  values existing stock at first-horizon costs. Perfect-foresight counterpart: [[pathway-perfect]]. Eur exception to the fixed carry-over: with [[industry-heat-endogenous]] on, add_brownfield carries the inherited industry_t band links shrink-only (p_nom_extendable with p_nom_max = built capacity, p_nom_min 0, capital cost = fixed O&M only), so a band demand that falls in a later horizon never collides with the must-run floor of fixed capacity; every other carried cohort stays fixed and non-extendable.
 
   '

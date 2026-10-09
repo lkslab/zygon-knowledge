@@ -28,7 +28,7 @@ when_to_use:
   - "known in pypsa-eur as: biomass, solid biomass, solid biomass import, solid biomass transport, unsustainable solid biomass, solid biomass to hydrogen, biomass boiler, residential rural biomass boiler, residential urban decentral biomass boiler, services rural biomass boiler, services urban decentral biomass boiler"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
+    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
     out_of_box:
       covers: >
         Sector runs carry a fully spatial, data-driven biomass resource.
@@ -128,8 +128,7 @@ models:
         at 10 clusters, 16.0 TWh/a solid biomass for industry against a 3.54 TWh/a limit
         (ENS_Med sustainable potential, the unsustainable share already 0 in 2040), both
         scenarios infeasible with hydrogen imports on or off, and the solver's IIS ran
-        until the job's time limit. A Europe-wide run meets the same demand from the
-        pooled continental limit, which is why the default never shows it. Before a one-
+        until the job's time limit. A Europe-wide run meets the same demand from the pooled continental limit, which is why the default never shows it. The structural way out on this fork is sector.industry_t.endogen (method industry-heat-endogenous): the endogenised sectors' heat leaves the flat biomass load and becomes band demand that biomass, gas, electricity and hydrogen compete for under the limit — for NL 2040 the exogenous 16.0 TWh/a solid biomass for industry falls to 0.04 TWh/a (the non-endogenised rest) and 42 TWh/a of band heat appears (21.3 / 5.5 / 15.5 TWh/a in 100-200 / 200-500 / 500+ °C), so the limit binds the biomass boilers instead of breaking the run. Before a one-
         country sector study compare the solid biomass column sum of
         resources/<run>/biomass_potentials_<year>.csv with the solid biomass column of
         industrial_energy_demand_<year>.csv, and pair the selection with

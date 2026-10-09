@@ -152,7 +152,7 @@ models:
       scenario: "{demand} wildcard tags the scenario files; per-country CAGR columns and demand_data.base_year set the growth path"
 
   - model: pypsa-eur
-    version_anchor: { ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09" }
+    version_anchor: { ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09" }
 
     out_of_box:
       covers: >
@@ -206,8 +206,8 @@ models:
 
     boundary:
       - variant: "Let the model choose how paper process heat is supplied (electrify vs biomass vs gas vs H2)"
-        rung: L4
-        note: "Upstream has no temperature-band process-heat machinery: the carrier split is fixed by the JRC ratios and placed by add_industry as flat loads. Needs a new ratio-splitting script plus band buses and competing supply links (reference implementation on the fork branch endogenous-industry-heat, not part of this anchor)."
+        rung: L0
+        note: "sector.industry_t.endogen: true (method industry-heat-endogenous) on this fork: chemical and mechanical pulp (the latter overridden to 100% heat100-200), paper and printing heat split into bands where biomass steam boilers compete with the industrial heat pump, the electric boiler and gas — industry-process-heat-endogenous."
       - variant: "Faster/slower efficiency transformation of the sector"
         rung: L1
         note: "industry.sector_ratios_fraction_future per-year values."

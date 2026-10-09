@@ -155,7 +155,7 @@ models:
       scenario: "{demand} wildcard tags the scenario files; 'mining and quarrying' and 'construction' CAGR columns and demand_data.base_year set the growth path"
 
   - model: pypsa-eur
-    version_anchor: { ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09" }
+    version_anchor: { ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09" }
 
     out_of_box:
       covers: >
@@ -183,9 +183,7 @@ models:
         production, growth, intensity or spatial handle exists once they are folded
         into 'Other industrial sectors'; no mine-site or commodity representation;
         diesel motors are only visible inside the future OIS ratio (electrified by
-        assumption); no route-switching key and no temperature-resolved process
-        heat — fuel switching is only reachable through the exogenous future OIS
-        ratio; loads are annual-constant.
+        assumption); no route-switching key; temperature-resolved process heat only with sector.industry_t.endogen (fork), otherwise fuel switching is only reachable through the exogenous future OIS ratio; loads are annual-constant.
       provenance: "scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_MQ_E; scripts/build_industrial_energy_demand_per_country_today.py:FC_IND_CON_E; scripts/build_industrial_energy_demand_per_country_today.py:Other industrial sectors; scripts/build_industry_sector_ratios.py:other_industrial_sectors; scripts/prepare_sector_network.py:add_industry"
 
     levers:
@@ -204,8 +202,8 @@ models:
 
     boundary:
       - variant: "Endogenise process-heat supply of the OIS aggregate (incl. mining & construction share)"
-        rung: L4
-        note: "Upstream has no temperature-band process-heat machinery: the OIS carrier split is fixed by the JRC ratios and placed by add_industry as flat loads. Needs a new ratio-splitting script plus band buses and competing supply links (reference implementation on the fork branch endogenous-industry-heat, not part of this anchor)."
+        rung: L0
+        note: "sector.industry_t.endogen: true (method industry-heat-endogenous) on this fork: the OIS aggregate's heat is split by backup shares (10/65/25% in <100 / 100-200 / 200-500 °C) into bands with competing supply links — industry-process-heat-endogenous."
       - variant: "Tune transformation speed"
         rung: L1
         note: "industry.sector_ratios_fraction_future."

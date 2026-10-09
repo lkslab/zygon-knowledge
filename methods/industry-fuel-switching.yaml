@@ -30,8 +30,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
-    date: '2026-09-09'
+    ref: d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c
+    date: '2026-10-09'
   execution:
   - kind: config
     key: industry.DRI_fraction
@@ -122,9 +122,7 @@ models:
 notes: >-
   Country totals, not sites: production is national and reaches a cluster through the
   site lists, so the answer is the demand and the supply built around a cluster, never
-  a plant's business case. Process heat is split by fuel, not by temperature band, and
-  no route choice is endogenous at this anchor (the carrier card
-  industry-process-heat-endogenous records the gap). Pair with [[co2-budget]] for the
+  a plant's business case. Process heat is split by fuel, not by temperature band, unless [[industry-heat-endogenous]] is on (sector.industry_t.endogen, fork): then the endogenised sectors' heat becomes band demand the model supplies, and those sectors leave the sector_ratios_fraction_future blend (today's intensities); no production-route choice is endogenous either way. Pair with [[co2-budget]] for the
   target that prices the routes, [[h2-network-expansion]] when the question is where
   the hydrogen comes from, [[pathway-myopic]] when it is when the switch has to happen.
   The carrier cards h2-dri-steel, electric-arc-furnace, low-clinker-cement,

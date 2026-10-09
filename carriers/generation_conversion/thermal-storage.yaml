@@ -16,7 +16,7 @@ when_to_use:
   - "known in pypsa-eur as: water tanks, residential rural water tanks, services rural water tanks, residential urban decentral water tanks, services urban decentral water tanks, urban central water tanks, hot water storage, hot water charging, hot water discharging, urban central water tanks charger, urban central water tanks discharger, residential rural water tanks charger, residential rural water tanks discharger, residential urban decentral water tanks charger, residential urban decentral water tanks discharger, services rural water tanks charger, services rural water tanks discharger, services urban decentral water tanks charger, services urban decentral water tanks discharger, water pits, water pits charger, water pits discharger, urban central water pits, urban central water pits charger, urban central water pits discharger, aquifer thermal energy storage, aquifer thermal energy storage charger, aquifer thermal energy storage discharger"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
+    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
     out_of_box:
       covers: >
         Sector runs, on by default (sector.tes: true). add_heat gives EVERY heat
@@ -141,10 +141,10 @@ models:
         note: "cost rows Pumped-Heat-store/charger/discharger exist unconsumed; add an elec->heat-store->elec chain (the STORE_LOOKUP pattern in add_electricity.py or a new block in prepare_sector_network) — no data gap"
       - variant: "molten salt / sand / concrete high-temperature storage"
         rung: L2
-        note: "LowT/HighT-Molten-Salt, Sand and Concrete store/charger/discharger rows exist unconsumed; needs a code branch and a bus to serve (there are no industry heat buses at a6c45e5; the fork branch endogenous-industry-heat had them)"
+        note: "LowT/HighT-Molten-Salt, Sand and Concrete store/charger/discharger rows exist unconsumed; needs a code branch and a bus to serve (the industry_t band buses exist on this fork behind sector.industry_t.endogen and are the natural bus to serve)"
       - variant: "industrial process-heat storage"
-        rung: L5
-        note: "endogenous industry heat blocks have no Store and no storable-heat bus design; bespoke components"
+        rung: L2
+        note: "with sector.industry_t.endogen (fork) the band buses exist but carry no Store; a store/charger/discharger on a band bus is a code branch in add_t_industry* using the unconsumed molten-salt / sand / concrete cost rows"
       - variant: "borehole thermal storage (BTES)"
         rung: L5
         note: "no code, no cost rows, no geodata; nearest template is the ATES chain (aquifer-thermal-storage carrier card)"

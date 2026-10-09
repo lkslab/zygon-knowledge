@@ -137,7 +137,7 @@ models:
       scenario: "{demand} + {planning_horizons} wildcards through CAGR; sector.ammonia.production_year for the NH3 level; custom_data.industry_demand for full scenario overrides"
 
   - model: pypsa-eur
-    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
+    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
     out_of_box:
       covers: >
         Basic chemicals split into Ammonia, HVC, Chlorine and Methanol plus
@@ -252,8 +252,8 @@ models:
         rung: L2
         note: "proportional allocation in separate_basic_chemicals uses EU scalars; per-country data needs a script edit."
       - variant: "endogenous process-heat supply for HVC"
-        rung: L4
-        note: "upstream has no temperature-band process-heat machinery; HVC heat is a fixed carrier split from the JRC ratios placed by add_industry (reference implementation on the fork branch endogenous-industry-heat, not part of this anchor)."
+        rung: L0
+        note: "sector.industry_t.endogen: true (method industry-heat-endogenous) on this fork: HVC, pharmaceutical and other-chemicals heat is split into temperature bands with competing supply links (industry-process-heat-endogenous); the HVC recycling routes and the naphtha feedstock stay exogenous."
       - variant: "add a new named chemical product (e.g. adipic acid) as its own demand"
         rung: L4
         note: "needs a new production column + sector ratio + distribution key through the whole rule chain."

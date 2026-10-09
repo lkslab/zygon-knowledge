@@ -19,7 +19,7 @@ when_to_use:
   - "COP for industry heat"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
+    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
     out_of_box:
       covers: >
         Indirect only. Industrial low-temperature heat demand is attached in
@@ -43,13 +43,7 @@ models:
         heat-bus heat pumps whose dispatch may cover the industrial low-T
         share.
       not_covered: >
-        No industrial (high-temperature) heat pump at any process temperature
-        — no "industrial heat pump high temperature" link, no temperature
-        bands, no supply competition inside industry. Industrial heat pump
-        COP, waste-heat sources and process-steam supply are all absent.
-        The fork branch endogenous-industry-heat carried a temperature-banded
-        machinery with a 100-200 °C industrial heat pump link; it is not part
-        of upstream a6c45e5.
+        By default no industrial (high-temperature) heat pump at any process temperature — no "industrial heat pump high temperature" link, no temperature bands, no supply competition inside industry. On this fork the industry_t temperature bands exist (heat100-200 / heat200-500 / heat500+ industry buses with competing supply links) behind sector.industry_t.endogen, off by default — see the industry-process-heat-endogenous carrier card and the industry-heat-endogenous method. Its heat pump (100-200 °C band only) runs at the catalogue COP with free, unlimited source heat from the environment, draws from the AC node and has no waste-heat source or temperature lift.
       provenance: "scripts/prepare_sector_network.py:low-temperature heat for industry; scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:heat_pump_sources; rules/build_sector.smk:build_cop_profiles; scripts/build_industrial_energy_demand_per_node.py"
     levers:
       - key: sector.heat_pump_sources
@@ -72,8 +66,8 @@ models:
         rung: L1
         note: "raise industry.sector_ratios_fraction_future; no heat pump asset, demand simply moves to 'industry electricity'"
       - variant: "dedicated industrial heat pump for 100-200 °C process heat/steam"
-        rung: L4
-        note: "no process-heat bus exists upstream — needs a demand rule splitting the flat industry fuel loads by temperature level plus an extendable heat pump link (cost row 'industrial heat pump high temperature' exists in technology-data); reference implementation on the fork branch endogenous-industry-heat, not part of this anchor"
+        rung: L0
+        note: "sector.industry_t.endogen: true (method industry-heat-endogenous) on this fork adds '<node> heat100-200 industry industrial heat pump high temperature' per node (cost row 'industrial heat pump high temperature', fixed COP, AC node, free source heat) competing with the electric steam boiler, gas and biomass boilers in the 100-200 °C band — industry-process-heat-endogenous"
       - variant: "temperature-dependent industrial COP time series"
         rung: L5
         note: "the build_cop_profiles chain is keyed to heat systems and sources, not industrial processes; a dynamic industrial COP is bespoke on top of the L4 variant"

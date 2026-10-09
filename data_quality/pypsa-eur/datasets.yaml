@@ -16,6 +16,17 @@
   used_by: [residential-space-heating-demand, residential-water-heating-demand, residential-electricity-demand, services-heat-demand, services-electricity-demand, cooking-energy-demand, land-transport-demand, rail-transport-demand, aviation-demand, agriculture-energy-demand, district-heating-demand-share, steel-demand, chemicals-demand, cement-minerals-demand, pulp-paper-demand, food-beverages-demand, light-manufacturing-demand, industrial-process-heat-temperature-bands, building-retrofit]
   notes: "2023-v1 archive holds EU27 dirs only (plus EU27 aggregate); GR stored as EL, GB would map to UK but no UK dir exists at this version — so AL BA CH GB ME MK NO RS XK all take the EU-average path; per-country xlsx JRC-IDEES-{2023|2021}_{Residential|Tertiary|Transport|Industry...}_<CT>.xlsx"
 
+- id: fleiter-2025-process-temperature-bands
+  title: "Fleiter et al. 2025 industrial process heat temperature bands (supplementary data S1)"
+  path: data/ente202300981-sup-0001-suppdata-s1.xlsx
+  code_convention: global
+  coverage_class: proxy-global
+  consumer: "scripts/build_industry_sector_ratios_endogenous.py:process_temperature_band_mapper; scripts/build_industry_sector_ratios_endogenous.py:backup_temperature_band_shares"
+  missing_behavior: "EU-wide shares per industry process (sheet Industry_ESC_FEC) with no country dimension — every country gets the same temperature split of a sector's heat; sectors absent from the sheet (alumina, pharma, other industrial sectors, transport and machinery equipment, wood, textiles) use the hard-coded backup_temperature_band_shares; a process absent from the selected countries is skipped"
+  tier_when_missing: C
+  used_by: [industry-process-heat-endogenous, industrial-process-heat-temperature-bands, chemicals-demand, cement-minerals-demand, aluminium-nonferrous-demand, pulp-paper-demand, food-beverages-demand, light-manufacturing-demand, mining-construction-demand]
+  notes: "checked into the fork (CC-BY-4.0, REUSE annotation); read only by the horizon-free rule build_industry_sector_ratios_endogenous, whose output feeds the endogenous block of industrial_energy_demand_<horizon>.csv used when sector.industry_t.endogen is true; the Fleiter 'Mechanical pulp' row is overridden in code to 100% heat100-200"
+
 - id: eurostat-balances
   title: "Eurostat complete energy balances (nrg_bal_c)"
   path: data/eurostat_balances/archive/2026-02/estat_nrg_bal_c.tsv.gz
@@ -372,7 +383,7 @@
   consumer: "scripts/_helpers.py:load_costs"
   missing_behavior: "costs carry no country dimension — a single European (mostly DEA/German) cost table is applied uniformly to all countries and planning horizons requested, so national WACC, labour and land cost differences are invisible unless costs.overwrites are set per scenario"
   tier_when_missing: C
-  used_by: [electrolysers, grid-scale-batteries, onshore-wind, offshore-wind, utility-scale-solar-pv, gas-power-plants, direct-air-capture]
+  used_by: [electrolysers, grid-scale-batteries, onshore-wind, offshore-wind, utility-scale-solar-pv, gas-power-plants, direct-air-capture, industry-process-heat-endogenous]
   notes: "only costs_2050.csv staged at this ref (other horizons fetched on demand from the technology-data release); versioned via data/versions.csv 'costs' entry"
 
 - id: heat-profile-bdew

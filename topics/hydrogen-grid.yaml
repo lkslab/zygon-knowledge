@@ -72,8 +72,7 @@ models:
     electricity interconnector, and biomass, CO2 storage and the biomass limit are the
     country's own, so a small country's exogenous industrial biomass demand can exceed its
     potential and the run is infeasible by construction (NL 2040: 16 TWh/a against 3.5
-    TWh/a, both scenarios, imports on or off); a single-country hydrogen study turns on
-    sector.solid_biomass_import or widens countries to the neighbours, and says which
+    TWh/a, both scenarios, imports on or off); a single-country hydrogen study turns on industry-heat-endogenous (the exogenous biomass load becomes band heat the model supplies under the limit, and hydrogen firing joins the 200-500 and 500+ °C menus as a new hydrogen demand channel at a placeholder cost), or sector.solid_biomass_import, or widens countries to the neighbours, and says which
   methods:
   - id: h2-network-expansion
     role: >-
@@ -115,8 +114,8 @@ models:
   - id: compare_system_cost
     role: backbone vs no backbone, repurposed vs new-build, import vs domestic
   version_anchor:
-    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
-    date: '2026-09-09'
+    ref: d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c
+    date: '2026-10-09'
 - model: pypsa-earth
   approach: >-
     The study runs on the carrier levers and the default config; no method spec is

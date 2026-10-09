@@ -170,7 +170,7 @@ models:
       scenario: "CAGR growth/efficiency csvs compounded to the planning horizon; drivetrain share dicts keyed '{demand}_{planning_horizons}' (or Co2L opts via dynamic_transport)"
 
   - model: pypsa-eur
-    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
+    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
     out_of_box:
       covers: >
         Nodal hourly land-transport demand in units of driven km (100 km), split into

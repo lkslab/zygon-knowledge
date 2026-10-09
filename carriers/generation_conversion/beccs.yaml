@@ -19,7 +19,7 @@ when_to_use:
   - "net negative emissions from bioenergy"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
+    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
     out_of_box:
       covers: >
         There is no standalone "BECCS" carrier; BECCS is a family of CC
@@ -35,9 +35,7 @@ models:
         (sector.biosng_cc, independent of sector.biosng), carbon-negative
         hydrogen "solid biomass to hydrogen" (sector.bioH2 — CC by
         construction, capturing CO2-intensity x sector.cc_fraction), and "biogas
-        to gas CC" (sector.biogas_upgrading_cc). Industrial process heat has
-        no temperature-resolved biomass CC route: "solid biomass for industry
-        CC" is the only industrial biomass capture link. "waste CHP CC"
+        to gas CC" (sector.biogas_upgrading_cc). By default industrial process heat has no temperature-resolved biomass CC route: "solid biomass for industry CC" is the only industrial biomass capture link; with sector.industry_t.endogen (fork) the band CC twins "heat100-200 industry solid biomass CC" and "heat200-500 industry solid biomass CC" add two more per node. "waste CHP CC"
         (industry.waste_to_energy_cc) is
         carbon-negative only for the municipal-solid-waste share
         (sector.municipal_solid_waste), which the model books as 100%
@@ -157,8 +155,8 @@ models:
         rung: L1
         note: "combination: industry.waste_to_energy_cc + sector.municipal_solid_waste (+ sector.biomass); only the MSW share is biogenic-credited"
       - variant: "temperature-resolved industrial process-steam biomass CC"
-        rung: L4
-        note: "upstream has no temperature-band industrial heat machinery — industry biomass is one flat 'solid biomass for industry' (+CC) load per node in add_industry; band-resolved steam/direct-firing CC links need new demand rules and supply links (reference implementation: fork branch endogenous-industry-heat, not part of this anchor)"
+        rung: L0
+        note: "sector.industry_t.endogen: true (method industry-heat-endogenous) on this fork: 'heat100-200 industry solid biomass CC' (steam boiler) and 'heat200-500 industry solid biomass CC' (direct firing) per node, capture via the 'biomass CHP capture' row, biomass drawn from the spatial biomass buses under the biomass limit; no biomass option above 500 °C — industry-process-heat-endogenous"
       - variant: "remove the default-on BECCS routes but keep plain biomass"
         rung: L2
         note: "no switch — the CHP CC add in add_biomass and the industry CC add in add_industry are unconditional; comment them out (contrast: every other CC route has a flag)"

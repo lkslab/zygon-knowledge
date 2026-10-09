@@ -12,7 +12,7 @@ when_to_use:
   - "pypsa-eur carrier names: low voltage, electricity distribution grid, electricity grid connection"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
+    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
     out_of_box:
       covers: >
         Sector runs model a stylized LV layer by default
@@ -25,8 +25,7 @@ models:
         re-points components to the LV side: ALL loads whose carrier contains
         "electric" (regular electricity, industry electricity, agriculture
         machinery electric), BEV chargers (bus0) and V2G (bus1),
-        non-industrial heat pumps (bus1), industrial heat pumps (bus0),
-        resistive heaters (bus0) and micro gas CHP (bus1). It re-prices
+        heat pumps (bus1; the industry_t industrial heat pump of the fork's heat bands is excluded and stays on the AC node), resistive heaters (bus0) and micro gas CHP (bus1). It re-prices
         existing utility solar to the "solar-utility" cost row and adds
         "solar rooftop" generators on LV buses (potentials from rule
         build_solar_rooftop_potentials) plus a "home battery"

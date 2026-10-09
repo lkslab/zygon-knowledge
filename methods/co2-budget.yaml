@@ -32,8 +32,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
-    date: '2026-09-09'
+    ref: d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c
+    date: '2026-10-09'
   # No execution entries on purpose: co2_budget.* is a study-frame key the bundle
   # sets citing the tracker's emissions_target, never a method lever. This card is
   # the grounding the scoper relays and the consultant settles the key against.
@@ -133,5 +133,4 @@ notes: >-
   either way: Gurobi reports "Numerical trouble ... Model may be infeasible or unbounded"
   or "Infeasible model" within minutes of barrier, then computes an IIS until the job's
   runtime kills it, so a solve_network job that dies at its time limit after an early
-  infeasible line is a scenario infeasibility, not a solver-size problem; check the sinks
-  and the biomass balance of the selection before resizing anything.
+  infeasible line is a scenario infeasibility, not a solver-size problem; check the sinks and the biomass balance of the selection before resizing anything. The structural fix for the biomass side on this fork is [[industry-heat-endogenous]] (the industrial biomass load becomes band heat supplied under the limit); and with solving.options.infeasibility_diagnosis.time_limit set (fork, backend config) the IIS computation stops after that many seconds instead of running to the job's kill.

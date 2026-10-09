@@ -16,7 +16,7 @@ when_to_use:
   - "industrial heat integration"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
+    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
     out_of_box:
       covers: >
         Power-to-X waste heat is covered, on by default, for exactly six
@@ -107,8 +107,8 @@ models:
         rung: L5
         note: "district heating heat-pump sources are configured heat sources (heat_pump_sources) with dedicated potential rules — no industrial-excess-heat source chain exists (limited_heat_sources knows geothermal and river_water only)"
       - variant: "on-site reuse within industry (cascading between temperature levels)"
-        rung: L4
-        note: "industry has no temperature-resolved heat buses upstream, so there is nothing to cascade between; needs a banded process-heat representation first (reference implementation: fork branch endogenous-industry-heat, not part of this anchor)"
+        rung: L2
+        note: "with sector.industry_t.endogen (fork) the band buses exist per node, but their supply links have no heat byproduct output and no link connects the bands; a cascade (e.g. heat500+ exhaust feeding heat100-200) is an extra output bus on the firing links or a band-to-band link in add_t_industry* — see industry-process-heat-endogenous"
       - variant: "ORC electricity from waste heat"
         rung: L5
         note: "no ORC technology; needs new links + cost rows and a heat source to draw on"

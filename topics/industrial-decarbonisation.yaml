@@ -29,13 +29,20 @@ models:
     hydrogen is made, what the grid needs, what the cap does to process emissions. The
     industry-fuel-switching method settles the route keys and says which may vary per
     scenario (the route shares and the ratio blend, per horizon) and which hold for the
-    whole submission (the intensities, sector.ammonia, the site lists). The target comes
-    from co2-budget, the hydrogen supply from h2-network-expansion when that is the
-    question, the timing from pathway-myopic. The carrier cards h2-dri-steel,
-    electric-arc-furnace, low-clinker-cement, electrolytic-chemicals, industrial-ccs,
-    electric-process-heat and industrial-process-heat-temperature-bands carry the levers.
-    Results are read off the industry loads per cluster (the tabulated
-    industrial_energy_demand_<horizon>.csv) and what the system built to serve them.
+    whole submission (the intensities, sector.ammonia, the site lists). Process heat has
+    two treatments: by default it is an exogenous fuel share inside those loads; with
+    the industry-heat-endogenous method (sector.industry_t.endogen) the heat of the
+    endogenised sectors becomes three temperature-band loads per node (100-200,
+    200-500, 500+ °C) that steam boilers, direct firing, an industrial heat pump, an
+    electric boiler and hydrogen firing compete for under the carbon cap and the
+    biomass limit, so the study reads a technology choice instead of assuming one. The
+    target comes from co2-budget, the hydrogen supply from h2-network-expansion when
+    that is the question, the timing from pathway-myopic. The carrier cards
+    h2-dri-steel, electric-arc-furnace, low-clinker-cement, electrolytic-chemicals,
+    industrial-ccs, electric-process-heat, industrial-process-heat-temperature-bands
+    and industry-process-heat-endogenous carry the levers. Results are read off the
+    industry loads per cluster (the tabulated industrial_energy_demand_<horizon>.csv,
+    its exogenous or endogenous block) and what the system built to serve them.
   trade_offs:
   - >-
     the route split is a decision the model prices, not one it finds — the study is a
@@ -49,15 +56,25 @@ models:
     the hydrogen question and the industry question pull on each other: scoping out the
     backbone keeps the run small but leaves "where does the hydrogen come from" to a
     per-node electrolyser answer
+  - >-
+    process heat exogenous or endogenous is a choice about what the study assumes and
+    what it finds: the exogenous shares fix the fuel mix by assumption (and carry the
+    shipped electrification trajectory), the endogenous bands let the model pick the
+    technology per temperature level but start from today's intensities for the
+    endogenised sectors and add a must-run floor to every heat plant — a study whose
+    question is the heat supply itself turns the method on and says which sectors
   limitations:
   - >-
     country totals distributed by site lists, never a site: no plant business case, no
     single works, no port cluster as an entity — the answer is the demand and the build
     around a cluster
   - >-
-    no endogenous route choice at this anchor, process heat split by fuel not by
-    temperature band (the carrier card industry-process-heat-endogenous records the
-    gap), no industrial flexibility or load shifting
+    no endogenous production-route choice: the route shares are inputs. Process heat
+    is split by temperature band only with the industry-heat-endogenous method
+    (sector.industry_t.endogen, off by default), and then steel stays exogenous, the
+    endogenised sectors lose the exogenous efficiency and electrification blend
+    (today's intensities), there is no electric option above 200 °C and hydrogen firing
+    carries a placeholder cost; no industrial flexibility or load shifting either way
   - >-
     the intensities behind the routes (industry.H2_DRI, elec_DRI, the MWh_* keys) and
     sector.ammonia are read by horizon-free rules — a per-scenario change to them is
@@ -70,8 +87,10 @@ models:
     a one-country run supplies industry's exogenous solid biomass demand from the
     country's own potential only (the biomass limit sums the selected countries): where
     the demand is larger the run is infeasible by construction (NL 2040: 16 TWh/a against
-    3.5 TWh/a), so a single-country industry study turns on sector.solid_biomass_import or
-    settles fuel-switching assumptions that cut the biomass demand, and says which
+    3.5 TWh/a), so a single-country industry study turns on industry-heat-endogenous
+    (the exogenous biomass load shrinks to the non-endogenised sectors' share and the
+    bands choose their fuel under the limit), or sector.solid_biomass_import, and says
+    which
   methods:
   - id: industry-fuel-switching
     role: >-
@@ -89,6 +108,12 @@ models:
     role: >-
       when the switch has to happen — horizons with carry-over so a 2030 DRI plant's
       hydrogen demand persists into 2040
+  - id: industry-heat-endogenous
+    role: >-
+      the heat supply of the endogenised sectors as a model choice per temperature
+      band — the method for a question about electrifying, hydrogen-firing or keeping
+      biomass in industrial heat, and for a one-country run the biomass limit cannot
+      otherwise feed
   defaults:
   - aspect: route-trajectory
     is: >-
@@ -103,6 +128,14 @@ models:
     note: >-
       "regional" puts an ammonia bus per cluster; either way it is set once for the
       submission
+  - aspect: industry-heat
+    is: >-
+      exogenous (sector.industry_t.endogen false) — process heat stays a fuel share
+      inside the industry loads, following the shipped electrification trajectory
+    note: >-
+      industry-heat-endogenous switches to the temperature bands; the study says which
+      treatment it runs, since the two read differently (an assumed mix versus a priced
+      choice at today's intensities)
   plots:
   - id: capacity_mix
     role: hydrogen, electricity and capture capacity the industry demand pulls in, per scenario
@@ -111,8 +144,8 @@ models:
   - id: region_map
     role: industrial hydrogen and electricity demand per cluster
   version_anchor:
-    ref: a6c45e5a2d926ba9a5566cba24d905cff9f89939
-    date: '2026-09-09'
+    ref: d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c
+    date: '2026-10-09'
 - model: pypsa-earth
   approach: >-
     The study runs on the carrier levers and the default config; no method spec is

@@ -1,5 +1,5 @@
 id: industry-process-heat-endogenous
-title: Endogenous industrial process heat (temperature bands)
+title: Endogenous industrial process heat (industry_t temperature bands)
 summary: >
   Model-endogenous choice of how industrial process heat is supplied:
   industry heat demand split into temperature bands per node, with competing
@@ -7,69 +7,195 @@ summary: >
   hydrogen — with carbon-capture variants) replacing exogenous fuel shares.
 when_to_use:
   - "endogenous industry heat"
+  - "industry_t / industry temperature bands"
   - "let the model choose industrial heat supply"
   - "industrial fuel switching optimisation"
+  - "heat100-200 / heat200-500 / heat500+ industry"
+  - "endogenise_sectors / must_run"
   - "industrial steam and furnace technology competition"
   - "which industries can pick their heat source"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
+    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
     out_of_box:
       covers: >
-        Nothing — grounded absence at this anchor. Upstream a6c45e5 has no
-        endogenous industrial process-heat machinery: no temperature bands,
-        no "heatX industry" buses, no competing supply links, no
-        sector.industry_t config chapter. Industrial process heat is an
-        exogenous per-carrier demand: build_industry_sector_ratios (+ the
-        today/future blend in build_industry_sector_ratios_intermediate via
-        industry.sector_ratios_fraction_future) yields MWh/t per sector and
-        carrier, build_industrial_energy_demand_per_node distributes it, and
-        prepare_sector_network::add_industry attaches flat Loads ("gas for
-        industry", "solid biomass for industry", "coal for industry", "H2 for
-        industry", "industry electricity", "low-temperature heat for
-        industry"). Only the low-temperature share is served by network
-        components (heat pumps, resistive heaters, boilers, CHP on the
-        district-heating / decentral heat bus it lands on). The machinery
-        this card is about lived on the fork branch endogenous-industry-heat
-        (LukasFrankenQ/resilient-pypsa-eur, commit 849c8858) and is the
-        reference implementation for re-adding it; it is not part of this
-        anchor.
+        Implemented on this fork (the port of PyPSA/pypsa-eur#1943, open
+        upstream) and OFF by default (sector.industry_t.endogen: false; the
+        method industry-heat-endogenous turns it on). Demand side: the
+        horizon-free rule build_industry_sector_ratios_endogenous takes
+        TODAY'S country intensities (industrial energy demand today /
+        production today, JRC-IDEES chain) and, for every sector flagged true
+        in sector.industry_t.endogenise_sectors (default: aluminium
+        primary/secondary, alumina, other non-ferrous, HVC, cement, ceramics,
+        glass, pulp, paper, printing, food, pharma, transport equipment,
+        machinery, wood, textiles, other industrial sectors), converts the
+        heat-producing carriers (heat, biomass, methane) into four
+        temperature bands using Fleiter et al. 2025 supplementary data
+        (process_temperature_band_mapper; sectors missing there use
+        backup_temperature_band_shares; the Fleiter "Mechanical pulp" row is
+        overridden to 100% heat100-200). heat<100 folds into the existing
+        "low-temperature heat for industry" load on the heat bus.
+        build_industrial_energy_demand_per_node always emits both an
+        "exogenous" and an "endogenous" column block; add_industry reads the
+        endogenous one iff endogen is true. Supply side: per node,
+        add_t_industry100_200 / add_t_industry200_500 / add_t_industry500
+        create a "heatX industry" Bus, a flat Load ("<node> heatX industry
+        demand") and extendable supply Links named "<node> heatX industry
+        <technology>" per enabled menu entry: 100-200 °C — solid biomass
+        steam boiler (+CC), gas steam boiler (+CC), industrial
+        high-temperature heat pump (fixed COP from the cost row, electricity
+        from the AC node), electric steam boiler (AC node); 200-500 °C —
+        biomass direct firing (+CC, with pelletizing cost), gas direct firing
+        (+CC), hydrogen firing; 500+ °C — gas direct firing (+CC), hydrogen
+        firing. Biomass links draw from the spatial solid-biomass buses and so
+        sit under the "biomass limit"; gas links from the spatial gas buses;
+        CC twins use the "biomass CHP capture" rows. Every link carries
+        p_min_pu = sector.industry_t.must_run (0.8). Non-endogenised sectors
+        and steel keep the flat fuel loads; "process emission", "process
+        emission from feedstock", "naphtha", "methanol" and "current
+        electricity" are copied from the exogenous block since they are
+        independent of how heat is supplied. Under foresight myopic,
+        add_brownfield carries inherited band links shrink-only (p_nom_max =
+        built capacity, p_nom_min 0, capital cost = fixed O&M) so a falling
+        band demand never collides with the must-run floor of fixed capacity.
       mechanism: >
-        rule build_industry_sector_ratios -> build_industry_sector_ratios_intermediate
-        -> build_industrial_production_per_country(_tomorrow) ->
-        build_industrial_energy_demand_per_node -> rule compose_network:
-        add_industry attaches the flat loads. Fuel switching only happens
-        exogenously through the future sector ratios; the optimiser never
-        chooses an industrial heat supply technology.
+        rules build_industrial_energy_demand_per_country_today +
+        build_industrial_production_per_country -> rule
+        build_industry_sector_ratios_endogenous (params endogenise_sectors;
+        input data/ente202300981-sup-0001-suppdata-s1.xlsx) -> rule
+        build_industrial_energy_demand_per_node (endogenous block; steel and
+        HVC-recycling routes via sectors_copied_from_exogenous) -> rule
+        compose_network: add_industry reads industrial_demand.loc[:,
+        "endogenous"], calls the three add_t_industry* functions, then
+        attaches the remaining flat loads as usual; add_brownfield's
+        INDUSTRY_T_HEAT_BUS_SUFFIXES handles the myopic carry-over.
       not_covered: >
-        Everything endogenous: temperature-band demand splitting (Fleiter et
-        al. shares), band buses and loads, per-band technology menus (heat
-        pumps, electric boilers, biomass/gas steam boilers and direct firing
-        with CC twins, hydrogen), must-run duty floors, per-sector opt-in.
-        Steel process heat likewise has no supply choice.
-      provenance: "scripts/prepare_sector_network.py:add_industry; scripts/build_industry_sector_ratios_intermediate.py:sector_ratios_fraction_future; scripts/build_industrial_energy_demand_per_node.py; scripts/prepare_sector_network.py:low-temperature heat for industry"
-    levers: []
+        Steel is entirely outside the machinery (the ratios script does not
+        cover the steel sector): integrated, EAF and DRI routes stay
+        exogenous, and "DRI + Electric arc", "HVC (mechanical recycling)"
+        and "HVC (chemical recycling)" are copied from the exogenous ratios.
+        IMPORTANT interaction: endogenised sectors are rebuilt from today's
+        intensities for every carrier (electricity, coke, the heat bands), so
+        the industry.sector_ratios_fraction_future efficiency/electrification
+        blend NO LONGER applies to them — progress must come from the band
+        supply links, and the endogenous block's electricity demand is
+        today's, not the transformed one. No electric option above 200 °C
+        (no electric furnace or kiln). The hydrogen links in both upper bands
+        are priced with a placeholder (code TODO: industrial H2 combustion
+        "set to 10x methane combustion"). The band CC twins are unconditional
+        companions of their fuel flags (no separate CC switch). must_run is
+        one global scalar across all bands and technologies. The industrial
+        heat pump takes its source heat from the environment for free and
+        without limit, at the catalogue COP (no temperature lift, no waste-heat
+        source). Band loads are flat (annual total / 8760, which equals the
+        snapshot-weighting sum on full-year runs); there is no industrial heat
+        store on the band buses. Varying any sector.industry_t key per
+        scenario is valid but makes the app rebuild the resources per
+        scenario (sector.* is a base-shared chapter), since endogenise_sectors
+        is read by a horizon-free rule.
+      provenance: "scripts/build_industry_sector_ratios_endogenous.py:build_industry_sector_ratios_endogenous; scripts/build_industry_sector_ratios_endogenous.py:backup_temperature_band_shares; scripts/prepare_sector_network.py:add_t_industry100_200; scripts/prepare_sector_network.py:add_t_industry200_500; scripts/prepare_sector_network.py:add_t_industry500; scripts/build_industrial_energy_demand_per_node.py:sectors_copied_from_exogenous; scripts/add_brownfield.py:INDUSTRY_T_HEAT_BUS_SUFFIXES; rules/build_sector.smk:build_industry_sector_ratios_endogenous; doc/release_notes.md:Endogenous industry process heat supply"
+    levers:
+      - key: sector.industry_t.endogen
+        effect: "Master switch: true selects the endogenous demand block and builds the band buses/loads/technologies; false keeps the classic exogenous fuel-share treatment."
+        default: "false"
+        provenance: "config/config.default.yaml:industry_t; scripts/prepare_sector_network.py:add_t_industry100_200"
+      - key: sector.industry_t.must_run
+        effect: "p_min_pu on every band supply link — 0.8 forces near-baseload operation of built capacity (limits seasonal fuel switching and overbuilding); applies globally."
+        default: "0.8"
+        provenance: "config/config.default.yaml:must_run; scripts/prepare_sector_network.py:must_run"
+      - key: sector.industry_t.endogenise_sectors
+        effect: "Per-sector booleans: true splits that sector's heat into bands; false keeps its exogenous flat-fuel treatment (heat folds to heat<100 / low-temperature heat). Steel, HVC recycling and DRI are not listed and can NOT be enabled here. Read by a horizon-free rule: a per-scenario change rebuilds the resources."
+        default: "18 sectors, all true"
+        provenance: "config/config.default.yaml:endogenise_sectors; scripts/build_industry_sector_ratios_endogenous.py:endogenise_sectors"
+      - key: sector.industry_t.heat100-200
+        effect: "Tech menu for 100-200 °C: biomass, methane, heat_pumps, electric_boiler flags (fuel flags also bring the CC twin)."
+        default: "{biomass: true, methane: true, heat_pumps: true, electric_boiler: true}"
+        provenance: "config/config.default.yaml:industry_t; scripts/prepare_sector_network.py:electric_boiler"
+      - key: sector.industry_t.heat200-500
+        effect: "Tech menu for 200-500 °C: biomass, methane, hydrogen flags."
+        default: "{biomass: true, methane: true, hydrogen: true}"
+        provenance: "config/config.default.yaml:industry_t; scripts/prepare_sector_network.py:add_t_industry200_500"
+      - key: sector.industry_t.heat500+
+        effect: "Tech menu for 500+ °C: methane, hydrogen flags (no biomass, no electric)."
+        default: "{methane: true, hydrogen: true}"
+        provenance: "config/config.default.yaml:industry_t; scripts/prepare_sector_network.py:add_t_industry500"
+      - key: sector.industry
+        effect: "Industry master switch — gates add_industry and thus the whole machinery."
+        default: "true"
+        provenance: "config/config.default.yaml:industry; scripts/prepare_sector_network.py:add_industry"
+      - key: costs.overwrites
+        effect: "Override the band technology cost rows (solid biomass boiler steam, gas boiler steam, direct firing gas, direct firing solid fuels, electric boiler steam, industrial heat pump high temperature) in prepare_costs."
+        default: "{} (empty)"
+        provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
     boundary:
-      - variant: "endogenous temperature-banded industrial process heat"
+      - variant: "turn on endogenous industrial heat supply"
+        rung: L0
+        note: "sector.industry_t.endogen: true — the method industry-heat-endogenous; everything else defaults sensibly"
+      - variant: "endogenise only selected industries"
+        rung: L1
+        note: "flip entries in sector.industry_t.endogenise_sectors (base config, not per scenario, unless the resources may be rebuilt per scenario)"
+      - variant: "restrict or extend a band's technology menu"
+        rung: L1
+        note: "band flags (e.g. forbid gas: heat100-200.methane: false — note this also removes the gas CC twin)"
+      - variant: "flexible operation (lower must-run share)"
+        rung: L1
+        note: "sector.industry_t.must_run — one global value; per-band or per-tech values need edits in the add_t_industry* calls (L2)"
+      - variant: "new technology in a band (MVR, electric furnace, biomass 500+ °C, geothermal steam)"
+        rung: L2
+        note: "add a branch in the respective add_t_industry* function plus a config flag; cost row via data/custom_costs.csv if missing (L3)"
+      - variant: "proper hydrogen combustion costs (replace the 10x-gas placeholder)"
+        rung: L3
+        note: "provide a dedicated cost row and swap the 10x 'direct firing gas' lookups in add_t_industry200_500 / add_t_industry500 (L2 for the code part)"
+      - variant: "band CC twins optional"
+        rung: L2
+        note: "no CC switch — wrap the CC n.add calls in the add_t_industry* functions with a flag"
+      - variant: "different temperature-band shares for a sector"
+        rung: L2
+        note: "edit backup_temperature_band_shares / process_temperature_band_mapper in build_industry_sector_ratios_endogenous.py; wholly new source data replaces the Fleiter xlsx (L3)"
+      - variant: "endogenise steel heat"
         rung: L4
-        note: "new rule plumbing: a demand rule splitting each sector's fuel use into temperature bands (Fleiter et al. 2025 supplementary data, not in the upstream data bundle), an endogenous demand block in build_industrial_energy_demand_per_node, band buses/loads/supply links in add_industry, a sector.industry_t config chapter and cost rows for the band technologies; port from the fork branch endogenous-industry-heat (commit 849c8858)"
+        note: "steel is excluded by design in the ratios script and copied exogenous in the per-node rule; needs changes in both rules plus a decision how EAF/DRI route logic interacts — effectively new rule plumbing (a separate upstream PR)"
+      - variant: "future efficiency progress for endogenised sectors' band demand"
+        rung: L2
+        note: "endogenous ratios are today-based; blending towards future intensities (as the intermediate rule does for exogenous) needs an edit in build_industry_sector_ratios_endogenous"
+      - variant: "industrial heat pump lifting heat from a lower band or a waste-heat bus"
+        rung: L2
+        note: "the heat pump's bus0 is the AC node and its source heat is free; a second input bus (urban central heat, an electrolysis waste-heat bus) with a lift-dependent COP is an edit in add_t_industry100_200"
+      - variant: "hourly-resolved (non-flat) band demand profiles"
+        rung: L5
+        note: "band Loads are annual/8760 constants; industrial load profiles do not exist in the workflow"
     where:
-      - change: "where band buses, loads and supply links would be added"
-        anchor: "scripts/prepare_sector_network.py::add_industry (flat industry loads)"
-        provenance: "scripts/prepare_sector_network.py:add_industry"
-      - change: "where per-node demand blocks are assembled"
+      - change: "band demand construction, sector selection, temperature shares"
+        anchor: "scripts/build_industry_sector_ratios_endogenous.py (rule build_industry_sector_ratios_endogenous)"
+        provenance: "scripts/build_industry_sector_ratios_endogenous.py:process_temperature_band_mapper; rules/build_sector.smk:build_industry_sector_ratios_endogenous"
+      - change: "merging endogenous/exogenous blocks per node; carriers copied from exogenous"
         anchor: "scripts/build_industrial_energy_demand_per_node.py (rule build_industrial_energy_demand_per_node)"
-        provenance: "scripts/build_industrial_energy_demand_per_node.py; rules/build_sector.smk:build_industrial_energy_demand_per_node"
+        provenance: "scripts/build_industrial_energy_demand_per_node.py:partial_group"
+      - change: "band buses, loads and supply technology links"
+        anchor: "scripts/prepare_sector_network.py::add_t_industry100_200 / ::add_t_industry200_500 / ::add_t_industry500 (called from add_industry)"
+        provenance: "scripts/prepare_sector_network.py:add_t_industry100_200; scripts/prepare_sector_network.py:add_industry"
+      - change: "demand block selection (endogenous vs exogenous)"
+        anchor: "scripts/prepare_sector_network.py::add_industry (industrial_demand.loc[:, 'endogenous'] with options['industry_t']['endogen'])"
+        provenance: "scripts/prepare_sector_network.py:endogen"
+      - change: "electricity wiring of the band's electric options (AC node, excluded from the heat-pump low-voltage move)"
+        anchor: "scripts/prepare_sector_network.py::insert_electricity_distribution_grid"
+        provenance: "scripts/prepare_sector_network.py:insert_electricity_distribution_grid"
+      - change: "myopic carry-over of inherited band links (shrink-only, FOM-only cost)"
+        anchor: "scripts/add_brownfield.py::add_brownfield (INDUSTRY_T_COST_TECH, industry_t_fom_cost)"
+        provenance: "scripts/add_brownfield.py:industry_t_fom_cost"
       - change: "band technology cost rows"
         anchor: "scripts/process_cost_data.py::prepare_costs; data/custom_costs.csv (costs.custom_cost_fn)"
         provenance: "scripts/process_cost_data.py:prepare_costs; config/config.default.yaml:custom_cost_fn"
     data_dependencies:
+      - input: "data/ente202300981-sup-0001-suppdata-s1.xlsx (Fleiter et al. 2025 supplementary: process temperature bands, sheet Industry_ESC_FEC; CC-BY-4.0)"
+        required_for: "temperature-band split of the mapped sectors (EU-wide shares, no country dimension)"
+        availability: "exists by default (checked into the repo)"
       - input: "industrial energy demand per country today + industrial production per country (JRC-IDEES chain)"
-        required_for: "today's intensities any band split would start from"
-        availability: "must be built (rules build_industrial_energy_demand_per_country_today, build_industrial_production_per_country; JRC-IDEES retrieved)"
-      - input: "process temperature-band shares per sector (e.g. Fleiter et al. 2025 supplementary xlsx)"
-        required_for: "temperature-band split"
-        availability: "absent from upstream — ships only on the fork branch"
-      - input: "cost rows for band supply technologies (steam boilers, direct firing, electric boiler steam, industrial heat pump high temperature)"
-        required_for: "band supply links"
-        availability: "exists in technology-data via retrieve_cost_data + rule process_cost_data; unused upstream"
+        required_for: "today's intensities the bands are derived from"
+        availability: "must be built (rules build_industrial_energy_demand_per_country_today, build_industrial_production_per_country; JRC-IDEES retrieved; non-EU27 selections take the EU27-aggregate basis)"
+      - input: "cost rows: solid biomass boiler steam (+ CC), gas boiler steam, direct firing gas (+ CC), direct firing solid fuels (+ CC), electric boiler steam, industrial heat pump high temperature, biomass CHP capture, biomass boiler (pelletizing cost)"
+        required_for: "band supply technologies and their CC twins"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "spatial gas and biomass nodes, nodal H2 buses, co2 stored buses"
+        required_for: "band link fuel inputs and CC outputs"
+        availability: "exists by default in sector runs"

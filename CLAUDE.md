@@ -88,12 +88,20 @@ Two more app readers open the same files without going through the scoper:
 
 Every card section cites a `version_anchor.ref`. The validator requires the canonical one per
 model. Earth cards cite `8435f4c8`, which is also the `models/pypsa-earth` submodule pin. Eur
-cards cite `a6c45e5a2d926ba9a5566cba24d905cff9f89939`, upstream `PyPSA/pypsa-eur` master
-("Streamline workflow" #1838, 2026-09-09), which is also the `models/pypsa-eur` submodule pin;
-`tools/validate.py` checks the two agree. The canonical eur sha lives in `tools/validate.py`
-(`EUR_ANCHOR`), not in the frozen `archive/tools/restructure.py`.
+cards cite `d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c`, the `lkslab/pypsa-eur` fork commit the app
+runs (its `workflows/pypsa-eur` gitlink and `workflow_catalog.pinned_ref`; branch `dev`, which
+is upstream `a6c45e5a` "Streamline workflow" #1838 plus the fork's fixes and the port of
+PyPSA/pypsa-eur#1943), which is also the `models/pypsa-eur` submodule pin (`.gitmodules` points
+at `git@github.com:lkslab/pypsa-eur.git`); `tools/validate.py` checks the two agree. The
+canonical eur sha lives in `tools/validate.py` (`EUR_ANCHOR`), not in the frozen
+`archive/tools/restructure.py`. Since 2026-10-09 the eur anchor follows the app's fork pin, so
+the cards describe the model the app runs and the referee's anchor check matches. Bumping it
+when the app pins a new fork commit: `git -C models/pypsa-eur fetch origin dev && git -C
+models/pypsa-eur checkout <sha>`, set `EUR_ANCHOR`, replace the old sha and its `date:` in
+every eur `version_anchor` (one `sed`), then `python3 tools/validate.py` and
+`python3 tools/resolve_eur_citations.py`.
 
-What a6c45e5 means for card content: there is no `scenario` block and no wildcard
+What the anchor means for card content (unchanged since a6c45e5): there is no `scenario` block and no wildcard
 (`{clusters}`, `{opts}`, `{sector_opts}`, `{ll}`); cluster count is
 `clustering.cluster_network.n_clusters`, time resolution `clustering.temporal.averaging`,
 horizons the top-level `planning_horizons` list, CO2 the top-level `co2_budget` block
@@ -103,12 +111,17 @@ prepare_network, brownfield/perfect, CO2 budget, adjustments in one rule) -> `so
 (rules/solve.smk). Networks are `resources/<run>/networks/composed_<horizon>.nc` and
 `results/<run>/networks/solved_<horizon>.nc`; resource files carry no cluster suffix.
 
-Until 2026-09-10 the eur anchor was `849c8858`, a commit on the fork branch
-`endogenous-industry-heat` (LukasFrankenQ/resilient-pypsa-eur, not on any public remote).
-Its endogenous temperature-banded industrial process heat (`sector.industry_t`,
-`build_industry_sector_ratios_endogenous.py`, `add_t_industry*`) is not upstream; the cards
-now describe it as absent (`industry-process-heat-endogenous` eur section is a gap, the
-industry cards re-rung those asks as L4 code changes naming the fork branch).
+History: until 2026-09-10 the eur anchor was `849c8858`, a commit on the fork branch
+`endogenous-industry-heat` (LukasFrankenQ/resilient-pypsa-eur, not on any public remote) that
+carried an early version of the endogenous industrial process heat; from 2026-09-10 to
+2026-10-09 it was upstream `a6c45e5a` and the cards described that feature as absent (L4 gaps
+naming the fork branch). On 2026-10-09 the fork gained the port of PyPSA/pypsa-eur#1943
+(`sector.industry_t`, `build_industry_sector_ratios_endogenous.py`, `add_t_industry*`, off by
+default) and the cards re-anchored on the fork pin: `industry-process-heat-endogenous`
+describes the mechanism, the method `industry-heat-endogenous` turns it on, and the former L4
+boundaries on the industry and heat cards are L0/L1 again. Fork-only features the cards cite
+beyond that: `solving.options.infeasibility_diagnosis`, `custom_rules`, the one-country data
+fixes.
 
 ## Current state of the link (as of 2026-09-10)
 
@@ -117,6 +130,10 @@ industry cards re-rung those asks as L4 code changes naming the fork branch).
   `carriers/`) and `24af385` the pin sat at `8809a8c`, a commit that still had `recipes/`, so
   any deployment built from that window saw no carrier cards. When changing a directory name
   or card shape again, bump the gitlink in the same app commit that changes the reader.
+- **Eur content re-anchored on the fork pin `d31ad9fa` on 2026-10-09** (see Anchors): one sha
+  replacement in every eur section plus the industry-heat content; `tools/resolve_eur_citations.py`
+  resolves against the fork checkout. Nothing re-run beyond the two industry demand rules on the
+  NL 2040 resources (the numbers in biomass-bioenergy and the method card).
 - **Eur content re-anchored to upstream a6c45e5 on 2026-09-10, nothing re-run.** Every
   pypsa-eur section (146 carrier cards, 7 topics, 12 method docs, data_quality, the
   seven payloads) was rewritten against the streamlined workflow and passes

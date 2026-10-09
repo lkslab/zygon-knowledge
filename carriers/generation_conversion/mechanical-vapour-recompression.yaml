@@ -14,7 +14,7 @@ when_to_use:
   - "cut steam demand in food or paper industry"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
+    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
     out_of_box:
       covers: >
         Nothing MVR-specific — no MVR component, cost row or config key exists
@@ -40,11 +40,7 @@ models:
         representation of avoided-steam efficiency investments; no
         process-level heat integration or cascading. MVR can only be
         represented by shrinking fuel rows and adding electricity in the
-        sector-ratio machinery (code/data edit, no config hook), or by
-        building a steam bus with competing supply links (the fork branch
-        endogenous-industry-heat carried such a temperature-banded machinery
-        with an industrial heat pump as MVR-adjacent proxy; it is not part of
-        upstream a6c45e5).
+        sector-ratio machinery (code/data edit, no config hook), or through the fork's industry_t bands (sector.industry_t.endogen, off by default): the 100-200 °C band bus with its industrial heat pump is the MVR-adjacent proxy, see industry-process-heat-endogenous.
       provenance: "scripts/prepare_sector_network.py:add_industry; scripts/build_industry_sector_ratios.py:food_beverages_tobacco; scripts/build_industry_sector_ratios_intermediate.py:sector_ratios_fraction_future; scripts/build_industrial_energy_demand_per_node.py"
     levers:
       - key: industry.sector_ratios_fraction_future
@@ -60,11 +56,11 @@ models:
         rung: L2
         note: "no config hook — adjust the affected sector functions in build_industry_sector_ratios.py (food_beverages_tobacco, pulp_paper_printing) or post-process industry_sector_ratios_{year}.csv (L3)"
       - variant: "electric steam upgrading competing against fuel boilers (MVR-adjacent)"
-        rung: L4
-        note: "needs an explicit process-steam bus per node split off the flat industry fuel loads (new demand rule) plus competing extendable supply links in add_industry; reference implementation on the fork branch endogenous-industry-heat, not part of this anchor"
+        rung: L0
+        note: "sector.industry_t.endogen: true (method industry-heat-endogenous) on this fork: the heat100-200 industry bus per node with the industrial heat pump and the electric steam boiler competing against gas and biomass steam boilers — industry-process-heat-endogenous"
       - variant: "MVR as a distinct technology in that steam band"
-        rung: L4
-        note: "on top of the previous variant: an MVR link with its own carrier and config flag; needs an MVR cost row (L3 — none exists in technology-data, supply via data/custom_costs.csv)"
+        rung: L2
+        note: "on top of the fork's band: an MVR link with its own carrier and config flag in add_t_industry100_200; needs an MVR cost row (L3 — none exists in technology-data, supply via data/custom_costs.csv)"
       - variant: "cap MVR to the evaporation/drying share of a sector's steam"
         rung: L4
         note: "requires an applicability split of steam demand per sector — data plus the demand-rule code"

@@ -1,0 +1,126 @@
+id: industry-heat-endogenous
+title: industry-heat-endogenous — let the model choose how industrial process heat is supplied
+family: sector-coupling
+what: >-
+  With sector.industry_t.endogen the industrial process heat of the endogenised sectors
+  stops being an exogenous fuel share and becomes three temperature-band demands per
+  node (heat100-200, heat200-500 and heat500+ industry) that extendable supply links
+  compete for: solid biomass and gas steam boilers with carbon-capture twins, an
+  industrial high-temperature heat pump and an electric steam boiler at 100-200 °C,
+  biomass and gas direct firing (with CC) and hydrogen firing at 200-500 °C, gas direct
+  firing (with CC) and hydrogen firing above 500 °C, every link with a must-run floor
+  (sector.industry_t.must_run). The bands come from the horizon-free rule
+  rules/build_sector.smk:build_industry_sector_ratios_endogenous, which splits today's
+  per-country fuel intensities (JRC-IDEES) by the Fleiter et al. 2025 process
+  temperature shares for every sector flagged in sector.industry_t.endogenise_sectors
+  (steel never; "DRI + Electric arc" and the HVC recycling routes are copied from the
+  exogenous ratios); build_industrial_energy_demand_per_node always writes both an
+  exogenous and an endogenous block, and scripts/prepare_sector_network.py:add_industry
+  reads the endogenous one and calls add_t_industry100_200, add_t_industry200_500 and
+  add_t_industry500 when the switch is on. The exogenous "solid biomass for industry"
+  and "gas for industry" loads shrink to the non-endogenised sectors' share; process
+  emissions, naphtha, methanol and the electricity baseline are unchanged. The port of
+  PyPSA/pypsa-eur#1943 onto the fork the app runs; the mechanism card
+  industry-process-heat-endogenous carries the detail.
+when_to_use:
+- electrifying industrial process heat
+- industrial heat pumps, electric boilers or hydrogen for process heat
+- which fuel should industry burn, biomass or gas or hydrogen, per temperature level
+- a single-country sector study whose industrial biomass demand exceeds the country's potential
+- how much industrial heat can be electrified and what it does to the grid
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c
+    date: '2026-10-09'
+  execution:
+  - kind: config
+    key: sector.industry_t.endogen
+    value: true
+    note: >-
+      the switch. Read in compose_network only (the per-node demand file always carries
+      both blocks), so it is scenario-safe in itself; an exogenous-vs-endogenous pair is
+      a legitimate two-scenario study.
+  - kind: config
+    key: sector.industry_t.must_run
+    value: 0.8
+    note: >-
+      p_min_pu on every band supply link, the shipped default: built heat capacity runs
+      near baseload, as on-site plants do. Lower it for a flexibility study; one global
+      scalar for all bands and technologies.
+  - kind: config
+    key: sector.industry_t.heat100-200
+    value:
+      biomass: true
+      methane: true
+      heat_pumps: true
+      electric_boiler: true
+    note: >-
+      the 100-200 °C menu, shipped defaults. A fuel flag brings its CC twin along;
+      "electrification only" is biomass and methane false.
+  - kind: config
+    key: sector.industry_t.heat200-500
+    value:
+      biomass: true
+      methane: true
+      hydrogen: true
+    note: the 200-500 °C menu, shipped defaults; hydrogen firing is priced at ten times gas firing (placeholder).
+  - kind: config
+    key: sector.industry_t.heat500+
+    value:
+      methane: true
+      hydrogen: true
+    note: the 500+ °C menu, shipped defaults; no biomass and no electric option above 500 °C.
+  - kind: config
+    key: sector.industry_t.endogenise_sectors
+    value:
+      Cement: true
+      Glass production: true
+      Food, beverages and tobacco: true
+    note: >-
+      per-sector opt-in, every sector true by default (eighteen sectors; steel, HVC
+      recycling and DRI cannot be listed). Set it once in the base config: the key is
+      read by a horizon-free rule, so a per-scenario difference makes the harness
+      rebuild the resources per scenario rather than share them.
+  - kind: invocation
+    note: >-
+      config only, no code: the fork ships the rule, the data file
+      (data/ente202300981-sup-0001-suppdata-s1.xlsx) and the add_t_industry* functions,
+      so a bundle sets the keys and nothing else. Read the result off the band loads
+      (carrier "heat100-200 industry", "heat200-500 industry", "heat500+ industry") and
+      the links feeding them (carriers "<band> industry <technology>"); the
+      technology split per band is the answer, the remaining "solid biomass for
+      industry" and "gas for industry" loads are the non-endogenised rest.
+  invalidates:
+  - compose_network
+  - solve_network
+  budget:
+    jobs: 2
+    class: hours
+  success_metric:
+  - name: band-demands-present
+    needs: prepared
+    check: n.loads.carrier.isin(['heat100-200 industry', 'heat200-500 industry', 'heat500+ industry']).any()
+    expect: a band load per node with industrial production once the switch is on
+  - name: band-supply-built
+    needs: solved
+    check: n.links.loc[n.links.bus1.str.endswith(' industry') & n.links.carrier.str.startswith('heat'), 'p_nom_opt'].sum() > 0
+    expect: the optimiser built supply for the bands; the carrier mix of that capacity is the result
+notes: >-
+  The endogenised sectors are rebuilt from today's intensities for every carrier, so the
+  industry.sector_ratios_fraction_future blend of [[industry-fuel-switching]] no longer
+  reaches them: their electricity baseline is today's, and efficiency progress has to
+  come from the band technologies. The route keys of [[industry-fuel-switching]] still
+  decide the production the bands are derived from, and steel stays entirely exogenous.
+  For a one-country run the method is the structural way out of the biomass trap recorded
+  in [[co2-budget]] note (i): the exogenous "solid biomass for industry" load that the
+  biomass limit could not cover becomes band demand that biomass, gas, electricity and
+  hydrogen compete for under the limit. Under [[pathway-myopic]] inherited band links are
+  carried shrink-only (retirable to zero, capped at what was built, charged fixed O&M
+  only), so a falling band demand never collides with the must-run floor. The hydrogen
+  firing cost is a placeholder (ten times gas firing); a study whose answer hinges on
+  hydrogen-versus-electricity in the upper bands says so. The industrial heat pump draws
+  from the AC node at the catalogue COP with free, unlimited source heat; the electric
+  steam boiler likewise, so the two electric options compete on equal terms. Pair with
+  [[co2-budget]] for the target that prices the fuels and [[h2-network-expansion]] when
+  the hydrogen for the upper bands is part of the question.

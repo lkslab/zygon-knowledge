@@ -21,7 +21,7 @@ when_to_use:
   - "cement kiln fuel switching"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
+    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
     out_of_box:
       covers: >
         Nothing clinker-substitution-specific. Cement exists as an exogenous
@@ -35,8 +35,7 @@ models:
         emissions become part of the "process emissions" Load in add_industry,
         which can be vented or captured by the always-present "process
         emissions CC" Link (cement capture cost row) — capture, not clinker
-        reduction, is the model's only endogenous cement-CO2 measure. Kiln
-        fuel is a flat exogenous load (no temperature bands, no fuel choice).
+        reduction, is the model's only endogenous cement-CO2 measure. Kiln fuel is a flat exogenous load by default; with sector.industry_t.endogen (fork) it becomes a heat500+ industry band demand where gas, gas CC and hydrogen firing compete.
         Spatially, cement is distributed by the GEM
         cement tracker with a hardcoded clinker_cement_ratio = 0.737 (used
         only as a capacity conversion in the distribution key, not as a
@@ -79,8 +78,8 @@ models:
         rung: L0
         note: "already endogenous — the 'process emissions CC' link (cement capture cost row) is always added; sequestration limits and CO2 network govern uptake (see industrial-ccs carrier card)"
       - variant: "endogenous kiln fuel choice (gas vs hydrogen vs CC)"
-        rung: L4
-        note: "upstream has no temperature-band industrial heat machinery — kiln fuel is a flat load from the Cement block of nonmetalic_mineral_products; a kiln-heat bus with competing gas/hydrogen (+CC) links needs new demand rules and supply links in add_industry (reference implementation: fork branch endogenous-industry-heat, not part of this anchor)"
+        rung: L0
+        note: "sector.industry_t.endogen: true (method industry-heat-endogenous) on this fork: cement heat sits in the heat500+ industry band with gas, gas CC and hydrogen firing competing (hydrogen at a placeholder cost, no electric kiln) — industry-process-heat-endogenous"
       - variant: "lower clinker ratio: cut cement process emissions per tonne by X%"
         rung: L2
         note: "no config key — scale the 'process emission' entry of the Cement block in build_industry_sector_ratios.py (future ratios) and note today's country ratios blend in via fraction_future; alternatively post-process the industry_sector_ratios_{year} resource (L3)"

@@ -116,7 +116,7 @@ models:
       scenario: "{demand} + {planning_horizons} via CAGR; demand_data.aluminium_year for the emissions base"
 
   - model: pypsa-eur
-    version_anchor: {ref: "a6c45e5a2d926ba9a5566cba24d905cff9f89939", date: "2026-09-09"}
+    version_anchor: {ref: "d31ad9fa60c8fd9fe79e4647cde0a4a70eeb797c", date: "2026-10-09"}
     out_of_box:
       covers: >
         Four separate non-ferrous products with kt/a tonnage per country from
@@ -174,8 +174,8 @@ models:
         rung: L0
         note: "industry.sector_ratios_fraction_future."
       - variant: "endogenous fuel choice for NFM process heat"
-        rung: L4
-        note: "upstream has no temperature-band process-heat machinery: NFM heat is a fixed methane/electricity split from the JRC ratios placed by add_industry; a band-resolved supply choice needs a new ratio-splitting script plus band buses and supply links (reference implementation on the fork branch endogenous-industry-heat, not part of this anchor)."
+        rung: L0
+        note: "sector.industry_t.endogen: true (method industry-heat-endogenous) on this fork: alumina (100% heat500+ from the backup shares), primary and secondary aluminium and other non-ferrous heat split into bands with competing supply links; smelting electricity is untouched — industry-process-heat-endogenous."
       - variant: "scale total aluminium production volume"
         rung: L3
         note: "no config factor — override resources/industrial_production_per_country.csv aluminium columns."
