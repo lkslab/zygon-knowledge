@@ -88,11 +88,13 @@ Two more app readers open the same files without going through the scoper:
 
 Every card section cites a `version_anchor.ref`. The validator requires the canonical one per
 model. Earth cards cite `8435f4c8`, which is also the `models/pypsa-earth` submodule pin. Eur
-cards cite `f55cdf34f0e67a797fd4327bed26c56dedcb5cb8`, the `lkslab/pypsa-eur` fork commit the app
+cards cite `d2e0d48666f09a580c744846cef37e5059761d7a`, the `lkslab/pypsa-eur` fork commit the app
 runs (its `workflows/pypsa-eur` gitlink and `workflow_catalog.pinned_ref`; branch `dev`, which
 is upstream `a6c45e5a` "Streamline workflow" #1838 plus the fork's fixes and the ports of
 PyPSA/pypsa-eur#1943 (industry heat), #1719 (steel and cement routes), #1875 (industry load
-profiles), #2317 (endogenous shipping), #1654 (waste sector) and the merged #2357), which is also the `models/pypsa-eur` submodule pin (`.gitmodules` points
+profiles), #2317 (endogenous shipping), #1654 (waste sector) and the merged #2357, plus the
+fork's own hydrogen-boosted biofuel, biogas methanol and grey/blue methanol routes after Zhang et
+al. 2026), which is also the `models/pypsa-eur` submodule pin (`.gitmodules` points
 at `git@github.com:lkslab/pypsa-eur.git`); `tools/validate.py` checks the two agree. The
 canonical eur sha lives in `tools/validate.py` (`EUR_ANCHOR`), not in the frozen
 `archive/tools/restructure.py`. Since 2026-10-09 the eur anchor follows the app's fork pin, so
@@ -131,10 +133,11 @@ fixes.
   `carriers/`) and `24af385` the pin sat at `8809a8c`, a commit that still had `recipes/`, so
   any deployment built from that window saw no carrier cards. When changing a directory name
   or card shape again, bump the gitlink in the same app commit that changes the reader.
-- **Eur content re-anchored on the fork pin `d31ad9fa` on 2026-10-09, bumped to `f55cdf34` the
-  same day** (see Anchors): one sha replacement in every eur section plus the industry-heat
-  content, then the steel/cement routes, industry load profiles, endogenous shipping and waste
-  sector content; `tools/resolve_eur_citations.py` resolves against the fork checkout. Nothing
+- **Eur content re-anchored on the fork pin `d31ad9fa` on 2026-10-09, bumped to `f55cdf34` and
+  then `d2e0d486` the same day** (see Anchors): one sha replacement in every eur section plus the
+  industry-heat content, then the steel/cement routes, industry load profiles, endogenous shipping
+  and waste sector content, then the e-biofuel, biogas methanol, grey/blue methanol and biofuel
+  waste-heat content (method `biogenic-carbon-routes`); `tools/resolve_eur_citations.py` resolves against the fork checkout. Nothing
   re-run beyond the industry demand rules on the NL 2040 resources (the numbers in
   biomass-bioenergy, the method cards and the route cards).
 - **Eur content re-anchored to upstream a6c45e5 on 2026-09-10, nothing re-run.** Every

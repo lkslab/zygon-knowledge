@@ -11,19 +11,33 @@ when_to_use:
   - "Fischer-Tropsch or methanolisation heat to heat network"
   - "fuel cell heat recovery"
   - "excess heat to heat network"
-  - "pypsa-eur keys: use_electrolysis_waste_heat, use_fischer_tropsch_waste_heat"
+  - "biofuel / BtL / BioSNG / biomethanol plant waste heat to district heating"
+  - "pypsa-eur keys: use_electrolysis_waste_heat, use_fischer_tropsch_waste_heat, use_biofuel_waste_heat, use_biosng_waste_heat, use_biomethanol_waste_heat"
   - "heat recovery from kilns / furnaces"
   - "industrial heat integration"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
+    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
     out_of_box:
       covers: >
-        Power-to-X waste heat is covered, on by default, for exactly six
-        donors. add_waste_heat (gated by sector.heating) retrofits an extra
-        output bus onto the existing process Links at nodes that have an
-        "urban central heat" bus: Fischer-Tropsch, Sabatier (methanation),
-        Haber-Bosch, methanolisation, H2 Electrolysis and H2 Fuel Cell. The
+        Power-to-X and biofuel waste heat is covered, on by default.
+        add_waste_heat (gated by sector.heating) retrofits an extra output bus
+        onto the existing process Links at nodes that have an "urban central
+        heat" bus: the six power-to-X donors Fischer-Tropsch, Sabatier
+        (methanation), Haber-Bosch, methanolisation, H2 Electrolysis and H2
+        Fuel Cell, each with its own key, plus (since the fork commit
+        d2e0d486) three biofuel group keys, each 0.25 by default:
+        sector.use_biofuel_waste_heat (biomass to liquid, biomass to liquid
+        CC, electrobiofuels), sector.use_biosng_waste_heat (BioSNG, BioSNG CC,
+        e-bioSNG) and sector.use_biomethanol_waste_heat (biomass-to-methanol
+        and its CC variant from the row's efficiency-heat 0.22, e-biomethanol,
+        biogas to methanol, e-biogas-methanol). The biofuel groups take 0.95 x
+        (1 + H2 input) - product per MWh feed (H2 only on the boosted routes)
+        times the share and land at the location of the link's feed bus
+        (attach_waste_heat_at_feed: these links are named after their biomass
+        or biogas bus, not their node), on the link's first free output bus.
+        Since BtL and electrobiofuels are on by default, a default run with
+        heating now carries their heat. The
         config values are FRACTIONS, not booleans — they scale the
         recoverable share of the theoretical waste heat: e.g. Fischer-Tropsch
         efficiency3 = (0.95 - electric efficiency) *
@@ -40,7 +54,9 @@ models:
         (bus2/bus3/bus4 = "urban central heat", efficiencyN as above) only
         for links whose node hosts an urban central heat bus — nodes without
         district heating recover nothing. The waste-heat fractions multiply
-        directly into the link efficiencies.
+        directly into the link efficiencies. The biofuel groups are attached
+        through attach_waste_heat_at_feed with boosted_waste_heat's energy
+        balance, after the power-to-X blocks.
       not_covered: >
         No INDUSTRIAL process waste heat: cement kilns, steel, glass and the
         "gas for industry" / "solid biomass for industry" links have no heat
@@ -55,8 +71,12 @@ models:
         power recovery, or temperature-level accounting of the recovered
         heat; recovery is only into urban central district heating, so the
         district-heating footprint (sector.district_heating.potential and
-        progress) caps total recovery.
-      provenance: "scripts/prepare_sector_network.py:add_waste_heat; scripts/prepare_sector_network.py:use_fischer_tropsch_waste_heat; scripts/prepare_sector_network.py:add_dac; scripts/prepare_sector_network.py:assume enough local waste heat for CC; config/config.default.yaml:use_electrolysis_waste_heat"
+        progress) caps total recovery. The feed-bus location lookup skips
+        non-spatial feeds: biofuel links on an "EU solid biomass" bus
+        (sector.biomass_spatial false) or an "EU biogas" bus
+        (sector.gas_network false) keep their heat unused, logged but not
+        refused.
+      provenance: "scripts/prepare_sector_network.py:add_waste_heat; scripts/prepare_sector_network.py:use_fischer_tropsch_waste_heat; scripts/prepare_sector_network.py:add_dac; scripts/prepare_sector_network.py:assume enough local waste heat for CC; config/config.default.yaml:use_electrolysis_waste_heat; scripts/prepare_sector_network.py:attach_waste_heat_at_feed; scripts/prepare_sector_network.py:boosted_waste_heat"
     levers:
       - key: sector.use_fischer_tropsch_waste_heat
         effect: "Fraction of Fischer-Tropsch waste heat (0.95 minus fuel efficiency) recoverable to district heating; 0/false disables."
@@ -82,8 +102,19 @@ models:
         effect: "Fraction of Haber-Bosch waste heat (0.15 of total energy input, converted via the NH3 factors) to district heating."
         default: "0.25"
         provenance: "config/config.default.yaml:use_haber_bosch_waste_heat; scripts/prepare_sector_network.py:use_haber_bosch_waste_heat"
-      - key: sector.district_heating.potential
-        effect: "Sets where urban central heat buses exist — waste heat can only be recovered at those nodes, and DH demand caps useful recovery."
+      - key: sector.use_biofuel_waste_heat
+        effect: "Fraction of the waste heat of biomass to liquid (± CC) and electrobiofuels to district heating at the biomass node."
+        default: "0.25"
+        provenance: "config/config.default.yaml:use_biofuel_waste_heat; scripts/prepare_sector_network.py:add_waste_heat"
+      - key: sector.use_biosng_waste_heat
+        effect: "Fraction of the waste heat of BioSNG (± CC) and e-bioSNG to district heating at the biomass node."
+        default: "0.25"
+        provenance: "config/config.default.yaml:use_biosng_waste_heat; scripts/prepare_sector_network.py:add_waste_heat"
+      - key: sector.use_biomethanol_waste_heat
+        effect: "Fraction of the waste heat of biomass-to-methanol (± CC), e-biomethanol, biogas to methanol and e-biogas-methanol to district heating at the feedstock node."
+        default: "0.25"
+        provenance: "config/config.default.yaml:use_biomethanol_waste_heat; scripts/prepare_sector_network.py:add_waste_heat"
+      - key: sector.district_heating.potential be recovered at those nodes, and DH demand caps useful recovery."
         default: "0.6 (with per-horizon progress ramp)"
         provenance: "config/config.default.yaml:district_heating; scripts/prepare_sector_network.py:add_heat"
       - key: sector.heating
@@ -93,13 +124,13 @@ models:
     boundary:
       - variant: "P2X waste heat into district heating"
         rung: L0
-        note: "default for all six donors (at 25% recovery except fuel cell at 100%)"
+        note: "default for the six power-to-X donors (at 25% recovery except fuel cell at 100%) and the three biofuel groups (25%, for whichever of their routes are on)"
       - variant: "full recovery / disable recovery per donor"
         rung: L1
         note: "set the respective sector.use_*_waste_heat to 1 or 0 — values are multiplicative fractions"
       - variant: "add a donor process (e.g. SMR, biogas upgrading CC)"
         rung: L2
-        note: "add a block in add_waste_heat assigning a spare busN + efficiencyN on that carrier's links, mirroring the Sabatier block"
+        note: "add a block in add_waste_heat assigning a spare busN + efficiencyN on that carrier's links, mirroring the Sabatier block, or for a link named after its feed bus extend the carrier groups of use_biofuel_waste_heat / use_biosng_waste_heat / use_biomethanol_waste_heat (attach_waste_heat_at_feed finds the free bus and the node) — the three biofuel keys are the precedent for a new group key"
       - variant: "industrial excess heat (cement/steel/glass) into district heating"
         rung: L2
         note: "mechanically: give the 'gas for industry' / 'solid biomass for industry' links in add_industry an extra urban-central-heat output (bus/efficiency pair, mirroring add_waste_heat); a defensible potential-based version needs excess-heat data per site and temperature (L3), and a proper representation with recovery investment cost is L5"
@@ -116,6 +147,9 @@ models:
       - change: "donor list, recovery fractions and bus wiring"
         anchor: "scripts/prepare_sector_network.py::add_waste_heat"
         provenance: "scripts/prepare_sector_network.py:add_waste_heat"
+      - change: "feed-bus-located donors (biofuel groups) and their energy balance"
+        anchor: "scripts/prepare_sector_network.py::attach_waste_heat_at_feed / ::boosted_waste_heat"
+        provenance: "scripts/prepare_sector_network.py:attach_waste_heat_at_feed; scripts/prepare_sector_network.py:boosted_waste_heat"
       - change: "which nodes can receive waste heat"
         anchor: "scripts/prepare_sector_network.py::add_heat (urban central heat bus creation, district heat share)"
         provenance: "scripts/prepare_sector_network.py:add_heat"
@@ -129,11 +163,11 @@ models:
       - input: "urban central heat buses with district heating demand (build_district_heat_share chain)"
         required_for: "any waste-heat recovery — donors at nodes without DH recover nothing"
         availability: "exists by default in sector runs; footprint set by district_heating potential/progress"
-      - input: "donor links (Fischer-Tropsch, Sabatier, Haber-Bosch, methanolisation, H2 Electrolysis, H2 Fuel Cell)"
-        required_for: "the six default recovery channels"
+      - input: "donor links (Fischer-Tropsch, Sabatier, Haber-Bosch, methanolisation, H2 Electrolysis, H2 Fuel Cell; BtL, electrobiofuels, BioSNG, biomass-to-methanol and the e-/biogas routes when on)"
+        required_for: "the six power-to-X recovery channels and the three biofuel groups"
         availability: "exists by default in sector runs (respective supply blocks)"
-      - input: "methanolisation cost row with heat-output attribute"
-        required_for: "methanolisation recovery efficiency"
+      - input: "methanolisation cost row with heat-output attribute; biomass-to-methanol row with efficiency-heat"
+        required_for: "methanolisation and biomass-to-methanol recovery efficiency"
         availability: "exists by default via retrieve_cost_data"
       - input: "industrial excess-heat potentials by site and temperature"
         required_for: "genuine industrial waste-heat recovery"

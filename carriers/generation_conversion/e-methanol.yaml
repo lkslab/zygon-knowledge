@@ -18,10 +18,12 @@ when_to_use:
   - "methanolisation of CO2"
   - "methanol-to-X (kerosene, olefins) chains"
   - "power-to-methanol"
-  - "known in pypsa-eur as: methanol, methanol transport, methanolisation, biomass-to-methanol, biomass-to-methanol CC, Methanol steam reforming, Methanol steam reforming CC, methanol-to-olefins/aromatics, allam methanol, CCGT methanol, CCGT methanol CC, OCGT methanol"
+  - "grey methanol / blue methanol from natural gas"
+  - "which methanol route: e-, bio-, biogas or fossil methanol"
+  - "known in pypsa-eur as: methanol, methanol transport, methanolisation, biomass-to-methanol, biomass-to-methanol CC, e-biomethanol, biogas to methanol, e-biogas-methanol, grey methanol, blue methanol, Methanol steam reforming, Methanol steam reforming CC, methanol-to-olefins/aromatics, allam methanol, CCGT methanol, CCGT methanol CC, OCGT methanol"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
+    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
     out_of_box:
       covers: >
         The synthesis route is ON by default, but it lives inside
@@ -66,11 +68,29 @@ models:
         must be true for the e-methanol route to exist); shipping demand in
         add_shipping; waste heat in add_waste_heat.
       not_covered: >
-        This carrier card covers ONLY the power/H2+CO2 synthesis route. The rest
-        of the methanol chain has its own carrier cards: biomass-to-methanol
-        (sector.methanol.biomass_to_methanol, default true, + CC variant),
-        methanol-to-power (OCGT on methanol enabled by default), methanol
-        reforming (to H2), and methanol-to-kerosene (see e-kerosene-saf).
+        This carrier card covers the power/H2+CO2 synthesis route. The other
+        supply routes onto the same EU methanol bus, all built in add_methanol:
+        biomass-to-methanol (sector.methanol.biomass_to_methanol, default
+        true, + CC variant) and its hydrogen-boosted e-biomethanol
+        (sector.methanol.e_biomethanol) on [[biomass-to-methanol]] and
+        [[advanced-biofuels]]; biogas to methanol and e-biogas-methanol
+        (sector.methanol.biogas_to_methanol / e_biogas_methanol) on
+        [[biogas-anaerobic-digestion]]; and, since the fork commit d2e0d486,
+        extendable fossil methanol from the gas bus — "<gas location> grey
+        methanol" (sector.methanol.grey_methanol: 0.569 MWh methanol per MWh
+        gas, the gas carbon not bound in the methanol, 0.0568 t/MWh gas,
+        vented) and "<gas location> blue methanol"
+        (sector.methanol.blue_methanol: 0.9 of that process CO2 captured to
+        co2 stored, 0.0511 t, 0.0057 t vented, capital cost grey + (SMR CC -
+        SMR)), both off by default and sharing grey_methanol_attrs (grey
+        methanol synthesis efficiency, SMR + methanolisation capital cost,
+        SMR lifetime) with the existing grey methanol plants that
+        sector.endogenous_sectors brings in under myopic or perfect foresight
+        (add_existing_industry). Every route lands on one pool, so a
+        "methanol" demand never says which route served it. The chain's
+        consumers have their own cards: methanol-to-power (OCGT on methanol
+        enabled by default), methanol reforming (to H2), and
+        methanol-to-kerosene (see e-kerosene-saf).
         No regional methanol production/transport — the single EU bus makes
         methanol freely tradable and synthesis siting only matters through
         the H2/electricity/CO2/heat side. No CO2-source discrimination:
@@ -79,8 +99,11 @@ models:
         machinery (imports only). If sector.industry is false there is no
         methanolisation link at all — the synthesis route silently
         disappears while shipping methanol demand (if shipping is on) would
-        still need supply from biomass-to-methanol or imports.
-      provenance: "scripts/prepare_sector_network.py:methanolisation; scripts/prepare_sector_network.py:add_methanol; scripts/prepare_sector_network.py:define_spatial; scripts/prepare_sector_network.py:add_shipping; scripts/prepare_sector_network.py:add_waste_heat; scripts/prepare_sector_network.py:import methanol; scripts/prepare_sector_network.py:add_meoh_to_oa; scripts/prepare_sector_network.py:_add_shipping_endogenous"
+        still need supply from the bio, biogas or fossil routes or imports.
+        No fuel-origin quota: hydrogen is any H2 (no RFNBO tracking, no
+        ReFuelEU or FuelEU sub-quota); blue methanol captures the
+        concentrated synthesis stream with no efficiency penalty.
+      provenance: "scripts/prepare_sector_network.py:methanolisation; scripts/prepare_sector_network.py:add_methanol; scripts/prepare_sector_network.py:define_spatial; scripts/prepare_sector_network.py:add_shipping; scripts/prepare_sector_network.py:add_waste_heat; scripts/prepare_sector_network.py:import methanol; scripts/prepare_sector_network.py:add_meoh_to_oa; scripts/prepare_sector_network.py:_add_shipping_endogenous; scripts/prepare_sector_network.py:add_grey_methanol; scripts/prepare_sector_network.py:grey_methanol_attrs; scripts/add_existing_baseyear.py:add_existing_industry"
     levers:
       - key: sector.min_part_load_methanolisation
         effect: "p_min_pu of the methanolisation links — must-run floor as a fraction of built capacity in every snapshot."
@@ -102,6 +125,22 @@ models:
         effect: "The competing biogenic methanol supply route (own carrier card family) — set false to make methanolisation and imports the only supply."
         default: "true"
         provenance: "config/config.default.yaml:biomass_to_methanol; scripts/prepare_sector_network.py:add_biomass_to_methanol"
+      - key: sector.methanol.grey_methanol
+        effect: "true adds extendable 'grey methanol' Links (gas -> EU methanol, process CO2 vented) per gas location, at the parameters of the existing grey plants."
+        default: "false"
+        provenance: "config/config.default.yaml:grey_methanol; scripts/prepare_sector_network.py:add_grey_methanol"
+      - key: sector.methanol.blue_methanol
+        effect: "true adds extendable 'blue methanol' Links: grey methanol whose process CO2 is captured at the SMR CC capture rate (0.9) into co2 stored, at the grey capital cost plus SMR CC minus SMR."
+        default: "false"
+        provenance: "config/config.default.yaml:blue_methanol; scripts/prepare_sector_network.py:add_grey_methanol"
+      - key: sector.methanol.e_biomethanol
+        effect: "Hydrogen-boosted biomass-to-methanol, a second H2-consuming methanol route next to methanolisation, its carbon from biomass instead of co2 stored."
+        default: "false"
+        provenance: "config/config.default.yaml:e_biomethanol; scripts/prepare_sector_network.py:add_e_biomethanol"
+      - key: sector.methanol.biogas_to_methanol
+        effect: "Biogas to methanol (and sector.methanol.e_biogas_methanol, its hydrogen-boosted variant) on the biogas bus, parametrised by sector.biogas_methanol."
+        default: "false (both)"
+        provenance: "config/config.default.yaml:biogas_to_methanol; config/config.default.yaml:e_biogas_methanol; scripts/prepare_sector_network.py:add_biogas_to_methanol"
       - key: sector.imports.enable
         effect: "true adds 'import methanol' at sector.imports.price.methanol (121 EUR/MWh default), carbon-accounted against the atmosphere bus."
         default: "false"
@@ -134,9 +173,15 @@ models:
       - variant: "flexible (load-following) synthesis"
         rung: L1
         note: "sector.min_part_load_methanolisation: 0"
-      - variant: "e-methanol-only supply (no biogenic methanol)"
+      - variant: "e-methanol-only supply (no biogenic or fossil methanol)"
         rung: L1
-        note: "sector.methanol.biomass_to_methanol: false (and _cc false, already default)"
+        note: "sector.methanol.biomass_to_methanol: false and keep off (the shipped default) biomass_to_methanol_cc, e_biomethanol, biogas_to_methanol, e_biogas_methanol, grey_methanol and blue_methanol; with sector.endogenous_sectors under myopic/perfect foresight the existing grey plants still run until they retire, and sector.imports keeps import methanol if enabled"
+      - variant: "methanol from biogenic carbon with added hydrogen (e-biomethanol, e-biogas-methanol) or from biogas"
+        rung: L0
+        note: "sector.methanol.e_biomethanol / biogas_to_methanol / e_biogas_methanol: true (method [[biogenic-carbon-routes]])"
+      - variant: "fossil methanol baseline (grey) or with capture (blue)"
+        rung: L0
+        note: "sector.methanol.grey_methanol / blue_methanol: true; both extendable at every gas location (nodal with sector.gas_network)"
       - variant: "restrict synthesis CO2 to DAC or biogenic sources"
         rung: L5
         note: "CO2 is pooled on the co2 stored buses — needs bespoke source-tracked buses or a custom constraint"
@@ -159,6 +204,9 @@ models:
       - change: "methanol bus/store and the rest of the methanol chain"
         anchor: "scripts/prepare_sector_network.py::add_methanol / ::add_carrier_buses; spatial resolution in ::define_spatial"
         provenance: "scripts/prepare_sector_network.py:add_methanol; scripts/prepare_sector_network.py:add_carrier_buses"
+      - change: "the other supply routes (bio, biogas, grey/blue)"
+        anchor: "scripts/prepare_sector_network.py::add_methanol (add_biomass_to_methanol, add_e_biomethanol, add_biogas_to_methanol, add_grey_methanol); the brownfield grey plants in scripts/add_existing_baseyear.py::add_existing_industry, both over ::grey_methanol_attrs"
+        provenance: "scripts/prepare_sector_network.py:add_methanol; scripts/prepare_sector_network.py:add_grey_methanol; scripts/prepare_sector_network.py:grey_methanol_attrs; scripts/add_existing_baseyear.py:add_existing_industry"
       - change: "shipping methanol demand"
         anchor: "scripts/prepare_sector_network.py::add_shipping (shipping_methanol_share block); endogenous mode in ::_add_shipping_endogenous"
         provenance: "scripts/prepare_sector_network.py:shipping methanol; scripts/prepare_sector_network.py:_add_shipping_endogenous"

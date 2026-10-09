@@ -14,7 +14,7 @@ when_to_use:
   - "pypsa-eur carrier names: Methanol steam reforming, Methanol steam reforming CC, methanol, H2"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
+    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
     out_of_box:
       covers: >
         OFF by default — both sector.methanol.methanol_reforming and
@@ -80,7 +80,7 @@ models:
         note: "flip sector.methanol.methanol_reforming and/or methanol_reforming_cc — both variants can coexist and the optimizer picks"
       - variant: "methanol as an import vector for hydrogen"
         rung: L1
-        note: "combine with green energy imports of methanol (sector.imports, see green-energy-imports carrier card) or with biomass-to-methanol/methanolisation supply — no extra code"
+        note: "combine with green energy imports of methanol (sector.imports, see green-energy-imports carrier card) or with any domestic methanol supply (methanolisation, biomass-to-methanol, e-biomethanol, the biogas routes, grey/blue methanol) — no extra code"
       - variant: "change reformer cost, conversion ratio or capture rate"
         rung: L1
         note: "costs.overwrites or data/custom_costs.csv row; capture rate is the shared 'cement capture' capture_rate (changing it also affects CCGT methanol CC, SMR CC and industry capture)"
@@ -107,9 +107,9 @@ models:
       - input: "cost rows 'Methanol steam reforming' (methanol-input, investment) and 'cement capture' (capture_rate) plus 'methanolisation' (carbondioxide-input for the CO2 content)"
         required_for: "conversion ratio, costs and CO2 split"
         availability: "exists by default via retrieve_cost_data + rule process_cost_data"
-      - input: "a methanol supply on the EU methanol bus (methanolisation, biomass-to-methanol, or imports)"
+      - input: "a methanol supply on the EU methanol bus (methanolisation, biomass-to-methanol, or imports; off by default: e-biomethanol, biogas to methanol, e-biogas-methanol, grey and blue methanol)"
         required_for: "any reformer dispatch — the methanol bus has no fuel generator"
-        availability: "exists by default (biomass-to-methanol and methanolisation are active in sector runs)"
+        availability: "exists by default (biomass-to-methanol and methanolisation are active in sector runs); reforming grey methanol back to H2 is a fossil H2 route with two conversion losses"
       - input: "co2 stored buses + downstream sequestration/utilisation"
         required_for: "the CC variant's captured stream"
         availability: "exists by default (add_co2_tracking always runs; see co2-transport-and-sequestration carrier card)"

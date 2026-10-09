@@ -17,7 +17,9 @@ what: >-
   the horizon's production. Under myopic or perfect foresight the first horizon also
   receives today's blast furnaces and gas DRI plants (Fraunhofer ISI site database),
   cement plants (GEM tracker), Haber-Bosch and grey methanol plants as dated links,
-  through the horizon-free rule rules/build_sector.smk:build_industry_plants. The port
+  through the horizon-free rule rules/build_sector.smk:build_industry_plants (new grey
+  methanol beyond those plants is extendable only with sector.methanol.grey_methanol,
+  default false, at the same parameters, scripts/prepare_sector_network.py:grey_methanol_attrs). The port
   of PyPSA/pypsa-eur#1719 onto the fork the app runs; the mechanism cards
   steel-routes-endogenous and cement-routes-endogenous carry the detail.
 when_to_use:
@@ -30,7 +32,7 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: f55cdf34f0e67a797fd4327bed26c56dedcb5cb8
+    ref: d2e0d48666f09a580c744846cef37e5059761d7a
     date: '2026-10-09'
   execution:
   - kind: config

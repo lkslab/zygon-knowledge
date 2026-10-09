@@ -93,7 +93,7 @@ models:
   - id: dispatch_weeks
     role: why the price is what it is — the hourly balance behind the priced hours
   version_anchor:
-    ref: f55cdf34f0e67a797fd4327bed26c56dedcb5cb8
+    ref: d2e0d48666f09a580c744846cef37e5059761d7a
     date: '2026-10-09'
 - model: pypsa-earth
   approach: >-

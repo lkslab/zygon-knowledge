@@ -1,9 +1,10 @@
 id: advanced-biofuels
-title: Advanced biofuels (BtL, electrobiofuels, BioSNG, bioH2, biogas upgrading)
+title: Advanced biofuels (BtL, electrobiofuels, e-biomethanol, e-bioSNG, BioSNG, bioH2, biogas upgrading)
 summary: >
   Conversion of solid biomass and biogas into drop-in liquid fuels, grid
-  gas and hydrogen — with optional carbon capture — plus the legacy
-  unsustainable bioliquids that are forced into the oil pool.
+  gas and hydrogen — with optional carbon capture, or boosted with
+  hydrogen so more of the biogenic carbon ends up in the fuel — plus the
+  legacy unsustainable bioliquids that are forced into the oil pool.
 when_to_use:
   - "advanced biofuels / second-generation biofuels"
   - "biomass to liquid / BtL"
@@ -20,10 +21,14 @@ when_to_use:
   - "biomass gasification for hydrogen"
   - "bioenergy with carbon capture (BECCS) fuel routes"
   - "biojet / biokerosene"
-  - "known in pypsa-eur as: biomass to liquid, unsustainable bioliquids, electrobiofuels"
+  - "hydrogen-boosted biofuels / power-and-biomass-to-liquid / e-biofuels"
+  - "e-biomethanol / e-bioSNG / biomass plus hydrogen to methanol or methane"
+  - "use biogenic carbon in fuels instead of storing it or capturing CO2 from air"
+  - "biofuel plant waste heat for district heating"
+  - "known in pypsa-eur as: biomass to liquid, biomass to liquid CC, unsustainable bioliquids, electrobiofuels, e-biomethanol, e-bioSNG, BioSNG, BioSNG CC"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
+    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
     out_of_box:
       covers: >
         add_biomass wires a rich conversion menu on the nodal solid-biomass
@@ -33,49 +38,102 @@ models:
         "biomass to liquid" (sector.biomass_to_liquid, BtL cost row) —
         extendable links solid biomass -> the single EU oil bus, with the
         unconverted biogenic carbon returned to the atmosphere bus;
-        "electrobiofuels" (sector.electrobiofuels) — a biomass+H2 hybrid
-        Fischer-Tropsch (code comment: "Experimental version - use with
-        caution") that uses the BtL-stored carbon share (BtL "C stored" x
-        FT costs) to convert MORE of the biogenic carbon into fuel per
-        tonne of biomass; and "biogas to gas" upgrading
-        (sector.biogas_upgrading — biogas + upgrading cost rows) feeding
-        the gas grid with a negative atmosphere coefficient (biogenic
-        credit). OFF by default: "biomass to liquid CC"
-        (sector.biomass_to_liquid_cc, capture to co2 stored), "BioSNG"
+        "electrobiofuels" (sector.electrobiofuels) — the hydrogen-boosted
+        Fischer-Tropsch route (code comment: "Experimental version - use
+        with caution"), one "<biomass node> <node> electrobiofuels" link per
+        node from the solid biomass and H2 buses to EU oil, 1.325 MWh fuel per
+        MWh biomass (technology-data "electrobiofuels" efficiency-biomass);
+        and "biogas to gas" upgrading (sector.biogas_upgrading — biogas +
+        upgrading cost rows) feeding the gas grid with a negative atmosphere
+        coefficient (biogenic credit). OFF by default: "biomass to liquid
+        CC" (sector.biomass_to_liquid_cc, capture to co2 stored), "BioSNG"
         gasification to grid gas (sector.biosng) and its CC variant
-        (sector.biosng_cc), biogas upgrading CC
-        (sector.biogas_upgrading_cc), and "solid biomass to hydrogen"
-        with capture (sector.bioH2, uses sector.cc_fraction, lifetime
-        hardcoded 25). Forced legacy route: whenever unsustainable
-        potentials are nonzero, "unsustainable bioliquids" Generators are
-        added with e_sum_min = e_sum_max = potential — the model MUST
-        consume the whole unsustainable bioliquid potential (priced at the
-        "biodiesel crops" fuel cost, converted to the EU oil bus at BtL
-        VOM), phasing out via biomass.share_unsustainable_use_retained
-        (1.0 in 2020 -> 0 by 2040).
+        (sector.biosng_cc), biogas upgrading CC (sector.biogas_upgrading_cc),
+        "solid biomass to hydrogen" with capture (sector.bioH2, uses
+        sector.cc_fraction, lifetime hardcoded 25), and the two newer
+        hydrogen-boosted routes after Zhang et al. 2026 (arXiv 2604.12080):
+        "e-biomethanol" (sector.methanol.e_biomethanol, biomass-to-methanol
+        plus methanolisation, to the EU methanol bus) and "e-bioSNG"
+        (sector.e_biosng, BioSNG plus methanation, to the gas bus), named
+        "<biomass node> <node> e-biomethanol" / "... e-bioSNG". THE BOOST:
+        a gasification route leaves the share "C stored" of the biomass
+        carbon unused in its CO2 by-product; with added hydrogen the
+        capturable part of it (C stored x the base row's capture rate)
+        becomes extra product, so the carbon efficiency rises from "C in
+        fuel" to "C in fuel + C stored x capture rate" (Zhang et al. 2026,
+        eq. 15, the construction behind technology-data's electrobiofuels
+        row). Product per MWh biomass = that carbon efficiency x solid
+        biomass CO2 intensity / product CO2 intensity; hydrogen = (product -
+        base efficiency) x the synthesis step's hydrogen-input
+        (methanolisation 1.138, methanation 1.282, Fischer-Tropsch 1.363
+        MWh_H2/MWh product); capital cost per MW feed = base capital_cost x
+        base efficiency + synthesis capital_cost x the extra product (VOM
+        alike); the link withdraws from the atmosphere exactly the carbon in
+        its product. At 2040 (technology-data v0.15.0, checked on a composed
+        NL 2040 network): e-biomethanol 1.393 MWh methanol and 0.868 MWh H2
+        per MWh biomass; e-bioSNG 1.733 MWh gas and 1.37 MWh H2 per MWh
+        biomass. Since the fork commit d2e0d486 electrobiofuels draws its
+        hydrogen by the same rule, (1.325 - BtL efficiency) x the
+        Fischer-Tropsch hydrogen-input = 1.238 MWh_H2 per MWh biomass at 2040
+        instead of the 1.150 implied by the row's efficiency-hydrogen, which
+        under-counts it by about 7 % (product and capital cost unchanged).
+        The parameters are derived from the technology-data rows, NOT taken
+        from the paper's own dataset (GPL-3.0, Zenodo 18985275, which
+        under-counts the hydrogen by about 6-7 % and books a phantom removal
+        on its biogas routes). WASTE HEAT (new in d2e0d486, changes default
+        runs with sector.heating on): a share of the conversion heat goes to
+        the "<node> urban central heat" bus at the location of the link's
+        feed bus (bus0) — sector.use_biofuel_waste_heat (0.25) for BtL, BtL
+        CC and electrobiofuels, sector.use_biosng_waste_heat (0.25) for
+        BioSNG, BioSNG CC and e-bioSNG; per MWh feed the coefficient is
+        share x (0.95 x (1 + H2 input) - product), the H2 input counting only
+        on the boosted routes (about 0.20 MWh heat per MWh biomass for
+        electrobiofuels at 2040). A link whose feed bus is "EU solid biomass"
+        (biomass_spatial false) keeps its heat unused. Forced legacy route:
+        whenever unsustainable potentials are nonzero, "unsustainable
+        bioliquids" Generators are added with e_sum_min = e_sum_max =
+        potential — the model MUST consume the whole unsustainable bioliquid
+        potential (priced at the "biodiesel crops" fuel cost, converted to the
+        EU oil bus at BtL VOM), phasing out via
+        biomass.share_unsustainable_use_retained (1.0 in 2020 -> 0 by 2040).
+        Biogas has its own methanol routes (biogas to methanol,
+        e-biogas-methanol), see [[biogas-anaerobic-digestion]]; the
+        unboosted biomass-to-methanol route is [[biomass-to-methanol]].
       mechanism: >
-        rule compose_network -> add_biomass (gated by
-        sector.biomass), reading biomass_potentials from rule
-        build_biomass_potentials (enspreso_biomass_potentials +
-        add_unsustainable_potentials, controlled by
-        biomass.share_unsustainable_use_retained and
-        biomass.share_sustainable_potential_available). Liquid products
-        land on the copperplate EU oil bus; gaseous ones on the nodal gas
-        buses. Solid biomass moves between regions either as transport
-        links (sector.biomass_transport) or via a transport-cost markup
-        with a global limit (sector.biomass_spatial, the default).
+        rule compose_network -> add_biomass (gated by sector.biomass),
+        reading biomass_potentials from rule build_biomass_potentials
+        (enspreso_biomass_potentials + add_unsustainable_potentials,
+        controlled by biomass.share_unsustainable_use_retained and
+        biomass.share_sustainable_potential_available); add_e_biosng is
+        called from add_biomass and add_e_biomethanol from add_methanol, both
+        over boosted_product, boosted_hydrogen_input and boosted_route_costs,
+        with pair_with_hydrogen naming the links as electrobiofuels does.
+        Liquid products land on the copperplate EU oil bus, methanol on the EU
+        methanol bus, gaseous ones on the nodal gas buses. Waste heat is
+        attached last, in add_waste_heat (attach_waste_heat_at_feed with the
+        energy balance of boosted_waste_heat), only when sector.heating is
+        true and the node has an urban central heat bus. Solid biomass moves
+        between regions either as transport links (sector.biomass_transport)
+        or via a transport-cost markup with a global limit
+        (sector.biomass_spatial, the default).
       not_covered: >
         No distinct bioethanol/biodiesel/biojet carriers and no blending
         mandates — all liquid output is generic oil, fungible with fossil
         and FT fuel (aviation gets it only via the shared pool, see
-        e-kerosene-saf). No feedstock classes beyond the ENSPRESO
-        categories in biomass.classes (no dedicated energy-crop vs residue
-        pricing per technology). No imported liquid biofuels — the only
-        import hook is SOLID biomass (sector.solid_biomass_import, default
-        off, with an upstream emissions factor). Biomass CHP and boilers
-        are covered by combined-heat-and-power / biomass-bioenergy
-        carrier cards; municipal waste by waste-to-energy.
-      provenance: "scripts/prepare_sector_network.py:add_biomass; scripts/prepare_sector_network.py:biomass to liquid; scripts/prepare_sector_network.py:electrobiofuels; scripts/prepare_sector_network.py:unsustainable bioliquids; scripts/prepare_sector_network.py:biogas to gas; scripts/build_biomass_potentials.py:enspreso_biomass_potentials"
+        e-kerosene-saf). The hydrogen of the boosted routes is any H2 on the
+        nodal bus: no tracking of electrolytic origin (RFNBO) and no ReFuelEU
+        aviation or FuelEU maritime quota that would reward or require it. No
+        oxygen by-product credit (the boost would use electrolysis oxygen in
+        the gasifier). No plant sizing, scale economies or feedstock
+        logistics beyond the biomass transport markup. No feedstock classes
+        beyond the ENSPRESO categories in biomass.classes (no dedicated
+        energy-crop vs residue pricing per technology). No imported liquid
+        biofuels — the only import hook is SOLID biomass
+        (sector.solid_biomass_import, default off, with an upstream emissions
+        factor). Biomass CHP and boilers are covered by
+        combined-heat-and-power / biomass-bioenergy carrier cards; municipal
+        waste by waste-to-energy.
+      provenance: "scripts/prepare_sector_network.py:add_biomass; scripts/prepare_sector_network.py:biomass to liquid; scripts/prepare_sector_network.py:electrobiofuels; scripts/prepare_sector_network.py:boosted_product; scripts/prepare_sector_network.py:boosted_hydrogen_input; scripts/prepare_sector_network.py:boosted_route_costs; scripts/prepare_sector_network.py:pair_with_hydrogen; scripts/prepare_sector_network.py:add_e_biomethanol; scripts/prepare_sector_network.py:add_e_biosng; scripts/prepare_sector_network.py:attach_waste_heat_at_feed; scripts/prepare_sector_network.py:boosted_waste_heat; scripts/prepare_sector_network.py:unsustainable bioliquids; scripts/prepare_sector_network.py:biogas to gas; scripts/build_biomass_potentials.py:enspreso_biomass_potentials"
     levers:
       - key: sector.biomass_to_liquid
         effect: "Adds/removes the BtL links (solid biomass -> EU oil)."
@@ -86,13 +144,29 @@ models:
         default: "false"
         provenance: "config/config.default.yaml:biomass_to_liquid_cc; scripts/prepare_sector_network.py:biomass to liquid CC"
       - key: sector.electrobiofuels
-        effect: "Adds/removes the biomass+H2 hybrid FT links (higher fuel yield per biomass, consumes nodal H2)."
+        effect: "Adds/removes the hydrogen-boosted Fischer-Tropsch links (1.325 MWh fuel per MWh biomass, drawing (1.325 - BtL efficiency) x the Fischer-Tropsch hydrogen-input of nodal H2, 1.238 MWh at 2040)."
         default: "true"
-        provenance: "config/config.default.yaml:electrobiofuels; scripts/prepare_sector_network.py:electrobiofuels"
+        provenance: "config/config.default.yaml:electrobiofuels; scripts/prepare_sector_network.py:electrobiofuels; scripts/prepare_sector_network.py:boosted_hydrogen_input"
+      - key: sector.methanol.e_biomethanol
+        effect: "Adds the hydrogen-boosted biomass-to-methanol links (e-biomethanol, biomass + H2 -> EU methanol; 1.393 MWh methanol and 0.868 MWh H2 per MWh biomass at 2040)."
+        default: "false"
+        provenance: "config/config.default.yaml:e_biomethanol; scripts/prepare_sector_network.py:add_e_biomethanol"
+      - key: sector.e_biosng
+        effect: "Adds the hydrogen-boosted BioSNG links (e-bioSNG, biomass + H2 -> gas bus; 1.733 MWh gas and 1.37 MWh H2 per MWh biomass at 2040). Independent of sector.biosng."
+        default: "false"
+        provenance: "config/config.default.yaml:e_biosng; scripts/prepare_sector_network.py:add_e_biosng"
       - key: sector.biosng
         effect: "Adds gasification-based 'BioSNG' links (solid biomass -> gas grid); sector.biosng_cc adds the capture variant."
         default: "false (biosng_cc also false)"
         provenance: "config/config.default.yaml:biosng; scripts/prepare_sector_network.py:BioSNG"
+      - key: sector.use_biofuel_waste_heat
+        effect: "Share of the waste heat of BtL, BtL CC and electrobiofuels (0.95 x (1 + H2 input) - product per MWh biomass) delivered to the urban central heat bus at the biomass node; 0 switches it off. Needs sector.heating and a nodal biomass bus."
+        default: "0.25"
+        provenance: "config/config.default.yaml:use_biofuel_waste_heat; scripts/prepare_sector_network.py:add_waste_heat"
+      - key: sector.use_biosng_waste_heat
+        effect: "Same for BioSNG, BioSNG CC and e-bioSNG."
+        default: "0.25"
+        provenance: "config/config.default.yaml:use_biosng_waste_heat; scripts/prepare_sector_network.py:add_waste_heat"
       - key: sector.bioH2
         effect: "Adds 'solid biomass to hydrogen' CC links (biomass -> nodal H2, capture share sector.cc_fraction) — a negative-emission H2 route."
         default: "false"
@@ -120,19 +194,28 @@ models:
     boundary:
       - variant: "BtL and electrobiofuels as investment options"
         rung: L0
-        note: "both default true"
+        note: "both default true; electrobiofuels draws the corrected Fischer-Tropsch hydrogen input since d2e0d486"
       - variant: "BtL with carbon capture / BioSNG / bioH2"
         rung: L0
         note: "flip sector.biomass_to_liquid_cc / sector.biosng(_cc) / sector.bioH2"
+      - variant: "hydrogen-boosted biomethanol and bioSNG (e-biomethanol, e-bioSNG)"
+        rung: L0
+        note: "flip sector.methanol.e_biomethanol / sector.e_biosng (method [[biogenic-carbon-routes]] turns all boosted and biogas routes on); they compete with the unboosted routes and with methanolisation/methanation on captured CO2"
+      - variant: "use (or not) the conversion waste heat in district heating"
+        rung: L0
+        note: "sector.use_biofuel_waste_heat / sector.use_biosng_waste_heat (0.25 default, 0 = off, up to 1); only with sector.heating and nodal biomass buses (biomass_spatial true)"
       - variant: "stop force-consuming unsustainable bioliquids"
         rung: L1
         note: "set biomass.share_unsustainable_use_retained to 0 for all horizons (the generators carry e_sum_min = potential — they are a must-burn, not an option)"
       - variant: "more or less biomass feedstock"
         rung: L1
         note: "biomass.scenario (ENS_Low/Med/High), biomass.year, biomass.classes composition"
-      - variant: "biofuel blending mandates or distinct biodiesel/bioethanol carriers"
+      - variant: "change the boosted routes' yields or costs"
+        rung: L1
+        note: "they follow the base and synthesis cost rows ('biomass-to-methanol', 'BioSNG', 'BtL', 'methanolisation', 'methanation', 'Fischer-Tropsch': C in fuel, C stored, capture rate, efficiency, hydrogen-input, investment) — costs.overwrites or data/custom_costs.csv; there is no per-route config key"
+      - variant: "biofuel blending mandates, distinct biodiesel/bioethanol carriers, or an RFNBO quota on the hydrogen"
         rung: L5
-        note: "all liquids pool on EU oil; per-fuel carriers + quota constraints are bespoke (custom_extra_functionality for the quota side)"
+        note: "all liquids pool on EU oil and all hydrogen on the nodal H2 bus; per-fuel carriers, origin tracking and quota constraints are bespoke (custom_extra_functionality for the quota side)"
       - variant: "dedicated biojet route to the aviation bus"
         rung: L2
         note: "re-point (a fraction of) the BtL output from spatial.oil.nodes to spatial.oil.kerosene in add_biomass — the kerosene demand buses exist already"
@@ -149,6 +232,12 @@ models:
       - change: "all conversion links (BtL, BtL CC, electrobiofuels, BioSNG, bioH2, biogas upgrading, forced bioliquids)"
         anchor: "scripts/prepare_sector_network.py::add_biomass"
         provenance: "scripts/prepare_sector_network.py:add_biomass"
+      - change: "the hydrogen-boosted routes and their carbon-balance parameters"
+        anchor: "scripts/prepare_sector_network.py::add_e_biomethanol / ::add_e_biosng over ::boosted_product, ::boosted_hydrogen_input, ::boosted_route_costs"
+        provenance: "scripts/prepare_sector_network.py:add_e_biomethanol; scripts/prepare_sector_network.py:add_e_biosng; scripts/prepare_sector_network.py:boosted_product"
+      - change: "waste heat of the biofuel routes"
+        anchor: "scripts/prepare_sector_network.py::add_waste_heat (groups use_biofuel_waste_heat, use_biosng_waste_heat) over ::attach_waste_heat_at_feed and ::boosted_waste_heat"
+        provenance: "scripts/prepare_sector_network.py:add_waste_heat; scripts/prepare_sector_network.py:attach_waste_heat_at_feed; scripts/prepare_sector_network.py:boosted_waste_heat"
       - change: "feedstock potentials (sustainable + unsustainable, spatial disaggregation)"
         anchor: "scripts/build_biomass_potentials.py::enspreso_biomass_potentials / ::add_unsustainable_potentials (rule build_biomass_potentials)"
         provenance: "scripts/build_biomass_potentials.py:add_unsustainable_potentials; rules/build_sector.smk:build_biomass_potentials"
@@ -156,21 +245,21 @@ models:
         anchor: "scripts/prepare_sector_network.py::add_biomass (biomass_transport / biomass_spatial branches) and ::define_spatial (spatial.biomass)"
         provenance: "scripts/prepare_sector_network.py:define_spatial"
       - change: "cost rows"
-        anchor: "scripts/process_cost_data.py::prepare_costs (rows 'BtL', 'electrobiofuels', 'BioSNG', 'biogas', 'biogas upgrading', 'solid biomass to hydrogen', 'biodiesel crops')"
+        anchor: "scripts/process_cost_data.py::prepare_costs (rows 'BtL', 'electrobiofuels', 'BioSNG', 'biomass-to-methanol', 'Fischer-Tropsch', 'methanolisation', 'methanation', 'biogas', 'biogas upgrading', 'solid biomass to hydrogen', 'biodiesel crops')"
         provenance: "scripts/process_cost_data.py:prepare_costs"
     data_dependencies:
       - input: "JRC ENSPRESO biomass potentials + eurostat energy balances (unsustainable shares)"
         required_for: "all feedstock ceilings and the forced bioliquid volumes"
         availability: "retrieved by the workflow (rule build_biomass_potentials inputs); European coverage"
-      - input: "cost rows 'BtL' (incl. 'CO2 stored', 'C stored', capture rate), 'electrobiofuels', 'BioSNG', 'biogas', 'biogas upgrading', 'biodiesel crops', 'fuelwood'"
-        required_for: "conversion economics and carbon splits"
+      - input: "cost rows 'BtL', 'BioSNG', 'biomass-to-methanol' (each with 'C in fuel', 'C stored', 'CO2 stored', capture rate), 'electrobiofuels' (efficiency-biomass), the synthesis rows 'Fischer-Tropsch', 'methanolisation', 'methanation' (hydrogen-input, investment, VOM), 'biogas', 'biogas upgrading', 'biodiesel crops', 'fuelwood'"
+        required_for: "conversion economics, the boosted routes' yields and hydrogen, and the carbon splits"
         availability: "exists by default via retrieve_cost_data + rule process_cost_data"
       - input: "biomass transport cost csv (per-country EUR/km/MWh)"
         required_for: "biomass_transport links or the biomass_spatial markup"
         availability: "exists by default (workflow data)"
-      - input: "EU oil bus / nodal gas buses / nodal H2 buses as product destinations"
-        required_for: "BtL + electrobiofuels / BioSNG + biogas / bioH2 respectively"
-        availability: "exists by default in sector runs"
+      - input: "EU oil bus / EU methanol bus / nodal gas buses / nodal H2 buses / urban central heat buses"
+        required_for: "BtL + electrobiofuels / e-biomethanol / BioSNG + e-bioSNG + biogas / bioH2 and the boosted routes' hydrogen / waste heat respectively"
+        availability: "exists by default in sector runs (urban central heat with sector.heating)"
   - model: pypsa-earth
     version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
     out_of_box:

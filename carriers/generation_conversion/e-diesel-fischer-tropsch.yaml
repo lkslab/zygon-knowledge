@@ -21,7 +21,7 @@ when_to_use:
   - "known in pypsa-eur as: Fischer-Tropsch, liquid, power-to-liquid"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
+    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
     out_of_box:
       covers: >
         ON by default and unconditional within add_industry: an extendable
@@ -61,7 +61,11 @@ models:
         bus; sector.regional_oil_demand only regionalises demand
         accounting). No existing FT plants. Electrobiofuels — an FT-based
         biomass+H2 hybrid — is a separate default-on technology covered in
-        advanced-biofuels. Gated by sector.industry: with the industry
+        advanced-biofuels; since the fork commit d2e0d486 it draws its
+        hydrogen at the Fischer-Tropsch hydrogen-input for the fuel beyond
+        BtL's own yield (1.238 MWh H2 per MWh biomass at 2040, up from the
+        1.150 the electrobiofuels row implied), so it competes with this route
+        for hydrogen at the same per-MWh rate. Gated by sector.industry: with the industry
         sector off, the FT link is never created.
       provenance: "scripts/prepare_sector_network.py:Fischer-Tropsch; scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:min_part_load_fischer_tropsch; scripts/prepare_sector_network.py:define_spatial; scripts/prepare_sector_network.py:add_waste_heat; scripts/add_brownfield.py:add_brownfield"
     levers:

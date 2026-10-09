@@ -23,7 +23,10 @@ models:
     supply behind each system optimised: per urban central bus a heat pump per listed
     source (sector.heat_pump_sources; geothermal, river and sea water as limited sources
     with per-cluster potentials), resistive heaters, gas and biomass CHP, boilers, solar
-    thermal, waste heat from electrolysis and fuel synthesis, and water tank or pit storage
+    thermal, waste heat from electrolysis, fuel synthesis and the biofuel plants (BtL and
+    electrobiofuels by default, BioSNG and the bio- and biogas methanol routes when on,
+    each at the node of its biomass or biogas bus, sector.use_biofuel_waste_heat,
+    use_biosng_waste_heat, use_biomethanol_waste_heat), and water tank or pit storage
     (sector.tes); per decentral bus heat pumps, boilers and tanks, seeded with today's
     heating stock. The district-heating-expansion method settles those keys and is where
     the two study shapes live: the share question is a scenario pair of progress dicts
@@ -106,7 +109,7 @@ models:
   - id: compare_system_cost
     role: expand vs hold the network, with vs without storage, source sets
   version_anchor:
-    ref: f55cdf34f0e67a797fd4327bed26c56dedcb5cb8
+    ref: d2e0d48666f09a580c744846cef37e5059761d7a
     date: '2026-10-09'
 - model: pypsa-earth
   approach: >-

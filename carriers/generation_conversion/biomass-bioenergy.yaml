@@ -28,7 +28,7 @@ when_to_use:
   - "known in pypsa-eur as: biomass, solid biomass, solid biomass import, solid biomass transport, unsustainable solid biomass, solid biomass to hydrogen, biomass boiler, residential rural biomass boiler, residential urban decentral biomass boiler, services rural biomass boiler, services urban decentral biomass boiler"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
+    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
     out_of_box:
       covers: >
         Sector runs carry a fully spatial, data-driven biomass resource.
@@ -70,9 +70,14 @@ models:
         (see combined-heat-and-power carrier card), decentral biomass boilers on
         the four rural/urban-decentral heat systems (sector.biomass_boiler),
         biomass-to-liquid and electrobiofuels (default on), biomass-to-
-        methanol (default on), BioSNG and solid biomass to hydrogen (default
-        off) — the BtX routes belong to the hydrogen-fuels family of
-        carrier cards; biogas upgrading has its own carrier card
+        methanol (default on), BioSNG, solid biomass to hydrogen and the
+        hydrogen-boosted e-biomethanol and e-bioSNG (default off) — the BtX
+        routes belong to the hydrogen-fuels family of carrier cards
+        ([[advanced-biofuels]], [[biomass-to-methanol]]); with sector.heating
+        their waste heat (use_biofuel_waste_heat, use_biosng_waste_heat,
+        use_biomethanol_waste_heat, 0.25 each, fork commit d2e0d486) feeds
+        district heating at the biomass node, so a BtX plant also earns a
+        heat revenue where the node has district heating; biogas upgrading has its own carrier card
         (biogas-anaerobic-digestion); municipal solid waste has its own
         chain (waste-to-energy carrier card: the potential joins the waste bus
         only with waste.waste_to_energy or waste.waste_to_energy_cc, both
@@ -189,7 +194,7 @@ models:
         default: "true"
         provenance: "config/config.default.yaml:biomass_boiler; scripts/prepare_sector_network.py:biomass boiler"
       - key: sector.biomass_to_liquid
-        effect: "Solid biomass -> oil Fischer-Tropsch route (BtL cost row); electrobiofuels (BtL + H2, default true) and biosng / bioH2 (default false) sit beside it — details in the hydrogen-fuels family carrier cards."
+        effect: "Solid biomass -> oil Fischer-Tropsch route (BtL cost row); electrobiofuels (BtL + H2, default true) and biosng / bioH2 / e_biosng / methanol.e_biomethanol (default false) sit beside it — details in the hydrogen-fuels family carrier cards."
         default: "true"
         provenance: "config/config.default.yaml:biomass_to_liquid; scripts/prepare_sector_network.py:biomass to liquid"
       - key: electricity.conventional_carriers
@@ -199,7 +204,7 @@ models:
     boundary:
       - variant: "run with the default spatial biomass resource and all conversion routes"
         rung: L0
-        note: "default — sector.biomass, biomass_spatial, biomass_boiler, chp, biomass_to_liquid, electrobiofuels, biogas_upgrading all on"
+        note: "default — sector.biomass, biomass_spatial, biomass_boiler, chp, biomass_to_liquid, electrobiofuels, methanol.biomass_to_methanol, biogas_upgrading all on, the BtX waste heat to district heating at 0.25; the hydrogen-boosted and biogas methanol routes are one config-only method away ([[biogenic-carbon-routes]])"
       - variant: "more/less biomass Europe-wide"
         rung: L0
         note: "biomass.scenario: ENS_High / ENS_Low (and biomass.year); this rebuilds the potentials CSV per region — no scalar override exists"
@@ -211,7 +216,7 @@ models:
         note: "sector.biomass_transport: true (default is the faux-transport generators with a 200 km average-distance surcharge)"
       - variant: "single EU biomass pool (no spatial resolution)"
         rung: L1
-        note: "sector.biomass_spatial: false with biomass_transport false — everything lands on 'EU solid biomass'"
+        note: "sector.biomass_spatial: false with biomass_transport false — everything lands on 'EU solid biomass', and the BtX links on that bus lose their district-heating waste heat (no node to attach it to)"
       - variant: "keep unsustainable biomass longer / phase it out faster"
         rung: L1
         note: "edit the biomass.share_unsustainable_use_retained and share_sustainable_potential_available year dicts; note retained unsustainable amounts are forced consumption, not an option"
@@ -268,7 +273,7 @@ models:
       - input: "data/biomass_transport_costs_supplychain1.csv + _supplychain2.csv"
         required_for: "biomass_transport / biomass_spatial cost terms"
         availability: "exists by default in the repo"
-      - input: "cost rows 'solid biomass', 'fuelwood', 'biodiesel crops', 'biomass boiler', 'BtL', 'BioSNG', 'biomass-to-methanol', 'solid biomass to hydrogen', 'central solid biomass CHP'"
+      - input: "cost rows 'solid biomass', 'fuelwood', 'biodiesel crops', 'biomass boiler', 'BtL', 'electrobiofuels', 'BioSNG', 'biomass-to-methanol' (incl. efficiency-heat), 'solid biomass to hydrogen', 'central solid biomass CHP', and for the boosted routes the synthesis rows 'Fischer-Tropsch', 'methanolisation', 'methanation'"
         required_for: "fuel prices and conversion economics"
         availability: "exists by default via retrieve_cost_data + rule process_cost_data"
       - input: "NUTS2 shapes (2013), NUTS3 population, Swiss cantons/population"

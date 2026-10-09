@@ -27,7 +27,12 @@ models:
     sector.aviation_demand_factor, met from the oil balance or from methanol-to-kerosene),
     and the synthesis routes — Fischer-Tropsch and methanolisation Links per cluster with
     minimum part loads, fed by hydrogen and captured CO2 — compete with fossil fuel under
-    the emissions cap and with imports at a configured price. The fuel-switch-shares
+    the emissions cap and with imports at a configured price. Beside them runs a
+    biogenic-carbon branch: hydrogen-boosted biomass routes that put the carbon a
+    gasifier would vent into the fuel instead of drawing CO2 from capture —
+    electrobiofuels (to oil, on by default) and, with the biogenic-carbon-routes method,
+    e-biomethanol, e-bioSNG and the biogas methanol routes (biogas to methanol,
+    e-biogas-methanol) — next to the unboosted BtL and biomass-to-methanol. The fuel-switch-shares
     method settles the share and synthesis keys, all per-scenario, so a "which fuel"
     question is a scenario set, one per split, compared on system cost, or one run with
     the shipping split found by shipping-fuel-endogenous; sector.methanol.meoh_to_oa adds
@@ -36,7 +41,8 @@ models:
     hydrogen supply from h2-network-expansion and the CO2 supply from co2-management when
     those are part of the question, the timing from pathway-myopic. The carrier cards
     shipping-demand, aviation-demand, e-methanol, e-kerosene-saf,
-    e-diesel-fischer-tropsch, methanol-ships and green-ammonia carry the levers. Results
+    e-diesel-fischer-tropsch, methanol-ships, green-ammonia, advanced-biofuels and
+    biomass-to-methanol carry the levers. Results
     are read off the fuel loads per cluster, the synthesis Links (capacity, dispatch,
     where) and the import Generators.
   trade_offs:
@@ -53,6 +59,14 @@ models:
   - >-
     import vs domestic is a price assumption (sector.imports.price) the model cannot
     test, so the robust study runs the price as a scenario dimension
+  - >-
+    the carbon source of the fuel — biogenic carbon with hydrogen (the boosted routes),
+    captured CO2 (point source or DAC through co2 stored) or fossil with removals
+    elsewhere — is decided by the CO2 cap, the biomass potential and the sequestration
+    potential together, so a study that wants this answer turns on
+    biogenic-carbon-routes and spends its scenarios on biomass availability and storage
+    potential rather than on resolution; with ample storage the biomass carbon tends to
+    be stored and the fuel made from captured CO2
   limitations:
   - >-
     ammonia as a shipping fuel is neither a shipping share nor on the endogenous shipping
@@ -70,6 +84,11 @@ models:
     fuel mandates are not constraints the model enforces: a mandate becomes the share
     dict the study assumes, and the cost of the mandate is the system-cost difference
     against the unmandated split
+  - >-
+    no fuel-origin quota: hydrogen is any H2 on the nodal bus and liquids pool on one
+    oil bus, so the model neither tracks electrolytic (RFNBO) origin nor enforces a
+    ReFuelEU aviation or FuelEU maritime sub-quota; an e-biofuel route counts as
+    whatever the study's own accounting says
   methods:
   - id: fuel-switch-shares
     role: >-
@@ -95,6 +114,11 @@ models:
     role: >-
       the shipping fuel mix found by the model instead of set: oil, methanol, LNG and
       optionally hydrogen compete per node for one oil-equivalent shipping load
+  - id: biogenic-carbon-routes
+    role: >-
+      the biogenic-carbon branch of synthesis: e-biomethanol, e-bioSNG and the biogas
+      methanol routes switched on next to electrobiofuels, so biomass and biogas carbon
+      with hydrogen competes with captured CO2 as the fuel's carbon source
   defaults:
   - aspect: fuel-split
     is: >-
@@ -120,7 +144,7 @@ models:
   - id: region_map
     role: where synthesis sits — Fischer-Tropsch and methanolisation capacity per cluster
   version_anchor:
-    ref: f55cdf34f0e67a797fd4327bed26c56dedcb5cb8
+    ref: d2e0d48666f09a580c744846cef37e5059761d7a
     date: '2026-10-09'
 - model: pypsa-earth
   approach: >-

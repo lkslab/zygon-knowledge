@@ -28,7 +28,7 @@ when_to_use:
   - "known in pypsa-eur as: gas, fossil gas, natural gas, methane, oil primary, oil refining, imported oil"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
+    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
     out_of_box:
       covers: >
         Sector runs: add_carrier_buses creates, per fossil carrier, buses +
@@ -69,7 +69,11 @@ models:
         Renewable alternatives feed the same buses: biogas upgrading ("biogas
         to gas"), Sabatier methanation into the gas buses, Fischer-Tropsch
         and biomass-to-liquid into the EU oil bus — so "fossil" share is an
-        outcome, not an input. Emissions from burning any of these fuels flow
+        outcome, not an input (liquids stay pooled). With
+        sector.methanol.grey_methanol or blue_methanol (fork commit d2e0d486,
+        default false) gas is also an offtake into the methanol pool, through
+        extendable grey or blue methanol links at each gas location (see
+        e-methanol). Emissions from burning any of these fuels flow
         to the "co2 atmosphere" bus and are constrained by
         apply_co2_budget_constraints -> add_co2limit (co2_budget). Green price-based imports of gas/oil are separate
         links — see the green-energy-imports carrier card.

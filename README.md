@@ -67,10 +67,11 @@ the pypsa-eur section of every card and checks each `scripts/…:symbol`, `rules
 ## Anchors
 
 Both models' cards cite their `models/<model>` submodule commit. Eur cards cite
-`f55cdf34`, the `lkslab/pypsa-eur` fork commit the app pins (branch `dev`: upstream
+`d2e0d486`, the `lkslab/pypsa-eur` fork commit the app pins (branch `dev`: upstream
 `a6c45e5a` "Streamline workflow" #1838 plus the fork's fixes and the ports of
 PyPSA/pypsa-eur#1943 (industry heat), #1719 (steel and cement routes), #1875 (industry load
-profiles), #2317 (endogenous shipping) and #1654 (waste sector)): no `scenario` block or
+profiles), #2317 (endogenous shipping) and #1654 (waste sector), plus the fork's hydrogen-boosted
+biofuel and biogas/grey/blue methanol routes): no `scenario` block or
 wildcards, `compose_network` ->
 `solve_network`, networks `composed_<horizon>.nc` / `solved_<horizon>.nc`. Earth cards cite
 `8435f4c8`. Between 2026-09-10 and 2026-10-09 the eur anchor was upstream `a6c45e5a` and the

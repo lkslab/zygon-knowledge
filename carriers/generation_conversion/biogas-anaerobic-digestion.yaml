@@ -1,8 +1,9 @@
 id: biogas-anaerobic-digestion
 title: Biogas / anaerobic digestion
 summary: >
-  Biogas from organic feedstocks (manure, sludge) via anaerobic digestion, and
-  its upgrading into the methane / natural-gas system as biomethane.
+  Biogas from organic feedstocks (manure, sludge) via anaerobic digestion, its
+  upgrading into the methane / natural-gas system as biomethane, and its
+  conversion to methanol (with or without added hydrogen).
 when_to_use:
   - "add biogas"
   - "anaerobic digestion / digesters"
@@ -17,14 +18,17 @@ when_to_use:
   - "manure or organic waste to energy"
   - "green gas potential"
   - "renewable gas supply"
-  - "known in pypsa-eur as: biogas, biogas to gas, biogas to gas CC"
+  - "biogas to methanol / biomethanol from biogas"
+  - "use the CO2 in raw biogas / hydrogen-boosted biogas methanol"
+  - "known in pypsa-eur as: biogas, biogas to gas, biogas to gas CC, biogas to methanol, e-biogas-methanol"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
+    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
     out_of_box:
       covers: >
-        A regionally-resolved biogas resource whose only route to use is
-        upgrading into the gas network. rule build_biomass_potentials derives
+        A regionally-resolved biogas resource used by upgrading into the gas
+        network (default) or, with switches that are off by default, by
+        conversion to methanol. rule build_biomass_potentials derives
         the "biogas" carrier from the ENSPRESO commodities mapped by
         biomass.classes.biogas — "Manure solid, liquid" (MINBIOGAS1) and
         "Sludge" (MINBIOSLU1) — regionalised to the clustered nodes, scaled
@@ -48,7 +52,35 @@ models:
         the upgrading CO2 to the co2 stored buses (extra cost from "biogas
         CC" + "biomass CHP capture" rows). The upgraded biomethane is then
         indistinguishable from fossil gas at the gas bus and feeds every gas
-        consumer (CHP, boilers, OCGT/CCGT, industry).
+        consumer (CHP, boilers, OCGT/CCGT, industry). Methanol from biogas
+        (fork commit d2e0d486, after Zhang et al. 2026, arXiv 2604.12080):
+        sector.methanol.biogas_to_methanol adds "<biogas bus> to methanol"
+        (carrier "biogas to methanol", partial oxidation of raw biogas, 0.6601
+        MWh methanol per MWh biogas methane, binding 0.164 tCO2), and
+        sector.methanol.e_biogas_methanol adds "<biogas bus> <node>
+        e-biogas-methanol" (biogas plus nodal H2 from solid-oxide
+        electrolysis, 0.9319 MWh methanol and 0.5238 MWh H2 per MWh biogas,
+        binding 0.231 tCO2, so the biogas CO2 that upgrading vents becomes
+        fuel), both onto the EU methanol bus. Their constants are config, not
+        cost rows: sector.biogas_methanol (Park et al. 2025, Energy
+        Conversion and Management, doi:10.1016/j.enconman.2025.120052, as
+        parametrised for 2040 by Zhang et al. 2026; only the energy, hydrogen
+        and cost figures are used) — biogas_to_methanol {efficiency 0.6601,
+        investment 3307 EUR/kW_MeOH, FOM 0.83 %/a, VOM 2.54 EUR/MWh_MeOH,
+        lifetime 20}, e_biogas_methanol {efficiency 0.9319, hydrogen_input
+        0.5238, investment 3165.6, FOM 0.83, VOM 2.388, lifetime 20}. Each
+        link withdraws from the atmosphere exactly the carbon in its methanol
+        (efficiency x methanol CO2 intensity); biogas_carbon_intensity 0.33
+        tCO2/MWh_CH4 (a 60/40 CH4/CO2 biogas: the methane's 0.198 plus its
+        CO2) is the ceiling, and a route binding more carbon than that raises
+        a ValueError at compose time. Like biogas upgrading the links also
+        carry the digester cost (the "biogas" capital cost) on top of the
+        plant. With sector.heating, sector.use_biomethanol_waste_heat (0.25)
+        of 0.95 x (1 + H2 input) - methanol per MWh biogas goes to the urban
+        central heat bus at the biogas node (about 0.072 and 0.129 MWh per MWh
+        biogas); with sector.gas_network false the biogas bus is "EU biogas"
+        and the heat stays unused. Without a biogas potential the routes are
+        skipped with a warning.
       mechanism: >
         rule build_biomass_potentials (scripts/build_biomass_potentials.py):
         the biomass.classes.biogas grouper sums manure+sludge into "biogas";
@@ -58,32 +90,54 @@ models:
         biomass_potentials_{horizon}.csv, builds the
         biogas buses/generators and the biogas-to-gas upgrading Link(s);
         define_spatial fixes the nodal-vs-EU namespace from
-        sector.gas_network. Costs come from rule process_cost_data.
+        sector.gas_network. Costs come from rule process_cost_data. The
+        methanol routes are built in add_methanol (add_biogas_to_methanol,
+        biogas_methanol_costs) from sector.biogas_methanol, their heat in
+        add_waste_heat.
       not_covered: >
         Anaerobic digestion itself is not a modelled process — there is no
         digester component, capacity, or investment decision; the potential
         is an exogenous per-region resource ceiling read from ENSPRESO
         manure+sludge, with no other feedstocks (energy-crop or food-waste
         biogas is not represented; municipal waste is a separate carrier, see
-        waste-to-energy). The ONLY sink for raw biogas is upgrading to
-        methane — there is no biogas engine / biogas CHP / direct biogas
-        boiler link, so biogas cannot make electricity or heat without first
-        becoming grid gas. biomass.classes.biogas cannot be expanded to new
+        waste-to-energy). Raw biogas has two kinds of sink, upgrading to
+        methane and (off by default) conversion to methanol — there is no
+        biogas engine / biogas CHP / direct biogas boiler link, so biogas
+        cannot make electricity or heat without first becoming grid gas or
+        methanol. The methanol routes rest on one plant scale of one study
+        (Park et al. 2025), carry no oxygen by-product credit, and their
+        hydrogen is any H2 (no electrolytic-origin or RFNBO tracking). biomass.classes.biogas cannot be expanded to new
         ENSPRESO commodities beyond what the mapping names without them being
         picked up (a class outside the four hard-coded output columns is
         dropped by the groupby). The whole chain is gated on sector.biomass
         (there is no independent biogas switch). No methane-slip / fugitive-
         emission accounting on digestion or upgrading (see methane-abatement).
-      provenance: "scripts/prepare_sector_network.py:biogas to gas; scripts/prepare_sector_network.py:add_biomass; scripts/build_biomass_potentials.py:add_unsustainable_potentials; config/config.default.yaml:biogas"
+      provenance: "scripts/prepare_sector_network.py:biogas to gas; scripts/prepare_sector_network.py:add_biomass; scripts/prepare_sector_network.py:add_biogas_to_methanol; scripts/prepare_sector_network.py:biogas_methanol_costs; scripts/build_biomass_potentials.py:add_unsustainable_potentials; config/config.default.yaml:biogas; config/config.default.yaml:sector.biogas_methanol"
     levers:
       - key: sector.biogas_upgrading
-        effect: "true (default) adds the 'biogas to gas' Link that upgrades biogas into the gas network as biomethane; false leaves the biogas resource stranded (no sink)."
+        effect: "true (default) adds the 'biogas to gas' Link that upgrades biogas into the gas network as biomethane; false leaves the biogas resource stranded unless a methanol route is on."
         default: "true"
         provenance: "config/config.default.yaml:biogas_upgrading; scripts/prepare_sector_network.py:biogas to gas"
       - key: sector.biogas_upgrading_cc
         effect: "true adds a parallel 'biogas to gas CC' Link that captures the upgrading CO2 to the co2 stored buses (negative-emission biomethane), priced with the 'biogas CC' and 'biomass CHP capture' cost rows."
         default: "false"
         provenance: "config/config.default.yaml:biogas_upgrading_cc; scripts/prepare_sector_network.py:biogas to gas CC"
+      - key: sector.methanol.biogas_to_methanol
+        effect: "true adds 'biogas to methanol' Links (raw biogas partial oxidation -> EU methanol, 0.6601 MWh/MWh), competing with upgrading for the biogas."
+        default: "false"
+        provenance: "config/config.default.yaml:biogas_to_methanol; scripts/prepare_sector_network.py:add_biogas_to_methanol"
+      - key: sector.methanol.e_biogas_methanol
+        effect: "true adds 'e-biogas-methanol' Links (biogas + nodal H2 -> EU methanol, 0.9319 MWh methanol for 0.5238 MWh H2 per MWh biogas)."
+        default: "false"
+        provenance: "config/config.default.yaml:e_biogas_methanol; scripts/prepare_sector_network.py:add_biogas_to_methanol"
+      - key: sector.biogas_methanol
+        effect: "The two routes' constants (efficiency, hydrogen_input, investment EUR/kW_MeOH excluding the digester, FOM, VOM, lifetime) and biogas_carbon_intensity, the carbon ceiling a route's methanol may bind."
+        default: "biogas_carbon_intensity 0.33; biogas_to_methanol {0.6601, 0, 3307, 0.83, 2.54, 20}; e_biogas_methanol {0.9319, 0.5238, 3165.6, 0.83, 2.388, 20}"
+        provenance: "config/config.default.yaml:sector.biogas_methanol; config/config.default.yaml:biogas_carbon_intensity; scripts/prepare_sector_network.py:biogas_methanol_costs"
+      - key: sector.use_biomethanol_waste_heat
+        effect: "Share of the biogas methanol routes' waste heat (with biomass-to-methanol's and e-biomethanol's) used in district heating at the biogas node."
+        default: "0.25"
+        provenance: "config/config.default.yaml:use_biomethanol_waste_heat; scripts/prepare_sector_network.py:add_waste_heat"
       - key: biomass.classes
         effect: "The 'biogas' entry maps ENSPRESO commodities ('Manure solid, liquid'; 'Sludge') into the biogas potential — the resource-side handle on how much biogas each region has."
         default: "biogas: [Manure solid, liquid; Sludge]"
@@ -97,7 +151,7 @@ models:
         default: "{2020: 1, 2025: 1, 2030: 0.66, 2035: 0.33, 2040: 0, 2045: 0, 2050: 0}"
         provenance: "config/config.default.yaml:share_unsustainable_use_retained; scripts/build_biomass_potentials.py:_calc_unsustainable_potential"
       - key: sector.gas_network
-        effect: "true resolves biogas per node (nodes + ' biogas'); false pools it on a single 'EU biogas' bus. Also determines whether upgraded biomethane enters nodal or EU gas."
+        effect: "true resolves biogas per node (nodes + ' biogas'); false pools it on a single 'EU biogas' bus. Also determines whether upgraded biomethane enters nodal or EU gas, and whether the biogas methanol routes' waste heat can reach a district heating bus."
         default: "true"
         provenance: "config/config.default.yaml:gas_network; scripts/prepare_sector_network.py:define_spatial"
       - key: sector.biomass
@@ -111,6 +165,12 @@ models:
       - variant: "negative-emission biomethane (capture upgrading CO2)"
         rung: L0
         note: "sector.biogas_upgrading_cc: true adds the 'biogas to gas CC' Link"
+      - variant: "biogas to methanol, with or without added hydrogen"
+        rung: L0
+        note: "sector.methanol.biogas_to_methanol / sector.methanol.e_biogas_methanol: true (method [[biogenic-carbon-routes]]); they compete with upgrading for the biogas"
+      - variant: "change the biogas methanol constants (efficiency, hydrogen, cost, biogas CO2 share)"
+        rung: L1
+        note: "sector.biogas_methanol.<route>.* and biogas_carbon_intensity; a route whose methanol binds more carbon than biogas_carbon_intensity is refused (ValueError)"
       - variant: "more/less biogas resource region-wide"
         rung: L0
         note: "biomass.scenario ENS_High/ENS_Low (rebuilds the potentials CSV); no scalar override"
@@ -142,6 +202,9 @@ models:
       - change: "biogas buses/generators and the upgrading Link(s)"
         anchor: "scripts/prepare_sector_network.py::add_biomass (biogas Store/Generator, 'biogas to gas' and 'biogas to gas CC' Links)"
         provenance: "scripts/prepare_sector_network.py:add_biomass; scripts/prepare_sector_network.py:biogas to gas CC"
+      - change: "the biogas methanol routes and their cost (plant + digester)"
+        anchor: "scripts/prepare_sector_network.py::add_biogas_to_methanol / ::biogas_methanol_costs (called from add_methanol); waste heat in ::add_waste_heat"
+        provenance: "scripts/prepare_sector_network.py:add_biogas_to_methanol; scripts/prepare_sector_network.py:biogas_methanol_costs; scripts/prepare_sector_network.py:add_waste_heat"
       - change: "nodal vs EU biogas namespace"
         anchor: "scripts/prepare_sector_network.py::define_spatial (sector.gas_network -> spatial.gas.biogas / biogas_to_gas)"
         provenance: "scripts/prepare_sector_network.py:define_spatial"
@@ -153,8 +216,11 @@ models:
         required_for: "the unsustainable biogas potential"
         availability: "must be built (built by the workflow)"
       - input: "cost rows 'biogas', 'biogas upgrading', 'biogas CC', 'biomass CHP capture'"
-        required_for: "biogas fuel price and upgrading (± CC) economics"
+        required_for: "biogas fuel price and upgrading (± CC) economics; the 'biogas' capital cost is also the digester cost on the methanol routes"
         availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "Park et al. 2025 biogas methanol figures (sector.biogas_methanol, see data_quality dataset park-2025-biogas-methanol)"
+        required_for: "biogas to methanol and e-biogas-methanol"
+        availability: "shipped as config defaults; closed-access source, single plant scale, 2040 parametrisation by Zhang et al. 2026"
       - input: "per-node gas buses (gas network chain)"
         required_for: "the sink for upgraded biomethane"
         availability: "exists by default in sector runs (build_gas_network chain)"

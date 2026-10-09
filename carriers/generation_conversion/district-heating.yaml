@@ -21,7 +21,7 @@ when_to_use:
   - "known in pypsa-eur as: district heating, ptes heat pump, urban central ptes heat pump, river_water heat, river_water heat pump, sea_water heat, sea_water heat pump"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
+    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
     out_of_box:
       covers: >
         Covered as the fifth heat system "urban central". Demand side: the
@@ -53,7 +53,12 @@ models:
         central heat vent" dump generator. add_waste_heat additionally wires
         Fischer-Tropsch, Sabatier, Haber-Bosch, methanolisation, electrolysis
         and fuel cell waste heat into the urban central buses (sector.use_*
-        keys, several on by default). A machinery for LIMITED heat sources
+        keys, several on by default), and since the fork commit d2e0d486 the
+        heat of the biofuel routes — BtL and electrobiofuels (on by default),
+        BioSNG, biomass-to-methanol and the hydrogen-boosted and biogas
+        methanol routes — at the node of their biomass or biogas bus
+        (use_biofuel_waste_heat, use_biosng_waste_heat,
+        use_biomethanol_waste_heat, 0.25 each; see waste-heat-recovery). A machinery for LIMITED heat sources
         exists (sector.district_heating.limited_heat_sources: geothermal at
         constant 65 C with Fraunhofer ISI potentials via rule
         build_geothermal_heat_potential; river_water via HERA data, rule
@@ -147,7 +152,7 @@ models:
         default: "{urban central: true, urban decentral: true, rural: true} (marginal_cost_heat_vent: 0.02)"
         provenance: "config/config.default.yaml:heat_vent; scripts/prepare_sector_network.py:heat_vent"
       - key: sector.use_fuel_cell_waste_heat
-        effect: "Fraction of H2 fuel cell waste heat routed to urban central heat (similar keys: use_fischer_tropsch_waste_heat 0.25, use_electrolysis_waste_heat 0.25, use_methanation_waste_heat, use_haber_bosch_waste_heat, use_methanolisation_waste_heat; 'nowasteheat' wildcard zeroes all)."
+        effect: "Fraction of H2 fuel cell waste heat routed to urban central heat (similar keys: use_fischer_tropsch_waste_heat 0.25, use_electrolysis_waste_heat 0.25, use_methanation_waste_heat, use_haber_bosch_waste_heat, use_methanolisation_waste_heat, and the biofuel group keys use_biofuel_waste_heat, use_biosng_waste_heat, use_biomethanol_waste_heat, 0.25 each; set a key to 0 to switch that donor off — there is no sector_opts wildcard at this anchor)."
         default: "1"
         provenance: "config/config.default.yaml:use_fuel_cell_waste_heat; scripts/prepare_sector_network.py:add_waste_heat"
     boundary:

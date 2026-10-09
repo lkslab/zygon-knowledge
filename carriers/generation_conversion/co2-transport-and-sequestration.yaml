@@ -18,7 +18,7 @@ when_to_use:
   - "pypsa-eur carrier names: co2, co2 stored, co2 sequestered, co2 vent, CO2 pipeline, DAC"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
+    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
     out_of_box:
       covers: >
         Fully active by default; add_co2_tracking runs UNCONDITIONALLY in every
@@ -68,13 +68,17 @@ models:
         multi-investment). Suppliers to co2 stored: all CC links (SMR CC, CHP
         CC, gas/biomass for industry CC at sector.cc_fraction, BioSNG CC,
         biomass-to-methanol CC, Fischer-Tropsch/BtL capture, allam, process
-        emissions CC) plus DAC (sector.dac, default true: 4-bus link buying
+        emissions CC, and blue methanol's process CO2 when
+        sector.methanol.blue_methanol is on) plus DAC (sector.dac, default true: 4-bus link buying
         electricity and urban-central/services heat to pull CO2 from the
         atmosphere into co2 stored). Consumers: sequestration, and UTILISATION
         — methanolisation and Fischer-Tropsch draw CO2 from the co2 stored
         buses as synthesis feedstock, so every captured tonne is endogenously
         arbitraged between burial (costs money, bounded by the injection
-        limit) and fuel synthesis (earns fuel value).
+        limit) and fuel synthesis (earns fuel value). The hydrogen-boosted bio
+        routes (electrobiofuels, and off by default e-biomethanol, e-bioSNG,
+        e-biogas-methanol) use biogenic carbon without passing it through co2
+        stored, so they compete with this market from outside it.
       mechanism: >
         rule compose_network runs scripts/prepare_sector_network.py:
         add_co2_tracking (always; sequestration_potential input only wired when

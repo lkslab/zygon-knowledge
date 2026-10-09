@@ -19,7 +19,7 @@ when_to_use:
   - "existing steel plants as brownfield capacity"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
+    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
     out_of_box:
       covers: >
         Implemented on this fork (the port of PyPSA/pypsa-eur#1719, open
@@ -65,7 +65,9 @@ models:
         sector.steel_bof.pledge_delay when sector.steel_bof.pledge is true,
         else at the 40-year catalogue lifetime. The same call also adds
         today's Haber-Bosch (with sector.ammonia) and grey methanol (with
-        sector.methanol) plants as dated links.
+        sector.methanol) plants as dated links; new grey methanol is
+        extendable on its own switch, sector.methanol.grey_methanol (default
+        false), at the same parameters (grey_methanol_attrs).
       mechanism: >
         rule build_industrial_production_per_country_tomorrow (St_primary_fraction,
         DRI_fraction) -> rule build_industrial_production_per_node -> rule

@@ -387,15 +387,26 @@
   notes: "columns only OCGT, CCGT, coal, lignite, nuclear — no oil column despite oil being a default conventional carrier; only active when conventional.unit_commitment: true (default false)"
 
 - id: technology-costs
-  title: "Technology cost assumptions (PyPSA technology-data v0.14.0)"
-  path: data/costs/archive/v0.14.0/costs_2050.csv
+  title: "Technology cost assumptions (PyPSA technology-data v0.15.0)"
+  path: data/costs/archive/v0.15.0/costs_2050.csv
   code_convention: global
   coverage_class: proxy-global
   consumer: "scripts/_helpers.py:load_costs"
   missing_behavior: "costs carry no country dimension — a single European (mostly DEA/German) cost table is applied uniformly to all countries and planning horizons requested, so national WACC, labour and land cost differences are invisible unless costs.overwrites are set per scenario"
   tier_when_missing: C
-  used_by: [electrolysers, grid-scale-batteries, onshore-wind, offshore-wind, utility-scale-solar-pv, gas-power-plants, direct-air-capture, industry-process-heat-endogenous, steel-routes-endogenous, cement-routes-endogenous]
-  notes: "only costs_2050.csv staged at this ref (other horizons fetched on demand from the technology-data release); versioned via data/versions.csv 'costs' entry"
+  used_by: [electrolysers, grid-scale-batteries, onshore-wind, offshore-wind, utility-scale-solar-pv, gas-power-plants, direct-air-capture, industry-process-heat-endogenous, steel-routes-endogenous, cement-routes-endogenous, advanced-biofuels, biomass-to-methanol, e-methanol, waste-heat-recovery, biogas-anaerobic-digestion]
+  notes: "only costs_2050.csv staged at this ref (other horizons fetched on demand from the technology-data release); versioned via data/versions.csv 'costs' entry (v0.15.0 latest supported). The hydrogen-boosted biofuel routes (electrobiofuels' hydrogen, e-biomethanol, e-bioSNG) are derived in scripts/prepare_sector_network.py:boosted_product from the base rows ('BtL', 'BioSNG', 'biomass-to-methanol': C in fuel, C stored, capture rate, efficiency) and the synthesis rows ('Fischer-Tropsch', 'methanolisation', 'methanation': hydrogen-input), and grey/blue methanol from 'grey methanol synthesis', 'SMR' and 'SMR CC' (grey_methanol_attrs), so they inherit these rows' single European values"
+
+- id: park-2025-biogas-methanol
+  title: "Park et al. 2025 biogas-to-methanol process figures (as parametrised for 2040 by Zhang et al. 2026)"
+  path: "config/config.default.yaml:sector.biogas_methanol"
+  code_convention: global
+  coverage_class: proxy-global
+  consumer: "scripts/prepare_sector_network.py:add_biogas_to_methanol; scripts/prepare_sector_network.py:biogas_methanol_costs"
+  missing_behavior: "no country dimension: one plant's efficiency, hydrogen input and cost (biogas_to_methanol 0.6601 MWh_MeOH/MWh_CH4 at 3307 EUR/kW_MeOH; e_biogas_methanol 0.9319 with 0.5238 MWh_H2 at 3165.6 EUR/kW_MeOH; FOM 0.83 %/a, VOM 2.54 / 2.388 EUR/MWh_MeOH, lifetime 20 a) applies to every node and horizon; the values ship as config defaults, so nothing is missing at run time, and a route whose methanol would bind more carbon than biogas_carbon_intensity raises a ValueError"
+  tier_when_missing: C
+  used_by: [biogas-anaerobic-digestion, e-methanol]
+  notes: "Park et al. 2025, Energy Conversion and Management, doi:10.1016/j.enconman.2025.120052 (closed access), as parametrised for 2040 in the e-biofuels dataset of Zhang et al. 2026 (arXiv 2604.12080; dataset Zenodo 18985275, GPL-3.0, not vendored); only the energy, hydrogen and cost figures are used, the dataset's carbon-in-fuel figure is not (the link withdraws exactly the carbon in the methanol). Single plant scale, no scale economies. biogas_carbon_intensity 0.33 tCO2/MWh_CH4 is derived, not sourced: the methane's own 0.198 plus the CO2 of a 60/40 CH4/CO2 biogas. Investment excludes the digester, whose cost the link takes from the technology-data 'biogas' row"
 
 - id: heat-profile-bdew
   title: "BDEW intraday heat demand profiles (German proxy)"

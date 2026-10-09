@@ -14,8 +14,9 @@ what: >-
   (air by default; geothermal, river_water and sea_water are the limited sources whose
   potential rules/build_sector.smk:build_cop_profiles and
   build_geothermal_heat_potential turn into a per-cluster cap), resistive heaters, gas
-  and biomass CHP, boilers, solar thermal, waste heat from electrolysis, fuel synthesis
-  and fuel cells (add_waste_heat), and water tank or pit storage when sector.tes is on.
+  and biomass CHP, boilers, solar thermal, waste heat from electrolysis, fuel synthesis,
+  fuel cells and the biofuel plants (add_waste_heat; the biofuel groups at the node of
+  the feed bus), and water tank or pit storage when sector.tes is on.
   Geothermal is the catch: the Fraunhofer ISI potential only reaches the model if
   geothermal is listed under heat_pump_sources.urban central, and it is used directly
   (no heat pump) only when it is also in direct_utilisation_heat_sources. The share
@@ -31,7 +32,7 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: f55cdf34f0e67a797fd4327bed26c56dedcb5cb8
+    ref: d2e0d48666f09a580c744846cef37e5059761d7a
     date: '2026-10-09'
   execution:
   - kind: config

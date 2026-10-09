@@ -19,7 +19,7 @@ when_to_use:
   - "net negative emissions from bioenergy"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
+    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
     out_of_box:
       covers: >
         There is no standalone "BECCS" carrier; BECCS is a family of CC
@@ -83,7 +83,15 @@ models:
         (industry.solid_biomass_for_industry_cc) — disabling the CHP CC while
         keeping plain biomass means editing code. "electrobiofuels" (default ON) is capture-and-USE, not
         BECCS: the FT-capture-rate carbon is recycled with H2 into more fuel,
-        no co2 stored output. "solid biomass for industry CC" hardcodes
+        no co2 stored output; the same holds for the hydrogen-boosted
+        routes of the fork commit d2e0d486 — e-biomethanol, e-bioSNG and
+        e-biogas-methanol (off by default, [[advanced-biofuels]],
+        [[biogas-anaerobic-digestion]]) bind the capturable biogenic carbon in
+        the product, which is re-emitted where the fuel burns, so they compete
+        with the CC variants for the same carbon (use vs storage) rather than
+        adding removals. "blue methanol" (sector.methanol.blue_methanol)
+        sends captured CO2 to co2 stored, but its carbon is fossil gas
+        carbon: fossil CCS that reduces emissions, not a removal. "solid biomass for industry CC" hardcodes
         conversion efficiency 0.9 ("TODO: make config option"). Captured
         biogenic CO2 on "co2 stored" competes with utilisation (Sabatier /
         Fischer-Tropsch / methanolisation) — negativity is only realised via
@@ -157,6 +165,9 @@ models:
       - variant: "carbon-capture biofuel plants (BtL CC / methanol CC / BioSNG CC)"
         rung: L0
         note: "flip sector.biomass_to_liquid_cc / sector.methanol.biomass_to_methanol_cc / sector.biosng_cc"
+      - variant: "use the biogenic carbon in fuel instead of storing it (hydrogen-boosted routes) as the competing option"
+        rung: L0
+        note: "sector.methanol.e_biomethanol / sector.e_biosng / sector.methanol.e_biogas_methanol (method [[biogenic-carbon-routes]]); electrobiofuels is already on. Use-vs-store is then decided by the CO2 cap, hydrogen cost and sector.co2_sequestration_potential"
       - variant: "carbon-negative hydrogen from biomass"
         rung: L0
         note: "sector.bioH2: true (capture share sector.cc_fraction)"

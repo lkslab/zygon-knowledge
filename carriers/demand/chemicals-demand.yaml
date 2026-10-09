@@ -137,7 +137,7 @@ models:
       scenario: "{demand} + {planning_horizons} wildcards through CAGR; sector.ammonia.production_year for the NH3 level; custom_data.industry_demand for full scenario overrides"
 
   - model: pypsa-eur
-    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
+    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
     out_of_box:
       covers: >
         Basic chemicals split into Ammonia, HVC, Chlorine and Methanol plus
@@ -155,7 +155,11 @@ models:
         With sector.endogenous_sectors.enable under myopic or perfect
         foresight, today's Haber-Bosch (sector.ammonia) and grey methanol
         (sector.methanol) plants from build_industry_plants enter as dated
-        brownfield links in the first horizon.
+        brownfield links in the first horizon; new grey methanol capacity is
+        extendable with sector.methanol.grey_methanol (and blue methanol, its
+        captured variant, with sector.methanol.blue_methanol), both off by
+        default and sharing the existing plants' parameters
+        (grey_methanol_attrs, fork commit d2e0d486).
       mechanism: >
         build_industrial_production_per_country reads JRC-IDEES CHI sheet basic
         chemicals tonnage and separate_basic_chemicals subtracts USGS ammonia
@@ -273,7 +277,7 @@ models:
         note: "sector.methanol.meoh_to_oa: true"
       - variant: "existing ammonia and methanol plants as brownfield"
         rung: L0
-        note: "sector.endogenous_sectors.enable under foresight myopic or perfect ([[industry-routes-endogenous]]): Haber-Bosch and grey methanol plants from the Fraunhofer ISI site database and data/ammonia_plants.csv"
+        note: "sector.endogenous_sectors.enable under foresight myopic or perfect ([[industry-routes-endogenous]]): Haber-Bosch and grey methanol plants from the Fraunhofer ISI site database and data/ammonia_plants.csv; new grey (or blue) methanol is extendable with sector.methanol.grey_methanol / blue_methanol, at the same parameters"
       - variant: "add a new named chemical product (e.g. adipic acid) as its own demand"
         rung: L4
         note: "needs a new production column + sector ratio + distribution key through the whole rule chain."

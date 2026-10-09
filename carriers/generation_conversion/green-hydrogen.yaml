@@ -24,7 +24,7 @@ when_to_use:
   - "known in pypsa-eur as: H2, hydrogen"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
+    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
     out_of_box:
       covers: >
         The full electrolytic H2 chain is in every sector run: production via
@@ -37,7 +37,12 @@ models:
         Demand sinks wired by default: exogenous "H2 for industry" Loads
         from the industrial demand chain (add_industry), hydrogen input to
         Haber-Bosch ammonia (add_ammonia), methanolisation, Fischer-Tropsch
-        and Sabatier synthesis, hydrogen direct reduction of steel
+        and Sabatier synthesis, electrobiofuels (biomass + H2 to oil, 1.238
+        MWh H2 per MWh biomass at 2040 since the fork commit d2e0d486), the
+        off-by-default hydrogen-boosted bio routes e-biomethanol, e-bioSNG and
+        e-biogas-methanol (sector.methanol.e_biomethanol, sector.e_biosng,
+        sector.methanol.e_biogas_methanol; see advanced-biofuels), hydrogen
+        direct reduction of steel
         (industry.H2_DRI in the sector-ratios chain), and — behind default-0
         shares — fuel-cell land transport (sector.land_transport_fuel_cell_share,
         add_fuel_cell_cars) and H2 shipping fuel

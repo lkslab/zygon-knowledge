@@ -32,9 +32,13 @@ models:
     with the atlas filters held for the submission. The target is co2-budget's (the
     shipped 2050 cap is already net zero, so a removal question is a tighter cap, a
     tighter storage potential, or both); CO2 utilisation competes through
-    fuel-switch-shares; the timing of storage readiness is pathway-myopic. The carrier
-    cards direct-air-capture, beccs, co2-transport-and-sequestration, industrial-ccs and
-    allam-cycle carry the levers. Results are read off the capture Links into the
+    fuel-switch-shares; the timing of storage readiness is pathway-myopic. Biogenic
+    carbon can be used in products through the hydrogen-boosted routes (electrobiofuels
+    by default, e-biomethanol, e-bioSNG and the biogas methanol routes with the
+    biogenic-carbon-routes method) as well as stored via BECCS, so with both on the
+    model decides between use and storage for the same biomass carbon. The carrier
+    cards direct-air-capture, beccs, co2-transport-and-sequestration, industrial-ccs,
+    allam-cycle and advanced-biofuels carry the levers. Results are read off the capture Links into the
     atmosphere bus, the CO2 pipelines, the sequestered Store and the cap's dual.
   trade_offs:
   - >-
@@ -82,6 +86,11 @@ models:
     role: >-
       when storage and transport have to be ready — horizons with carry-over for a
       sequestration ramp through the 2030s and 2040s
+  - id: biogenic-carbon-routes
+    role: >-
+      the use side of biogenic carbon: hydrogen-boosted biomass and biogas routes that
+      bind the carbon BECCS would store in fuel instead, so use versus storage becomes a
+      model choice under the storage cap
   defaults:
   - aspect: sequestration-trajectory
     is: >-
@@ -103,7 +112,7 @@ models:
   - id: network_map
     role: CO2 pipelines and sequestration per cluster
   version_anchor:
-    ref: f55cdf34f0e67a797fd4327bed26c56dedcb5cb8
+    ref: d2e0d48666f09a580c744846cef37e5059761d7a
     date: '2026-10-09'
 - model: pypsa-earth
   approach: >-

@@ -126,7 +126,7 @@ models:
       temporal: "Heat: degree-day daily x BDEW intraday; transport: weekly traffic x temperature correction; industry/aviation/shipping/agriculture: constant; residential/services fuels: inherit electricity shape"
       scenario: "Shapes are scenario-invariant; only annual totals scale with {demand}_{planning_horizons}"
   - model: pypsa-eur
-    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
+    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
     out_of_box:
       covers: >-
         (1) Heat: rule build_daily_heat_demand converts cutout temperature to

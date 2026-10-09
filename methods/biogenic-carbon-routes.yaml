@@ -1,0 +1,112 @@
+id: biogenic-carbon-routes
+title: biogenic-carbon-routes — let biogenic carbon become fuel with added hydrogen
+family: sector-coupling
+what: >-
+  Turns on every route that puts biogenic carbon into a fuel with hydrogen, so the
+  model can choose between using biomass and biogas carbon in products, storing it
+  (BECCS) and making synthetic fuel from captured CO2. electrobiofuels (biomass plus
+  H2 to oil) is already on by default; this adds e-biomethanol
+  (sector.methanol.e_biomethanol: biomass plus H2 to methanol, 1.393 MWh methanol and
+  0.868 MWh H2 per MWh biomass at 2040), e-bioSNG (sector.e_biosng: biomass plus H2 to
+  methane, 1.733 MWh gas and 1.37 MWh H2), biogas to methanol
+  (sector.methanol.biogas_to_methanol: raw biogas partial oxidation, 0.6601 MWh
+  methanol per MWh biogas) and e-biogas-methanol (sector.methanol.e_biogas_methanol:
+  0.9319 MWh methanol for 0.5238 MWh H2 per MWh biogas). The boosted biomass routes
+  turn the capturable share of the carbon their base gasification route vents (C
+  stored x capture rate) into extra product, derived from the technology-data rows by
+  carbon balance (Zhang et al. 2026, arXiv 2604.12080, eq. 15); the biogas routes take
+  sector.biogas_methanol (Park et al. 2025, doi:10.1016/j.enconman.2025.120052, as
+  parametrised by Zhang et al. 2026). Every route withdraws from the atmosphere exactly
+  the carbon in its product. The code is
+  scripts/prepare_sector_network.py:add_e_biomethanol, add_e_biosng and
+  add_biogas_to_methanol, on the fork the app runs (lkslab/pypsa-eur d2e0d486); the
+  mechanism cards are [[advanced-biofuels]], [[biomass-to-methanol]] and
+  [[biogas-anaerobic-digestion]].
+when_to_use:
+- e-biofuels, hydrogen-boosted biofuels, power-and-biomass-to-X
+- biogenic carbon for e-fuels instead of captured CO2 or direct air capture
+- use biomass carbon in fuels or store it (BECCS), decided by the model
+- methanol or SNG from biomass or biogas with added hydrogen
+- what limited biomass or limited CO2 storage does to e-fuel supply
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: d2e0d48666f09a580c744846cef37e5059761d7a
+    date: '2026-10-09'
+  execution:
+  - kind: config
+    key: sector.methanol.e_biomethanol
+    value: true
+    note: >-
+      e-biomethanol links "<biomass node> <node> e-biomethanol" from the solid biomass
+      and nodal H2 buses onto the EU methanol bus; they compete with biomass-to-methanol
+      (default on) for the same biomass and with methanolisation for the methanol market.
+  - kind: config
+    key: sector.e_biosng
+    value: true
+    note: >-
+      e-bioSNG links "<biomass node> <node> e-bioSNG" onto the gas bus, independent of
+      sector.biosng (the unboosted BioSNG stays off unless the study turns it on as the
+      comparison).
+  - kind: config
+    key: sector.methanol.biogas_to_methanol
+    value: true
+    note: >-
+      "<biogas bus> to methanol" links; they compete with biogas upgrading (default on)
+      for the biogas and carry the digester cost like upgrading. Skipped with a warning
+      when the run has no biogas potential.
+  - kind: config
+    key: sector.methanol.e_biogas_methanol
+    value: true
+    note: >-
+      "<biogas bus> <node> e-biogas-methanol" links; the biogas CO2 that upgrading vents
+      becomes methanol with hydrogen. Constants under sector.biogas_methanol (L1 to
+      change; a route binding more carbon than biogas_carbon_intensity 0.33 tCO2/MWh is
+      refused at compose time).
+  - kind: invocation
+    note: >-
+      config only, no code: the fork ships every link, so a bundle sets the keys and
+      nothing else. sector.electrobiofuels is already true by default. For a fossil
+      baseline the study may also set sector.methanol.grey_methanol (gas to methanol,
+      process CO2 vented) and sector.methanol.blue_methanol (0.9 of it captured to co2
+      stored) — optional, not part of this method's default set, since they change the
+      question from "which low-carbon route" to "how fast off fossil methanol". Read the
+      result off p_nom_opt and dispatch of the links by carrier (e-biomethanol, e-bioSNG,
+      e-biogas-methanol, biogas to methanol, electrobiofuels against biomass-to-methanol,
+      BioSNG, biogas to gas, methanolisation, Sabatier, Fischer-Tropsch), the biomass
+      and biogas use split, and the co2 stored balance (sequestered vs used).
+  invalidates:
+  - compose_network
+  - solve_network
+  budget:
+    jobs: 2
+    class: hours
+  success_metric:
+  - name: e-routes-present
+    needs: prepared
+    check: n.links.carrier.isin(['e-biomethanol','e-bioSNG','e-biogas-methanol','biogas to methanol']).any()
+    expect: the boosted and biogas methanol links exist in the composed network once the switches are on
+  - name: e-route-built
+    needs: solved
+    check: (n.links.loc[n.links.carrier.isin(['e-biomethanol','e-bioSNG','e-biogas-methanol','biogas to methanol','electrobiofuels']), 'p_nom_opt'] > 0).any()
+    expect: at least one biogenic-carbon route is built; which one, and how much, is the result
+notes: >-
+  Needs sector.biomass (the whole chain is gated on it) and sector.industry for the
+  methanol consumers and methanolisation as the competitor. The routes' waste heat
+  (sector.use_biofuel_waste_heat, use_biosng_waste_heat, use_biomethanol_waste_heat,
+  0.25 each) reaches district heating only with sector.heating and nodal feed buses
+  (sector.biomass_spatial true, and sector.gas_network true for the biogas bus); on EU
+  buses it is unused. The answer moves with the carbon constraints: pair it with
+  [[co2-budget]] (the cap that prices fossil out) and with a
+  sector.co2_sequestration_potential sweep through [[co2-management]] (storage that
+  competes for the same biogenic carbon, and DAC plus methanolisation that compete for
+  the fuel market). Zhang et al. 2026 (arXiv 2604.12080) find e-biofuels cost-effective
+  when biomass and CO2 storage are limited and fossil fuels are ineligible, saving up
+  to 2.7 % of system cost in their runs; with ample storage the biogenic carbon tends
+  to be stored and the fuel made from other carbon. Not modelled: fuel-origin
+  mandates — the hydrogen is any H2 on the nodal bus, with no RFNBO tracking and no
+  ReFuelEU aviation or FuelEU maritime sub-quota, so a mandate-driven question is
+  stated as an assumption; no oxygen by-product credit; no plant sizing or feedstock
+  logistics; the biogas routes rest on one plant scale of one study. The parameters
+  are derived from technology-data, not taken from the paper's dataset (GPL-3.0,
+  Zenodo 18985275). Pairs with the [[e-fuels]] and [[carbon-management]] topics.

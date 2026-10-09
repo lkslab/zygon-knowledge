@@ -17,10 +17,10 @@ when_to_use:
   - "power-to-gas (methane)"
   - "Sabatier reactor"
   - "green gas for existing gas users"
-  - "known in pypsa-eur as: BioSNG, BioSNG CC, Sabatier, methanation, power-to-gas"
+  - "known in pypsa-eur as: BioSNG, BioSNG CC, e-bioSNG, Sabatier, methanation, power-to-gas"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
+    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
     out_of_box:
       covers: >
         ON by default (sector.methanation: true). add_h2_gas_infrastructure
@@ -54,8 +54,14 @@ models:
         No injection limits separate from pipeline capacities, no gas
         quality/Wobbe considerations. No SNG export machinery. Biomass
         gasification to SNG ("BioSNG", sector.biosng, default false) is a
-        different feedstock route covered in advanced-biofuels; biogas
-        upgrading is covered there too.
+        different feedstock route covered in advanced-biofuels, as is its
+        hydrogen-boosted variant "e-bioSNG" (sector.e_biosng, default false,
+        fork commit d2e0d486): biomass plus nodal H2 to the gas bus, the
+        capturable by-product carbon of BioSNG methanated at the methanation
+        hydrogen-input (1.733 MWh gas and 1.37 MWh H2 per MWh biomass at
+        2040), a Sabatier-like H2 sink whose carbon comes from biomass rather
+        than co2 stored; biogas upgrading is covered in
+        biogas-anaerobic-digestion.
       provenance: "scripts/prepare_sector_network.py:Sabatier; scripts/prepare_sector_network.py:add_h2_gas_infrastructure; scripts/prepare_sector_network.py:min_part_load_methanation; scripts/prepare_sector_network.py:add_waste_heat; scripts/add_brownfield.py:add_brownfield"
     levers:
       - key: sector.methanation

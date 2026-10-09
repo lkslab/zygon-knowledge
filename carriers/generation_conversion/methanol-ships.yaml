@@ -18,7 +18,7 @@ when_to_use:
   - "known in pypsa-eur as: shipping methanol"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "f55cdf34f0e67a797fd4327bed26c56dedcb5cb8", date: "2026-10-09"}
+    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
     out_of_box:
       covers: >
         Fully covered and the DEFAULT deep-decarbonisation shipping fuel:
@@ -40,7 +40,13 @@ models:
         "methanolisation" (H2 + electricity + CO2 from co2 stored, built in
         add_industry with p_min_pu = min_part_load_methanolisation 0.3) and
         "biomass-to-methanol" (add_biomass_to_methanol,
-        sector.methanol.biomass_to_methanol default true). Demand placement
+        sector.methanol.biomass_to_methanol default true); off by default and
+        added in add_methanol: e-biomethanol, biogas to methanol,
+        e-biogas-methanol, and fossil grey and blue methanol from the gas bus
+        (sector.methanol.e_biomethanol / biogas_to_methanol /
+        e_biogas_methanol / grey_methanol / blue_methanol, see [[e-methanol]]).
+        All of them feed the same pool, so the ship burns whatever mix the
+        pool holds. Demand placement
         can be regionalised with sector.methanol.regional_methanol_demand
         (nodal "shipping methanol" buses instead of one EU bus). With
         sector.shipping_endogenous (off by default; method
@@ -122,7 +128,7 @@ models:
         note: "shipping_methanol_efficiency / shipping_oil_efficiency"
       - variant: "force GREEN methanol only (exclude biomass route)"
         rung: L1
-        note: "sector.methanol.biomass_to_methanol: false leaves methanolisation (H2+CO2) as the supply route"
+        note: "sector.methanol.biomass_to_methanol: false and every other route switch off — biomass_to_methanol_cc, e_biomethanol, biogas_to_methanol, e_biogas_methanol, grey_methanol, blue_methanol (all false by default) — leaves methanolisation (H2+CO2) as the supply route; existing grey plants under sector.endogenous_sectors (myopic/perfect) and import methanol (sector.imports) still feed the pool when present"
       - variant: "methanol-vessel capital cost in the objective"
         rung: L2
         note: "no vessel cost anywhere; attach capital/marginal cost to the shipping methanol Link in add_shipping (cost data on you, L3)"
@@ -156,7 +162,7 @@ models:
         required_for: "demand magnitude and placement"
         availability: "retrieved/built by the workflow (rules retrieve_attributed_ports / build_shipping_demand / build_energy_totals)"
       - input: "biomass potentials (solid biomass supply)"
-        required_for: "the biomass-to-methanol route"
+        required_for: "the biomass-to-methanol and e-biomethanol routes"
         availability: "must be built (rule build_biomass_potentials); exists by default in sector runs"
   - model: pypsa-earth
     version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
