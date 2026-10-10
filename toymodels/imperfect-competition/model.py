@@ -20,7 +20,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, run  # noqa: E402
+from _lib import bundle, charts, names, run  # noqa: E402
 from _lib import carrier_style as cs  # noqa: E402
 
 SLUG = "imperfect-competition"
@@ -43,7 +43,7 @@ def build() -> pypsa.Network:
     n.add("Carrier", ["AC", "load"] + list(FIRMS))
     n.add("Bus", "market", carrier="AC")
     for name, mc in FIRMS.items():
-        n.add("Generator", name, bus="market", carrier=name, p_nom=CAPACITY, marginal_cost=mc)
+        n.add("Generator", names.gen(name), bus="market", carrier=name, p_nom=CAPACITY, marginal_cost=mc)
     n.add("Generator", "demand", bus="market", carrier="load", sign=-1, p_nom=A / B, marginal_cost=-A, marginal_cost_quadratic=B / 2)
     return n
 
@@ -97,7 +97,7 @@ def surplus(q: dict[str, float]) -> dict[str, float]:
 
 
 def regimes(n: pypsa.Network) -> dict[str, dict[str, float]]:
-    comp = {k: float(n.generators_t.p.iloc[0][k]) for k in FIRMS}
+    comp = {k: float(n.generators_t.p.iloc[0][names.gen(k)]) for k in FIRMS}
     nash, _ = cournot_iterated()
     return {"competitive": comp, "cournot": nash, "monopoly": monopoly()}
 

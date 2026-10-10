@@ -30,9 +30,9 @@ numbers:
     relaxed: 873.8405
     fixed_commitment_lp: 0.0
 meta:
-  pypsa: 1.3.0
+  pypsa: 0.35.1.post1.dev474+gbb55cd84d
   solver: highs
-  runtime_s: 49.16
+  runtime_s: 67.35
   figures:
     capacity_continuous_vs_modular:
       title: 'Capacity: continuous relaxation vs blocks with commitment'

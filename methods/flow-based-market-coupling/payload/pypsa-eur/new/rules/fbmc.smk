@@ -29,4 +29,4 @@ rule solve_fbmc_market:
     message:
         "Clearing zonal market with flow-based coupling for horizon {wildcards.horizon}"
     script:
-        scripts("solve_fbmc_market.py")
+        "../scripts/solve_fbmc_market.py"

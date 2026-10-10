@@ -41,9 +41,9 @@ numbers:
     charger_mw: 1100.0
     driving_mwh_per_weekday: 1000.0
 meta:
-  pypsa: 1.3.0
+  pypsa: 0.35.1.post1.dev474+gbb55cd84d
   solver: highs
-  runtime_s: 3.39
+  runtime_s: 15.4
   figures:
     peak_intuition:
       title: 'Same cars, same energy: when they charge is what matters'

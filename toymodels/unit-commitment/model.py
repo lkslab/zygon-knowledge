@@ -17,7 +17,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, profiles, run  # noqa: E402
+from _lib import bundle, charts, names, profiles, run  # noqa: E402
 
 SLUG = "unit-commitment"
 TITLE = "Unit commitment and its prices"
@@ -37,9 +37,9 @@ def build(*, base_mw: float = BASE_MW, peak_mw: float = PEAK_MW) -> pypsa.Networ
     n.add("Carrier", list(UNITS) + ["OCGT", "load shedding", "AC"])
     n.add("Bus", "grid", carrier="AC")
     for carrier, attrs in UNITS.items():
-        n.add("Generator", carrier, bus="grid", carrier=carrier, committable=True, **attrs)
-    n.add("Generator", "OCGT", bus="grid", carrier="OCGT", **PEAKER)
-    n.add("Generator", "load shedding", bus="grid", carrier="load shedding", p_nom=1e4, marginal_cost=3000)
+        n.add("Generator", names.gen(carrier), bus="grid", carrier=carrier, committable=True, **attrs)
+    n.add("Generator", names.gen("OCGT"), bus="grid", carrier="OCGT", **PEAKER)
+    n.add("Generator", names.gen("load shedding"), bus="grid", carrier="load shedding", p_nom=1e4, marginal_cost=3000)
     n.add("Load", "demand", bus="grid", carrier="load", p_set=profiles.daily_load(n.snapshots, base_mw, peak_mw))
     return n
 
@@ -53,10 +53,11 @@ def fixed_status_lp(n: pypsa.Network) -> pypsa.Network:
     m = n.copy()
     status = n.generators_t.status
     for unit in UNITS:
-        m.generators.loc[unit, "committable"] = False
-        m.generators_t.p_max_pu[unit] = status[unit].astype(float)
-        m.generators_t.p_min_pu[unit] = status[unit].astype(float) * n.generators.loc[unit, "p_min_pu"]
-    m.generators.loc[list(UNITS), "p_min_pu"] = 0.0
+        g = names.gen(unit)
+        m.generators.loc[g, "committable"] = False
+        m.generators_t.p_max_pu[g] = status[g].astype(float)
+        m.generators_t.p_min_pu[g] = status[g].astype(float) * n.generators.loc[g, "p_min_pu"]
+    m.generators.loc[[names.gen(u) for u in UNITS], "p_min_pu"] = 0.0
     run.solve(m)
     return m
 
@@ -71,13 +72,13 @@ def numbers(n: pypsa.Network) -> dict:
     fixed = fixed_status_lp(n)
     relaxed = linearised(n)
     plain = plain_dispatch()
-    status = n.generators_t.status[list(UNITS)]
+    status = names.plain(n.generators_t.status)[list(UNITS)]
     starts = (status.diff().fillna(0) > 0).sum()
     load = n.loads_t.p_set["demand"]
     p_fixed = fixed.buses_t.marginal_price["grid"]
     p_relaxed = relaxed.buses_t.marginal_price["grid"]
     su_cost = sum(int(starts[u]) * UNITS[u]["start_up_cost"] for u in UNITS)
-    at_min = {u: int(((n.generators_t.p[u] - UNITS[u]["p_nom"] * UNITS[u]["p_min_pu"]).abs() < 1e-3).sum()) for u in UNITS}
+    at_min = {u: int(((n.generators_t.p[names.gen(u)] - UNITS[u]["p_nom"] * UNITS[u]["p_min_pu"]).abs() < 1e-3).sum()) for u in UNITS}
     return {
         "total_cost_uc_eur": float(n.objective),
         "total_cost_linearised_eur": float(relaxed.objective),
@@ -89,10 +90,10 @@ def numbers(n: pypsa.Network) -> dict:
         "avg_price_fixed_status_eur_mwh": float((p_fixed * load).sum() / load.sum()),
         "avg_price_linearised_eur_mwh": float((p_relaxed * load).sum() / load.sum()),
         "min_price_linearised_eur_mwh": float(p_relaxed.min()),
-        "peaker_energy_mwh": float(n.generators_t.p["OCGT"].sum()),
+        "peaker_energy_mwh": float(n.generators_t.p[names.gen("OCGT")].sum()),
         "total_cost_plain_dispatch_eur": float(plain.objective),
-        "hours_plain_ccgt_below_min_load": int(((plain.generators_t.p["CCGT"] > 1e-3)
-                                                & (plain.generators_t.p["CCGT"] < UNITS["CCGT"]["p_nom"] * UNITS["CCGT"]["p_min_pu"] - 1e-3)).sum()),
+        "hours_plain_ccgt_below_min_load": int(((plain.generators_t.p[names.gen("CCGT")] > 1e-3)
+                                                & (plain.generators_t.p[names.gen("CCGT")] < UNITS["CCGT"]["p_nom"] * UNITS["CCGT"]["p_min_pu"] - 1e-3)).sum()),
     }
 
 
@@ -100,8 +101,8 @@ def plain_dispatch() -> pypsa.Network:
     """The same day without commitment: every unit may run anywhere from zero to full, with no
     start-up cost, the way merit-order-dispatch treats plants."""
     m = build()
-    m.generators.loc[list(UNITS), "committable"] = False
-    m.generators.loc[list(UNITS), "p_min_pu"] = 0.0
+    m.generators.loc[[names.gen(u) for u in UNITS], "committable"] = False
+    m.generators.loc[[names.gen(u) for u in UNITS], "p_min_pu"] = 0.0
     run.solve(m)
     return m
 
@@ -112,9 +113,9 @@ def commitment_intuition(n: pypsa.Network) -> bundle.Figure:
     lp = plain_dispatch()
     p_min = UNITS["CCGT"]["p_nom"] * UNITS["CCGT"]["p_min_pu"]
     df = pd.DataFrame({
-        "gas plant, simple dispatch": lp.generators_t.p["CCGT"].clip(lower=0).round(1),
-        "gas plant, with commitment": n.generators_t.p["CCGT"].clip(lower=0).round(1),
-        "peaker, with commitment": n.generators_t.p["OCGT"].clip(lower=0).round(1),
+        "gas plant, simple dispatch": lp.generators_t.p[names.gen("CCGT")].clip(lower=0).round(1),
+        "gas plant, with commitment": n.generators_t.p[names.gen("CCGT")].clip(lower=0).round(1),
+        "peaker, with commitment": n.generators_t.p[names.gen("OCGT")].clip(lower=0).round(1),
     })
     option, ds = charts.time_series(df, "MW", step="end", slider=False)
     option["series"][0]["lineStyle"] = {**option["series"][0].get("lineStyle", {}), "type": "dashed"}
@@ -137,12 +138,12 @@ def commitment_intuition(n: pypsa.Network) -> bundle.Figure:
 def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
     fixed = fixed_status_lp(n)
     relaxed = linearised(n)
-    status = n.generators_t.status[list(UNITS)].astype(int)
+    status = names.plain(n.generators_t.status)[list(UNITS)].astype(int)
     option, ds = charts.status_steps(status)
     status_fig = bundle.Figure(option, ds, title="Commitment status", height=240,
                                caption="Each band is one unit: raised while committed. Minimum up and down times keep the "
                                "cheap coal unit on through the night trough rather than cycling it.")
-    stack = n.generators_t.p[list(UNITS) + ["OCGT"]].round(1)
+    stack = names.plain(n.generators_t.p)[list(UNITS) + ["OCGT"]].round(1)
     option, ds = charts.time_series(stack, "MW", stack=True, area=True)
     dispatch = bundle.Figure(option, ds, title="Dispatch", caption="Committed units run at least at their minimum part load; the peaker fills the evening.")
     prices = pd.DataFrame({

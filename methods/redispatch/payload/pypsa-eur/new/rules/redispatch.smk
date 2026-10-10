@@ -36,4 +36,4 @@ rule solve_redispatch:
     message:
         "Redispatching the zonal market schedule for horizon {wildcards.horizon}"
     script:
-        scripts("solve_redispatch.py")
+        "../scripts/solve_redispatch.py"

@@ -19,7 +19,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, profiles, run  # noqa: E402
+from _lib import bundle, charts, names, profiles, run  # noqa: E402
 
 SLUG = "ev-charging-v2g"
 TITLE = "Electric vehicles: uncontrolled, smart and vehicle-to-grid charging"
@@ -72,9 +72,9 @@ def build(*, case: str = "smart") -> pypsa.Network:
     n.add("Bus", "grid", carrier="AC")
     n.add("Bus", "EV", carrier="EV battery")
     for carrier, (p_nom, mc) in FLEET.items():
-        n.add("Generator", carrier, bus="grid", carrier=carrier, p_nom=p_nom, marginal_cost=mc)
-    n.add("Generator", "onwind", bus="grid", carrier="onwind", p_nom=WIND_MW, p_max_pu=profiles.wind(n.snapshots))
-    n.add("Generator", "load shedding", bus="grid", carrier="load shedding", p_nom=1e5, marginal_cost=3000)
+        n.add("Generator", names.gen(carrier), bus="grid", carrier=carrier, p_nom=p_nom, marginal_cost=mc)
+    n.add("Generator", names.gen("onwind"), bus="grid", carrier="onwind", p_nom=WIND_MW, p_max_pu=profiles.wind(n.snapshots))
+    n.add("Generator", names.gen("load shedding"), bus="grid", carrier="load shedding", p_nom=1e5, marginal_cost=3000)
     n.add("Load", "demand", bus="grid", carrier="load", p_set=profiles.daily_load(n.snapshots, BASE_MW, PEAK_MW))
     plugged, driving = _profiles(n.snapshots)
     n.add("Load", "driving", bus="EV", carrier="EV battery", p_set=driving)
@@ -82,15 +82,15 @@ def build(*, case: str = "smart") -> pypsa.Network:
         # the charging schedule is not a decision: full power whenever plugged in until full,
         # simulated hour by hour and then fixed on the charger (p_min_pu = p_max_pu)
         draw, e_initial = uncontrolled_schedule(plugged, driving)
-        n.add("Store", "EV battery", bus="EV", carrier="EV battery", e_nom=EV_STORE_MWH, e_initial=e_initial, e_min_pu=MIN_SOC)
-        n.add("Link", "battery charger", bus0="grid", bus1="EV", carrier="battery charger", p_nom=CHARGER_MW,
+        n.add("Store", names.unit("EV battery"), bus="EV", carrier="EV battery", e_nom=EV_STORE_MWH, e_initial=e_initial, e_min_pu=MIN_SOC)
+        n.add("Link", names.link("battery charger"), bus0="grid", bus1="EV", carrier="battery charger", p_nom=CHARGER_MW,
               efficiency=EFF, p_max_pu=draw / CHARGER_MW, p_min_pu=draw / CHARGER_MW)
         return n
-    n.add("Store", "EV battery", bus="EV", carrier="EV battery", e_nom=EV_STORE_MWH, e_cyclic=True, e_min_pu=MIN_SOC)
-    n.add("Link", "battery charger", bus0="grid", bus1="EV", carrier="battery charger", p_nom=CHARGER_MW,
+    n.add("Store", names.unit("EV battery"), bus="EV", carrier="EV battery", e_nom=EV_STORE_MWH, e_cyclic=True, e_min_pu=MIN_SOC)
+    n.add("Link", names.link("battery charger"), bus0="grid", bus1="EV", carrier="battery charger", p_nom=CHARGER_MW,
           efficiency=EFF, p_max_pu=plugged)
     if case == "vehicle-to-grid":
-        n.add("Link", "battery discharger", bus0="EV", bus1="grid", carrier="battery discharger", p_nom=CHARGER_MW,
+        n.add("Link", names.link("battery discharger"), bus0="EV", bus1="grid", carrier="battery discharger", p_nom=CHARGER_MW,
               efficiency=EFF, p_max_pu=plugged, marginal_cost=0.5)
     return n
 
@@ -105,8 +105,8 @@ def cases() -> dict[str, pypsa.Network]:
 
 def _summary(n: pypsa.Network, case: str) -> dict:
     price = n.buses_t.marginal_price["grid"]
-    charge = n.links_t.p0["battery charger"]  # MW drawn from the grid
-    discharge = -n.links_t.p1["battery discharger"] if "battery discharger" in n.links.index else pd.Series(0.0, index=n.snapshots)
+    charge = n.links_t.p0[names.link("battery charger")]  # MW drawn from the grid
+    discharge = -n.links_t.p1[names.link("battery discharger")] if names.link("battery discharger") in n.links.index else pd.Series(0.0, index=n.snapshots)
     load = n.loads_t.p_set["demand"]
     net = load + charge - discharge
     driving = n.loads_t.p_set["driving"].sum()
@@ -140,8 +140,8 @@ def peak_intuition(nets: dict[str, pypsa.Network]) -> bundle.Figure:
     base = nets["smart"].loads_t.p_set["demand"].loc[days]
     df = pd.DataFrame({
         "demand without the cars": base.round(1),
-        "with uncontrolled charging": (base + nets["uncontrolled"].links_t.p0["battery charger"].loc[days]).round(1),
-        "with smart charging": (base + nets["smart"].links_t.p0["battery charger"].loc[days]).round(1),
+        "with uncontrolled charging": (base + nets["uncontrolled"].links_t.p0[names.link("battery charger")].loc[days]).round(1),
+        "with smart charging": (base + nets["smart"].links_t.p0[names.link("battery charger")].loc[days]).round(1),
     })
     option, ds = charts.time_series(df, "MW", step="middle", slider=False)
     looks = [("#6b7280", 1.5, "solid", 0.12), (charts.BAND_ABOVE, 2.5, "solid", 0.0), (charts.BAND_BELOW, 2.5, "dashed", 0.0)]
@@ -163,15 +163,15 @@ def peak_intuition(nets: dict[str, pypsa.Network]) -> bundle.Figure:
 
 def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     smart = nets["smart"]
-    df = pd.DataFrame({c: nets[c].links_t.p0["battery charger"].round(1) for c in CASES})
-    df["vehicle-to-grid"] = (nets["vehicle-to-grid"].links_t.p0["battery charger"] + nets["vehicle-to-grid"].links_t.p1["battery discharger"]).round(1)
+    df = pd.DataFrame({c: nets[c].links_t.p0[names.link("battery charger")].round(1) for c in CASES})
+    df["vehicle-to-grid"] = (nets["vehicle-to-grid"].links_t.p0[names.link("battery charger")] + nets["vehicle-to-grid"].links_t.p1[names.link("battery discharger")]).round(1)
     df["price"] = smart.buses_t.marginal_price["grid"].round(2)
     option, ds = charts.dual_axis(df, CASES, ["price"], "MW from the grid", "EUR/MWh", step="middle")
     ch = bundle.Figure(option, ds, title="Charging power against the price",
                        caption="Grid draw of the fleet per case (vehicle-to-grid shown net, negative when selling back) "
                        "with the smart-case price on the right axis. Uncontrolled charging lands on the evening "
                        "peak; smart charging waits for the night trough; V2G discharges into the peak.")
-    soc = pd.DataFrame({c: (nets[c].stores_t.e["EV battery"] / EV_STORE_MWH * 100).round(1) for c in CASES})
+    soc = pd.DataFrame({c: (nets[c].stores_t.e[names.unit("EV battery")] / EV_STORE_MWH * 100).round(1) for c in CASES})
     option, ds = charts.time_series(soc, "% of fleet battery")
     option["yAxis"]["min"] = 0
     option["yAxis"]["max"] = 100

@@ -17,7 +17,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, profiles, run  # noqa: E402
+from _lib import bundle, charts, names, profiles, run  # noqa: E402
 
 SLUG = "maintenance-scheduling"
 TITLE = "Maintenance scheduling"
@@ -36,15 +36,15 @@ def build(*, forced_start: int | None = None) -> pypsa.Network:
     n.add("Carrier", list(UNITS) + ["load shedding", "AC"])
     n.add("Bus", "grid", carrier="AC")
     for carrier, (p_nom, mc) in UNITS.items():
-        n.add("Generator", carrier, bus="grid", carrier=carrier, p_nom=p_nom, marginal_cost=mc)
-    n.add("Generator", "load shedding", bus="grid", carrier="load shedding", p_nom=1e5, marginal_cost=3000)
+        n.add("Generator", names.gen(carrier), bus="grid", carrier=carrier, p_nom=p_nom, marginal_cost=mc)
+    n.add("Generator", names.gen("load shedding"), bus="grid", carrier="load shedding", p_nom=1e5, marginal_cost=3000)
     n.add("Load", "demand", bus="grid", carrier="load", p_set=profiles.daily_load(n.snapshots, BASE_MW, PEAK_MW, weekend_factor=0.75))
     if forced_start is None:
-        n.generators.loc[MAINTAINED, ["maintainable", "maintenance_duration", "maintenance_pu", "maintenance_events"]] = [True, DURATION_H, 1.0, 1]
+        n.generators.loc[names.gen(MAINTAINED), ["maintainable", "maintenance_duration", "maintenance_pu", "maintenance_events"]] = [True, DURATION_H, 1.0, 1]
     else:
         avail = pd.Series(1.0, index=n.snapshots)
         avail.iloc[forced_start:forced_start + DURATION_H] = 0.0
-        n.generators_t.p_max_pu[MAINTAINED] = avail
+        n.generators_t.p_max_pu[names.gen(MAINTAINED)] = avail
     return n
 
 
@@ -53,18 +53,18 @@ def solve(n: pypsa.Network) -> pypsa.Network:
 
 
 def outage_window(n: pypsa.Network) -> tuple[pd.Timestamp, pd.Timestamp]:
-    has = "maintenance" in n.generators_t and MAINTAINED in n.generators_t.maintenance.columns
-    m = n.generators_t.maintenance[MAINTAINED] if has else (1 - n.generators_t.p_max_pu[MAINTAINED])
+    has = "maintenance" in n.generators_t and names.gen(MAINTAINED) in n.generators_t.maintenance.columns
+    m = n.generators_t.maintenance[names.gen(MAINTAINED)] if has else (1 - n.generators_t.p_max_pu[names.gen(MAINTAINED)])
     on = m[m > 0.5].index
     return on[0], on[-1]
 
 
 def availability(n: pypsa.Network) -> pd.DataFrame:
     df = pd.DataFrame(1, index=n.snapshots, columns=list(UNITS))
-    if "maintenance" in n.generators_t and MAINTAINED in n.generators_t.maintenance.columns:
-        df[MAINTAINED] = (1 - n.generators_t.maintenance[MAINTAINED]).round().astype(int)
-    elif MAINTAINED in n.generators_t.p_max_pu:
-        df[MAINTAINED] = n.generators_t.p_max_pu[MAINTAINED].round().astype(int)
+    if "maintenance" in n.generators_t and names.gen(MAINTAINED) in n.generators_t.maintenance.columns:
+        df[MAINTAINED] = (1 - n.generators_t.maintenance[names.gen(MAINTAINED)]).round().astype(int)
+    elif names.gen(MAINTAINED) in n.generators_t.p_max_pu:
+        df[MAINTAINED] = n.generators_t.p_max_pu[names.gen(MAINTAINED)].round().astype(int)
     return df
 
 
@@ -85,8 +85,8 @@ def numbers(nets: dict[str, pypsa.Network]) -> dict:
         "saving_eur": float(forced.objective - opt.objective),
         "saving_pct": float(100 * (forced.objective - opt.objective) / forced.objective),
         "mean_load_in_window_mw": {"optimal": float(load.loc[w0:w1].mean()), "forced": float(load.loc[f0:f1].mean())},
-        "peaker_energy_mwh": {k: float(n.generators_t.p["OCGT"].sum()) for k, n in nets.items()},
-        "load_shed_mwh": {k: float(n.generators_t.p["load shedding"].sum()) for k, n in nets.items()},
+        "peaker_energy_mwh": {k: float(n.generators_t.p[names.gen("OCGT")].sum()) for k, n in nets.items()},
+        "load_shed_mwh": {k: float(n.generators_t.p[names.gen("load shedding")].sum()) for k, n in nets.items()},
         "avg_price_eur_mwh": {k: float((_prices(n) * load).sum() / load.sum()) for k, n in nets.items()},
         "duration_h": DURATION_H,
     }
@@ -136,7 +136,7 @@ def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     av = bundle.Figure(option, ds, title="Unit availability, optimal timing", height=240,
                        caption="One band per unit, raised while available; the coal band drops for the 72 hours the "
                        "solver chose, over the weekend trough where its absence costs least.")
-    stack = opt.generators_t.p[list(UNITS)].round(1)
+    stack = names.plain(opt.generators_t.p)[list(UNITS)].round(1)
     option, ds = charts.time_series(stack, "MW", stack=True, area=True)
     disp = bundle.Figure(option, ds, title="Dispatch with the optimal outage",
                          caption="While coal is out the gas units cover it; the peaker runs only at the weekday evening peaks.")
@@ -154,7 +154,7 @@ def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
 def _prices(n: pypsa.Network) -> pd.Series:
     """The MILP has no duals; re-solve as an LP with the chosen outage fixed."""
     m = build(forced_start=0)
-    m.generators_t.p_max_pu[MAINTAINED] = availability(n)[MAINTAINED].astype(float)
+    m.generators_t.p_max_pu[names.gen(MAINTAINED)] = availability(n)[MAINTAINED].astype(float)
     run.solve(m)
     return m.buses_t.marginal_price["grid"]
 

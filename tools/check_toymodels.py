@@ -6,7 +6,7 @@ Needs the app venv (pypsa-app is not a dependency of this repo, it is the consum
     cd ../pypsa-app && uv run python ../zygon-knowledge/tools/check_toymodels.py [--rerun]
 
 Every `toymodels/<slug>/figures/*.json` is parsed by
-`pypsa_app.backend.services.figure_spec.validate_figure` with the app's size cap, the
+`pypsa_app.backend.services.figures.spec.validate_figure` with the app's size cap, the
 same function the app runs on a figure the assistant writes. `--rerun` also executes
 every `model.py` (or the slugs given) into a temporary directory and compares the
 regenerated figure files byte for byte and the numbers (minus wall-clock `*_s` keys) with
@@ -32,7 +32,7 @@ def load_validator(app: Path):
     if not (src / "pypsa_app").exists():
         raise SystemExit(f"no pypsa_app package under {src}")
     sys.path.insert(0, str(src))
-    spec = importlib.import_module("pypsa_app.backend.services.figure_spec")
+    spec = importlib.import_module("pypsa_app.backend.services.figures.spec")
     templates = importlib.import_module("pypsa_app.backend.services.agent.figure_templates")
     return spec.validate_figure, spec.FigureSpecError, templates.FIGURE_JSON_MAX_BYTES
 

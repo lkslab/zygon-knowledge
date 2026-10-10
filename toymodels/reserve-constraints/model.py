@@ -19,7 +19,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, profiles, run  # noqa: E402
+from _lib import bundle, charts, names, profiles, run  # noqa: E402
 
 SLUG = "reserve-constraints"
 TITLE = "Operating reserve as a custom constraint"
@@ -39,9 +39,9 @@ def build() -> pypsa.Network:
     n.add("Carrier", list(FLEET) + ["onwind", "load shedding", "AC"])
     n.add("Bus", "grid", carrier="AC")
     for carrier, (p_nom, mc) in FLEET.items():
-        n.add("Generator", carrier, bus="grid", carrier=carrier, p_nom=p_nom, marginal_cost=mc)
-    n.add("Generator", "onwind", bus="grid", carrier="onwind", p_nom=WIND_MW, marginal_cost=0, p_max_pu=profiles.wind(n.snapshots))
-    n.add("Generator", "load shedding", bus="grid", carrier="load shedding", p_nom=1e5, marginal_cost=3000)
+        n.add("Generator", names.gen(carrier), bus="grid", carrier=carrier, p_nom=p_nom, marginal_cost=mc)
+    n.add("Generator", names.gen("onwind"), bus="grid", carrier="onwind", p_nom=WIND_MW, marginal_cost=0, p_max_pu=profiles.wind(n.snapshots))
+    n.add("Generator", names.gen("load shedding"), bus="grid", carrier="load shedding", p_nom=1e5, marginal_cost=3000)
     n.add("Load", "demand", bus="grid", carrier="load", p_set=profiles.daily_load(n.snapshots, BASE_MW, PEAK_MW))
     return n
 
@@ -52,11 +52,12 @@ def add_reserve(n: pypsa.Network, sns: pd.Index) -> None:
     provider, a headroom cap and the requirement."""
     m = n.model
     p = m["Generator-p"]  # dispatch variables, dims (snapshot, name)
-    reserve = m.add_variables(lower=0, coords=[sns, pd.Index(PROVIDERS, name="name")], name="Generator-reserve")
-    headroom = n.generators.p_nom[PROVIDERS]  # p_max_pu is 1 for the thermal fleet
-    m.add_constraints(reserve + p.sel(name=PROVIDERS) <= headroom, name="Generator-reserve-headroom")
+    providers = [names.gen(g) for g in PROVIDERS]
+    reserve = m.add_variables(lower=0, coords=[sns, pd.Index(providers, name="name")], name="Generator-reserve")
+    headroom = n.generators.p_nom[providers]  # p_max_pu is 1 for the thermal fleet
+    m.add_constraints(reserve + p.sel(name=providers) <= headroom, name="Generator-reserve-headroom")
     load = n.loads_t.p_set.loc[sns, "demand"]
-    m.add_constraints(reserve.sum("name") - WIND_SHARE * p.sel(name="onwind") >= LOAD_SHARE * load,
+    m.add_constraints(reserve.sum("name") - WIND_SHARE * p.sel(name=names.gen("onwind")) >= LOAD_SHARE * load,
                       name="Reserve-requirement")
 
 
@@ -66,7 +67,7 @@ def solve(n: pypsa.Network, *, reserve: bool = True) -> pypsa.Network:
 
 def reserve_results(n: pypsa.Network) -> tuple[pd.DataFrame, pd.Series]:
     """Reserve held per provider (MW) and the reserve price (EUR/MW/h) from the model."""
-    held = n.model["Generator-reserve"].solution.to_pandas()
+    held = names.plain(n.model["Generator-reserve"].solution.to_pandas())
     price = n.model.constraints["Reserve-requirement"].dual.to_pandas()
     return held, price
 
@@ -79,7 +80,7 @@ def numbers(nets: dict[str, pypsa.Network]) -> dict:
     wr, wo = nets["with reserve"], nets["without reserve"]
     held, rprice = reserve_results(wr)
     load = wr.loads_t.p_set["demand"]
-    req = LOAD_SHARE * load + WIND_SHARE * wr.generators_t.p["onwind"]
+    req = LOAD_SHARE * load + WIND_SHARE * wr.generators_t.p[names.gen("onwind")]
     return {
         "reserve_cost_eur": float(wr.objective - wo.objective),
         "reserve_cost_share_pct": float(100 * (wr.objective - wo.objective) / wo.objective),
@@ -87,8 +88,8 @@ def numbers(nets: dict[str, pypsa.Network]) -> dict:
         "requirement_mw": {"mean": float(req.mean()), "max": float(req.max())},
         "reserve_held_share_pct": {g: float(100 * held[g].sum() / held.sum().sum()) for g in PROVIDERS},
         "avg_price_eur_mwh": {"with reserve": float(wr.buses_t.marginal_price["grid"].mean()), "without reserve": float(wo.buses_t.marginal_price["grid"].mean())},
-        "peaker_energy_mwh": {"with reserve": float(wr.generators_t.p["OCGT"].sum()), "without reserve": float(wo.generators_t.p["OCGT"].sum())},
-        "wind_curtailed_mwh": {k: float((n.generators_t.p_max_pu["onwind"] * WIND_MW - n.generators_t.p["onwind"]).sum()) for k, n in nets.items()},
+        "peaker_energy_mwh": {"with reserve": float(wr.generators_t.p[names.gen("OCGT")].sum()), "without reserve": float(wo.generators_t.p[names.gen("OCGT")].sum())},
+        "wind_curtailed_mwh": {k: float((n.generators_t.p_max_pu[names.gen("onwind")] * WIND_MW - n.generators_t.p[names.gen("onwind")]).sum()) for k, n in nets.items()},
         "requirement_rule": f"{LOAD_SHARE:.0%} of load + {WIND_SHARE:.0%} of wind output",
     }
 
@@ -96,7 +97,7 @@ def numbers(nets: dict[str, pypsa.Network]) -> dict:
 def figures(nets: dict[str, pypsa.Network]) -> dict[str, bundle.Figure]:
     wr, wo = nets["with reserve"], nets["without reserve"]
     held, rprice = reserve_results(wr)
-    stack = wr.generators_t.p[list(FLEET) + ["onwind"]].round(1)
+    stack = names.plain(wr.generators_t.p)[list(FLEET) + ["onwind"]].round(1)
     stack["reserve held"] = held.sum(axis=1).round(1)
     option, ds = charts.time_series(stack, "MW", stack=True, area=True)
     for s in option["series"]:

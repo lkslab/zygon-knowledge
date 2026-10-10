@@ -27,4 +27,4 @@ rule distribute_investment:
     message:
         "Distributing auction-target capacity for horizon {wildcards.horizon}"
     script:
-        scripts("distribute_investment.py")
+        "../scripts/distribute_investment.py"

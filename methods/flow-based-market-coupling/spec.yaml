@@ -46,7 +46,8 @@ models:
       '
   - kind: payload
     note: 'materializes scripts/fbmc_core.py + scripts/solve_fbmc_market.py + rules/fbmc.smk,
-      patches the Snakefile include and the fbmc: config section into config.default.yaml.
+      ships the fbmc: config.yaml fragment, staged into the submission directory and
+      included through custom_rules.
       Rebased on a6c45e5 (2026-09-10), not yet re-run against an a6c45e5 install.
 
       '

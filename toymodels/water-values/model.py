@@ -20,7 +20,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, profiles, run  # noqa: E402
+from _lib import bundle, charts, names, profiles, run  # noqa: E402
 
 SLUG = "water-values"
 TITLE = "Water values for a seasonal reservoir"
@@ -54,11 +54,11 @@ def build() -> pypsa.Network:
     n.add("Carrier", ["AC", "hydro", "onwind", "CCGT", "OCGT", "load shedding"])
     n.add("Bus", "grid", carrier="AC")
     n.add("Load", "demand", bus="grid", carrier="load", p_set=profiles.annual_load(n.snapshots, MEAN_LOAD_MW))
-    n.add("Generator", "onwind", bus="grid", carrier="onwind", p_nom=WIND_MW, p_max_pu=profiles.wind(n.snapshots))
-    n.add("Generator", "CCGT", bus="grid", carrier="CCGT", **CCGT)
-    n.add("Generator", "OCGT", bus="grid", carrier="OCGT", **OCGT)
-    n.add("Generator", "load shedding", bus="grid", carrier="load shedding", p_nom=1e5, marginal_cost=VOLL)
-    n.add("StorageUnit", "hydro", bus="grid", carrier="hydro", inflow=inflow(n.snapshots), cyclic_state_of_charge=False,
+    n.add("Generator", names.gen("onwind"), bus="grid", carrier="onwind", p_nom=WIND_MW, p_max_pu=profiles.wind(n.snapshots))
+    n.add("Generator", names.gen("CCGT"), bus="grid", carrier="CCGT", **CCGT)
+    n.add("Generator", names.gen("OCGT"), bus="grid", carrier="OCGT", **OCGT)
+    n.add("Generator", names.gen("load shedding"), bus="grid", carrier="load shedding", p_nom=1e5, marginal_cost=VOLL)
+    n.add("StorageUnit", names.unit("hydro"), bus="grid", carrier="hydro", inflow=inflow(n.snapshots), cyclic_state_of_charge=False,
           state_of_charge_initial=HYDRO["p_nom"] * HYDRO["max_hours"] * 0.5, spill_cost=0.0, p_min_pu=0, **HYDRO)
     return n
 
@@ -84,7 +84,7 @@ def water_value(n: pypsa.Network) -> pd.Series:
     snapshot weighting). Its sign follows the constraint's orientation, so the absolute
     value is taken; it lies between zero (spill looming) and the dearest fuel.
     """
-    return n.storage_units_t.mu_energy_balance["hydro"].abs()
+    return n.storage_units_t.mu_energy_balance[names.unit("hydro")].abs()
 
 
 def cost(n: pypsa.Network) -> float:
@@ -100,8 +100,8 @@ def runs() -> tuple[dict[str, pypsa.Network], pd.Series]:
     informed = build()
     # the water value enters twice: releasing a MWh costs it (so hydro only runs when the
     # price is above it) and spilling a MWh costs it too (so inflow is stored, not wasted)
-    informed.storage_units_t.marginal_cost["hydro"] = wv.to_numpy()
-    informed.storage_units.loc["hydro", "spill_cost"] = float(wv.mean())
+    informed.storage_units_t.marginal_cost[names.unit("hydro")] = wv.to_numpy()
+    informed.storage_units.loc[names.unit("hydro"), "spill_cost"] = float(wv.mean())
     solve_rolling(informed)
     return {"perfect foresight": pf, "rolling horizon": naive, "rolling + water value": informed}, wv
 
@@ -110,11 +110,11 @@ def summary(n: pypsa.Network) -> dict:
     w = n.snapshot_weightings.generators
     return {
         "cost_meur_a": cost(n) / 1e6,
-        "spill_gwh": float((n.storage_units_t.spill["hydro"] * w).sum() / 1e3) if "spill" in n.storage_units_t else 0.0,
-        "shortage_hours": float(w[n.generators_t.p["load shedding"] > 1e-3].sum()),
-        "hydro_gwh": float((n.storage_units_t.p["hydro"] * w).sum() / 1e3),
-        "min_reservoir_gwh": float(n.storage_units_t.state_of_charge["hydro"].min() / 1e3),
-        "end_reservoir_gwh": float(n.storage_units_t.state_of_charge["hydro"].iloc[-1] / 1e3),
+        "spill_gwh": float((n.storage_units_t.spill[names.unit("hydro")] * w).sum() / 1e3) if "spill" in n.storage_units_t else 0.0,
+        "shortage_hours": float(w[n.generators_t.p[names.gen("load shedding")] > 1e-3].sum()),
+        "hydro_gwh": float((n.storage_units_t.p[names.unit("hydro")] * w).sum() / 1e3),
+        "min_reservoir_gwh": float(n.storage_units_t.state_of_charge[names.unit("hydro")].min() / 1e3),
+        "end_reservoir_gwh": float(n.storage_units_t.state_of_charge[names.unit("hydro")].iloc[-1] / 1e3),
     }
 
 
@@ -132,7 +132,7 @@ def numbers(nets: dict[str, pypsa.Network], wv: pd.Series) -> dict:
 
 
 def figures(nets: dict[str, pypsa.Network], wv: pd.Series) -> dict[str, bundle.Figure]:
-    soc = pd.DataFrame({k: (n.storage_units_t.state_of_charge["hydro"] / 1e3).round(2) for k, n in nets.items()})
+    soc = pd.DataFrame({k: (n.storage_units_t.state_of_charge[names.unit("hydro")] / 1e3).round(2) for k, n in nets.items()})
     option, ds = charts.time_series(soc, "GWh", slider=False)
     soc_fig = bundle.Figure(option, ds, title="Reservoir level over the year",
                             caption="Perfect foresight keeps water for the winter; the naive rolling solve spends it "

@@ -49,7 +49,9 @@ LINK_LABEL_AT = {"A-B": (2.3, 7.7), "A-C": (7.7, 7.7), "B-C": (3.7, 3.55)}
 def build(*, load_levels: list[float] | None = None, s_nom_ab: float = 400) -> pypsa.Network:
     levels = load_levels or LOAD_LEVELS
     n = pypsa.Network()
-    n.set_snapshots(pd.Index([f"{int(round(100 * lv))}% load" for lv in levels], name="snapshot"))
+    # integer snapshots (PyPSA refuses string labels); the case label travels in the network's meta
+    n.set_snapshots(pd.RangeIndex(len(levels), name="snapshot"))
+    n.meta = {"load_labels": [f"{int(round(100 * lv))}% load" for lv in levels]}
     n.add("Carrier", ["AC", "coal", "CCGT", "oil", "load shedding"])
     n.add("Bus", BUSES, v_nom=380, carrier="AC")
     for bus, (carrier, p_nom, mc) in GENS.items():
@@ -63,6 +65,11 @@ def build(*, load_levels: list[float] | None = None, s_nom_ab: float = 400) -> p
 
 def solve(n: pypsa.Network) -> pypsa.Network:
     return run.solve(n)
+
+
+def _labels(n: pypsa.Network) -> pd.Series:
+    """Display label of every snapshot: the load level it solves."""
+    return pd.Series(n.meta["load_labels"], index=n.snapshots)
 
 
 def _prices(n: pypsa.Network) -> pd.DataFrame:
@@ -94,7 +101,7 @@ def numbers(n: pypsa.Network) -> dict:
         "line_loading_peak_pct": {k: float(100 * v) for k, v in loading.items()},
         "marginal_value_line_ab_peak_eur_mw_h": float(rent.loc[peak, "A-B"] / n.lines.s_nom["A-B"]),
         "cost_of_congestion_eur": float(n.objective - copper.objective),
-        "first_congested_level": next((str(s) for s in n.snapshots if n.lines_t.p0.abs().loc[s, "A-B"] >= 0.999 * n.lines.s_nom["A-B"]), None),
+        "first_congested_level": next((_labels(n)[s] for s in n.snapshots if n.lines_t.p0.abs().loc[s, "A-B"] >= 0.999 * n.lines.s_nom["A-B"]), None),
         "loop_flow_share_peak": float(n.lines_t.p0.abs().loc[peak, "A-C"] / (n.lines_t.p0.abs().loc[peak, ["A-B", "A-C"]].sum())),
     }
 
@@ -139,7 +146,8 @@ def nodal_geography(n: pypsa.Network) -> bundle.Figure:
 
 def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
     lmp = _prices(n).round(2)
-    levels = [str(s) for s in n.snapshots]
+    levels = list(_labels(n))
+    lmp = lmp.set_axis(levels)
     option, ds = charts.bars(BUSES, {lv: lmp.loc[lv].tolist() for lv in levels}, "EUR/MWh", category_name="bus")
     prices = bundle.Figure(option, ds, title="Nodal prices by load level",
                            caption="One price while the network is unconstrained; once line A-B hits its limit the cheap "
@@ -149,7 +157,7 @@ def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
     option, ds = charts.bars(list(LINES), {"flow": flows.tolist(), "capacity": n.lines.s_nom.tolist()}, "MW",
                              horizontal=True, category_name="line")
     flow_fig = bundle.Figure(option, ds, title="Line flows at peak load", caption="Absolute flow against thermal limit; A-B is at its limit, the loop path A-C carries the rest.")
-    rent = _rent(n).round(1)
+    rent = _rent(n).round(1).set_axis(levels)
     option, ds = charts.bars(list(LINES), {lv: rent.loc[lv].tolist() for lv in levels}, "EUR/h", category_name="line")
     rent_fig = bundle.Figure(option, ds, title="Congestion rent by line",
                              caption="Flow times the price difference across the line, the merchandising surplus a "

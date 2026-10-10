@@ -1,0 +1,9 @@
+# Investment geography (zygon methods payload: investment-geography)
+# Consumed by rules/investment_geography.smk -> scripts/distribute_investment.py;
+# docs in the method spec methods/investment-geography/spec.yaml.
+investment_geography:
+  snapshots:
+    start: "2013-03-01"
+    end: "2013-03-02"
+  targets: {}            # {country: {technology: MW of new capacity}}
+  auction_effectiveness: 0.6  # eta: 1 = pure cost-optimal, 0 = even land spread

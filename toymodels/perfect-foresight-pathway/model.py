@@ -19,7 +19,7 @@ import pypsa
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, profiles, run  # noqa: E402
+from _lib import bundle, charts, names, profiles, run  # noqa: E402
 
 SLUG = "perfect-foresight-pathway"
 TITLE = "Perfect-foresight pathway vs myopic"
@@ -56,7 +56,7 @@ def build(*, e2030: float) -> pypsa.Network:
     n.add("Load", "demand", bus="electricity", carrier="load", p_set=load)
     for name, (carrier, p_nom, by, life, mc) in MYOPIC.EXISTING.items():
         n.add("Generator", name, bus="electricity", carrier=carrier, p_nom=p_nom, build_year=by, lifetime=life, marginal_cost=mc)
-    n.add("Generator", "load shedding", bus="electricity", carrier="load shedding", p_nom=1e6, marginal_cost=BASE.VOLL)
+    n.add("Generator", names.gen("load shedding"), bus="electricity", carrier="load shedding", p_nom=1e6, marginal_cost=BASE.VOLL)
     wind = pd.concat({h: profiles.wind(year).loc[index] for h in HORIZONS})
     solar = pd.concat({h: profiles.solar(year).loc[index] for h in HORIZONS})
     for s in (wind, solar):

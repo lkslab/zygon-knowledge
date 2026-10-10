@@ -18,7 +18,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, finance, profiles, run  # noqa: E402
+from _lib import bundle, charts, finance, names, profiles, run  # noqa: E402
 
 SLUG = "sector-coupling-single-node"
 TITLE = "Sector coupling: electricity, heat and hydrogen"
@@ -46,15 +46,15 @@ def build(*, cap_fraction: float = CAP_FRACTION) -> pypsa.Network:
     n = BASE.build(co2_cap_t=cap_fraction * BASE.reference_emissions())
     n.add("Carrier", "gas boiler", co2_emissions=CO2_GAS_BOILER)
     n.add("Carrier", ["heat", "heat pump", "water tanks"])
-    n.add("Bus", "heat", carrier="heat")
-    n.add("Load", "heat demand", bus="heat", carrier="heat", p_set=profiles.heat(n.snapshots, MEAN_HEAT_MW))
-    n.add("Link", "heat pump", bus0="electricity", bus1="heat", carrier="heat pump", p_nom_extendable=True,
+    n.add("Bus", names.bus("heat"), carrier="heat")
+    n.add("Load", "heat demand", bus=names.bus("heat"), carrier="heat", p_set=profiles.heat(n.snapshots, MEAN_HEAT_MW))
+    n.add("Link", names.link("heat pump"), bus0="electricity", bus1=names.bus("heat"), carrier="heat pump", p_nom_extendable=True,
           capital_cost=_capex(HEAT_TECH["heat pump"]), efficiency=profiles.cop(n.snapshots))
     gb = HEAT_TECH["gas boiler"]
-    n.add("Generator", "gas boiler", bus="heat", carrier="gas boiler", p_nom_extendable=True,
+    n.add("Generator", names.gen("gas boiler"), bus=names.bus("heat"), carrier="gas boiler", p_nom_extendable=True,
           capital_cost=_capex(gb), marginal_cost=gb["marginal_cost"], efficiency=1.0)
     wt = HEAT_TECH["water tanks"]
-    n.add("Store", "water tanks", bus="heat", carrier="water tanks", e_nom_extendable=True, e_cyclic=True,
+    n.add("Store", names.unit("water tanks"), bus=names.bus("heat"), carrier="water tanks", e_nom_extendable=True, e_cyclic=True,
           capital_cost=_capex(wt), standing_loss=wt["loss"])
     n.add("Load", "H2 demand", bus="hydrogen", carrier="H2", p_set=H2_DEMAND_MW)
     return n
@@ -85,17 +85,17 @@ def balance(n: pypsa.Network, bus: str) -> pd.DataFrame:
 
 def numbers(n: pypsa.Network) -> dict:
     w = n.snapshot_weightings.generators
-    heat = balance(n, "heat")
+    heat = balance(n, names.bus("heat"))
     elec = balance(n, "electricity")
     heat_demand = float((n.loads_t.p_set["heat demand"] * w).sum())
     hp_heat = float((heat["heat pump"].clip(lower=0) * w).sum())
     boiler_heat = float((heat["gas boiler"].clip(lower=0) * w).sum())
-    hp_el = float((n.links_t.p0["heat pump"] * w).sum())
-    ely_el = float((n.links_t.p0["H2 Electrolysis"] * w).sum())
+    hp_el = float((n.links_t.p0[names.link("heat pump")] * w).sum())
+    ely_el = float((n.links_t.p0[names.link("H2 Electrolysis")] * w).sum())
     el_demand = float((n.loads_t.p_set["demand"] * w).sum())
     cr = finance.cost_recovery(n)
-    h2_out = float((n.links_t.p0["H2 Electrolysis"] * n.links.efficiency["H2 Electrolysis"] * w).sum())
-    h2_cost = float(cr.loc[["H2 Electrolysis", "H2 Store"], "cost"].sum()) + float((n.buses_t.marginal_price["electricity"] * n.links_t.p0["H2 Electrolysis"] * w).sum())
+    h2_out = float((n.links_t.p0[names.link("H2 Electrolysis")] * n.links.efficiency[names.link("H2 Electrolysis")] * w).sum())
+    h2_cost = float(cr.loc[["H2 Electrolysis", "H2 Store"], "cost"].sum()) + float((n.buses_t.marginal_price["electricity"] * n.links_t.p0[names.link("H2 Electrolysis")] * w).sum())
     price = n.buses_t.marginal_price
     return {
         "total_cost_meur_a": float(n.objective / 1e6),
@@ -103,15 +103,15 @@ def numbers(n: pypsa.Network) -> dict:
         "heat_supplied_over_demand_pct": float(100 * (hp_heat + boiler_heat) / heat_demand),
         "seasonal_cop_mean": float(hp_heat / hp_el) if hp_el > 0 else None,
         "capacity_mw": {**{c: float(v) for c, v in BASE.capacities_mw(n).items()},
-                        "heat pump (el)": float(n.links.p_nom_opt["heat pump"]), "gas boiler (th)": float(n.generators.p_nom_opt["gas boiler"])},
-        "storage_mwh": {"water tanks": float(n.stores.e_nom_opt["water tanks"]), "H2 Store": float(n.stores.e_nom_opt["H2 Store"])},
+                        "heat pump (el)": float(n.links.p_nom_opt[names.link("heat pump")]), "gas boiler (th)": float(n.generators.p_nom_opt[names.gen("gas boiler")])},
+        "storage_mwh": {"water tanks": float(n.stores.e_nom_opt[names.unit("water tanks")]), "H2 Store": float(n.stores.e_nom_opt[names.unit("H2 Store")])},
         "electricity_demand_uplift_pct": float(100 * (hp_el + ely_el) / el_demand),
-        "electrolyser_capacity_factor_pct": float(100 * ely_el / (n.links.p_nom_opt["H2 Electrolysis"] * 8760)) if n.links.p_nom_opt["H2 Electrolysis"] > 1e-3 else None,
+        "electrolyser_capacity_factor_pct": float(100 * ely_el / (n.links.p_nom_opt[names.link("H2 Electrolysis")] * 8760)) if n.links.p_nom_opt[names.link("H2 Electrolysis")] > 1e-3 else None,
         "lcoh_eur_mwh": float(h2_cost / h2_out) if h2_out > 0 else None,
-        "mean_price_eur_mwh": {"electricity": float((price["electricity"] * w).sum() / w.sum()), "heat": float((price["heat"] * w).sum() / w.sum()), "hydrogen": float((price["hydrogen"] * w).sum() / w.sum())},
+        "mean_price_eur_mwh": {"electricity": float((price["electricity"] * w).sum() / w.sum()), "heat": float((price[names.bus("heat")] * w).sum() / w.sum()), "hydrogen": float((price["hydrogen"] * w).sum() / w.sum())},
         "co2_price_eur_t": float(-n.global_constraints.mu["co2_limit"]),
         "emissions_kt": float(BASE.emissions_t(n) / 1e3 + (heat["gas boiler"] * w).sum() * CO2_GAS_BOILER / 1e3),
-        "load_shed_mwh": float((n.generators_t.p["load shedding"] * w).sum()),
+        "load_shed_mwh": float((n.generators_t.p[names.gen("load shedding")] * w).sum()),
     }
 
 
@@ -133,7 +133,7 @@ def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
                           caption="Supply above zero, withdrawals below. The heat pump's draw peaks in winter; the "
                           "electrolyser draws most in the windy weeks, when wind is in surplus, and the fuel cell "
                           "returns a little of it in the calm ones.")
-    heat = balance(n, "heat")
+    heat = balance(n, names.bus("heat"))
     hcols = [c for c in HEAT_CARRIERS + ["load"] if c in heat.columns]
     wh = _weekly(heat[hcols]).round(1)
     dfh = pd.concat([wh.clip(lower=0)[[c for c in hcols if (wh[c] > 0).any()]], wh.clip(upper=0)[[c for c in hcols if (wh[c] < 0).any()]].add_suffix(" (withdrawal)")], axis=1)
@@ -143,7 +143,7 @@ def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
                             "carries all heat and the cheap tank absorbs surplus electricity as heat (its standing "
                             "losses are why heat supplied exceeds heat demand). Loosen the cap knob to see the boiler return.")
     week = n.snapshots[(n.snapshots >= "2025-01-15") & (n.snapshots < "2025-01-22")]
-    flex = pd.DataFrame({"heat pump": n.links_t.p0.loc[week, "heat pump"], "H2 Electrolysis": n.links_t.p0.loc[week, "H2 Electrolysis"],
+    flex = pd.DataFrame({"heat pump": n.links_t.p0.loc[week, names.link("heat pump")], "H2 Electrolysis": n.links_t.p0.loc[week, names.link("H2 Electrolysis")],
                          "price": n.buses_t.marginal_price.loc[week, "electricity"]}).round(2)
     option, ds = charts.dual_axis(flex, ["heat pump", "H2 Electrolysis"], ["price"], "MW electric", "EUR/MWh", step="middle")
     fl = bundle.Figure(option, ds, title="Flexible load in a winter week",

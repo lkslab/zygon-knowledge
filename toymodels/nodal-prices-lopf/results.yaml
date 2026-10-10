@@ -18,9 +18,9 @@ numbers:
   first_congested_level: 90% load
   loop_flow_share_peak: 0.5238
 meta:
-  pypsa: 1.3.0
+  pypsa: 0.35.1.post1.dev474+gbb55cd84d
   solver: highs
-  runtime_s: 1.86
+  runtime_s: 4.67
   figures:
     nodal_geography:
       title: 'Power takes every path: one full line splits the prices'

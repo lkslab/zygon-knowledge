@@ -33,9 +33,9 @@ numbers:
   reservoir_energy_gwh: 48.0
   inflow_gwh_a: 394.2
 meta:
-  pypsa: 1.3.0
+  pypsa: 0.35.1.post1.dev474+gbb55cd84d
   solver: highs
-  runtime_s: 45.73
+  runtime_s: 137.27
   figures:
     reservoir_level:
       title: Reservoir level over the year

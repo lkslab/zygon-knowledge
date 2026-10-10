@@ -19,7 +19,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, run  # noqa: E402
+from _lib import bundle, charts, names, run  # noqa: E402
 
 SLUG = "renewable-revenue-risk"
 TITLE = "Zero-price hours and wind revenue risk"
@@ -48,7 +48,7 @@ def sweep(cases: dict[str, float | None] | None = None) -> dict[str, pypsa.Netwo
 def vre_share_pct(n: pypsa.Network) -> float:
     """Wind and solar as a share of all generation (curtailed energy not counted)."""
     w = n.snapshot_weightings.generators
-    supply = n.generators_t.p.mul(w, axis=0).sum()
+    supply = names.plain(n.generators_t.p).mul(w, axis=0).sum()
     return float(100 * (supply["onwind"] + supply["solar"]) / supply.sum())
 
 
@@ -61,7 +61,7 @@ def weekly_wind_value(n: pypsa.Network) -> pd.Series:
     """What wind earned per MWh in each week of the year (market revenue / output)."""
     w = n.snapshot_weightings.generators
     price = n.buses_t.marginal_price["electricity"]
-    energy = n.generators_t.p[GEN] * w
+    energy = n.generators_t.p[names.gen(GEN)] * w
     week = n.snapshots.isocalendar().week.clip(upper=52).to_numpy()
     revenue = (price * energy).groupby(week).sum()
     return revenue / energy.groupby(week).sum()
@@ -70,14 +70,14 @@ def weekly_wind_value(n: pypsa.Network) -> pd.Series:
 def case_numbers(n: pypsa.Network) -> dict:
     w = n.snapshot_weightings.generators
     price = n.buses_t.marginal_price["electricity"]
-    energy = n.generators_t.p[GEN] * w
+    energy = n.generators_t.p[names.gen(GEN)] * w
     mean_price = float((price * w).sum() / w.sum())
     market_value = float((price * energy).sum() / energy.sum())
     weekly = weekly_wind_value(n)
     return {
         "co2_cap_fraction": None,
         "vre_share_pct": vre_share_pct(n),
-        "wind_capacity_mw": float(n.generators.p_nom_opt[GEN]),
+        "wind_capacity_mw": float(n.generators.p_nom_opt[names.gen(GEN)]),
         "share_hours_zero_price_pct": float(100 * w[price <= ZERO].sum() / w.sum()),
         "share_wind_energy_at_zero_price_pct": float(100 * energy[price <= ZERO].sum() / energy.sum()),
         "mean_price_eur_mwh": mean_price,

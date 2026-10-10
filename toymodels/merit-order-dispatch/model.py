@@ -16,7 +16,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, profiles, run  # noqa: E402
+from _lib import bundle, charts, names, profiles, run  # noqa: E402
 
 SLUG = "merit-order-dispatch"
 TITLE = "Merit order and marginal pricing"
@@ -40,8 +40,8 @@ def build(*, base_mw: float = BASE_MW, peak_mw: float = PEAK_MW, fleet: dict | N
     n.add("Carrier", list(fleet) + ["load shedding", "AC"])
     n.add("Bus", "grid", carrier="AC")
     for carrier, (p_nom, mc) in fleet.items():
-        n.add("Generator", carrier, bus="grid", carrier=carrier, p_nom=p_nom, marginal_cost=mc)
-    n.add("Generator", "load shedding", bus="grid", carrier="load shedding", p_nom=1e5, marginal_cost=VOLL)
+        n.add("Generator", names.gen(carrier), bus="grid", carrier=carrier, p_nom=p_nom, marginal_cost=mc)
+    n.add("Generator", names.gen("load shedding"), bus="grid", carrier="load shedding", p_nom=1e5, marginal_cost=VOLL)
     n.add("Load", "demand", bus="grid", carrier="load", p_set=profiles.daily_load(n.snapshots, base_mw, peak_mw))
     return n
 
@@ -53,10 +53,10 @@ def solve(n: pypsa.Network) -> pypsa.Network:
 def numbers(n: pypsa.Network) -> dict[str, float]:
     price = n.buses_t.marginal_price["grid"]
     load = n.loads_t.p_set["demand"]
-    dispatch = n.generators_t.p
-    mc = n.generators.marginal_cost
+    dispatch = names.plain(n.generators_t.p)
+    mc = names.plain(n.generators.marginal_cost)
     rent = ((price.to_numpy()[:, None] - mc.to_numpy()[None, :]) * dispatch).sum()
-    marginal = (dispatch.gt(1e-3) & dispatch.lt(n.generators.p_nom - 1e-3)).sum()
+    marginal = (dispatch.gt(1e-3) & dispatch.lt(names.plain(n.generators.p_nom) - 1e-3)).sum()
     return {
         "total_cost_eur": float(n.objective),
         "avg_price_eur_mwh": float((price * load).sum() / load.sum()),
@@ -77,7 +77,7 @@ def merit_order_rent(n: pypsa.Network) -> bundle.Figure:
     load = n.loads_t.p_set["demand"]
     peak = load.idxmax()
     q, p = float(load[peak]), float(price[peak])
-    gens = n.generators.loc[list(FLEET)].sort_values("marginal_cost")
+    gens = names.plain(n.generators).loc[list(FLEET)].sort_values("marginal_cost")
     x1 = gens.p_nom.cumsum()
     x0 = x1 - gens.p_nom
     curves = [charts.Curve(g, [float(x0[g]), float(x1[g])], [float(gens.marginal_cost[g])] * 2, width=4) for g in gens.index]
@@ -115,7 +115,7 @@ def merit_order_rent(n: pypsa.Network) -> bundle.Figure:
 def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
     price = n.buses_t.marginal_price["grid"]
     load = n.loads_t.p_set["demand"]
-    gens = n.generators.loc[list(FLEET)].sort_values("marginal_cost")
+    gens = names.plain(n.generators).loc[list(FLEET)].sort_values("marginal_cost")
     x1 = gens.p_nom.cumsum()
     segments = pd.DataFrame({"x0": x1 - gens.p_nom, "x1": x1, "y": gens.marginal_cost, "name": gens.index})
     option, ds = charts.step_curve(
@@ -129,7 +129,7 @@ def figures(n: pypsa.Network) -> dict[str, bundle.Figure]:
         caption="Generators sorted by marginal cost; the dashed lines mark the day's minimum and peak load, "
         "and the step they cut sets the price in that hour.",
     )
-    stack = n.generators_t.p[list(FLEET)].round(1)
+    stack = names.plain(n.generators_t.p)[list(FLEET)].round(1)
     option, ds = charts.time_series(stack, "MW", stack=True, area=True)
     dispatch = bundle.Figure(option, ds, title="Dispatch stack", caption="Hourly dispatch stacked in merit order; the load line is the top of the stack.")
     option, ds = charts.time_series(pd.DataFrame({"price": price.round(2)}), "EUR/MWh", step="end")

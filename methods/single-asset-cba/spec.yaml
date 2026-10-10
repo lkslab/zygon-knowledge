@@ -76,8 +76,9 @@ models:
       '
   - kind: payload
     note: 'rules/zygon_cba.smk + build_cba_network.py + zygon_cba_collect.py; solve_cba_network
-      mirrors the model''s own solve_network rule, running the model''s own solve_network.py; patches
-      Snakefile + config.
+      mirrors the model''s own solve_network rule, running the model''s own solve_network.py; ships the
+      zygon_cba: config.yaml fragment, staged into the submission directory and
+      included through custom_rules.
       Rebased on a6c45e5 (2026-09-10), not yet re-run against an a6c45e5 install.
 
       '

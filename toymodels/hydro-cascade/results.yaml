@@ -34,9 +34,9 @@ numbers:
     - 100.0
   load_shed_mwh: 0.0
 meta:
-  pypsa: 1.3.0
+  pypsa: 0.35.1.post1.dev474+gbb55cd84d
   solver: highs
-  runtime_s: 1.58
+  runtime_s: 5.9
   figures:
     cascade_intuition:
       title: One river, two power stations

@@ -20,7 +20,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, finance, profiles, run  # noqa: E402
+from _lib import bundle, charts, finance, names, profiles, run  # noqa: E402
 
 SLUG = "modular-committable-expansion"
 TITLE = "Modular and committable expansion"
@@ -49,18 +49,18 @@ def build(*, modular: bool = True, co2_cap_t: float | None = None) -> pypsa.Netw
     n.add("Carrier", "CCGT", co2_emissions=BASE.CO2_CCGT)
     n.add("Bus", "electricity", carrier="AC")
     n.add("Load", "demand", bus="electricity", carrier="load", p_set=profiles.annual_load(year, MEAN_LOAD_MW).loc[index])
-    n.add("Generator", "onwind", bus="electricity", carrier="onwind", p_nom_extendable=True, capital_cost=_capex("onwind"),
+    n.add("Generator", names.gen("onwind"), bus="electricity", carrier="onwind", p_nom_extendable=True, capital_cost=_capex("onwind"),
           p_max_pu=profiles.wind(year).loc[index])
-    n.add("Generator", "solar", bus="electricity", carrier="solar", p_nom_extendable=True, capital_cost=_capex("solar"),
+    n.add("Generator", names.gen("solar"), bus="electricity", carrier="solar", p_nom_extendable=True, capital_cost=_capex("solar"),
           p_max_pu=profiles.solar(year).loc[index])
     gas = dict(bus="electricity", carrier="CCGT", p_nom_extendable=True, capital_cost=_capex("CCGT"),
                marginal_cost=TECH["CCGT"]["marginal_cost"])
     if modular:
         gas.update(p_nom_mod=BLOCK_MW, committable=True, **GAS_UC)
-    n.add("Generator", "CCGT", **gas)
-    n.add("Generator", "load shedding", bus="electricity", carrier="load shedding", p_nom=1e6, marginal_cost=BASE.VOLL)
+    n.add("Generator", names.gen("CCGT"), **gas)
+    n.add("Generator", names.gen("load shedding"), bus="electricity", carrier="load shedding", p_nom=1e6, marginal_cost=BASE.VOLL)
     b = TECH["battery"]
-    n.add("StorageUnit", "battery", bus="electricity", carrier="battery", p_nom_extendable=True, capital_cost=_capex("battery"),
+    n.add("StorageUnit", names.unit("battery"), bus="electricity", carrier="battery", p_nom_extendable=True, capital_cost=_capex("battery"),
           max_hours=b["max_hours"], efficiency_store=b["eta"], efficiency_dispatch=b["eta"], cyclic_state_of_charge=True)
     if co2_cap_t is not None:
         n.add("GlobalConstraint", "co2_limit", type="primary_energy", carrier_attribute="co2_emissions", sense="<=", constant=co2_cap_t)
@@ -72,8 +72,8 @@ def solve(n: pypsa.Network) -> pypsa.Network:
 
 
 def capacities(n: pypsa.Network) -> pd.Series:
-    return pd.Series({"onwind": n.generators.p_nom_opt["onwind"], "solar": n.generators.p_nom_opt["solar"],
-                      "CCGT": n.generators.p_nom_opt["CCGT"], "battery": n.storage_units.p_nom_opt["battery"]})
+    return pd.Series({"onwind": n.generators.p_nom_opt[names.gen("onwind")], "solar": n.generators.p_nom_opt[names.gen("solar")],
+                      "CCGT": n.generators.p_nom_opt[names.gen("CCGT")], "battery": n.storage_units.p_nom_opt[names.unit("battery")]})
 
 
 def fixed_commitment_lp(n: pypsa.Network) -> pypsa.Network:
@@ -81,11 +81,11 @@ def fixed_commitment_lp(n: pypsa.Network) -> pypsa.Network:
     m = build(modular=False, co2_cap_t=float(n.global_constraints.constant["co2_limit"]))
     cap = capacities(n)
     for g in ("onwind", "solar", "CCGT"):
-        m.generators.loc[g, ["p_nom", "p_nom_extendable"]] = [cap[g], False]
-    m.storage_units.loc["battery", ["p_nom", "p_nom_extendable"]] = [cap["battery"], False]
-    status = n.generators_t.status["CCGT"].astype(float)
-    m.generators_t.p_max_pu["CCGT"] = status
-    m.generators_t.p_min_pu["CCGT"] = status * GAS_UC["p_min_pu"]
+        m.generators.loc[names.gen(g), ["p_nom", "p_nom_extendable"]] = [cap[g], False]
+    m.storage_units.loc[names.unit("battery"), ["p_nom", "p_nom_extendable"]] = [cap["battery"], False]
+    status = n.generators_t.status[names.gen("CCGT")].astype(float)
+    m.generators_t.p_max_pu[names.gen("CCGT")] = status
+    m.generators_t.p_min_pu[names.gen("CCGT")] = status * GAS_UC["p_min_pu"]
     run.solve(m)
     return m
 
@@ -97,12 +97,12 @@ def cost_recovery(n: pypsa.Network, prices: pypsa.Network) -> pd.DataFrame:
     rows = {}
     co2 = float(-prices.global_constraints.mu["co2_limit"])
     for g in ("onwind", "solar", "CCGT"):
-        p = n.generators_t.p[g]
+        p = n.generators_t.p[names.gen(g)]
         revenue = float((price * p * w).sum())
-        mc = n.generators.marginal_cost[g] + (co2 * BASE.CO2_CCGT if g == "CCGT" else 0.0)
+        mc = n.generators.marginal_cost[names.gen(g)] + (co2 * BASE.CO2_CCGT if g == "CCGT" else 0.0)
         cost = float(cap[g] * _capex(g) + (mc * p * w).sum())
-        if g == "CCGT" and "status" in n.generators_t and "CCGT" in n.generators_t.status:
-            starts = (n.generators_t.status["CCGT"].diff().fillna(0) > 0)
+        if g == "CCGT" and "status" in n.generators_t and names.gen("CCGT") in n.generators_t.status:
+            starts = (n.generators_t.status[names.gen("CCGT")].diff().fillna(0) > 0)
             cost += float((starts * GAS_UC["start_up_cost"] * w).sum())
         rows[g] = {"revenue": revenue, "cost": cost}
     return pd.DataFrame(rows).T
@@ -122,7 +122,7 @@ def numbers(res: dict) -> dict:
     relaxed, milp, prices = res["relaxed"], res["milp"], res["prices"]
     cr_milp = cost_recovery(milp, prices)
     cr_lp = cost_recovery(relaxed, relaxed)
-    status = milp.generators_t.status["CCGT"]
+    status = milp.generators_t.status[names.gen("CCGT")]
     starts = int((status.diff().fillna(0) > 0).sum())
     w = milp.snapshot_weightings.generators
     return {
@@ -149,8 +149,8 @@ def figures(res: dict) -> dict[str, bundle.Figure]:
                         caption="Gas snaps to a whole number of 100 MW blocks; wind, solar and the battery move to fill "
                         "the gap the rounding leaves.")
     week = milp.snapshots[:56]
-    stack = pd.DataFrame({c: milp.generators_t.p.loc[week, c] for c in ("onwind", "solar", "CCGT")})
-    stack["battery"] = milp.storage_units_t.p.loc[week, "battery"].clip(lower=0)
+    stack = pd.DataFrame({c: milp.generators_t.p.loc[week, names.gen(c)] for c in ("onwind", "solar", "CCGT")})
+    stack["battery"] = milp.storage_units_t.p.loc[week, names.unit("battery")].clip(lower=0)
     option, ds = charts.time_series(stack.round(1), "MW", stack=True, area=True, slider=False)
     disp = bundle.Figure(option, ds, title="Dispatch in the winter fortnight with commitment",
                          caption="Committed gas never runs below 40 % of its blocks; the start-up cost makes it stay on "

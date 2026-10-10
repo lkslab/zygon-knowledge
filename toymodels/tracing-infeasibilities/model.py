@@ -20,7 +20,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, profiles, run  # noqa: E402
+from _lib import bundle, charts, names, profiles, run  # noqa: E402
 
 SLUG = "tracing-infeasibilities"
 TITLE = "Tracing an infeasible dispatch problem"
@@ -40,14 +40,14 @@ def build(*, with_shedding: bool = False, spike_mw: float | None = None) -> pyps
     n.add("Carrier", list(UNITS) + ["load shedding", "AC"])
     n.add("Bus", "grid", carrier="AC")
     for carrier, attrs in UNITS.items():
-        n.add("Generator", carrier, bus="grid", carrier=carrier, **attrs)
+        n.add("Generator", names.gen(carrier), bus="grid", carrier=carrier, **attrs)
     load = profiles.daily_load(n.snapshots, BASE_MW, PEAK_MW)
     start = pd.Timestamp(SPIKE["start"])
     idx = (n.snapshots >= start) & (n.snapshots < start + pd.Timedelta(hours=SPIKE["hours"]))
     load[idx] = spike_mw if spike_mw is not None else SPIKE["mw"]
     n.add("Load", "demand", bus="grid", carrier="load", p_set=load)
     if with_shedding:
-        n.add("Generator", "load shedding", bus="grid", carrier="load shedding", p_nom=1e5, marginal_cost=VOLL)
+        n.add("Generator", names.gen("load shedding"), bus="grid", carrier="load shedding", p_nom=1e5, marginal_cost=VOLL)
     return n
 
 
@@ -101,7 +101,7 @@ def iis(n: pypsa.Network) -> dict:
 
 def numbers(n_infeasible: pypsa.Network, diag: dict, repaired: pypsa.Network) -> dict:
     w = repaired.snapshot_weightings.generators
-    shed = repaired.generators_t.p["load shedding"]
+    shed = repaired.generators_t.p[names.gen("load shedding")]
     price = repaired.buses_t.marginal_price["grid"]
     by_name = pd.Series([r["constraint"] for r in diag["constraints"]]).value_counts().to_dict() if diag["constraints"] else {}
     hours = sorted({c[0] for r in diag["constraints"] for c in [r["coords"]] if c})
@@ -126,7 +126,7 @@ def numbers(n_infeasible: pypsa.Network, diag: dict, repaired: pypsa.Network) ->
 def figures(n_infeasible: pypsa.Network, diag: dict, repaired: pypsa.Network) -> dict[str, bundle.Figure]:
     load = n_infeasible.loads_t.p_set["demand"]
     reach = pd.Series(sum(u["p_nom"] for u in UNITS.values()), index=load.index)
-    served = (load - repaired.generators_t.p["load shedding"]).round(1)
+    served = (load - repaired.generators_t.p[names.gen("load shedding")]).round(1)
     df = pd.DataFrame({"load": load.round(1), "fleet capacity": reach, "served after repair": served,
                        "demand no dispatch can meet": (load - served).round(1)})
     option, ds = charts.time_series(df, "MW", step="middle")

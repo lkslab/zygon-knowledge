@@ -1,0 +1,15 @@
+# Zygon methods payload `single-asset-cba` — TYNDP-style TOOT/PINT run set.
+# Consumed by rules/zygon_cba.smk -> scripts/build_cba_network.py /
+# zygon_cba_collect.py; docs in methods/single-asset-cba/spec.yaml.
+# Each variant is an ordered operation list applied to the prepared network;
+# the reference label carries an empty list; every other label MUST start
+# pint- (asset put in) or toot- (asset taken out). Ops: add (new component
+# from params) | zero (nominal capacity -> 0, non-extendable) | remove |
+# set | scale — one asset may span several components (e.g. bus +
+# conversion link + load). An empty selection is a hard error.
+zygon_cba:
+  reference: ref
+  variants: {}
+  labels: []
+  networks: []
+  indicators: [b1_sew, b2_co2, b3_res]

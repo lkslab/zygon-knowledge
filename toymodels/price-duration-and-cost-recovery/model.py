@@ -19,7 +19,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, finance, run  # noqa: E402
+from _lib import bundle, charts, finance, names, run  # noqa: E402
 from _lib import carrier_style as cs  # noqa: E402
 
 SLUG = "price-duration-and-cost-recovery"
@@ -65,10 +65,10 @@ def revenue_split(n: pypsa.Network) -> pd.DataFrame:
     w = n.snapshot_weightings.generators
     price = n.buses_t.marginal_price["electricity"]
     scarcity = price > gas_price_level(n) + 1e-3
-    p = n.generators_t.p.mul(w, axis=0)
+    p = names.plain(n.generators_t.p).mul(w, axis=0)
     rows = {}
     for g in ("onwind", "solar", "CCGT"):
-        mc = n.generators.marginal_cost[g] + (co2_price(n) * BASE.CO2_CCGT if g == "CCGT" else 0.0)
+        mc = names.plain(n.generators.marginal_cost)[g] + (co2_price(n) * BASE.CO2_CCGT if g == "CCGT" else 0.0)
         margin = (price - mc) * p[g]
         rows[g] = {"scarcity rent": float(margin[scarcity].sum()), "infra-marginal rent": float(margin[~scarcity].sum())}
     return pd.DataFrame(rows).T
@@ -107,7 +107,7 @@ def numbers(n: pypsa.Network) -> dict:
         "system_cost_meur_a": float(n.objective / 1e6),
         "scarcity_hours_h": float(w[price > gas_level + 1e-3].sum()),
         "gas_scarcity_margin_eur_per_mw_a": float(((price - gas_level).clip(lower=0) * w).sum()),
-        "gas_capital_cost_eur_per_mw_a": float(n.generators.capital_cost["CCGT"]),
+        "gas_capital_cost_eur_per_mw_a": float(names.plain(n.generators.capital_cost)["CCGT"]),
         "scarcity_rent_share_pct": {g: float(100 * r["scarcity rent"] / (r["scarcity rent"] + r["infra-marginal rent"])) if (r["scarcity rent"] + r["infra-marginal rent"]) > 0 else None for g, r in revenue_split(n).iterrows()},
     }
 
@@ -134,7 +134,7 @@ def margin_intuition(n: pypsa.Network) -> bundle.Figure:
     ax = [xs[i] for i in above] + [xs[above[-1] + 1]]
     ay = [ys[i] for i in above] + [ys[above[-1]]]
     margin = float(((price - level).clip(lower=0) * w).sum())
-    capital = float(n.generators.capital_cost["CCGT"])
+    capital = float(names.plain(n.generators.capital_cost)["CCGT"])
     scarce = float(w[price > level + 1e-3].sum())
     option, ds = charts.xy_areas(
         [charts.Curve("price, sorted", xs, ys, color=cs.NEUTRAL, width=2.5),

@@ -19,7 +19,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, finance, run  # noqa: E402
+from _lib import bundle, charts, finance, names, run  # noqa: E402
 
 SLUG = "cfd-ppa-settlement"
 TITLE = "Subsidies, CfDs and PPAs settled on one wind farm"
@@ -46,7 +46,7 @@ def solve(n: pypsa.Network) -> pypsa.Network:
 
 def series(n: pypsa.Network) -> tuple[pd.Series, pd.Series, pd.Series]:
     """Hourly price, wind output and snapshot weight."""
-    return n.buses_t.marginal_price["electricity"], n.generators_t.p[GEN], n.snapshot_weightings.generators
+    return n.buses_t.marginal_price["electricity"], n.generators_t.p[names.gen(GEN)], n.snapshot_weightings.generators
 
 
 def settle(n: pypsa.Network) -> pd.DataFrame:

@@ -18,7 +18,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, finance, profiles, run  # noqa: E402
+from _lib import bundle, charts, finance, names, profiles, run  # noqa: E402
 
 SLUG = "mga-near-optimal"
 TITLE = "Near-optimal alternatives (MGA)"
@@ -48,15 +48,15 @@ def build(*, co2_cap_t: float | None = None) -> pypsa.Network:
     n.add("Carrier", "CCGT", co2_emissions=BASE.CO2_CCGT)
     n.add("Bus", "electricity", carrier="AC")
     n.add("Load", "demand", bus="electricity", carrier="load", p_set=profiles.annual_load(year, MEAN_LOAD_MW).loc[index])
-    n.add("Generator", "onwind", bus="electricity", carrier="onwind", p_nom_extendable=True, capital_cost=_capex("onwind"),
+    n.add("Generator", names.gen("onwind"), bus="electricity", carrier="onwind", p_nom_extendable=True, capital_cost=_capex("onwind"),
           p_max_pu=profiles.wind(year).loc[index])
-    n.add("Generator", "solar", bus="electricity", carrier="solar", p_nom_extendable=True, capital_cost=_capex("solar"),
+    n.add("Generator", names.gen("solar"), bus="electricity", carrier="solar", p_nom_extendable=True, capital_cost=_capex("solar"),
           p_max_pu=profiles.solar(year).loc[index])
-    n.add("Generator", "CCGT", bus="electricity", carrier="CCGT", p_nom_extendable=True, capital_cost=_capex("CCGT"),
+    n.add("Generator", names.gen("CCGT"), bus="electricity", carrier="CCGT", p_nom_extendable=True, capital_cost=_capex("CCGT"),
           marginal_cost=TECH["CCGT"]["marginal_cost"])
-    n.add("Generator", "load shedding", bus="electricity", carrier="load shedding", p_nom=1e6, marginal_cost=BASE.VOLL)
+    n.add("Generator", names.gen("load shedding"), bus="electricity", carrier="load shedding", p_nom=1e6, marginal_cost=BASE.VOLL)
     b = TECH["battery"]
-    n.add("StorageUnit", "battery", bus="electricity", carrier="battery", p_nom_extendable=True, capital_cost=_capex("battery"),
+    n.add("StorageUnit", names.unit("battery"), bus="electricity", carrier="battery", p_nom_extendable=True, capital_cost=_capex("battery"),
           max_hours=b["max_hours"], efficiency_store=b["eta"], efficiency_dispatch=b["eta"], cyclic_state_of_charge=True)
     if co2_cap_t is not None:
         n.add("GlobalConstraint", "co2_limit", type="primary_energy", carrier_attribute="co2_emissions", sense="<=", constant=co2_cap_t)
@@ -68,8 +68,8 @@ def solve(n: pypsa.Network) -> pypsa.Network:
 
 
 def capacities(n: pypsa.Network) -> pd.Series:
-    return pd.Series({"onwind": n.generators.p_nom_opt["onwind"], "solar": n.generators.p_nom_opt["solar"],
-                      "CCGT": n.generators.p_nom_opt["CCGT"], "battery": n.storage_units.p_nom_opt["battery"]})
+    return pd.Series({"onwind": n.generators.p_nom_opt[names.gen("onwind")], "solar": n.generators.p_nom_opt[names.gen("solar")],
+                      "CCGT": n.generators.p_nom_opt[names.gen("CCGT")], "battery": n.storage_units.p_nom_opt[names.unit("battery")]})
 
 
 def system_cost(n: pypsa.Network) -> float:
@@ -82,7 +82,8 @@ def system_cost(n: pypsa.Network) -> float:
 
 
 def _weights(tech: str) -> dict:
-    return {COMPONENT[tech]: {"p_nom": {tech: 1.0}}}
+    name = names.unit(tech) if COMPONENT[tech] == "StorageUnit" else names.gen(tech)
+    return {COMPONENT[tech]: {"p_nom": {name: 1.0}}}
 
 
 def mga(optimum: pypsa.Network, tech: str, sense: str, slack: float) -> pypsa.Network:

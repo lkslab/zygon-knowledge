@@ -18,7 +18,7 @@ import pandas as pd
 import pypsa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _lib import bundle, charts, profiles, run  # noqa: E402
+from _lib import bundle, charts, names, profiles, run  # noqa: E402
 from _lib import carrier_style as cs  # noqa: E402
 
 SLUG = "component-generator"
@@ -36,9 +36,9 @@ def build(*, wind_p_nom: float = WIND_P_NOM, gas_p_nom: float = GAS_P_NOM, gas_m
     n.add("Carrier", ["AC", "onwind", "CCGT", "load"])
     n.add("Bus", "grid", carrier="AC")
     # the same component twice: what differs is only the attribute values
-    n.add("Generator", "onwind", bus="grid", carrier="onwind", p_nom=wind_p_nom, marginal_cost=0,
+    n.add("Generator", names.gen("onwind"), bus="grid", carrier="onwind", p_nom=wind_p_nom, marginal_cost=0,
           p_max_pu=profiles.wind(n.snapshots))
-    n.add("Generator", "CCGT", bus="grid", carrier="CCGT", p_nom=gas_p_nom, marginal_cost=gas_marginal_cost)
+    n.add("Generator", names.gen("CCGT"), bus="grid", carrier="CCGT", p_nom=gas_p_nom, marginal_cost=gas_marginal_cost)
     n.add("Load", "demand", bus="grid", carrier="load", p_set=profiles.daily_load(n.snapshots, BASE_MW, PEAK_MW))
     return n
 
@@ -49,11 +49,11 @@ def solve(n: pypsa.Network) -> pypsa.Network:
 
 def _available(n: pypsa.Network) -> pd.Series:
     """What the wind Generator could give each hour: `p_nom * p_max_pu`."""
-    return n.generators.p_nom["onwind"] * n.generators_t.p_max_pu["onwind"]
+    return n.generators.p_nom[names.gen("onwind")] * n.generators_t.p_max_pu[names.gen("onwind")]
 
 
 def numbers(n: pypsa.Network) -> dict[str, float]:
-    p = n.generators_t.p
+    p = names.plain(n.generators_t.p)
     available = _available(n)
     load = n.loads_t.p_set["demand"]
     return {
@@ -64,15 +64,15 @@ def numbers(n: pypsa.Network) -> dict[str, float]:
         "hours_gas_runs": int((p["CCGT"] > 1e-3).sum()),
         "total_cost_eur": float(n.objective),
         "peak_load_mw": float(load.max()),
-        "wind_p_max_pu_range": [float(n.generators_t.p_max_pu["onwind"].min()), float(n.generators_t.p_max_pu["onwind"].max())],
+        "wind_p_max_pu_range": [float(n.generators_t.p_max_pu[names.gen("onwind")].min()), float(n.generators_t.p_max_pu[names.gen("onwind")].max())],
     }
 
 
 def generator_schematic(n: pypsa.Network) -> bundle.Figure:
     """The network as a one-line diagram: the busbar, the two Generators hung off it with
     the attributes that define them, the load below."""
-    g = n.generators
-    pu = n.generators_t.p_max_pu["onwind"]
+    g = names.plain(n.generators)
+    pu = n.generators_t.p_max_pu[names.gen("onwind")]
     load = n.loads_t.p_set["demand"]
     nodes = [
         charts.Node("grid", "bus", 360, 190, label="Bus, carrier AC", label_position="bottom"),
@@ -101,7 +101,7 @@ def generator_schematic(n: pypsa.Network) -> bundle.Figure:
 
 def dispatch_within_bounds(n: pypsa.Network) -> bundle.Figure:
     """Each Generator's output against its own upper bound and the load."""
-    p = n.generators_t.p
+    p = names.plain(n.generators_t.p)
     df = pd.DataFrame({
         "onwind": p["onwind"].round(1),
         "CCGT": p["CCGT"].round(1),

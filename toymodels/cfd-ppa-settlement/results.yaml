@@ -38,9 +38,9 @@ numbers:
   - 120.0
   ppa_price_eur_mwh: 65.0
 meta:
-  pypsa: 1.3.0
+  pypsa: 0.35.1.post1.dev474+gbb55cd84d
   solver: highs
-  runtime_s: 12.71
+  runtime_s: 47.59
   figures:
     cfd_intuition:
       title: 'What a CfD does: the price against the strike'

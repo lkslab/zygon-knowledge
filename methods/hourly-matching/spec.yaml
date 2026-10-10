@@ -97,7 +97,9 @@ models:
     note: 'rules/zygon_cfe.smk + build_cfe_network.py (consumer + palette as new
       prefixed components) + zygon_cfe_constraints.py (the rule, passed as the
       solve rule''s OWN custom_extra_functionality — a user hook is bypassed on
-      that rule) + zygon_cfe_collect.py; patches Snakefile + config.
+      that rule) + zygon_cfe_collect.py; ships the zygon_cfe:
+      config.yaml fragment, staged into the submission directory and included through
+      custom_rules.
       Every zygon_cfe.* value is read through config_provider, so a scenario''s
       own labels/variants apply under run.scenarios. Dry-run validated on
       9a0c6bc5 (lkslab/pypsa-eur, 2026-09-16): 3 build + 3 solve + 2 collect jobs

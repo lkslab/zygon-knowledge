@@ -13,6 +13,8 @@ pass. Run from anywhere:
 from __future__ import annotations
 
 import importlib.util
+import posixpath
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -208,12 +210,62 @@ def validate_toymodels() -> list[str]:
     return errors
 
 
+SCRIPT_LITERAL = re.compile(r"""\bscript:\s*(["'])(.+?)\1""")
+
+
+def validate_payloads(root: Path) -> list[str]:
+    """Every `methods/*/payload/pypsa-eur/` is a config fragment plus new rules and scripts.
+
+    `config.yaml` is a mapping, `new/rules/` holds `*.smk`, there is no `edits/`, and no
+    `script:` string literal in a rule resolves outside `new/` (the overlay root, where
+    `rules/x.smk` sits beside `scripts/`) (`scripts(...)`
+    helper calls are checkout references and are not checked). `pypsa-earth` is not scanned.
+    """
+    import yaml
+
+    errors: list[str] = []
+    for payload in sorted(root.glob("methods/*/payload/pypsa-eur")):
+        if not payload.is_dir():
+            continue
+        where = str(payload.relative_to(root))
+        if (payload / "edits").exists():
+            errors.append(f"{where}: edits/ is gone, a payload only adds new/ files")
+        config = payload / "config.yaml"
+        if not config.is_file():
+            errors.append(f"{where}: config.yaml missing")
+        else:
+            try:
+                doc = yaml.safe_load(config.read_text())
+            except yaml.YAMLError as exc:
+                errors.append(f"{where}: config.yaml does not parse ({exc})")
+            else:
+                if not isinstance(doc, dict):
+                    errors.append(f"{where}: config.yaml must be a mapping")
+        rules_dir = payload / "new" / "rules"
+        rules = sorted(rules_dir.glob("*.smk")) if rules_dir.is_dir() else []
+        if not rules_dir.is_dir():
+            errors.append(f"{where}: new/rules/ missing")
+        elif not rules:
+            errors.append(f"{where}: new/rules/ holds no *.smk")
+        for rule in rules:
+            for match in SCRIPT_LITERAL.finditer(rule.read_text()):
+                target = posixpath.normpath(
+                    posixpath.join(rule.parent.relative_to(payload / "new").as_posix(), match.group(2))
+                )
+                if target == ".." or target.startswith("../") or posixpath.isabs(target):
+                    errors.append(
+                        f"{where}/new/rules/{rule.name}: script {match.group(2)!r} "
+                        "resolves outside new/"
+                    )
+    return errors
+
+
 def main() -> int:
     r = load_restructure()
     r.ANCHORS["pypsa-eur"] = EUR_ANCHOR
-    # CLAUDE.md, tools/ and toymodels/ postdate the frozen TOP_LEVEL set; baselines/
-    # was removed on 2026-09-11 when the app dropped baseline runs.
-    r.TOP_LEVEL |= {"CLAUDE.md", "tools", "toymodels", ".claude"}
+    # .claude/, .github/, CLAUDE.md, pytest.ini, tools/ and toymodels/ postdate the frozen
+    # TOP_LEVEL set; baselines/ was removed on 2026-09-11 when the app dropped baseline runs.
+    r.TOP_LEVEL |= {".claude", ".github", "CLAUDE.md", "pytest.ini", "tools", "toymodels"}
     r.TOP_LEVEL -= {"baselines"}
     # The frozen slug list is the seven topics of the 2026-09 restructure; the
     # sector and security doors added on 2026-10-07 extend it here.
@@ -243,6 +295,7 @@ def main() -> int:
     errors += [e for e in r.validate(topics, method_models) if "pitfalls must be" not in e]
     errors += validate_topic_sections()
     errors += validate_toymodels()
+    errors += validate_payloads(ROOT)
     for e in errors:
         print("ERROR", e)
     print("ok" if not errors else f"{len(errors)} error(s)")
