@@ -16,7 +16,7 @@ when_to_use:
   - "known in pypsa-eur as: ground heat pump, geothermal heat pump, urban central geothermal heat pump, residential rural ground heat pump, services rural ground heat pump"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
+    version_anchor: {ref: "492f05d32e91ff76b26a7ee67604811a54cb315a", date: "2026-10-10"}
     out_of_box:
       covers: >
         Covered by default at RURAL nodes only: sector.heat_pump_sources.rural
@@ -61,8 +61,9 @@ models:
         or brine/borehole vs horizontal-loop distinction; the soil temperature
         is the undisturbed atlite value. No urban GSHP by default (config-only
         to change). Not to be confused with deep geothermal district heat
-        (sector.district_heating.limited_heat_sources.geothermal, see
-        district-heating carrier card) or EGS (enhanced-geothermal carrier card).
+        (sector.district_heating.limited_heat_sources.geothermal, heat-only
+        doublets with a geology-dependent supply curve, see the
+        geothermal-conventional card) or EGS (enhanced-geothermal card).
       provenance: "scripts/prepare_sector_network.py:add_heat; scripts/build_cop_profiles/decentral_heating_cop_approximator.py:_approximate_cop_ground_source; scripts/build_temperature_profiles.py:soil_temperature; rules/build_sector.smk:input_heat_source_temperature; scripts/build_existing_heating_distribution.py:build_existing_heating"
     levers:
       - key: sector.heat_pump_sources
@@ -114,7 +115,7 @@ models:
         note: "no key; set p_nom_max on the GSHP n.add in add_heat (static cap) — the limited_heat_sources potential machinery only serves urban central sources and would need rule plumbing (L4) to feed a ground potential CSV"
       - variant: "drilling-cost supply curve / depth-dependent cost"
         rung: L5
-        note: "single capital cost per technology; a supply curve needs multiple cost tranches (new links) or bespoke code — the EGS potential machinery (build_egs_potentials) is the nearest template"
+        note: "single capital cost per technology; a supply curve needs multiple cost tranches (new links) or bespoke code — the deep geothermal heat steps are the nearest template: per-cell costs grouped by scripts/lib/geothermal.py:bin_supply_curve and added as one component per region and step by scripts/prepare_sector_network.py:add_geothermal_heat_steps"
       - variant: "seasonal ground thermal depletion / regeneration"
         rung: L5
         note: "soil temperature is exogenous weather data; feedback of extraction on source temperature is not modelled anywhere (closest analogue: ptes temperature machinery in build_ptes_operations)"

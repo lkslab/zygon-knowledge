@@ -119,7 +119,7 @@ models:
       scenario: "H2 share dict keyed '{demand}_{planning_horizons}'; totals via CAGR csvs per {demand} wildcard"
 
   - model: pypsa-eur
-    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
+    version_anchor: {ref: "492f05d32e91ff76b26a7ee67604811a54cb315a", date: "2026-10-10"}
     out_of_box:
       covers: >
         Nodal navigation demand split by default per investment year into 'H2 for

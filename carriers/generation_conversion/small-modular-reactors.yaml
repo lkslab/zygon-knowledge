@@ -15,7 +15,7 @@ when_to_use:
   - "model SMRs"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
+    version_anchor: {ref: "492f05d32e91ff76b26a7ee67604811a54cb315a", date: "2026-10-10"}
     out_of_box:
       covers: >
         Not covered as a generation technology. There is no SMR-reactor

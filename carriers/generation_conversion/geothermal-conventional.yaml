@@ -2,8 +2,8 @@ id: geothermal-conventional
 title: Geothermal (conventional)
 summary: >
   Conventional (hydrothermal) geothermal energy: existing geothermal power
-  stations as dispatchable generators, and shallow/hydrothermal geothermal as
-  a district-heating heat source.
+  stations as dispatchable generators, and heat-only deep geothermal doublets
+  (geology-dependent supply curves) as a district-heating heat source.
 when_to_use:
   - "add geothermal power"
   - "model existing geothermal plants"
@@ -13,11 +13,13 @@ when_to_use:
   - "volcanic / hydrothermal power stations"
   - "geothermal baseload"
   - "geothermal district heating / geothermal heat pumps"
+  - "geothermal heat supply curve / cost of geothermal district heat by region"
+  - "hydrothermal doublets for district heating"
   - "pypsa-eur carrier names: geothermal, urban central geothermal heat, urban central geothermal heat pump, urban central geothermal heat direct utilisation"
   - "known in pypsa-eur as: geothermal, geothermal heat, geothermal district heat, geothermal heat direct utilisation, geothermal organic rankine cycle"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
+    version_anchor: {ref: "492f05d32e91ff76b26a7ee67604811a54cb315a", date: "2026-10-10"}
     out_of_box:
       covers: >
         Two distinct sides. POWER (electricity workflow, on by default):
@@ -30,38 +32,88 @@ models:
         — and CO2 intensity 0.12 tCO2/MWh, which add_co2_emissions attaches to
         the carrier, so geothermal dispatch DOES count against
         electricity-workflow CO2 caps and emission prices. HEAT (sector runs,
-        machinery present but not active by default): geothermal is a
-        configured limited district-heating heat source
-        (sector.district_heating.limited_heat_sources.geothermal, constant
-        source temperature 65 C) and is in
-        sector.district_heating.direct_utilisation_heat_sources — but the heat
-        source loop in add_heat iterates sector.heat_pump_sources per heat
-        system, whose "urban central" list is only [air]; adding "geothermal"
-        there activates, per district-heating node: an "urban central
-        geothermal heat" bus + extendable source Generator capped by the
-        regional potential (rule build_geothermal_heat_potential aggregates
-        Fraunhofer-ISI LAU-level potentials to the clustered regions; costs
-        from the "central geothermal heat source" row), an "urban central
-        geothermal heat pump" Link (cost row "central excess-heat-sourced heat
-        pump" via heat_pump_costs_name), and a direct-utilisation Link that
-        bypasses the heat pump in hours where the source temperature exceeds
-        the network forward temperature.
+        machinery present but not active by default): geothermal is a limited
+        district-heating heat source and is in
+        sector.district_heating.direct_utilisation_heat_sources, but add_heat
+        only builds a source that sector.heat_pump_sources lists, and its
+        "urban central" list is [air]; adding "geothermal" there activates, per
+        district-heating node, an "urban central geothermal heat" bus with its
+        source Generators, an "urban central geothermal heat pump" Link (cost
+        row "central excess-heat-sourced heat pump") and a direct-utilisation
+        Link that bypasses the heat pump in hours where the source temperature
+        reaches the forward temperature. Where the source comes from is
+        sector.district_heating.limited_heat_sources.geothermal.source.
+        GEOLOGY (the default since the fork commit 6b3a9fd6): heat-only
+        doublets on the Limberger et al. 2014 subsurface temperature model
+        (rule build_geothermal_columns, 10 km columns, shared with the
+        enhanced-geothermal chain), built after the structure of the TU Delft
+        module_geothermal (Egberink, Limberger et al. 2026, Apache-2.0): two
+        wells on the ThermoGIS drilling curve (250,000 + 700 d + 0.2 d² EUR2020
+        per well, d in m) plus 0.6 M EUR of pumps; down to
+        hydrothermal_max_depth 3 km a natural aquifer at 100 kg/s, below it a
+        stimulated doublet at 60 kg/s plus 1.03 M EUR stimulation (a depth-only
+        rule: no sediment map is used); output = flow x 4.2 x (T_wellhead -
+        40 °C reinjection). The investment is scaled by one calibration
+        factor so a reference Dutch doublet (2.5 km, 78 °C wellhead, about 16
+        MW_th) costs what PBL's SDE++ 2026 advice gives for deep geothermal at
+        12-20 MW_th from realised projects: 1,719 EUR/kW_th, fixed O&M 118
+        EUR/kW_th/yr, variable O&M 5.3 EUR/MWh_th (pumping electricity
+        included), each x 0.816 (euro-area HICP 2025 -> 2020) to EUR2020. Each
+        column takes the cheapest depth from 1.0 to 4.0 km (0.25 km steps)
+        whose wellhead reaches min_temperature 70 °C — in practice the
+        deepest unstimulated one, about 3 km. Doublets sit only where heat is
+        used: in countries the Fraunhofer district-heating areas cover (Manz
+        et al. 2024; most of the EU) only inside the DH areas buffered by
+        sector.district_heating.dh_areas.buffer (1 km),
+        capped at the areas' demand over 4000 full-load hours; elsewhere (GB,
+        NO, CH, the Balkans, CY, MT) on the urban share of each weather cell
+        (urban population at urban_density 1,500 inhabitants/km², the
+        Eurostat DEGURBA urban-centre threshold), not demand-capped. Columns
+        are grouped per region into levelised-cost steps (lcoh_bins, EUR2020
+        per MWh_th at 4000 h); add_geothermal_heat_steps adds one Generator
+        per region and step on "<node> urban central geothermal heat" (the
+        first keeps the name "<node> urban central geothermal heat
+        Generator", later ones end in " <i>"), capital cost = (annuity x capex
+        + fixed O&M) x sector.overdimension_heat_generators (central), marginal
+        cost = variable O&M, lifetime 30 a. The region's source temperature is
+        the capacity-weighted wellhead temperature, written to
+        temp_geothermal.nc and read by build_cop_profiles and
+        build_direct_heat_source_utilisation_profiles instead of a constant.
+        Real-data check (50-region Europe): cheapest step 38-50 EUR2020/MWh_th
+        in most EU countries (DE 39, NL 48, HU 39, IT 38); DE potential 32
+        GW_th (demand-capped), GB 180 GW_th (urban share, not demand-capped);
+        district-heating demand is what bounds use. MANZ (source: manz): the
+        Manz et al. 2024 (Fraunhofer ISI) hydrothermal potentials on LAU level
+        at the constant_temperature_celsius scenario (65 or 85 °C), split
+        onto the regions by area (since 6b3a9fd6; before, an LAU touching
+        several regions counted in full in each) and divided by 4000 full-load
+        hours; one source Generator per region priced off the technology-data
+        "central geothermal heat source" row, at the constant temperature.
+        Myopic runs subtract earlier source builds from the potentials
+        (add_brownfield.py:adjust_geothermal_capacity_limits).
       mechanism: >
         Power: rule build_powerplants -> rule compose_network
         (attach_conventional_generators; carriers restricted to those present
-        in the powerplant data). Heat: rule
-        retrieve_geothermal_heat_utilisation_potentials -> rule
-        build_geothermal_heat_potential ->
-        heat_source_power_geothermal.csv, requested as a
-        prepare_sector_network input by input_heat_source_power only when
-        "geothermal" is in sector.heat_pump_sources."urban central"; consumed
-        in add_heat's heat-source loop (limited_heat_sources branch +
-        direct_utilisation_heat_sources branch).
+        in the powerplant data). Heat, geology: rule
+        retrieve_limberger_temperature -> rule build_geothermal_columns -> rule
+        build_geothermal_heat_potential (geology_heat_cells over
+        scripts/lib/geothermal.py doublet_costs, doublet_calibration,
+        geology_heat_steps) -> heat_source_power_geothermal.csv,
+        heat_source_steps_geothermal.csv and temp_geothermal.nc; the steps file
+        reaches compose_network through input_geothermal_heat_steps only when
+        "geothermal" is in sector.heat_pump_sources."urban central", and
+        add_heat hands it to add_geothermal_heat_steps. Heat, manz: rules
+        retrieve_geothermal_heat_utilisation_potentials + retrieve_lau_regions
+        -> build_geothermal_heat_potential (get_heat_source_power) ->
+        heat_source_power_geothermal.csv via input_heat_source_power -> the
+        single source Generator in add_heat. The rule geothermal_heat_source
+        reads the source key (manz when absent).
       not_covered: >
-        No resource assessment for new POWER sites: no geothermal potential
-        map, no time-varying availability, no greenfield siting — power
+        No resource assessment for new POWER sites: no hydrothermal power
+        new-build, no flash plants, no time-varying availability — power
         coverage is strictly the powerplantmatching fleet (or
-        custom_powerplants rows). Geothermal power is NOT extendable by
+        custom_powerplants rows); deep engineered power is the
+        enhanced-geothermal chain. Geothermal power is NOT extendable by
         default, and simply adding it to extendable_carriers.Generator is a
         trap: the cost row carries zero investment, so candidates would be
         free — pair expansion with a cost override. In sector runs the power
@@ -69,12 +121,19 @@ models:
         among conventionals (pypsa_eur keep-list) and
         sector.conventional_generation has no geothermal entry; the myopic
         brownfield step also drops Fueltype "Geothermal" (fueltype_to_drop in
-        add_existing_baseyear). Deep/engineered EGS (wells, ORC, reservoir
-        flexibility) is a separate chain — see the enhanced-geothermal
-        carrier card. Decentral (building-level) geothermal heat pumps are the
-        "ground" source in sector.heat_pump_sources rural, a different,
-        unlimited heat source.
-      provenance: "scripts/add_electricity.py:attach_conventional_generators; scripts/add_electricity.py:add_co2_emissions; scripts/prepare_sector_network.py:add_heat; scripts/prepare_sector_network.py:remove_elec_base_techs; rules/build_sector.smk:build_geothermal_heat_potential; rules/build_sector.smk:input_heat_source_power; scripts/add_existing_baseyear.py:fueltype_to_drop"
+        add_existing_baseyear). Keeping the fleet as Generators would leave
+        its CO2 (Larderello's 0.12 tCO2/MWh) unbooked, since sector runs book
+        CO2 only through the "co2 atmosphere" bus. HEAT, geology: no
+        sediment or permeability map (the hydrothermal assumption above 3 km is
+        depth-only, optimistic on crystalline shields such as Fennoscandia),
+        no thermal drawdown, no learning (one 2025 cost level for every
+        horizon), pumping electricity sits in the variable O&M instead of an
+        electricity input, and the EU/non-EU siting is asymmetric (demand cap
+        inside DH areas, none on urban cells). No existing geothermal heat
+        plants are seeded. Decentral (building-level) geothermal heat pumps
+        are the "ground" source in sector.heat_pump_sources rural, a
+        different, unlimited heat source.
+      provenance: "scripts/add_electricity.py:attach_conventional_generators; scripts/add_electricity.py:add_co2_emissions; scripts/prepare_sector_network.py:add_heat; scripts/prepare_sector_network.py:add_geothermal_heat_steps; scripts/prepare_sector_network.py:remove_elec_base_techs; scripts/build_geothermal_heat_potential.py:geology_heat_cells; scripts/build_geothermal_heat_potential.py:doublet_calibration; scripts/build_geothermal_heat_potential.py:get_heat_source_power; scripts/lib/geothermal.py:doublet_costs; rules/build_sector.smk:build_geothermal_heat_potential; rules/build_sector.smk:geothermal_heat_source; rules/build_sector.smk:input_geothermal_heat_steps; rules/build_sector.smk:input_heat_source_power; scripts/add_existing_baseyear.py:fueltype_to_drop; scripts/add_brownfield.py:adjust_geothermal_capacity_limits"
     levers:
       - key: electricity.conventional_carriers
         effect: "Include/exclude the existing geothermal power fleet."
@@ -93,7 +152,7 @@ models:
         default: "false"
         provenance: "config/config.default.yaml:custom_powerplants; scripts/build_powerplants.py:add_custom_powerplants"
       - key: solving.constraints.CCL
-        effect: "true enforces per-country per-carrier capacity min/max from data/agg_p_nom_minmax.csv — the stand-in for national geothermal resource limits on extendable geothermal."
+        effect: "true enforces per-country per-carrier capacity min/max from data/agg_p_nom_minmax.csv — the stand-in for national geothermal resource limits on extendable geothermal power."
         default: "false"
         provenance: "config/config.default.yaml:CCL; scripts/solve_network.py:add_CCL_constraints"
       - key: costs.overwrites
@@ -101,23 +160,59 @@ models:
         default: "{} (empty)"
         provenance: "config/config.default.yaml:overwrites; scripts/process_cost_data.py:overwrite_costs"
       - key: sector.heat_pump_sources.urban central
-        effect: "Append 'geothermal' to activate the geothermal district-heat chain (source generator with regional potential + heat pump + direct utilisation) at district-heating nodes."
+        effect: "Append 'geothermal' to activate the geothermal district-heat chain (source steps + heat pump + direct utilisation) at district-heating nodes."
         default: "[air]"
         provenance: "config/config.default.yaml:heat_pump_sources; scripts/prepare_sector_network.py:add_heat"
+      - key: sector.district_heating.limited_heat_sources.geothermal.source
+        effect: "geology: heat-only doublets on the subsurface temperature model, costed and sited per column, stepped supply and a per-region source temperature; manz: the Manz et al. 2024 LAU potentials at a constant temperature with the technology-data source cost."
+        default: "geology"
+        provenance: "config/config.default.yaml:source; rules/build_sector.smk:geothermal_heat_source"
+      - key: sector.district_heating.geothermal_geology.min_temperature
+        effect: "Minimum wellhead temperature (°C) of a doublet; raising it pushes columns deeper or out, lowering it admits shallow low-temperature doublets that lean on the heat pump."
+        default: "70"
+        provenance: "config/config.default.yaml:geothermal_geology; scripts/build_geothermal_heat_potential.py:geology_heat_cells"
+      - key: sector.district_heating.geothermal_geology.hydrothermal_max_depth
+        effect: "Depth (km) down to which a doublet is a natural aquifer at flow_hydrothermal (100 kg/s); deeper it is stimulated at flow_stimulated (60 kg/s) plus stimulation_cost. The only geological assumption, depth-only."
+        default: "3.0"
+        provenance: "config/config.default.yaml:hydrothermal_max_depth; scripts/lib/geothermal.py:doublet_costs"
+      - key: sector.district_heating.geothermal_geology.calibration
+        effect: "The reference doublet (depth 2.5 km, production_temperature 78 °C) and its investment (1,719 EUR/kW_th at the PBL 2025 price level) that scale every doublet's investment."
+        default: "{depth: 2.5, production_temperature: 78.0, investment: 1719.0}"
+        provenance: "config/config.default.yaml:calibration; scripts/build_geothermal_heat_potential.py:doublet_calibration"
+      - key: sector.district_heating.geothermal_geology.fixed_om / variable_om
+        effect: "PBL fixed (EUR/kW_th/yr) and variable (EUR/MWh_th, pumping electricity included) O&M, converted with price_level_to_eur2020 (0.816)."
+        default: "118 / 5.3"
+        provenance: "config/config.default.yaml:fixed_om; config/config.default.yaml:variable_om; scripts/build_geothermal_heat_potential.py:geology_heat_steps"
+      - key: sector.district_heating.geothermal_geology.full_load_hours
+        effect: "Full-load hours that turn DH-area demand into a capacity cap and rank columns by levelised cost."
+        default: "4000"
+        provenance: "config/config.default.yaml:full_load_hours; rules/build_sector.smk:build_geothermal_columns"
+      - key: sector.district_heating.geothermal_geology.lcoh_bins
+        effect: "Upper edges (EUR2020/MWh_th) of the supply steps per region; columns above the last edge are dropped."
+        default: "[40, 50, 60, 70, 80, 100, 125, 150, 200]"
+        provenance: "config/config.default.yaml:lcoh_bins; scripts/lib/geothermal.py:bin_supply_curve"
+      - key: sector.district_heating.geothermal_geology.urban_density
+        effect: "Inhabitants per km² of urban land; outside the DH-area countries a column's eligible area is its weather cell's urban population over this density."
+        default: "1500"
+        provenance: "config/config.default.yaml:urban_density; scripts/build_geothermal_heat_potential.py:geology_heat_cells"
+      - key: sector.district_heating.geothermal_geology.depths
+        effect: "Doublet depths (km) sampled per column; each must be a 250 m level of the temperature model."
+        default: "[1.0, 1.25, ..., 4.0]"
+        provenance: "config/config.default.yaml:depths; scripts/build_geothermal_columns.py:select_columns"
       - key: sector.district_heating.limited_heat_sources.geothermal.constant_temperature_celsius
-        effect: "Assumed constant geothermal source temperature — drives the heat pump COP and the hours in which direct utilisation (source temp >= forward temp) is possible."
+        effect: "source: manz only — the Manz temperature scenario (65 or 85) and the constant source temperature for the COPs and direct utilisation."
         default: "65"
         provenance: "config/config.default.yaml:constant_temperature_celsius; rules/build_sector.smk:build_geothermal_heat_potential"
       - key: sector.district_heating.limited_heat_sources.geothermal.ignore_missing_regions
-        effect: "true tolerates clustered regions absent from the ISI potential data instead of raising."
+        effect: "source: manz only — true tolerates clustered regions absent from the ISI potential data instead of raising."
         default: "false"
         provenance: "config/config.default.yaml:ignore_missing_regions; rules/build_sector.smk:build_geothermal_heat_potential"
       - key: sector.district_heating.direct_utilisation_heat_sources
-        effect: "Heat sources allowed to feed district heating directly (without heat pump) when hot enough; geothermal is listed by default."
+        effect: "Heat sources allowed to feed district heating directly (without heat pump) when hot enough; geothermal is listed by default; under source: geology the per-region temp_geothermal.nc is requested only where geothermal is also an urban central heat pump source (since 492f05d3), otherwise the constant temperature fills the unused profile."
         default: "[geothermal]"
-        provenance: "config/config.default.yaml:direct_utilisation_heat_sources; scripts/prepare_sector_network.py:add_heat"
+        provenance: "config/config.default.yaml:direct_utilisation_heat_sources; rules/build_sector.smk:build_direct_heat_source_utilisation_profiles"
       - key: pypsa_eur.Generator
-        effect: "Sector-run keep-list: append 'geothermal' to carry the existing geothermal POWER fleet into sector networks (dropped by default by remove_elec_base_techs)."
+        effect: "Sector-run keep-list: append 'geothermal' to carry the existing geothermal POWER fleet into sector networks (dropped by default by remove_elec_base_techs) — its CO2 then goes unbooked."
         default: "[onwind, offwind-ac, offwind-dc, offwind-float, solar-hsat, solar, ror, nuclear]"
         provenance: "config/config.default.yaml:pypsa_eur; scripts/prepare_sector_network.py:remove_elec_base_techs"
     boundary:
@@ -130,24 +225,33 @@ models:
       - variant: "expand geothermal power at existing sites"
         rung: L1
         note: "add 'geothermal' to extendable_carriers.Generator AND override investment via costs.overwrites / data/custom_costs.csv (default row is zero-cost); cap nationally with CCL"
-      - variant: "geothermal district heat in sector runs"
+      - variant: "geothermal district heat in sector runs (geology supply curve)"
         rung: L1
-        note: "append 'geothermal' to sector.heat_pump_sources.'urban central' — potentials, heat pump and direct utilisation all wire up automatically from the retrieved ISI dataset"
+        note: "append 'geothermal' to sector.heat_pump_sources.'urban central' — steps, heat pump, direct utilisation and the per-region temperature wire up from the temperature model (method geothermal-geology)"
+      - variant: "geothermal district heat on the Manz et al. potentials"
+        rung: L1
+        note: "the same plus limited_heat_sources.geothermal.source: manz (constant 65 or 85 °C, technology-data cost)"
       - variant: "keep geothermal power in sector runs"
         rung: L1
-        note: "append 'geothermal' to pypsa_eur.Generator (keep-list of remove_elec_base_techs); sector.conventional_generation is not usable here (it keys Link costs by generator name and would need a fuel bus)"
+        note: "append 'geothermal' to pypsa_eur.Generator (keep-list of remove_elec_base_techs) — the fleet runs but its CO2 is not booked, since sector runs count CO2 only on the 'co2 atmosphere' bus; sector.conventional_generation is not usable here (it keys Link costs by generator name and would need a fuel bus)"
+      - variant: "keep geothermal power in sector runs with its CO2 booked"
+        rung: L2
+        note: "convert the kept Generators into Links from a free source bus to the AC bus with bus2 'co2 atmosphere' at the carrier's 0.12 t/MWh, in prepare_sector_network after remove_elec_base_techs"
       - variant: "add known plants or candidate sites missing from the database"
         rung: L3
         note: "rows in data/custom_powerplants.csv (Fueltype Geothermal) + electricity.custom_powerplants: true"
-      - variant: "tune the geothermal heat source temperature / potential handling"
-        rung: L1
-        note: "sector.district_heating.limited_heat_sources.geothermal.constant_temperature_celsius / ignore_missing_regions"
-      - variant: "different geothermal heat potential data"
+      - variant: "tune the geothermal heat assumptions (temperature floor, costs, siting density)"
+        rung: L0
+        note: "sector.district_heating.geothermal_geology keys (min_temperature, calibration, fixed_om, variable_om, urban_density, hydrothermal_max_depth, lcoh_bins)"
+      - variant: "geological siting of hydrothermal doublets (aquifer / sediment map)"
+        rung: L4
+        note: "no sediment or permeability data is wired (the Laske & Masters sediment map's licence is unclear); a new dataset plus a column attribute in build_geothermal_columns and a filter in geology_heat_cells"
+      - variant: "different geothermal heat potential data (manz)"
         rung: L3
-        note: "replace the retrieved isi_heat_potentials input of rule build_geothermal_heat_potential (LAU-level xlsx parsed by get_heat_source_power) or pin datasets.geothermal_heat_utilisation_potentials to another version"
+        note: "replace the retrieved isi_heat_potentials input of rule build_geothermal_heat_potential (LAU-level xlsx parsed by get_heat_source_power) or pin data.geothermal_heat_utilisation_potentials to another version"
       - variant: "resource-constrained POWER potentials (site/temperature maps)"
-        rung: L5
-        note: "no potential-map machinery exists for geothermal electricity; needs bespoke data + rule + p_nom_max logic (the EGS chain in the enhanced-geothermal carrier card is the closest template)"
+        rung: L1
+        note: "via the enhanced-geothermal chain (sector.enhanced_geothermal.enable) — binary EGS only, no hydrothermal or flash power new-build (L3)"
       - variant: "time-varying availability / seasonal derating of geothermal power"
         rung: L1
         note: "add a conventional config block (conventional: {geothermal: {p_max_pu: 0.9}}) — the conventional_params machinery applies any generator attribute per carrier, a 'data/' CSV path gives per-country values (the nuclear block is the template)"
@@ -159,12 +263,24 @@ models:
         anchor: "scripts/add_electricity.py::add_co2_emissions"
         provenance: "scripts/add_electricity.py:add_co2_emissions"
       - change: "geothermal district-heat source, heat pump and direct utilisation creation"
-        anchor: "scripts/prepare_sector_network.py::add_heat (heat-source loop over heat_pump_sources; limited_heat_sources / direct_utilisation_heat_sources branches)"
-        provenance: "scripts/prepare_sector_network.py:add_heat; scripts/prepare_sector_network.py:direct_utilisation_heat_sources"
-      - change: "regional heat potential construction from ISI LAU data"
+        anchor: "scripts/prepare_sector_network.py::add_heat (heat-source loop over heat_pump_sources); ::add_geothermal_heat_steps for the geology steps"
+        provenance: "scripts/prepare_sector_network.py:add_heat; scripts/prepare_sector_network.py:add_geothermal_heat_steps"
+      - change: "doublet cost model, depth choice and siting per column"
+        anchor: "scripts/build_geothermal_heat_potential.py::geology_heat_cells; scripts/lib/geothermal.py::doublet_costs / ::drilling_cost"
+        provenance: "scripts/build_geothermal_heat_potential.py:geology_heat_cells; scripts/lib/geothermal.py:doublet_costs; scripts/lib/geothermal.py:drilling_cost"
+      - change: "DH-area overlap and urban cells per column"
+        anchor: "scripts/build_geothermal_columns.py::district_heating_overlap (rule build_geothermal_columns)"
+        provenance: "scripts/build_geothermal_columns.py:district_heating_overlap; rules/build_sector.smk:build_geothermal_columns"
+      - change: "per-region source temperature for COPs and direct utilisation"
+        anchor: "scripts/build_direct_heat_source_utilisation_profiles.py::get_source_temperature; scripts/build_cop_profiles/run.py (temp_geothermal input)"
+        provenance: "scripts/build_direct_heat_source_utilisation_profiles.py:get_source_temperature; scripts/build_cop_profiles/run.py"
+      - change: "regional heat potential from the Manz LAU data"
         anchor: "rule build_geothermal_heat_potential; scripts/build_geothermal_heat_potential.py::get_heat_source_power"
         provenance: "rules/build_sector.smk:build_geothermal_heat_potential; scripts/build_geothermal_heat_potential.py:get_heat_source_power"
-      - change: "cost-row names for the heat side"
+      - change: "config schema of the geology keys"
+        anchor: "scripts/lib/validation/config/sector.py::_GeothermalGeologyHeatConfig / ::_GeothermalHeatCalibrationConfig"
+        provenance: "scripts/lib/validation/config/sector.py:_GeothermalGeologyHeatConfig; scripts/lib/validation/config/sector.py:_GeothermalHeatCalibrationConfig"
+      - change: "cost-row names for the heat pump and the manz source"
         anchor: "scripts/definitions/heat_system.py::heat_pump_costs_name / ::heat_source_costs_name ('central excess-heat-sourced heat pump', 'central geothermal heat source')"
         provenance: "scripts/definitions/heat_system.py:heat_pump_costs_name; scripts/definitions/heat_system.py:heat_source_costs_name"
       - change: "fleet construction / custom sites / everywhere seeding"
@@ -180,11 +296,17 @@ models:
       - input: "cost row 'geothermal' in the processed technology-data file"
         required_for: "power-side costs — NOTE zero investment, efficiency 1.0, CO2 intensity 0.12 at this ref"
         availability: "exists by default via retrieve_cost_data + rule process_cost_data"
-      - input: "isi_heat_potentials (Fraunhofer ISI geothermal heat utilisation potentials, LAU-level) + LAU regions"
-        required_for: "district-heat source potentials"
-        availability: "retrieved by default (rule retrieve_geothermal_heat_utilisation_potentials; datasets.geothermal_heat_utilisation_potentials)"
-      - input: "cost rows 'central geothermal heat source' and 'central excess-heat-sourced heat pump'"
-        required_for: "heat-side capital costs and COP"
+      - input: "Limberger et al. subsurface temperature model (temperature_voxel.nc)"
+        required_for: "source: geology (the default), including temp_geothermal.nc for direct utilisation"
+        availability: "retrieved by rule retrieve_limberger_temperature (Zenodo 22149195, CC-BY-4.0, md5-checked)"
+      - input: "Fraunhofer district-heating areas (dh_areas.gpkg) and pop_layout_urban.nc"
+        required_for: "source: geology siting (DH areas where they exist, urban cells elsewhere)"
+        availability: "retrieved / built by default in sector runs"
+      - input: "isi_heat_potentials (Manz et al. 2024 LAU-level potentials) + LAU regions"
+        required_for: "source: manz only"
+        availability: "retrieved only when source is manz (rule retrieve_geothermal_heat_utilisation_potentials, retrieve_lau_regions)"
+      - input: "cost rows 'central excess-heat-sourced heat pump' and, for source: manz, 'central geothermal heat source'"
+        required_for: "heat pump capital cost and COP; the manz source cost"
         availability: "exists by default in processed technology-data"
       - input: "urban central heat buses (district heating footprint)"
         required_for: "heat-side placement (only district-heating nodes get the source chain)"

@@ -112,8 +112,8 @@ models:
   - id: network_map
     role: CO2 pipelines and sequestration per cluster
   version_anchor:
-    ref: d2e0d48666f09a580c744846cef37e5059761d7a
-    date: '2026-10-09'
+    ref: 492f05d32e91ff76b26a7ee67604811a54cb315a
+    date: '2026-10-10'
 - model: pypsa-earth
   approach: >-
     The study runs on the carrier levers and the default config; no method spec is

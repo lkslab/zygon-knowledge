@@ -19,7 +19,7 @@ when_to_use:
   - "known in pypsa-eur as: offwind, offshore wind, offwind-ac, offshore wind (AC), offshore wind ac, offwind-dc, offshore wind (DC), offshore wind dc"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
+    version_anchor: {ref: "492f05d32e91ff76b26a7ee67604811a54cb315a", date: "2026-10-10"}
     out_of_box:
       covers: >
         Fully covered with two fixed-bottom carriers, both default renewable

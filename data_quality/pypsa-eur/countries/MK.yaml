@@ -164,7 +164,8 @@ datasets:
   district-heating-potentials:
     grade: C
     detail: "outside the EU-scoped DH/geothermal datasets \u2014 handle_missing_countries\
-      \ fallback / zero limited heat sources"
+      \ fallback; geology geothermal heat sits on urban cells instead (not demand-capped),\
+      \ the manz potentials are zero"
   retro-building-stock:
     grade: B
     detail: floor area from the curated patch file

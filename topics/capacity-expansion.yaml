@@ -60,6 +60,11 @@ models:
     role: >-
       the guideline's scenario dimension — repeat the with/without pair across demand/CO2
       variants with harmonised collection to show the case holds beyond one future
+  - id: geothermal-geology
+    role: >-
+      enhanced geothermal as a firm low-carbon candidate in a sector run — per-region
+      supply curves from the subsurface temperature model, off by default; read the cost
+      per region, not the (very large, technical) potential
   defaults:
   - aspect: overnight-foresight
     is: >-
@@ -82,8 +87,8 @@ models:
       power-only run with those toggles left true is capped against economy-wide 1990
       emissions (see the co2-budget method card)
   version_anchor:
-    ref: d2e0d48666f09a580c744846cef37e5059761d7a
-    date: '2026-10-09'
+    ref: 492f05d32e91ff76b26a7ee67604811a54cb315a
+    date: '2026-10-10'
 - model: pypsa-earth
   approach: >-
     The model's bread and butter: pypsa-earth exists to run exactly this study for

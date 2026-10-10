@@ -10,7 +10,7 @@ when_to_use:
   - "pypsa-eur carrier names: urban central aquifer thermal energy storage, aquifer thermal energy storage charger, aquifer thermal energy storage discharger"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
+    version_anchor: {ref: "492f05d32e91ff76b26a7ee67604811a54cb315a", date: "2026-10-10"}
     out_of_box:
       covers: >
         Fully wired but OFF by default (sector.district_heating.ates.enable:
@@ -65,7 +65,11 @@ models:
         ates.enable: false or their own shapes. No well-doublet flow-rate
         limits beyond the charger-ratio constraint, no depth/temperature
         suitability screening beyond aquifer type, no interaction with the
-        geothermal heat source other than borrowing its cost row. Quirk: rule
+        geothermal heat source other than borrowing its cost row (the
+        technology-data "central geothermal heat source" row, which the
+        geothermal source itself now reads only under source: manz — the
+        default geology source is costed from PBL SDE++ figures, so the ATES
+        price no longer moves with the geothermal source's). Quirk: rule
         build_ates_potentials declares max_top_temperature /
         min_bottom_temperature params under the ates config path — keys that
         do not exist (they live under ptes) — and the script never reads
@@ -172,7 +176,7 @@ models:
         required_for: "the temperature spread in mwh_ates_per_m2"
         availability: "must be built (district-heating temperature approximation chain in the sector workflow)"
       - input: "cost row 'central geothermal heat source'"
-        required_for: "charger/discharger capital cost and lifetime"
+        required_for: "charger/discharger capital cost and lifetime (read here even when the geothermal source runs on source: geology)"
         availability: "exists by default via retrieve_cost_data + rule process_cost_data"
       - input: "urban central heat buses (nonzero district heating share)"
         required_for: "placement — ATES only attaches where district heating exists"

@@ -1,0 +1,136 @@
+id: geothermal-geology
+title: geothermal-geology — geology-dependent enhanced geothermal power and heat-only geothermal for district heating
+family: sector-coupling
+what: >-
+  Lets geothermal into a sector run on its geology: both chains read the Limberger et al.
+  2014 3-D subsurface temperature model of Europe (Zenodo 22149195, CC-BY-4.0), mapped
+  onto the onshore regions on its 10 km columns by
+  rules/build_sector.smk:build_geothermal_columns. Enhanced geothermal power
+  (sector.enhanced_geothermal.enable): rules/build_sector.smk:build_egs_potentials prices
+  every column at 2.5-6.5 km with the Ricks & Jenkins 2025 EGS cost model
+  (scripts/lib/geothermal.py:egs_costs; 150 °C floor, 250 °C plant cap, wellfield
+  pumping netted out, land as for onshore wind), keeps each column's cheapest depth and
+  groups the columns per region into levelised-cost steps;
+  scripts/prepare_sector_network.py:add_enhanced_geothermal builds per region one well
+  link per step, an organic Rankine cycle to the AC bus, a district-heat link wherever
+  the region has district heating (CHP), and with flexible a reservoir StorageUnit.
+  Heat-only geothermal (geothermal listed under sector.heat_pump_sources.urban central,
+  source: geology, the shipped source): rules/build_sector.smk:build_geothermal_heat_potential
+  costs a heat-only doublet per column (TU Delft module_geothermal structure, investment
+  calibrated to PBL SDE++ 2026 deep geothermal: 1,719 EUR/kW_th, O&M 118 EUR/kW_th/yr and
+  5.3 EUR/MWh_th, in EUR2020 x 0.816), at the cheapest depth whose wellhead reaches 70 °C,
+  sited inside the buffered Fraunhofer district-heating areas (capped at their demand over
+  4000 h) or, where those areas do not exist, on the urban share of each weather cell;
+  scripts/prepare_sector_network.py:add_geothermal_heat_steps adds one source generator
+  per region and cost step, and the region's capacity-weighted wellhead temperature
+  replaces the constant 65 °C in the heat pump COPs and direct utilisation. The code is
+  the fork commit 6b3a9fd6; the mechanism cards are [[enhanced-geothermal]] and
+  [[geothermal-conventional]].
+when_to_use:
+- geothermal supply curve by geology / where is geothermal cheap
+- EGS potential per region, enhanced geothermal as firm low-carbon power
+- deep geothermal for district heating, geothermal heat cost and potential per region
+- does geothermal compete with large heat pumps, waste heat or CHP in a heat network
+- geothermal combined heat and power
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: 492f05d32e91ff76b26a7ee67604811a54cb315a
+    date: '2026-10-10'
+  execution:
+  - kind: config
+    key: sector.enhanced_geothermal.enable
+    value: true
+    note: >-
+      the power switch. Builds the column and EGS rules and the chain in compose_network;
+      var_cf and flexible stay at their shipped true (ambient-temperature capacity factor,
+      a 240 h reservoir with a 25 % boost). Drop this item for a heat-only study.
+  - kind: config
+    key: sector.heat_pump_sources
+    value:
+      urban central:
+      - air
+      - geothermal
+      urban decentral:
+      - air
+      rural:
+      - air
+      - ground
+    note: >-
+      the shipped lists plus geothermal for the urban central system: that one word lets
+      the geothermal heat steps, the geothermal heat pump and direct utilisation into the
+      model. Keep air. Drop this item for a power-only study.
+  - kind: config
+    key: sector.district_heating.limited_heat_sources.geothermal.source
+    value: geology
+    note: >-
+      the shipped default, stated so the bundle does not depend on it; manz is the old
+      Manz et al. 2024 hydrothermal potential at a constant 65 °C with the technology-data
+      source cost, the comparison case for a "how much does the geology matter" pair.
+  - kind: invocation
+    note: >-
+      config only, no code: the fork ships the rules, the cost models and the retrieve rule
+      for the temperature model (a Zenodo download, md5-checked). The cost and siting keys
+      under sector.enhanced_geothermal and sector.district_heating.geothermal_geology are
+      read by horizon-free rules, so set them once in the base config; a per-scenario
+      difference makes the harness rebuild the resources per scenario. Read EGS off the
+      links of carrier "geothermal organic rankine cycle" (electric output, one per
+      region), "geothermal heat" (the well steps "<bus> enhanced geothermal <i>") and
+      "geothermal district heat"; geothermal heat off the generators of carrier "urban
+      central geothermal heat" (one per region and step) and the "urban central
+      geothermal heat pump" and direct-utilisation links. p_nom_opt per region against
+      the step's cost is the result.
+  invalidates:
+  - build_geothermal_columns
+  - build_egs_potentials
+  - build_geothermal_heat_potential
+  - build_cop_profiles
+  - build_direct_heat_source_utilisation_profiles
+  - compose_network
+  - solve_network
+  budget:
+    jobs: 7
+    class: hours
+  success_metric:
+  - name: egs-chain-present
+    needs: prepared
+    check: n.links.carrier.eq('geothermal organic rankine cycle').any() and n.links.carrier.eq('geothermal heat').any()
+    expect: per region with potential below the last lcoe_bins edge, well steps and one organic Rankine cycle link
+  - name: geothermal-heat-steps-present
+    needs: prepared
+    check: n.generators.carrier.eq('urban central geothermal heat').any()
+    expect: geothermal heat source generators on the urban central geothermal heat buses, one per region and cost step
+  - name: egs-built
+    needs: solved
+    check: n.links.carrier.eq('geothermal organic rankine cycle').any() and n.links.loc[n.links.carrier == 'geothermal organic rankine cycle', 'p_nom_opt'].ge(0).all()
+    expect: >-
+      a solved EGS capacity per region (group the cycle links' p_nom_opt by bus1); zero
+      in a region is an answer (no step cheap enough there), not a failure
+  - name: geothermal-heat-built
+    needs: solved
+    check: n.generators.carrier.eq('urban central geothermal heat').any() and n.generators.loc[n.generators.carrier == 'urban central geothermal heat', 'p_nom_opt'].ge(0).all()
+    expect: >-
+      a solved geothermal heat source capacity per district-heating node (group p_nom_opt
+      by bus); the step costs next to it explain the build
+notes: >-
+  The capacities are technical, not geological reserves. EGS potentials are very large
+  (TW scale in FR and ES on a 50-region Europe) and bounded only by the onwind land share:
+  read the costs per region as the information (cheapest steps on that check DE 114, HU
+  98, HR 99, IT 75, FR 116 EUR2020/MWh_el; FI, SE, mainland NO, EE, AL and ME have none
+  below 400), not the potential. The heat-only doublets assume a natural aquifer down to
+  3 km everywhere (no sediment or permeability map, optimistic on crystalline shields);
+  cheapest heat steps land at 38-50 EUR2020/MWh_th in most EU countries (DE 39, NL 48, HU
+  39, IT 38), DE 32 GW_th capped by its DH-area demand, GB 180 GW_th on urban cells and not
+  demand-capped, so outside the Fraunhofer DH countries (GB, NO, CH, the Balkans, CY, MT)
+  it is the district-heating demand that bounds use. Not modelled: hydrothermal or flash
+  power new-build (every power site is a binary EGS plant, rock above 250 °C priced at
+  250 °C), learning (one cost level for every horizon), thermal drawdown, the pumping
+  electricity of a heat-only doublet as an electricity input (it is in the variable
+  O&M). The existing geothermal power fleet (Larderello and the rest) is still dropped
+  from sector runs: keeping it as generators would leave its CO2 unbooked, since sector
+  runs count CO2 only on the co2 atmosphere bus. Under [[pathway-myopic]] earlier builds
+  are subtracted from the well and heat-source potentials. EGS dispatch with its
+  reservoir is a firm, flexible low-carbon option, so pair it with [[co2-budget]] for the
+  target that prices its competitors; on the heat side pair with
+  [[district-heating-expansion]], which settles the district-heat share the geothermal
+  steps serve.

@@ -336,11 +336,55 @@
     - data/aquifer_data/
   code_convention: gridded
   coverage_class: continent-file
-  consumer: "scripts/build_dh_areas.py:handle_missing_countries; scripts/build_geothermal_heat_potential.py:get_heat_source_power; scripts/build_ates_potentials.py:suitable_aquifers"
-  missing_behavior: "dh_areas.handle_missing_countries defaults to 'fill' which substitutes whole-country geometries for countries missing from the DH areas dataset (with 'ignore' they silently get no district heat, 'raise' aborts); geothermal potentials outside EU27 LAU regions raise a ValueError unless ignore_missing_regions is set, in which case those regions get no geothermal heat source; ATES potential exists only where BGR/IHME aquifer polygons overlap DH areas"
+  consumer: "scripts/build_dh_areas.py:handle_missing_countries; scripts/build_geothermal_columns.py:district_heating_overlap; scripts/build_geothermal_heat_potential.py:get_heat_source_power; scripts/build_ates_potentials.py:suitable_aquifers"
+  missing_behavior: "dh_areas.handle_missing_countries defaults to 'fill' which substitutes whole-country geometries for countries missing from the DH areas dataset (with 'ignore' they silently get no district heat, 'raise' aborts); under the default geothermal source: geology the raw (unfilled) DH areas, buffered, site the heat-only doublets and cap them at the areas' demand over the full-load hours, and countries absent from them (GB, NO, CH, the Balkans, CY, MT) fall back to the urban share of each weather cell, not demand-capped; the ISI geothermal potentials are read only under source: manz, where regions outside EU27 LAU coverage raise a ValueError unless ignore_missing_regions is set, in which case they get no geothermal heat source; ATES potential exists only where BGR/IHME aquifer polygons overlap DH areas"
   tier_when_missing: C
-  used_by: [district-heating, aquifer-thermal-storage, thermal-storage]
-  notes: "all three are runtime-retrieved (dataset_version entries dh_areas, geothermal_heat_utilisation_potentials, aquifer_data in data/versions.csv; folders not on disk at this ref); ISI potentials are EU27-only (explicit log about 'onshore regions outside EU 27'); IHME1500 aquifer map covers most of Europe"
+  used_by: [district-heating, geothermal-conventional, aquifer-thermal-storage, thermal-storage]
+  notes: "all three are runtime-retrieved (dataset_version entries dh_areas, geothermal_heat_utilisation_potentials, aquifer_data in data/versions.csv; folders not on disk at this ref); the DH areas (Manz et al. 2024) are read by rule build_geothermal_columns straight from retrieve_dh_areas with country codes EL/UK mapped to GR/GB; the ISI potentials are EU27-only (explicit log about 'onshore regions outside EU 27') and since the fork commit 6b3a9fd6 split onto regions by area instead of counted in full in every region an LAU touches, and are retrieved only when sector.district_heating.limited_heat_sources.geothermal.source is manz; IHME1500 aquifer map covers most of Europe"
+
+- id: limberger-subsurface-temperature
+  title: "Limberger et al. 2014 3-D subsurface temperature model of Europe (2026 Zenodo release)"
+  path: data/limberger_temperature/
+  code_convention: gridded
+  coverage_class: continent-file
+  consumer: "scripts/build_geothermal_columns.py:select_columns; scripts/build_egs_potentials.py:column_costs; scripts/build_geothermal_heat_potential.py:geology_heat_cells"
+  missing_behavior: "one continental voxel, no country dimension: a region whose area holds no column centre gets no geothermal potential (build_geothermal_columns logs those regions), all others get temperatures from measurements where the model has them and from crustal conduction elsewhere, so sparsely drilled countries carry modelled, not measured, temperatures; nothing falls back to a constant"
+  tier_when_missing: C
+  used_by: [enhanced-geothermal, geothermal-conventional, district-heating]
+  notes: "Limberger et al. 2014, Geothermal Energy Science 2:55; 2026 release Zenodo 22149195 (temperature_voxel.nc, CC-BY-4.0), 10 km columns in EPSG:3857 (about 3-6 km on the ground), 0-10 km depth in 250 m steps; retrieved by rules/retrieve.smk:retrieve_limberger_temperature with an md5 check (dataset limberger_temperature in data/versions.csv, data.limberger_temperature config); mapped onto the onshore regions by rule build_geothermal_columns together with the onwind land share, urban population and DH-area overlap. Read by the EGS chain when sector.enhanced_geothermal.enable is true and by the geology geothermal heat source, whose temp_geothermal.nc is built only where geothermal is an urban central heat pump source (since the fork commit 492f05d3, before which the default direct_utilisation_heat_sources pulled it into every sector run)"
+
+- id: ricks-jenkins-2025-egs-costs
+  title: "Ricks & Jenkins 2025 enhanced geothermal (EGS) power cost model (code port, not data)"
+  path: "scripts/lib/geothermal.py:egs_costs"
+  code_convention: global
+  coverage_class: proxy-global
+  consumer: "scripts/lib/geothermal.py:egs_costs; scripts/build_egs_potentials.py:column_costs; scripts/build_egs_potentials.py:get_capacity_factors"
+  missing_behavior: "no country dimension: one GETEM-derived US cost structure (binary/ORC plant fits per depth and production temperature, quadratic well costs, stimulation, exploration, interest during construction, NREL ATB 2023 O&M) in USD2021, converted with sector.enhanced_geothermal.usd2021_to_eur (0.836), applies to every column; only rock temperature, depth and the region's mean air temperature vary; the model ships as code, so nothing is missing at run time"
+  tier_when_missing: C
+  used_by: [enhanced-geothermal]
+  notes: "Ricks & Jenkins 2025, Joule, 'Pathways to national-scale adoption of enhanced geothermal power through experience-driven cost reductions'; supplementary code Costing_and_Supply_Curves/EGS_Costs.py, Zenodo 15485307, CC-BY-4.0, vectorised in the fork and checked against the source's reference table; the paper's central deep-EGS case (producers_per_injector 1.5, flow_derating 0.77, lateral_length 2286 m, reinjection 70 °C); plant fits extrapolated linearly above 200 °C and capped at max_temperature 250 °C; one cost level for every horizon (the paper's learning is not ported); capacity factors from Ricks et al. (Zenodo 7093330, supplementary figure 20). Replaces the Aghahosseini & Breyer 2020 1° grid (data/egs_costs.json), removed at the fork commit 6b3a9fd6"
+
+- id: pbl-sde-2026-deep-geothermal
+  title: "PBL SDE++ 2026 deep geothermal (12-20 MW_th) cost figures, calibration of the heat-only doublets"
+  path: "config/config.default.yaml:sector.district_heating.geothermal_geology.calibration"
+  code_convention: global
+  coverage_class: proxy-global
+  consumer: "scripts/build_geothermal_heat_potential.py:doublet_calibration; scripts/build_geothermal_heat_potential.py:geology_heat_cells; scripts/build_geothermal_heat_potential.py:geology_heat_steps"
+  missing_behavior: "no country dimension: one Dutch reference doublet (2.5 km, 78 °C wellhead, about 16 MW_th) sets the investment level of every doublet in every country through a single calibration factor, and the fixed and variable O&M are uniform; Dutch realised-project costs stand in for all of Europe; the values ship as config defaults, so nothing is missing at run time"
+  tier_when_missing: C
+  used_by: [geothermal-conventional, district-heating]
+  notes: "PBL 2026, Eindadvies basisbedragen SDE++ 2026, chapter 11, deep geothermal (baseload) 12-20 MW_th from realised Dutch projects: investment 1,719 EUR/kW_th, fixed O&M 118 EUR/kW_th/yr, variable O&M 5.3 EUR/MWh_th including pumping electricity; all multiplied by price_level_to_eur2020 0.816 (euro-area HICP 2020/2025) to EUR2020; lifetime 30 a and 4000 full-load hours rank the columns by levelised cost; the variable O&M carries the pumping electricity, which therefore never appears as an electricity demand"
+
+- id: tu-delft-module-geothermal
+  title: "TU Delft module_geothermal heat-only doublet parameters (ThermoGIS drilling curve, flows, pumps, stimulation)"
+  path: "config/config.default.yaml:sector.district_heating.geothermal_geology"
+  code_convention: global
+  coverage_class: proxy-global
+  consumer: "scripts/lib/geothermal.py:doublet_costs; scripts/lib/geothermal.py:drilling_cost; scripts/lib/geothermal.py:wellbore_temperature_loss"
+  missing_behavior: "no country dimension and no geology beyond temperature: the Dutch ThermoGIS drilling curve, pump and stimulation costs and the flow rates apply everywhere, and a doublet is hydrothermal (100 kg/s) or stimulated (60 kg/s) by depth alone (hydrothermal_max_depth 3 km), because no sediment or permeability map is used (the Laske & Masters sediment map's licence is unclear) — optimistic on crystalline shields; the parameters ship as config defaults"
+  tier_when_missing: C
+  used_by: [geothermal-conventional, district-heating]
+  notes: "Egberink, Limberger et al. 2026, module_geothermal (github.com/Yegberink/module_geothermal, Apache-2.0): drilling 250,000 + 700 d + 0.2 d² EUR2020 per well (d in m), pumps 0.6 M EUR per doublet, stimulation 1.03 M EUR, well spacing 1 km (a doublet occupies 2 km²), reinjection 40 °C, c_p 4.2 kJ/(kg K), the source model's wellbore temperature-loss fit; the modelled investment is rescaled to the PBL SDE++ reference (pbl-sde-2026-deep-geothermal)"
 
 - id: retro-building-stock
   title: "Building stock and retrofit cost data (EU Building Observatory + Invert/EE-Lab)"

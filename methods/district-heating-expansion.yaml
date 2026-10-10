@@ -17,9 +17,12 @@ what: >-
   and biomass CHP, boilers, solar thermal, waste heat from electrolysis, fuel synthesis,
   fuel cells and the biofuel plants (add_waste_heat; the biofuel groups at the node of
   the feed bus), and water tank or pit storage when sector.tes is on.
-  Geothermal is the catch: the Fraunhofer ISI potential only reaches the model if
-  geothermal is listed under heat_pump_sources.urban central, and it is used directly
-  (no heat pump) only when it is also in direct_utilisation_heat_sources. The share
+  Geothermal is the catch: its potential — by default heat-only doublets priced on the
+  Limberger subsurface temperature model in cost steps per cluster with a per-cluster
+  source temperature (source: geology, since the fork commit 6b3a9fd6; the Fraunhofer ISI
+  potential at a constant 65 °C is source: manz) — only reaches the model if geothermal
+  is listed under heat_pump_sources.urban central, and it is used directly (no heat pump)
+  only when it is also in direct_utilisation_heat_sources. The share
   keys are read by a {horizon} build rule and the supply keys in compose_network, so all
   of them may vary per scenario (a high-vs-low district heating pair is two progress
   dicts).
@@ -32,8 +35,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: d2e0d48666f09a580c744846cef37e5059761d7a
-    date: '2026-10-09'
+    ref: 492f05d32e91ff76b26a7ee67604811a54cb315a
+    date: '2026-10-10'
   execution:
   - kind: config
     key: sector.district_heating.potential
@@ -65,7 +68,8 @@ models:
       - ground
     note: >-
       the shipped list plus geothermal for the urban central system: that one word is
-      what lets the geothermal potential into the model. river_water and sea_water are
+      what lets the geothermal potential (the geology cost steps, see
+      [[geothermal-geology]]) into the model. river_water and sea_water are
       legal entries but pull extra per-year downloads (JRC HERA; Copernicus Marine
       needs credentials), so leave them out unless the user brings the data.
   - kind: config
@@ -99,11 +103,14 @@ models:
       n.loads_t.p_set.
   invalidates:
   - build_district_heat_share
+  - build_geothermal_columns
+  - build_geothermal_heat_potential
   - build_cop_profiles
+  - build_direct_heat_source_utilisation_profiles
   - compose_network
   - solve_network
   budget:
-    jobs: 4
+    jobs: 7
     class: hours
   success_metric:
   - name: district-heat-system-present
@@ -125,9 +132,11 @@ notes: >-
   Supply temperatures and losses are country-level approximations
   (sector.district_heating.supply_temperature_approximation, district_heating_loss),
   building retrofit is exogenous unless sector.retrofitting.retro_endogen is turned
-  on (costly, S-tier data), and sector.enhanced_geothermal is off and left off: at
-  this anchor compose_network reads a placeholder capacity-factor path when it is
-  enabled. Pair with [[co2-budget]] for the target, [[existing-fleet]] for today's
+  on (costly, S-tier data), and sector.enhanced_geothermal stays off here: enhanced
+  geothermal CHP and the geothermal heat source's caveats (technical potentials, a
+  depth-only hydrothermal assumption, urban-land siting outside the Fraunhofer
+  district-heating countries) live in [[geothermal-geology]]. Pair with [[co2-budget]]
+  for the target, [[existing-fleet]] for today's
   heating stock (build_existing_heating_distribution seeds the decentral boilers and
   heat pumps), [[pathway-myopic]] when the question is when the network expands. The
   carrier cards district-heating, district-heating-demand-share, air-source-heat-pumps,

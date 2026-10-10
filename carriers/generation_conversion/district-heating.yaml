@@ -21,7 +21,7 @@ when_to_use:
   - "known in pypsa-eur as: district heating, ptes heat pump, urban central ptes heat pump, river_water heat, river_water heat pump, sea_water heat, sea_water heat pump"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
+    version_anchor: {ref: "492f05d32e91ff76b26a7ee67604811a54cb315a", date: "2026-10-10"}
     out_of_box:
       covers: >
         Covered as the fifth heat system "urban central". Demand side: the
@@ -59,18 +59,24 @@ models:
         methanol routes — at the node of their biomass or biogas bus
         (use_biofuel_waste_heat, use_biosng_waste_heat,
         use_biomethanol_waste_heat, 0.25 each; see waste-heat-recovery). A machinery for LIMITED heat sources
-        exists (sector.district_heating.limited_heat_sources: geothermal at
-        constant 65 C with Fraunhofer ISI potentials via rule
-        build_geothermal_heat_potential; river_water via HERA data, rule
-        build_river_heat_potential): each such source, when listed in
-        sector.heat_pump_sources.urban central, gets a resource Generator with
-        p_nom_max from its heat_source_power CSV, a source-coupled heat pump,
+        exists (sector.district_heating.limited_heat_sources: geothermal,
+        since the fork commit 6b3a9fd6 by default source: geology — heat-only
+        doublets on the Limberger et al. subsurface temperature model, sited in
+        the DH areas or urban cells, as levelised-cost steps with a per-region
+        source temperature, see geothermal-conventional; source: manz keeps the
+        Manz et al. 2024 potentials at constant 65 C; river_water via HERA
+        data, rule build_river_heat_potential): each such source, when listed
+        in sector.heat_pump_sources.urban central, gets resource Generators
+        (geothermal under geology: one per region and cost step) with
+        p_nom_max from its potential, a source-coupled heat pump,
         and — if in sector.district_heating.direct_utilisation_heat_sources
         (default [geothermal]) — a direct utilisation Link active whenever
         source temperature exceeds the forward temperature (profiles from rule
         build_direct_heat_source_utilisation_profiles). DH area polygons
         (retrieve_dh_areas, rule build_dh_areas, handle_missing_countries:
-        fill) bound the ATES/river/sea potentials with a 1000 m buffer.
+        fill) bound the ATES/river/sea potentials with a 1000 m buffer; the
+        retrieved DH areas (same buffer) also site the geology geothermal
+        doublets and cap them at the areas' demand.
       mechanism: >
         rules build_district_heat_share -> district fraction per node ->
         prepare_sector_network add_heat (HeatSystem.URBAN_CENTRAL branch:
@@ -80,7 +86,8 @@ models:
         build_direct_heat_source_utilisation_profiles; source potentials:
         input_heat_source_power wires heat_source_power_{source} CSVs for
         every urban central heat pump source that is also a limited heat
-        source. Waste heat is bolted onto existing links post hoc in
+        source (and, for geothermal under source: geology, the steps file via
+        input_geothermal_heat_steps). Waste heat is bolted onto existing links post hoc in
         add_waste_heat.
       not_covered: >
         Crucially, the DH DISTRIBUTION NETWORK ITSELF carries no capital cost —
@@ -124,8 +131,8 @@ models:
         default: "max_forward_temperature_baseyear for FR/DK/DE/CZ/FI/PL/SE/IT (75-130 C), min_forward and return only for DE (82/58 C), thresholds 0/10 C, rolling window 72 h"
         provenance: "config/config.default.yaml:supply_temperature_approximation; scripts/build_central_heating_temperature_profiles/run.py:CentralHeatingTemperatureApproximator"
       - key: sector.district_heating.limited_heat_sources
-        effect: "Declares potential-limited sources: geothermal (constant_temperature_celsius 65, ignore_missing_regions) and river_water (temperature from HERA data); membership triggers the resource-bus + potential treatment."
-        default: "{geothermal: {constant_temperature_celsius: 65, ignore_missing_regions: false}, river_water: {constant_temperature_celsius: false}}"
+        effect: "Declares potential-limited sources: geothermal (source geology or manz; constant_temperature_celsius and ignore_missing_regions apply to manz only) and river_water (temperature from HERA data); membership triggers the resource-bus + potential treatment."
+        default: "{geothermal: {source: geology, constant_temperature_celsius: 65, ignore_missing_regions: false}, river_water: {constant_temperature_celsius: false}}"
         provenance: "config/config.default.yaml:limited_heat_sources; scripts/prepare_sector_network.py:limited_heat_sources"
       - key: sector.district_heating.direct_utilisation_heat_sources
         effect: "Sources allowed to feed the network directly (no heat pump) when their temperature exceeds the forward temperature."
@@ -170,7 +177,7 @@ models:
         note: "row in data/district_heat_share.csv (build_energy_totals takes the min of it and IDEES)"
       - variant: "geothermal district heat (heat pump + direct utilisation)"
         rung: L1
-        note: "append 'geothermal' to sector.heat_pump_sources.urban central — potential CSV auto-builds from Fraunhofer ISI data (rule build_geothermal_heat_potential); direct utilisation already in the default list; expect the harmless duplicate-link warning"
+        note: "append 'geothermal' to sector.heat_pump_sources.urban central — the geology supply steps and source temperature auto-build from the Limberger temperature model (rules build_geothermal_columns, build_geothermal_heat_potential; method geothermal-geology); limited_heat_sources.geothermal.source: manz switches to the Fraunhofer ISI potentials; direct utilisation already in the default list; expect the harmless duplicate-link warning"
       - variant: "river or sea water source heat pumps"
         rung: L1
         note: "append 'river_water' / 'sea_water' to the urban central list; needs the HERA (river) / seawater temperature datasets, retrieved per snapshot year (rules retrieve_hera_data, retrieve_seawater_temperature); sea_water has no potential cap"
@@ -203,8 +210,8 @@ models:
         anchor: "scripts/build_central_heating_temperature_profiles/run.py (rule build_central_heating_temperature_profiles)"
         provenance: "scripts/build_central_heating_temperature_profiles/run.py:CentralHeatingTemperatureApproximator"
       - change: "geothermal potential per cluster region"
-        anchor: "scripts/build_geothermal_heat_potential.py (rule build_geothermal_heat_potential; ISI potentials + LAU regions)"
-        provenance: "rules/build_sector.smk:build_geothermal_heat_potential; rules/build_sector.smk:isi_heat_potentials"
+        anchor: "scripts/build_geothermal_heat_potential.py::geology_heat_cells (source geology, over rule build_geothermal_columns) / ::get_heat_source_power (source manz, ISI potentials + LAU regions)"
+        provenance: "rules/build_sector.smk:build_geothermal_heat_potential; scripts/build_geothermal_heat_potential.py:geology_heat_cells; rules/build_sector.smk:isi_heat_potentials"
       - change: "DH area polygons for potentials"
         anchor: "scripts/build_dh_areas.py::handle_missing_countries (rule build_dh_areas)"
         provenance: "scripts/build_dh_areas.py:handle_missing_countries"
@@ -219,15 +226,15 @@ models:
         required_for: "today's DH share per country"
         availability: "retrieved by workflow / exists in repo"
       - input: "dh_areas GeoPackage (rule retrieve_dh_areas)"
-        required_for: "ATES / river / sea potential clipping"
+        required_for: "ATES / river / sea potential clipping; siting and demand cap of the geology geothermal doublets"
         availability: "retrieved by the workflow; missing countries handled per handle_missing_countries (default fill)"
-      - input: "Fraunhofer ISI geothermal utilisation potentials + LAU region shapes"
-        required_for: "geothermal source potential (when activated)"
-        availability: "retrieved (rules retrieve_geothermal_heat_utilisation_potentials, retrieve_lau_regions)"
+      - input: "Limberger et al. subsurface temperature model (source geology, the default) / Fraunhofer ISI geothermal utilisation potentials + LAU region shapes (source manz)"
+        required_for: "geothermal source potential and, under geology, the per-region source temperature for direct utilisation (built only where geothermal is also an urban central heat pump source, since the fork commit 492f05d3)"
+        availability: "retrieved (rule retrieve_limberger_temperature; rules retrieve_geothermal_heat_utilisation_potentials, retrieve_lau_regions only under manz)"
       - input: "HERA river discharge/temperature and seawater temperature per snapshot year"
         required_for: "river_water / sea_water sources (when activated)"
         availability: "retrieved per year (rules retrieve_hera_data, retrieve_seawater_temperature)"
-      - input: "cost rows 'central air-sourced heat pump', 'central excess-heat-sourced heat pump', 'central geothermal heat source', 'central water pit storage'"
+      - input: "cost rows 'central air-sourced heat pump', 'central excess-heat-sourced heat pump', 'central geothermal heat source' (source manz and ATES only), 'central water pit storage'"
         required_for: "DH supply and storage technologies"
         availability: "exists by default via technology-data (a missing heat-source row falls back to zero cost with a logged warning in add_heat)"
   - model: pypsa-earth

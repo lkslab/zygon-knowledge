@@ -170,7 +170,8 @@ datasets:
     detail: JRC Energy Atlas spatial electricity-demand raster
   district-heating-potentials:
     grade: B
-    detail: Fraunhofer DH areas + ISI geothermal potentials (runtime-fetched, EU-scoped)
+    detail: "Fraunhofer DH areas, which also site and demand-cap the geology geothermal\
+      \ doublets, + ISI geothermal potentials (source: manz only; runtime-fetched, EU-scoped)"
   retro-building-stock:
     grade: A
     detail: building stock rows (EU Building Stock Observatory)

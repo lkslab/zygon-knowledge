@@ -22,7 +22,8 @@ models:
     sector.district_heating.potential along sector.district_heating.progress) and the
     supply behind each system optimised: per urban central bus a heat pump per listed
     source (sector.heat_pump_sources; geothermal, river and sea water as limited sources
-    with per-cluster potentials), resistive heaters, gas and biomass CHP, boilers, solar
+    with per-cluster potentials, geothermal by default as heat-only doublets priced on the
+    subsurface temperature model in cost steps per cluster), resistive heaters, gas and biomass CHP, boilers, solar
     thermal, waste heat from electrolysis, fuel synthesis and the biofuel plants (BtL and
     electrobiofuels by default, BioSNG and the bio- and biogas methanol routes when on,
     each at the node of its biomass or biogas bus, sector.use_biofuel_waste_heat,
@@ -32,7 +33,9 @@ models:
     the two study shapes live: the share question is a scenario pair of progress dicts
     (expand vs hold), the source question is the supply mix the solver picks once the
     sources are let in (geothermal is a no-op unless listed), and storage value is tes on
-    vs off. The emissions target comes from co2-budget, today's boilers and heat pumps from
+    vs off. The geothermal-geology method lets geothermal in on its geology (heat-only
+    doublets per cluster, and optionally enhanced geothermal CHP). The emissions target
+    comes from co2-budget, today's boilers and heat pumps from
     existing-fleet, the timing from pathway-myopic. The carrier cards district-heating,
     district-heating-demand-share, air-source-heat-pumps, ground-source-heat-pumps,
     geothermal-conventional, waste-heat-recovery, thermal-storage and building-retrofit
@@ -61,8 +64,13 @@ models:
     and reads horizon-free data
   - >-
     river and sea water heat sources pull extra per-year downloads (JRC HERA; Copernicus
-    Marine needs credentials) and sector.enhanced_geothermal reads a placeholder
-    capacity-factor path in compose_network at this anchor — both stay off
+    Marine needs credentials) — they stay off unless the user brings the data
+  - >-
+    geothermal heat potentials are technical: doublets are assumed hydrothermal down to
+    3 km everywhere (no sediment or permeability map), sited in the Fraunhofer
+    district-heating areas where those exist and on urban land elsewhere (GB, NO, CH, the
+    Balkans, CY, MT, not capped by demand), with no thermal drawdown and no existing
+    geothermal heat plants seeded
   - >-
     no individual building, no hydraulic or temperature feasibility of a network; waste
     heat is the model's own (electrolysis, synthesis, fuel cells), not a named
@@ -84,6 +92,11 @@ models:
     role: >-
       when the network expands and the boilers retire — horizons with carry-over so a
       2030 heat pump is still there in 2040
+  - id: geothermal-geology
+    role: >-
+      geothermal as a district-heat source on its geology — heat-only doublet cost steps
+      and a source temperature per cluster, and enhanced geothermal CHP when power is part
+      of the question
   defaults:
   - aspect: district-heating-share
     is: >-
@@ -99,8 +112,9 @@ models:
       air-source heat pumps only in the urban central system (sector.heat_pump_sources)
       — no geothermal, river or sea water unless listed
     note: >-
-      a source question lists the sources first; geothermal's potential is in the data
-      but reaches the model only through that list
+      a source question lists the sources first; geothermal's potential (geology-based by
+      default, source: geology) is built from the subsurface temperature model but
+      reaches the model only through that list
   plots:
   - id: capacity_mix
     role: district-heat supply capacity by carrier per scenario, and the decentral heat pump build
@@ -109,8 +123,8 @@ models:
   - id: compare_system_cost
     role: expand vs hold the network, with vs without storage, source sets
   version_anchor:
-    ref: d2e0d48666f09a580c744846cef37e5059761d7a
-    date: '2026-10-09'
+    ref: 492f05d32e91ff76b26a7ee67604811a54cb315a
+    date: '2026-10-10'
 - model: pypsa-earth
   approach: >-
     The study runs on the carrier levers and the default config; no method spec is

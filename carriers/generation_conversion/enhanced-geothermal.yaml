@@ -12,155 +12,230 @@ when_to_use:
   - "flexible geothermal / geothermal storage flexibility"
   - "next-generation geothermal"
   - "geothermal anywhere, not just volcanic sites"
+  - "geothermal supply curve by geology"
+  - "EGS potential per region / cost of enhanced geothermal per country"
+  - "subsurface temperature map / geothermal resource by depth"
   - "pypsa-eur carrier names: geothermal heat, geothermal organic rankine cycle, geothermal district heat"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
+    version_anchor: {ref: "492f05d32e91ff76b26a7ee67604811a54cb315a", date: "2026-10-10"}
     out_of_box:
       covers: >
-        A full EGS chain exists for SECTOR runs, disabled by default
-        (sector.enhanced_geothermal.enable: false). rule build_egs_potentials
-        converts the repo-shipped data/egs_costs.json (1x1 degree gridded
-        CAPEX and sustainable-power potentials for Europe from Aghahosseini &
-        Breyer 2020, "From hot rock to useful energy") into per-cluster
-        egs_potentials (CAPEX + p_nom_max, with p_nom_max = PowerSust /
-        sustainability_factor, default 0.0025), an egs_overlap region matrix,
-        and temperature-dependent egs_capacity_factors (ambient-temperature
-        response curve from Ricks et al., built from the clustered air
-        temperature). add_enhanced_geothermal then builds a supply curve per
-        bus: a single "EU enhanced geothermal systems" bus with a free
-        extendable "geothermal heat" Generator, per-region well Links (one per
-        cost step, annuitised from the gridded CAPEX minus the ORC share,
-        lifetime/FOM from the "geothermal" cost row) into a per-bus
-        "geothermal heat surface" bus, one "geothermal organic rankine cycle"
-        Link to electricity (efficiency and capital cost from the "organic
-        rankine cycle" cost row), and — automatically wherever an "urban central heat" load
-        exists (CHP mode) — a "geothermal district heat" Link priced with the
-        geothermal row's "district heat surcharge" and efficiency "district
-        heat-input". With flexible: true (default) each surface bus also gets
-        an extendable "geothermal heat" reservoir StorageUnit (max_hours 240,
-        p_min_pu = -max_boost 0.25, cyclic) and solve_network adds
-        add_flexible_egs_constraint bounding reservoir charging capacity by
-        well capacity.
+        A geology-dependent EGS chain for SECTOR runs, still disabled by
+        default (sector.enhanced_geothermal.enable: false); since the fork
+        commit 6b3a9fd6 it runs end to end with the default var_cf: true.
+        SUBSURFACE: rule build_geothermal_columns maps the Limberger et al.
+        2014 3-D subsurface temperature model of Europe (Geothermal Energy
+        Science 2:55; 2026 release Zenodo 22149195, CC-BY-4.0; measured
+        temperatures where they exist, crustal conduction elsewhere) onto the
+        onshore regions on its native 10 km EPSG:3857 columns (about 3-6 km on
+        the ground), each column carrying its temperature at 1.0-6.5 km, its
+        ground area and the share of its weather cell available for onshore
+        wind (availability_matrix_onwind). COSTS: rule build_egs_potentials
+        applies the Ricks & Jenkins 2025 EGS cost model (Joule, "Pathways to
+        national-scale adoption of enhanced geothermal power"; supplementary
+        code Zenodo 15485307, CC-BY-4.0; GETEM-derived binary/ORC plant fits,
+        quadratic well costs, stimulation, exploration, interest during
+        construction, NREL ATB 2023 O&M), ported vectorised to
+        scripts/lib/geothermal.py:egs_costs and reproducing the source's
+        reference table, to every column at 2.5, 3.5, 4.5, 5.5 and 6.5 km: a
+        depth is feasible where the rock reaches min_temperature 150 °C (the
+        binary-cycle floor), the production temperature fed to the plant fits
+        is capped at max_temperature 250 °C, wellfield pumping
+        (parasitic_fraction 0.15) is netted out so capacity and costs are per
+        net kW_el, and USD2021 converts to EUR2020 at usd2021_to_eur 0.836.
+        Each column keeps its cheapest depth by levelised cost (availability
+        0.85, lifetime 30 a, the costs' discount rate); its capacity is the
+        cost model's technical density times the column's area times its
+        onwind land share. Columns are grouped per region into LCOE steps
+        (lcoe_bins, EUR/MWh_el, default 75, 100, 125, 150, 175, 200, 250,
+        300, 400; anything above 400 is dropped). Output egs_potentials.csv,
+        one row per region and step: p_nom_max (MW_el net), well_capex and
+        plant_capex (EUR/kW_el), fom (EUR/kW_el/yr), efficiency (net
+        electricity per heat extracted), lcoe, depth and temperature; plus
+        egs_capacity_factors.csv, the Ricks et al. binary-plant response to the
+        deviation of the regional air temperature from its mean (var_cf).
+        NETWORK (add_enhanced_geothermal): a free extendable "geothermal heat"
+        Generator on one "EU enhanced geothermal systems" bus feeds, per region,
+        well Links "<bus> enhanced geothermal <i>" (one per step) into a
+        "<bus> geothermal heat surface" bus, sized in heat: p_nom_max =
+        MW_el / efficiency, p_max_pu = availability, capital cost = (annuity +
+        FOM share) x well capex x efficiency, efficiency = the hourly capacity
+        factor under var_cf. One "<bus> geothermal organic rankine cycle" Link
+        per region converts surface heat to electricity at the
+        capacity-weighted step efficiency (about 0.13 in NL) with the cost
+        model's plant capex; wherever an "<bus> urban central heat" bus exists
+        a "<bus> geothermal heat district heat" Link (carrier "geothermal
+        district heat") delivers the surface heat at efficiency 0.8 (the
+        technology-data "geothermal" row's "district heat-input") for 25 %
+        of the plant cost (its "district heat surcharge"), i.e. CHP. With
+        flexible: true (default) each surface bus gets a "<bus> geothermal
+        reservoir" StorageUnit (max_hours 240, p_min_pu = -max_boost 0.25,
+        cyclic), and solve_network's add_flexible_egs_constraint caps each
+        region's reservoir power by that region's well capacity. Myopic runs
+        subtract earlier builds from the well potentials
+        (add_brownfield.py:adjust_geothermal_capacity_limits).
+        Real-data check on a 50-region Europe: cheapest steps DE 114, HU 98,
+        HR 99, IT 75, FR 116 EUR2020/MWh_el; FI, SE, mainland NO, EE, AL and
+        ME have no potential below 400. The totals are very large (TW scale in
+        FR and ES): treat the capacity as unbounded and the costs per region
+        as the information.
       mechanism: >
-        rule build_egs_potentials (scripts/build_egs_potentials.py:
-        prepare_egs_data -> prepare_capex -> get_capacity_factors) ->
-        resources/egs_potentials.csv etc.; rule
-        prepare_sector_network conditionally takes them as inputs and its main
-        block calls add_enhanced_geothermal when
-        options["enhanced_geothermal"].get("enable"); solve_network.py wires
-        add_flexible_egs_constraint into extra_functionality when the same
-        flag is set.
+        rule retrieve_limberger_temperature (dataset limberger_temperature in
+        data/versions.csv, md5-checked) -> rule build_geothermal_columns
+        (scripts/build_geothermal_columns.py: select_columns, column_area,
+        sample_cells) -> rule build_egs_potentials
+        (scripts/build_egs_potentials.py: column_costs over
+        scripts/lib/geothermal.py egs_costs, then bin_supply_curve;
+        get_capacity_factors from temp_air_total.nc) -> egs_potentials.csv,
+        egs_capacity_factors.csv, compose_network inputs only when enable is
+        true -> scripts/prepare_sector_network.py:add_enhanced_geothermal from
+        the main block. solve_network.py's extra_functionality calls
+        add_flexible_egs_constraint only when enable AND flexible are true.
       not_covered: >
-        BROKEN L0 AT THIS REF for the default settings: the
-        add_enhanced_geothermal call in prepare_sector_network's main block
-        passes egs_capacity_factors="path/to/capacity_factors.csv" — a
-        hardcoded placeholder instead of snakemake.input["egs_capacity_factors"]
-        (which the rule does provide) — so with the default var_cf: true,
-        enabling EGS fails on the missing file; set var_cf: false or fix the
-        call (see boundary). No EGS in the electricity-only workflow (the
-        chain lives entirely in prepare_sector_network). The potential data is
-        Europe-only and fixed at the 2020 CAPEX vintage — the code itself
-        logs that future cost expectations should be applied via the config
-        "adjustments" mechanism. Wells are not geographically distinguishable
-        below cluster resolution, and multiple geothermal nodes are
-        unsupported (warning in add_enhanced_geothermal). Heat-only direct-use
-        EGS (without ORC/district-heat surcharge structure) and any coupling
-        to the shallow "geothermal" district-heating heat source (see
-        geothermal-conventional carrier card) do not exist.
-      provenance: "scripts/prepare_sector_network.py:add_enhanced_geothermal; scripts/prepare_sector_network.py:path/to/capacity_factors.csv; scripts/build_egs_potentials.py:prepare_egs_data; scripts/build_egs_potentials.py:get_capacity_factors; scripts/solve_network.py:add_flexible_egs_constraint; rules/build_sector.smk:build_egs_potentials"
+        No EGS in the electricity-only workflow (the chain lives in
+        prepare_sector_network). No hydrothermal power new-build and no flash
+        plants: every site is a stimulated binary/ORC EGS plant, and rock
+        above 250 °C is priced with the 250 °C plant fit. No learning: the
+        cost model is one central 2021-vintage case for every planning
+        horizon. No thermal drawdown of the reservoir over the plant life. No
+        sediment or permeability map: capacity follows temperature and land
+        only, so the potentials are technical, not geological reserves, and
+        very large. The 2.5-6.5 km depth grid is fixed in
+        build_geothermal_columns (depths_egs), not a config key. The heat
+        source behind all wells is one free EU node, so the regional
+        differentiation lives in the well steps, not in the source. Heat-only
+        geothermal for district heating is a separate chain (the
+        geothermal-conventional card, source: geology).
+      provenance: "scripts/build_geothermal_columns.py:select_columns; scripts/build_egs_potentials.py:column_costs; scripts/build_egs_potentials.py:get_capacity_factors; scripts/lib/geothermal.py:egs_costs; scripts/lib/geothermal.py:bin_supply_curve; scripts/prepare_sector_network.py:add_enhanced_geothermal; scripts/solve_network.py:add_flexible_egs_constraint; scripts/add_brownfield.py:adjust_geothermal_capacity_limits; rules/build_sector.smk:build_geothermal_columns; rules/build_sector.smk:build_egs_potentials; rules/retrieve.smk:retrieve_limberger_temperature"
     levers:
       - key: sector.enhanced_geothermal.enable
-        effect: "Master switch: builds the EGS potential inputs and adds the whole EGS chain in sector runs (and the reservoir solver constraint)."
+        effect: "Master switch: builds the column and EGS potential inputs and adds the whole chain in sector runs."
         default: "false"
-        provenance: "config/config.default.yaml:enhanced_geothermal; scripts/solve_network.py:add_flexible_egs_constraint"
+        provenance: "config/config.default.yaml:enhanced_geothermal; scripts/prepare_sector_network.py:add_enhanced_geothermal"
       - key: sector.enhanced_geothermal.var_cf
-        effect: "true uses temperature-dependent capacity factors as well-Link efficiency (higher output in cold hours); false uses a constant 1.0 — currently the only working setting without the L2 call-site fix."
+        effect: "true sets the well-Link efficiency to the ambient-temperature capacity factor (more output in cold hours); false uses 1.0."
         default: "true"
-        provenance: "config/config.default.yaml:enhanced_geothermal; scripts/build_egs_potentials.py:get_capacity_factors"
+        provenance: "config/config.default.yaml:var_cf; scripts/build_egs_potentials.py:get_capacity_factors"
       - key: sector.enhanced_geothermal.flexible
-        effect: "true adds the per-bus geothermal reservoir StorageUnit enabling shifted/boosted dispatch, plus the charging<=well-capacity solver constraint."
+        effect: "true adds the per-region reservoir StorageUnit and the reservoir-power <= well-capacity constraint; false builds must-run-shaped wells only and skips the constraint."
         default: "true"
-        provenance: "config/config.default.yaml:enhanced_geothermal; scripts/prepare_sector_network.py:add_enhanced_geothermal"
+        provenance: "config/config.default.yaml:flexible; scripts/solve_network.py:add_flexible_egs_constraint"
       - key: sector.enhanced_geothermal.max_hours
-        effect: "Energy capacity of the flexibility reservoir in hours of well output."
+        effect: "Energy capacity of the reservoir in hours of its power."
         default: "240"
-        provenance: "config/config.default.yaml:enhanced_geothermal; scripts/prepare_sector_network.py:add_enhanced_geothermal"
+        provenance: "config/config.default.yaml:max_hours; scripts/prepare_sector_network.py:add_enhanced_geothermal"
       - key: sector.enhanced_geothermal.max_boost
-        effect: "Reservoir discharge sets p_min_pu = -max_boost on the StorageUnit, i.e. output can exceed steady well output by this fraction."
+        effect: "Reservoir discharge p_min_pu = -max_boost: output can exceed the steady well output by this fraction."
         default: "0.25"
-        provenance: "config/config.default.yaml:enhanced_geothermal; scripts/prepare_sector_network.py:add_enhanced_geothermal"
-      - key: sector.enhanced_geothermal.sustainability_factor
-        effect: "Divides the sustainable-heat potential to get usable p_nom_max (the data refers to the sustainably replenished share); lower it toward the sustainable share to shrink potentials."
-        default: "0.0025"
-        provenance: "config/config.default.yaml:sustainability_factor; scripts/build_egs_potentials.py:sustainability_factor"
-      - key: adjustments.sector
-        effect: "The recommended hook (logged by add_enhanced_geothermal itself) to scale the 2020-vintage EGS CAPEX to future cost expectations, e.g. a factor on Link capital_cost for the geothermal carriers."
-        default: "{factor: {Link: {electricity distribution grid: {capital_cost: 1.0}}}, absolute: false}"
-        provenance: "config/config.default.yaml:adjustments; scripts/prepare_sector_network.py:add_enhanced_geothermal"
+        provenance: "config/config.default.yaml:max_boost; scripts/prepare_sector_network.py:add_enhanced_geothermal"
+      - key: sector.enhanced_geothermal.min_temperature
+        effect: "Rock temperature (°C) a depth must reach to be feasible; lowering it opens shallower, cheaper-to-drill but less efficient sites."
+        default: "150"
+        provenance: "config/config.default.yaml:min_temperature; scripts/build_egs_potentials.py:column_costs"
+      - key: sector.enhanced_geothermal.max_temperature
+        effect: "Cap (°C) on the production temperature fed to the cost model's plant fits (binary fits extrapolated above 200 °C)."
+        default: "250"
+        provenance: "config/config.default.yaml:max_temperature; scripts/lib/geothermal.py:egs_costs"
+      - key: sector.enhanced_geothermal.parasitic_fraction
+        effect: "Share of gross output used for wellfield pumping, netted out of capacity and spread onto the per-kW costs."
+        default: "0.15"
+        provenance: "config/config.default.yaml:parasitic_fraction; scripts/build_egs_potentials.py:column_costs"
+      - key: sector.enhanced_geothermal.availability
+        effect: "Plant availability: the well Links' p_max_pu and the full-load share in the levelised cost that ranks depths and steps."
+        default: "0.85"
+        provenance: "config/config.default.yaml:availability; scripts/prepare_sector_network.py:add_enhanced_geothermal"
+      - key: sector.enhanced_geothermal.lifetime
+        effect: "Lifetime (a) of wells, cycle and district-heat link, for the annuities and the depth ranking."
+        default: "30"
+        provenance: "config/config.default.yaml:lifetime; scripts/build_egs_potentials.py:column_costs"
+      - key: sector.enhanced_geothermal.usd2021_to_eur
+        effect: "Converts the cost model's USD2021 to the model's EUR2020; the one scalar to move all EGS costs together."
+        default: "0.836"
+        provenance: "config/config.default.yaml:usd2021_to_eur; scripts/build_egs_potentials.py:column_costs"
+      - key: sector.enhanced_geothermal.lcoe_bins
+        effect: "Upper edges (EUR/MWh_el) of the supply-curve steps per region; columns above the last edge are dropped, so the last edge is also a potential cut-off."
+        default: "[75, 100, 125, 150, 175, 200, 250, 300, 400]"
+        provenance: "config/config.default.yaml:lcoe_bins; scripts/lib/geothermal.py:bin_supply_curve"
+      - key: sector.enhanced_geothermal.reinjection_temperature
+        effect: "Brine reinjection temperature (°C) of the cost model; with producers_per_injector (1.5), flow_derating (0.77) and lateral_length (2286 m) the Ricks & Jenkins central deep-EGS case."
+        default: "70"
+        provenance: "config/config.default.yaml:reinjection_temperature; scripts/lib/geothermal.py:egs_costs"
     boundary:
-      - variant: "enable EGS in a sector run (constant capacity factor)"
-        rung: L1
-        note: "sector.enhanced_geothermal.enable: true AND var_cf: false — the default var_cf: true hits the hardcoded placeholder path at this ref"
-      - variant: "enable EGS with temperature-varying capacity factors"
-        rung: L2
-        note: "one-line fix in the prepare_sector_network main block: replace egs_capacity_factors=\"path/to/capacity_factors.csv\" with snakemake.input[\"egs_capacity_factors\"] (the rule input already exists); then enable + var_cf: true"
+      - variant: "enable EGS in a sector run"
+        rung: L0
+        note: "sector.enhanced_geothermal.enable: true; var_cf and flexible work at their defaults (method geothermal-geology)"
       - variant: "EGS without reservoir flexibility (must-run wells)"
-        rung: L1
-        note: "sector.enhanced_geothermal.flexible: false — no reservoir StorageUnits are built (add_flexible_egs_constraint is still called under enable but then matches no storage units)"
+        rung: L0
+        note: "sector.enhanced_geothermal.flexible: false — no reservoir StorageUnits and no reservoir constraint"
       - variant: "size the flexibility (hours / boost)"
         rung: L0
         note: "sector.enhanced_geothermal.max_hours / max_boost"
-      - variant: "scale EGS costs to a future year / optimism scenario"
-        rung: L1
-        note: "adjustments.sector factor on capital_cost of the geothermal carriers — the mechanism the code itself recommends; per-attribute cost rows 'geothermal' and 'organic rankine cycle' can also be overwritten via costs.overwrites / data/custom_costs.csv"
+      - variant: "cheaper or dearer EGS (optimism / pessimism case)"
+        rung: L0
+        note: "usd2021_to_eur scales every EGS cost; parasitic_fraction, availability, min_temperature and the cost-model keys move individual terms; adjustments.sector factors on capital_cost of the 'geothermal heat' and 'geothermal organic rankine cycle' Links are the other route"
+      - variant: "cut the potential (e.g. a national ceiling or only sites below a cost)"
+        rung: L0
+        note: "drop upper lcoe_bins edges to cut expensive sites; a hard national ceiling on the well Links needs a custom constraint (L2)"
       - variant: "EGS as combined heat and power vs electricity-only"
         rung: L0
-        note: "automatic — CHP mode engages wherever an 'urban central heat' load exists at the bus (district heating footprint); electricity-only otherwise; no separate switch"
-      - variant: "different subsurface potential/cost data"
+        note: "automatic — the district heat link appears wherever the region has an 'urban central heat' bus; no separate switch"
+      - variant: "cost reductions over planning horizons (learning)"
+        rung: L2
+        note: "the cost model has no year dimension; a per-horizon factor needs code in build_egs_potentials or per-scenario adjustments"
+      - variant: "different subsurface temperature data"
         rung: L3
-        note: "replace data/egs_costs.json (LCOE-classed, per-year gridded Lon/Lat/CAPEX/PowerSust structure parsed by prepare_egs_data) — format must match, or adapt the parser (L2 on top)"
+        note: "replace the Limberger temperature model with a netCDF of the same shape (temperature over depth_m in 250 m steps on x/y columns) via a data.limberger_temperature version row; the md5 in retrieve_limberger_temperature must change with it (L2)"
+      - variant: "hydrothermal / flash power plants above 250 °C"
+        rung: L3
+        note: "new plant fits and a feasibility branch in column_costs; the shipped cost model is binary EGS only"
+      - variant: "geological constraint on potentials (sediments, permeability, faults)"
+        rung: L4
+        note: "no such map is wired; it would be a new dataset and a column attribute in build_geothermal_columns plus a filter in column_costs"
       - variant: "EGS in the electricity-only workflow"
         rung: L4
-        note: "the chain is sector-only; would need the egs rules wired into build_electricity plumbing plus an attach step in add_electricity"
-      - variant: "regionally differentiated geothermal nodes (not one EU drilling bus)"
-        rung: L2
-        note: "spatial.geothermal_heat is hardcoded to one 'EU enhanced geothermal systems' node in define_spatial and add_enhanced_geothermal warns it is not implemented for multiple nodes — localise the namespace and the well bus0 there"
+        note: "the chain is sector-only; would need the EGS rules wired into the electricity plumbing plus an attach step in add_electricity"
     where:
-      - change: "the whole EGS component chain (wells supply curve, ORC, district heat, reservoir)"
-        anchor: "scripts/prepare_sector_network.py::add_enhanced_geothermal (called from the main block gated by sector.enhanced_geothermal.enable)"
+      - change: "the EGS component chain (well steps, ORC, district heat, reservoir)"
+        anchor: "scripts/prepare_sector_network.py::add_enhanced_geothermal (main block, gated by sector.enhanced_geothermal.enable)"
         provenance: "scripts/prepare_sector_network.py:add_enhanced_geothermal"
-      - change: "the broken capacity-factor path (L2 fix)"
-        anchor: "prepare_sector_network main block, add_enhanced_geothermal call — egs_capacity_factors argument"
-        provenance: "scripts/prepare_sector_network.py:path/to/capacity_factors.csv"
-      - change: "potential, overlap and capacity-factor inputs"
-        anchor: "rule build_egs_potentials; scripts/build_egs_potentials.py (prepare_egs_data, prepare_capex, get_capacity_factors, sustainability_factor)"
-        provenance: "rules/build_sector.smk:build_egs_potentials; scripts/build_egs_potentials.py:prepare_capex"
-      - change: "reservoir charging-capacity solver constraint"
-        anchor: "scripts/solve_network.py::add_flexible_egs_constraint (wired in extra_functionality by the enable flag)"
+      - change: "cost model, depth choice and capacity per column"
+        anchor: "scripts/build_egs_potentials.py::column_costs; scripts/lib/geothermal.py::egs_costs"
+        provenance: "scripts/build_egs_potentials.py:column_costs; scripts/lib/geothermal.py:egs_costs"
+      - change: "supply-curve steps per region"
+        anchor: "scripts/lib/geothermal.py::bin_supply_curve"
+        provenance: "scripts/lib/geothermal.py:bin_supply_curve"
+      - change: "temperature columns, land share and depth grid"
+        anchor: "scripts/build_geothermal_columns.py::select_columns (rule build_geothermal_columns, depths_egs param)"
+        provenance: "scripts/build_geothermal_columns.py:select_columns; rules/build_sector.smk:build_geothermal_columns"
+      - change: "capacity factors from ambient temperature"
+        anchor: "scripts/build_egs_potentials.py::get_capacity_factors"
+        provenance: "scripts/build_egs_potentials.py:get_capacity_factors"
+      - change: "reservoir solver constraint"
+        anchor: "scripts/solve_network.py::add_flexible_egs_constraint (extra_functionality, enable and flexible)"
         provenance: "scripts/solve_network.py:add_flexible_egs_constraint; scripts/solve_network.py:extra_functionality"
-      - change: "single-EU-node spatial namespace for the drilling part"
-        anchor: "scripts/prepare_sector_network.py define_spatial (spatial.geothermal_heat)"
-        provenance: "scripts/prepare_sector_network.py:spatial.geothermal_heat"
-      - change: "cost scaling hook"
-        anchor: "config adjustments.sector (applied to the sector network); cost rows via scripts/process_cost_data.py::overwrite_costs"
-        provenance: "config/config.default.yaml:adjustments; scripts/process_cost_data.py:overwrite_costs"
+      - change: "myopic potential bookkeeping"
+        anchor: "scripts/add_brownfield.py::adjust_geothermal_capacity_limits"
+        provenance: "scripts/add_brownfield.py:adjust_geothermal_capacity_limits"
+      - change: "config schema of the EGS keys"
+        anchor: "scripts/lib/validation/config/sector.py::_EnhancedGeothermalConfig"
+        provenance: "scripts/lib/validation/config/sector.py:_EnhancedGeothermalConfig"
     data_dependencies:
-      - input: "data/egs_costs.json (Aghahosseini & Breyer gridded CAPEX + sustainable potentials)"
-        required_for: "any EGS run"
-        availability: "exists by default in the repo (Europe only, 2020 CAPEX vintage)"
-      - input: "cost rows 'geothermal' (lifetime, FOM, district heat surcharge, district heat-input) and 'organic rankine cycle'"
-        required_for: "annuitisation, ORC link, district heat link"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+      - input: "Limberger et al. 3-D subsurface temperature model (temperature_voxel.nc)"
+        required_for: "every EGS run (and the default heat-only geothermal source)"
+        availability: "retrieved by rule retrieve_limberger_temperature from Zenodo 22149195 (CC-BY-4.0), md5-checked; Europe only"
+      - input: "availability_matrix_onwind.nc"
+        required_for: "the land share each column may use"
+        availability: "built by default; requires onwind in electricity.renewable_carriers, otherwise build_geothermal_columns gets no availability input"
       - input: "temp_air_total.nc (clustered air temperature)"
-        required_for: "var_cf capacity factors (rule input only requested when var_cf is true)"
-        availability: "must be built (heat workflow builds it by default in sector runs)"
+        required_for: "the regional ambient temperature in the plant model and the var_cf capacity factors"
+        availability: "built by default in sector runs"
+      - input: "cost row 'geothermal' ('district heat surcharge', 'district heat-input')"
+        required_for: "the CHP district heat link only; the 'organic rankine cycle' row is no longer read"
+        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
       - input: "urban central heat buses (district heating footprint)"
         required_for: "the geothermal district heat (CHP) links"
         availability: "exists by default in sector runs wherever the district heat share is nonzero"
-      - input: "egs_potentials / egs_overlap / egs_capacity_factors CSVs"
-        required_for: "add_enhanced_geothermal inputs"
-        availability: "must be built (rule build_egs_potentials; only requested as prepare_sector_network inputs when enable is true)"
   - model: pypsa-earth
     version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
     out_of_box:

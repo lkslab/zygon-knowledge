@@ -23,7 +23,7 @@ when_to_use:
   - "known in pypsa-eur as: methanol, methanol transport, methanolisation, biomass-to-methanol, biomass-to-methanol CC, e-biomethanol, biogas to methanol, e-biogas-methanol, grey methanol, blue methanol, Methanol steam reforming, Methanol steam reforming CC, methanol-to-olefins/aromatics, allam methanol, CCGT methanol, CCGT methanol CC, OCGT methanol"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "d2e0d48666f09a580c744846cef37e5059761d7a", date: "2026-10-09"}
+    version_anchor: {ref: "492f05d32e91ff76b26a7ee67604811a54cb315a", date: "2026-10-10"}
     out_of_box:
       covers: >
         The synthesis route is ON by default, but it lives inside
