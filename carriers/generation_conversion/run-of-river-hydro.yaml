@@ -18,7 +18,7 @@ when_to_use:
   - "known in pypsa-eur as: ror, run of river"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "492f05d32e91ff76b26a7ee67604811a54cb315a", date: "2026-10-10"}
+    version_anchor: {ref: "29489d3b97bc7e5023aa02b96d3112e58258df7a", date: "2026-10-11"}
     out_of_box:
       covers: >
         Fully covered on the existing-fleet side, in both workflows. "hydro" is

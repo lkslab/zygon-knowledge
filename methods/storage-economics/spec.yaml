@@ -19,8 +19,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 492f05d32e91ff76b26a7ee67604811a54cb315a
-    date: '2026-10-10'
+    ref: 29489d3b97bc7e5023aa02b96d3112e58258df7a
+    date: '2026-10-11'
   execution:
   - kind: config
     key: solving.options.load_shedding

@@ -110,8 +110,8 @@ models:
   - id: capacity_mix
     role: the firm and storage capacity the stressed plan buys beyond the reference
   version_anchor:
-    ref: 492f05d32e91ff76b26a7ee67604811a54cb315a
-    date: '2026-10-10'
+    ref: 29489d3b97bc7e5023aa02b96d3112e58258df7a
+    date: '2026-10-11'
 - model: pypsa-earth
   approach: >-
     The study runs on the carrier levers and the default config; no method spec is

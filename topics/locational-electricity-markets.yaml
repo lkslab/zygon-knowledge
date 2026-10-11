@@ -79,8 +79,8 @@ models:
       no spec needed: nothing to change, so nothing to cite. The nodal benchmark of
       every comparison is a plain solve read through its duals
   version_anchor:
-    ref: 492f05d32e91ff76b26a7ee67604811a54cb315a
-    date: '2026-10-10'
+    ref: 29489d3b97bc7e5023aa02b96d3112e58258df7a
+    date: '2026-10-11'
 - model: pypsa-earth
   approach: >-
     The two-stage pipeline — eta-blended siting, flow-based zonal clearing, priced
