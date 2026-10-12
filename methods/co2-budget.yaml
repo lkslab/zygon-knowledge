@@ -134,3 +134,21 @@ notes: >-
   or "Infeasible model" within minutes of barrier, then computes an IIS until the job's
   runtime kills it, so a solve_network job that dies at its time limit after an early
   infeasible line is a scenario infeasibility, not a solver-size problem; check the sinks and the biomass balance of the selection before resizing anything. The structural fix for the biomass side on this fork is [[industry-heat-endogenous]] (the industrial biomass load becomes band heat supplied under the limit); [[industry-routes-endogenous]] is a second, partial way out (steel and cement leave the flat demand, the kiln biomass competes under the limit; for NL 2040 that alone removes 0.35 of the 16.0 TWh/a, so it complements industry-heat-endogenous rather than replacing it). On the process-emission side, build_industrial_energy_demand_per_node clips a negative per-node process emission to zero with a warning: JRC-IDEES gives HVC a negative process emission in later horizons, three NL 2040 nodes summed negative, and compose_network would have turned that into a CO2 withdrawal no sink can serve, an infeasibility with the same symptom; and with solving.options.infeasibility_diagnosis.time_limit set (fork, backend config) the IIS computation stops after that many seconds instead of running to the job's kill.
+  (j) The sink itself can be absent: with sector.regional_co2_sequestration_potential.enable
+  (the default) each region's "co2 sequestered" store is capped by the country's own
+  CO2Stop storage, and the fork's conservative offshore table holds none for SE, FI, EE
+  and LU and zero for AT, ES, FR, NO, HR, HU and RS (resource
+  co2_sequestration_potentials.geojson, checked 2026-10-12; SI and BE are near zero). In
+  such a one-country run the clustered potential file is empty, every store's e_nom_max
+  is 0, captured CO2 (DAC included) has nowhere to go, and a zero cap with any process
+  emission is infeasible before the solver starts (SE 2050, 2026-10-11: both scenarios
+  "Infeasible model" within a minute; the diagnostician's 5%-of-1990 relaxation answers a
+  different question). The study decision the consultant raises at emissions_target for
+  one of these countries: an export allowance to shared storage,
+  sector.regional_co2_sequestration_potential.enable false and
+  sector.co2_sequestration_potential {<horizon>: <Mt/a>} at a figure the user accepts
+  (a North Sea or Baltic storage contract; the run then reports what it sequesters
+  against that allowance, and the results state it as an assumption), or a residual cap
+  (emissions_target above zero) stated as a limitation. The data-quality card flags the
+  gap (co2stop-sequestration D); the mechanism is on the co2-transport-and-sequestration
+  carrier card.

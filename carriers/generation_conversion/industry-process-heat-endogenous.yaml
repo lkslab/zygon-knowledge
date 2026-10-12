@@ -48,7 +48,9 @@ models:
         biomass direct firing (+CC, with pelletizing cost), gas direct firing
         (+CC), hydrogen firing; 500+ °C — gas direct firing (+CC), hydrogen
         firing. Biomass links draw from the spatial solid-biomass buses and so
-        sit under the "biomass limit"; gas links from the spatial gas buses;
+        sit under the "biomass limit" (sector.biomass must be on, or
+        compose_network stops at the industrial biomass demand); gas links
+        from the spatial gas buses (sector.fossil_fuels on);
         CC twins use the "biomass CHP capture" rows. Every link carries
         p_min_pu = sector.industry_t.must_run (0.8). Non-endogenised sectors
         and steel keep the flat fuel loads; "process emission", "process

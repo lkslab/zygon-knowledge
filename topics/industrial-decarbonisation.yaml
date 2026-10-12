@@ -86,6 +86,13 @@ models:
     no clinker trade, so an NL run builds a kiln the country has not had since 2019 — the
     study says which reading it wants and, for the priced one, reports the route outcome
     against the exogenous demand it replaced
+  - >-
+    import routes are not modelled — no HBI, scrap, clinker or steel trade with the rest
+    of the world, and no switch to drop one domestic route — so a "domestic hydrogen DRI
+    versus imported iron" question is the endogenous two-route case read for its hbi bus
+    marginal price (the landed-HBI break-even, a number the analyst reads off the solved
+    network after the run), never a staged import route or a re-solve; a forbidden route
+    is a solving.options.custom_extra_functionality hook capping its links
   limitations:
   - >-
     country totals distributed by site lists, never a site: no plant business case, no
@@ -124,6 +131,15 @@ models:
     bands choose their fuel under the limit; industry-routes-endogenous on top shrinks it
     further, the kiln biomass then competing under the limit too), or
     sector.solid_biomass_import, and says which
+  - >-
+    a one-country net-zero run also needs a CO2 sink of its own: with the regional CO2Stop
+    potential on (the default) a country the table holds no storage for (SE, FI, EE, LU,
+    AT, ES, FR, NO, HR, HU, RS) caps every "co2 sequestered" store at zero, so captured
+    process CO2 and DAC have nowhere to go and a zero cap is infeasible before the solver
+    starts — the study settles an export allowance to shared storage
+    (sector.regional_co2_sequestration_potential.enable false,
+    sector.co2_sequestration_potential at an accepted Mt/a) or a residual cap, and says
+    which (co2-budget note (j))
   methods:
   - id: industry-fuel-switching
     role: >-

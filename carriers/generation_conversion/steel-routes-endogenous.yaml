@@ -100,7 +100,12 @@ models:
         The capture retrofit charges electricity only: its catalogue gas-input
         (0.76 MWh per t CO2) for solvent regeneration is unused. No route can
         be switched off by config (the five route links are always built
-        together). The exogenous "H2 for industry" load keeps the chlorine
+        together): forbidding or capping one is a
+        solving.options.custom_extra_functionality hook constraining the
+        route links' capacity on n.model, and under a binding CO2 cap gas DRI
+        without capture limits itself. The "<node> hbi" bus marginal price of
+        the solved case is the landed-HBI break-even (imports are not
+        modelled), read after the run. The exogenous "H2 for industry" load keeps the chlorine
         by-product credit (industry.MWh_H2_per_tCl is negative) and loses the
         DRI hydrogen, so it turns negative at nodes with chlorine production
         (NL 2040: about -1.04 TWh), a free hydrogen injection the upstream
@@ -171,7 +176,7 @@ models:
         note: "the ore marginal cost is one EU-wide row in add_steel (and add_existing_industry); a per-country price needs an edit there"
       - variant: "forbid a route (e.g. no new blast furnaces)"
         rung: L2
-        note: "no flag: drop or cap the route's n.add call in add_steel (p_nom_max)"
+        note: "no flag: a solving.options.custom_extra_functionality hook (a staged file the bundle's data change points the key at; its function, named like the file's stem, takes n, snapshots, snakemake) adds n.model.add_constraints(n.model['Link-p_nom'].loc[<the route's links>] <= 0); never an add_steel edit, never a staged solve rule"
       - variant: "steel or HBI transport between regions"
         rung: L2
         note: "add links between the steel or hbi buses in add_steel; hbi_relocation (L1) is the free-transport extreme"

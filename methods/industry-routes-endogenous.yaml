@@ -137,5 +137,14 @@ notes: >-
   feedstock and pairs naturally with this method. Any sector.* or industry.* key varied
   per scenario makes the app rebuild the resources per scenario, which is correct and
   costs runtime; set these keys in the base config unless the comparison is the study.
+  No route can be switched off by config (the route links are always built together):
+  forbidding or capping one (no new blast furnaces, no gas DRI) is a
+  solving.options.custom_extra_functionality hook file the bundle stages through a data
+  change, constraining the route links' capacity on n.model, never an edit of add_steel
+  and never a staged copy of solve_network; under a binding CO2 cap gas DRI without
+  capture limits itself anyway. There is no HBI, scrap or steel import: a "domestic
+  hydrogen DRI versus imported iron" question is answered off the solved endogenous case
+  by the "<node> hbi" bus marginal price, the landed price at which imported iron would
+  displace domestic reduction, a number the results analyst reads after the run.
   Pair with [[co2-budget]] for the target that prices coal and gas against hydrogen and
   capture, and [[h2-network-expansion]] when the DRI hydrogen has to travel.

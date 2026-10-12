@@ -45,12 +45,12 @@ families:
       osm-grid: B
       tyndp-transmission-projects: A
   gas-h2-co2:
-    grade: C
+    grade: D
     detail:
       scigrid-gas-network: A
       gas-input-locations: B
       h2-salt-caverns: A
-      co2stop-sequestration: C
+      co2stop-sequestration: D
   renewables-land:
     grade: B
     detail:
@@ -175,8 +175,8 @@ datasets:
     grade: A
     detail: building stock rows (EU Building Stock Observatory)
   co2stop-sequestration:
-    grade: C
-    detail: "co2stop probe failed \u2014 no readable shapefiles"
+    grade: D
+    detail: "no storage unit for this country in the fork's conservative offshore CO2Stop table (resources/co2_sequestration_potentials.geojson, 2026-10-12): every \"co2 sequestered\" store is capped at 0 in a one-country run, so a net-zero cap needs the export allowance (co2-budget note (j))"
   transport-data-emobility:
     grade: C
     detail: German BASt kfz/pkw weekly profiles applied as proxy

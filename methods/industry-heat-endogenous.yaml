@@ -128,4 +128,9 @@ notes: >-
   from the AC node at the catalogue COP with free, unlimited source heat; the electric
   steam boiler likewise, so the two electric options compete on equal terms. Pair with
   [[co2-budget]] for the target that prices the fuels and [[h2-network-expansion]] when
-  the hydrogen for the upper bands is part of the question.
+  the hydrogen for the upper bands is part of the question. The method needs sector.biomass
+  on (the 100-500 °C biomass links draw from the solid-biomass buses, and the remaining
+  exogenous industrial biomass load needs them too): with it off compose_network stops
+  with "Industry demand includes solid biomass, but `sector.biomass` is disabled" (IT
+  2035, 2026-10-11), so a sectors key that lists industry keeps biomass, and
+  fossil_fuels for the gas it competes against.
