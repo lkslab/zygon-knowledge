@@ -23,7 +23,7 @@ when_to_use:
   - "sponge iron"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "29489d3b97bc7e5023aa02b96d3112e58258df7a", date: "2026-10-11"}
+    version_anchor: {ref: "09e8910ae03ace9af8ff821514cda7822fdd473f", date: "2026-10-12"}
     out_of_box:
       covers: >
         Covered as an exogenously phased-in demand route. In

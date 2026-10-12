@@ -16,7 +16,7 @@ when_to_use:
   - "known in pypsa-eur as: water tanks, residential rural water tanks, services rural water tanks, residential urban decentral water tanks, services urban decentral water tanks, urban central water tanks, hot water storage, hot water charging, hot water discharging, urban central water tanks charger, urban central water tanks discharger, residential rural water tanks charger, residential rural water tanks discharger, residential urban decentral water tanks charger, residential urban decentral water tanks discharger, services rural water tanks charger, services rural water tanks discharger, services urban decentral water tanks charger, services urban decentral water tanks discharger, water pits, water pits charger, water pits discharger, urban central water pits, urban central water pits charger, urban central water pits discharger, aquifer thermal energy storage, aquifer thermal energy storage charger, aquifer thermal energy storage discharger"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "29489d3b97bc7e5023aa02b96d3112e58258df7a", date: "2026-10-11"}
+    version_anchor: {ref: "09e8910ae03ace9af8ff821514cda7822fdd473f", date: "2026-10-12"}
     out_of_box:
       covers: >
         Sector runs, on by default (sector.tes: true). add_heat gives EVERY heat

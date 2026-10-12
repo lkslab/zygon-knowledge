@@ -150,8 +150,8 @@ models:
   - id: compare_system_cost
     role: 'what storage saves the system: total cost across variants or with/without'
   version_anchor:
-    ref: 29489d3b97bc7e5023aa02b96d3112e58258df7a
-    date: '2026-10-11'
+    ref: 09e8910ae03ace9af8ff821514cda7822fdd473f
+    date: '2026-10-12'
 - model: pypsa-earth
   approach: >-
     The study runs on the carrier levers and the default config; no method spec is
