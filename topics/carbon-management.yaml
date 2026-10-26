@@ -113,6 +113,8 @@ models:
     role: CO2 pipelines and sequestration per cluster
   - id: industrial_sites
     role: the industrial point sources capture would serve, sized by their CO2, before a run
+  - id: emission_history
+    role: the emissions since 1990 by sector, the history a cap or budget is measured against
   version_anchor:
     ref: 6128bf7effbe7243bcc46b2770d04cebe45613a5
     date: '2026-10-26'

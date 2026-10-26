@@ -95,6 +95,8 @@ models:
     role: what the system built to serve the charging load, per scenario
   - id: compare_system_cost
     role: uptake paths, smart vs dumb charging, V2G on vs off, electric vs hydrogen trucks
+  - id: energy_balance
+    role: "today's transport energy use by carrier: the oil road transport burns"
   version_anchor:
     ref: 6128bf7effbe7243bcc46b2770d04cebe45613a5
     date: '2026-10-26'

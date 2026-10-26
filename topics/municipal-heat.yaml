@@ -122,6 +122,12 @@ models:
     role: a winter week of the urban central heat balance — sources, storage, venting
   - id: compare_system_cost
     role: expand vs hold the network, with vs without storage, source sets
+  - id: district_heating_areas
+    role: where heat networks run today and how much heat they deliver, the areas urban central heat serves, before a run
+  - id: geothermal_temperature
+    role: how hot the rock is at 2, 3 and 5 km, where hydrothermal wells can feed the networks, before a run
+  - id: energy_balance
+    role: "today's final energy use of households and services by carrier: the gas and oil heating to replace"
   version_anchor:
     ref: 6128bf7effbe7243bcc46b2770d04cebe45613a5
     date: '2026-10-26'

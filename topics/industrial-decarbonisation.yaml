@@ -227,6 +227,10 @@ models:
     role: industrial hydrogen and electricity demand per cluster
   - id: industrial_sites
     role: where today's steelworks, cement kilns, refineries and chemical plants stand and what they emit, before a run
+  - id: emission_history
+    role: the emissions since 1990 by sector, industrial processes and manufacturing among them
+  - id: energy_balance
+    role: "today's industrial energy use by carrier: the gas, coal and oil to switch"
   version_anchor:
     ref: 6128bf7effbe7243bcc46b2770d04cebe45613a5
     date: '2026-10-26'

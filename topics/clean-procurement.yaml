@@ -150,6 +150,8 @@ models:
     role: 'what the rule buys: the hourly balance in the weeks where matching binds'
   - id: compare_system_cost
     role: 'what the rule costs the system: total cost per regime beside the premium'
+  - id: emission_history
+    role: the emissions since 1990 by sector, the energy industries' share among them
   version_anchor:
     ref: 6128bf7effbe7243bcc46b2770d04cebe45613a5
     date: '2026-10-26'

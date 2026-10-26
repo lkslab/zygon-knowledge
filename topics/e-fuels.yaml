@@ -143,6 +143,8 @@ models:
     role: candidate fuel splits and make-vs-import on system cost
   - id: region_map
     role: where synthesis sits — Fischer-Tropsch and methanolisation capacity per cluster
+  - id: energy_balance
+    role: "today's final energy use by carrier: the oil and gas e-fuels would replace"
   version_anchor:
     ref: 6128bf7effbe7243bcc46b2770d04cebe45613a5
     date: '2026-10-26'
