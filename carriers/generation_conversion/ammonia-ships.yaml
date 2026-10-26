@@ -13,7 +13,7 @@ when_to_use:
   - "alternative marine fuels"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "6128bf7effbe7243bcc46b2770d04cebe45613a5", date: "2026-10-26"}
+    version_anchor: {ref: "2924c5089860dd058ea2a395b9a9f946de3f9536", date: "2026-10-26"}
     out_of_box:
       covers: >
         Demand side NOT covered: at this ref the shipping fuel split in

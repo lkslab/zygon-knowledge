@@ -28,7 +28,7 @@ when_to_use:
   - "known in pypsa-eur as: biomass, solid biomass, solid biomass import, solid biomass transport, unsustainable solid biomass, solid biomass to hydrogen, biomass boiler, residential rural biomass boiler, residential urban decentral biomass boiler, services rural biomass boiler, services urban decentral biomass boiler"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "6128bf7effbe7243bcc46b2770d04cebe45613a5", date: "2026-10-26"}
+    version_anchor: {ref: "2924c5089860dd058ea2a395b9a9f946de3f9536", date: "2026-10-26"}
     out_of_box:
       covers: >
         Sector runs carry a fully spatial, data-driven biomass resource.

@@ -116,7 +116,7 @@ models:
   - id: emission_history
     role: the emissions since 1990 by sector, the history a cap or budget is measured against
   version_anchor:
-    ref: 6128bf7effbe7243bcc46b2770d04cebe45613a5
+    ref: 2924c5089860dd058ea2a395b9a9f946de3f9536
     date: '2026-10-26'
 - model: pypsa-earth
   approach: >-
