@@ -59,6 +59,57 @@ def validate_topic_sections() -> list[str]:
                     isinstance(p, str) and p.strip() for p in value
                 ):
                     errors.append(f"{where}: {key} must be a list of strings")
+            errors += validate_topic_questions(where, sec)
+    return errors
+
+
+QUESTION_KINDS = {"single", "multi"}
+OPTION_KEYS = {"value", "label", "detail", "default", "methods"}
+MAX_OPTIONS = 12
+
+
+def validate_topic_questions(where: str, sec: dict) -> list[str]:
+    """A section's questions[] are cards the consultant can ask as written: a
+    snake_case key, a question, two to twelve options with distinct values, at
+    most one default on a single card, and methods the section itself names."""
+    errors: list[str] = []
+    questions = sec.get("questions") or []
+    if not isinstance(questions, list):
+        return [f"{where}: questions must be a list"]
+    known = {m.get("id") for m in sec.get("methods") or [] if isinstance(m, dict)}
+    for q in questions:
+        if not isinstance(q, dict):
+            errors.append(f"{where}: every question is a mapping")
+            continue
+        key = q.get("key")
+        here = f"{where}: question {key!r}"
+        if not isinstance(key, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", key):
+            errors.append(f"{here}: key must be snake_case")
+        if not isinstance(q.get("question"), str) or not q["question"].strip():
+            errors.append(f"{here}: question must be a sentence")
+        if q.get("kind", "single") not in QUESTION_KINDS:
+            errors.append(f"{here}: kind must be one of {sorted(QUESTION_KINDS)}")
+        options = q.get("options")
+        if not isinstance(options, list) or not (2 <= len(options) <= MAX_OPTIONS):
+            errors.append(f"{here}: options must list 2 to {MAX_OPTIONS} choices")
+            continue
+        values = []
+        defaults = 0
+        for o in options:
+            if not isinstance(o, dict) or not set(o) <= OPTION_KEYS:
+                errors.append(f"{here}: option keys are {sorted(OPTION_KEYS)}")
+                continue
+            if not isinstance(o.get("value"), str) or not isinstance(o.get("label"), str):
+                errors.append(f"{here}: every option needs a value and a label")
+            values.append(o.get("value"))
+            defaults += bool(o.get("default", False))
+            missing = set(o.get("methods") or []) - known
+            if missing:
+                errors.append(f"{here}: option {o.get('value')!r} cites methods the section does not name: {sorted(missing)}")
+        if len(set(values)) != len(values):
+            errors.append(f"{here}: option values must be distinct")
+        if q.get("kind", "single") == "single" and defaults > 1:
+            errors.append(f"{here}: a single card marks at most one default")
     return errors
 
 

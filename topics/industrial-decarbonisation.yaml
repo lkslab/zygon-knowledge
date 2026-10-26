@@ -172,6 +172,22 @@ models:
     role: >-
       the hourly shape of industry electricity (FfE branch profiles) instead of a flat
       load — when industrial demand timing matters to the power side
+  questions:
+  - key: industry_heat
+    question: How should the model treat industrial process heat?
+    options:
+    - value: bands
+      label: Split into temperature bands, supply chosen by the model
+      detail: >-
+        heat at 100–200, 200–500 and above 500 °C each picks from heat pumps, electric
+        boilers, biomass, gas or hydrogen at today's intensities; steel stays out
+      default: true
+      methods: [industry-heat-endogenous]
+    - value: exogenous
+      label: Keep the shipped fuel shares inside the industry loads
+      detail: >-
+        pypsa-eur's default; process heat follows the assumed electrification
+        trajectory, no priced choice
   defaults:
   - aspect: route-trajectory
     is: >-
@@ -191,9 +207,9 @@ models:
       exogenous (sector.industry_t.endogen false) — process heat stays a fuel share
       inside the industry loads, following the shipped electrification trajectory
     note: >-
-      industry-heat-endogenous switches to the temperature bands; the study says which
-      treatment it runs, since the two read differently (an assumed mix versus a priced
-      choice at today's intensities)
+      industry-heat-endogenous switches to the temperature bands; the industry_heat
+      question asks which treatment the study runs, since the two read differently (an
+      assumed mix versus a priced choice at today's intensities)
   - aspect: industry-routes
     is: exogenous (sector.endogenous_sectors.enable false) — steel and cement follow the route shares and the JRC-IDEES intensities
     note: >-
