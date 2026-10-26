@@ -209,6 +209,8 @@ models:
     role: route pathways against each other on system cost and hydrogen need
   - id: region_map
     role: industrial hydrogen and electricity demand per cluster
+  - id: industrial_sites
+    role: where today's steelworks, cement kilns, refineries and chemical plants stand and what they emit, before a run
   version_anchor:
     ref: b3606ff14c838bf1bda9cbf5289ea2ff68756fbb
     date: '2026-10-26'

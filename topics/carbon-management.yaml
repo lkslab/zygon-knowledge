@@ -111,6 +111,8 @@ models:
     role: storage potentials and caps against each other, the cost of a tonne removed
   - id: network_map
     role: CO2 pipelines and sequestration per cluster
+  - id: industrial_sites
+    role: the industrial point sources capture would serve, sized by their CO2, before a run
   version_anchor:
     ref: b3606ff14c838bf1bda9cbf5289ea2ff68756fbb
     date: '2026-10-26'
