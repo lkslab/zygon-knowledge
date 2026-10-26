@@ -80,7 +80,12 @@ models:
       - grid_exchange
     note: 'a 100 MW flat load at DE0 0AC with wind+solar+battery (Riepin palette 1;
       add ldes and firm for palettes 2/3); x swept 0.9/0.98/1.0 against the no-rule
-      and annual rungs. A real study names its own consumer, bus and scores.
+      and annual rungs. A real study names its own consumer, bus and scores: `bus`
+      is the clustered AC bus name when the study knows it; when it only knows a
+      place (a city, a region), leave `bus: ""` and set `near: [lon, lat]` (Madrid:
+      [-3.70, 40.42]), optionally `country: ES`, and the payload picks the nearest
+      AC bus at build time — so the user''s spatial resolution stays whatever they
+      chose, never "one node so the bus is unambiguous".
 
       '
   - kind: config

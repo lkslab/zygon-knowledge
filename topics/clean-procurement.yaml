@@ -34,7 +34,10 @@ models:
     and annual-matching methods, built to Riepin 2024's design: build_cfe_network puts
     ONE participating consumer (a flat load at its own bus behind the zone's AC bus)
     with a contracted portfolio of new assets cloned from the zone's own onwind, solar,
-    battery, H2-chain and firm components, an import link and a capped export link;
+    battery, H2-chain and firm components, an import link and a capped export link
+    (the zone is the clustered AC bus named in zygon_cfe.consumer.bus, or, when the
+    study only knows a place, the nearest AC bus to consumer.near [lon, lat], resolved
+    at build time, so a site named as a city never forces a coarser spatial resolution);
     zygon_cfe_constraints adds the rule at solve time as the solve rule's own
     custom_extra_functionality — one row per snapshot (hour), per calendar month, or
     per year, plus the 20% excess cap and an optional portfolio-only charging rule; and

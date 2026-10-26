@@ -74,10 +74,35 @@ def keep(row, attrs):
     return out
 
 
+def nearest_ac_bus(n, near, country=None):
+    """The AC bus nearest to `near` = [lon, lat], within `country` when given.
+    Clustered bus names (`ES0 3AC`) exist only after cluster_network has run,
+    so a study that knows a place and not a name settles the bus here. Planar
+    distance on buses.x/y: clustered zones are far enough apart that the
+    projection never changes the pick."""
+    if not near:
+        raise KeyError("zygon_cfe.consumer.bus is empty and consumer.near is not set — "
+                       "name the clustered AC bus or give near: [lon, lat]")
+    lon, lat = (float(v) for v in near)
+    ac = n.buses[(n.buses.carrier == "AC") & ~n.buses.index.str.startswith("zcfe:")]
+    if country:
+        ac = ac[ac.country == str(country)]
+    if ac.empty:
+        raise KeyError(f"no AC bus to connect near {near!r}"
+                       + (f" in country {country!r}" if country else ""))
+    dist = ((ac.x - lon) ** 2 + (ac.y - lat) ** 2) ** 0.5
+    zone = str(dist.idxmin())
+    logger.info("consumer near (%.3f, %.3f): nearest AC bus is '%s' (%.2f deg away)",
+                lon, lat, zone, float(dist.min()))
+    return zone
+
+
 def add_consumer(n, cfg, add_palette):
     c = cfg["consumer"]
-    name, zone = str(c["name"]), str(c["bus"])
+    name, zone = str(c["name"]), str(c.get("bus") or "")
     pre = prefix_of(name)
+    if not zone:
+        zone = nearest_ac_bus(n, c.get("near"), c.get("country"))
     if zone not in n.buses.index:
         raise KeyError(f"consumer bus '{zone}' is not a bus of the network "
                        f"(AC buses: {list(n.buses.index[n.buses.carrier == 'AC'])[:10]})")

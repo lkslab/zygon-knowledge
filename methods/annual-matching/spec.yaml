@@ -76,7 +76,10 @@ models:
       - grid_exchange
     note: 'window year = one row over the year (Eq. 1), month = twelve rows; score
       is the matched share. credit_storage.year MUST stay false. Add the hourly-*
-      variants of hourly-matching to the same block for the full ladder.
+      variants of hourly-matching to the same block for the full ladder. `bus` is
+      the clustered AC bus name when known; for a study that only knows a place,
+      leave `bus: ""` and set `near: [lon, lat]` (optionally `country: <ISO2>`) and
+      the payload picks the nearest AC bus at build time, at any spatial resolution.
 
       '
   - kind: config

@@ -10,7 +10,9 @@
 zygon_cfe:
   consumer:
     name: datacentre
-    bus: ""              # the zone's AC bus the consumer connects to
+    bus: ""              # the zone's AC bus the consumer connects to, by its clustered name
+    near: null           # [lon, lat]; with bus "", the nearest AC bus (of `country` when set) is chosen at build time
+    country: null        # ISO2 to restrict `near` to; null = any AC bus of the model
     p_mw: 100            # flat draw in MW; or profile: <csv path> (one column, MW)
     profile: flat
     grid_capacity: 10    # import/export link size as a multiple of p_mw
