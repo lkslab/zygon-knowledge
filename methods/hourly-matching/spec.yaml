@@ -122,16 +122,17 @@ models:
   - kind: invocation
     note: 'extra_targets: results/{run.name}/zygon_cfe/{zygon_cfe.indicators}.csv (the
       collect rule is per run: each scenario''s own labels, read through
-      config_provider). replace_verify_networks (NOT verify_networks): {stage:
-      solved, path: results/{run.name}/cfe/{zygon_cfe.labels}/solved_{planning_horizons}.nc}
-      (one per variant per scenario) and {stage: collected, path:
+      config_provider). verify_networks: {stage: solved, path:
+      results/{run.name}/cfe/{zygon_cfe.labels}/solved_{planning_horizons}.nc} (one
+      per variant per scenario) and {stage: collected, path:
       results/{run.name}/zygon_cfe/{zygon_cfe.indicators}.csv}. The study''s answer
       lives in the VARIANT network: the profile''s own solved network
       (results/{run.name}/networks/solved_*.nc) carries no consumer and is identical
-      across the scenarios, and the settlement takes the first solved verify path as
-      the scenario''s network, so extending the profile''s list makes every
-      comparison read five identical base networks and report the rules as
-      ineffective (seen 2026-10-26). Optional zygon_cfe.baseline: true adds the
+      across the scenarios. The app lists a bundle''s verify networks ahead of the
+      profile''s (pypsa-app 25ee02fc, 2026-10-26), so the settlement takes the
+      variant network as the scenario''s network and the comparisons read it;
+      before that fix the five identical base networks were compared and the rules
+      reported as ineffective. Optional zygon_cfe.baseline: true adds the
       run''s own solved network (no consumer) to the collect inputs for the
       additionality reading.
 
