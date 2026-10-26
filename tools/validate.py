@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Canonical pypsa-eur anchor: upstream master, "Streamline workflow" (#1838), 2026-09-09.
 # Must equal the models/pypsa-eur gitlink; checked below.
-EUR_ANCHOR = "09e8910ae03ace9af8ff821514cda7822fdd473f"
+EUR_ANCHOR = "b3606ff14c838bf1bda9cbf5289ea2ff68756fbb"
 
 
 def load_restructure():

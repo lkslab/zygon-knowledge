@@ -107,7 +107,7 @@ models:
       temporal: "purely multiplicative on the load profile (efficiency_static); no flow- or peak-dependence"
       scenario: "static across years and scenarios — no per-year dict for the efficiency"
   - model: pypsa-eur
-    version_anchor: {ref: "09e8910ae03ace9af8ff821514cda7822fdd473f", date: "2026-10-12"}
+    version_anchor: {ref: "b3606ff14c838bf1bda9cbf5289ea2ff68756fbb", date: "2026-10-26"}
     out_of_box:
       covers: >
         Two-part explicit mechanism in prepare_sector_network.

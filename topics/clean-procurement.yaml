@@ -151,8 +151,8 @@ models:
   - id: compare_system_cost
     role: 'what the rule costs the system: total cost per regime beside the premium'
   version_anchor:
-    ref: 09e8910ae03ace9af8ff821514cda7822fdd473f
-    date: '2026-10-12'
+    ref: b3606ff14c838bf1bda9cbf5289ea2ff68756fbb
+    date: '2026-10-26'
 - model: pypsa-earth
   approach: >-
     The only place in the family with shipped matching machinery, built for the sibling

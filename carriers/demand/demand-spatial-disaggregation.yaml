@@ -129,7 +129,7 @@ models:
       temporal: "Keys are static; profiles handled separately"
       scenario: "Keys do not vary by scenario (same distribution key for all {demand} tags and horizons)"
   - model: pypsa-eur
-    version_anchor: {ref: "09e8910ae03ace9af8ff821514cda7822fdd473f", date: "2026-10-12"}
+    version_anchor: {ref: "b3606ff14c838bf1bda9cbf5289ea2ff68756fbb", date: "2026-10-26"}
     out_of_box:
       covers: >-
         (1) Electricity: build_electricity_demand_base combines three keys with

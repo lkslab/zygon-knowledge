@@ -16,7 +16,7 @@ when_to_use:
   - "known in pypsa-eur as: ground heat pump, geothermal heat pump, urban central geothermal heat pump, residential rural ground heat pump, services rural ground heat pump"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "09e8910ae03ace9af8ff821514cda7822fdd473f", date: "2026-10-12"}
+    version_anchor: {ref: "b3606ff14c838bf1bda9cbf5289ea2ff68756fbb", date: "2026-10-26"}
     out_of_box:
       covers: >
         Covered by default at RURAL nodes only: sector.heat_pump_sources.rural

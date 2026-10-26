@@ -150,7 +150,7 @@ models:
       scenario: "{demand} wildcard tags the scenario files; per-country per-subsector CAGR columns and demand_data.base_year set the growth path"
 
   - model: pypsa-eur
-    version_anchor: { ref: "09e8910ae03ace9af8ff821514cda7822fdd473f", date: "2026-10-12" }
+    version_anchor: { ref: "b3606ff14c838bf1bda9cbf5289ea2ff68756fbb", date: "2026-10-26" }
 
     out_of_box:
       covers: >

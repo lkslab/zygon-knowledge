@@ -11,7 +11,7 @@ when_to_use:
   - "why is my 800 kV line treated as 500 kV"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "09e8910ae03ace9af8ff821514cda7822fdd473f", date: "2026-10-12"}
+    version_anchor: {ref: "b3606ff14c838bf1bda9cbf5289ea2ff68756fbb", date: "2026-10-26"}
     out_of_box:
       covers: >
         Not covered as a distinct UHV DC class — but the framing differs from
