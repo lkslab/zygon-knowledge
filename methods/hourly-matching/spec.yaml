@@ -106,10 +106,17 @@ models:
       config.yaml fragment, staged into the submission directory and included through
       custom_rules.
       Every zygon_cfe.* value is read through config_provider, so a scenario''s
-      own labels/variants apply under run.scenarios. Dry-run validated on
+      own labels/variants apply under run.scenarios. A bundle may give every
+      variant its own scenario (one label per run): a run whose labels lack the
+      reference reads the no-rule network from the sibling run that solves it, so
+      premium and system_cost_delta stay defined. build_cfe_network and
+      solve_cfe_network are cache-eligible (no benchmark directive); the hook
+      is the solve rule''s `custom_extra_functionality` INPUT, which is where
+      scripts/solve_network.py reads it. Dry-run validated on
       9a0c6bc5 (lkslab/pypsa-eur, 2026-09-16): 3 build + 3 solve + 2 collect jobs
       for a two-scenario submission; and on 09e8910a (Snakemake 9.27, 2026-10-26):
-      91 jobs for a five-scenario Spain submission. Not yet solved end to end.
+      91 jobs for a five-scenario Spain submission, 3-hourly. Not yet solved end
+      to end.
 
       '
   - kind: invocation

@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: MIT
 #
 # Clean-procurement indicators — zygon methods payload `hourly-matching`
-# (shared with `annual-matching`). Loads every solved variant (config:
-# zygon_cfe.networks / labels, the reference label being the no-rule
-# counterfactual) and writes one long-format CSV per indicator under
-# results/zygon_cfe/:
+# (shared with `annual-matching`). Loads every solved variant of the
+# run (zygon_cfe.labels, the reference label being the no-rule counterfactual;
+# when a sibling run of the submission solves the reference, the rule passes
+# its network as input `reference`) and writes one long-format CSV per
+# indicator under results/zygon_cfe/:
 #
 #   procurement_cost  [EUR/MWh]  the consumer's all-in cost of electricity:
 #                     annualised capex of the contracted assets + their
@@ -86,12 +87,15 @@ def zone_supply_and_emissions(n, zone):
 
 def collect_variant(n, cfg):
     name = str(cfg["consumer"]["name"])
-    zone = str(cfg["consumer"]["bus"])
     pre = f"zcfe:{name}:"
     bus, load, imp, exp = pre + "bus", pre + "load", pre + "import", pre + "export"
     for x, df in ((bus, n.buses), (load, n.loads), (imp, n.links), (exp, n.links)):
         if x not in df.index:
             raise KeyError(f"'{x}' missing — not a zygon_cfe variant network")
+    # the zone bus the consumer hangs off: the import link's source. Settled by
+    # build_cfe_network (consumer.bus, or the nearest AC bus to consumer.near),
+    # so it is read from the network, never from the config.
+    zone = str(n.links.at[imp, "bus0"])
     w = n.snapshot_weightings.objective
     price = n.buses_t.marginal_price[zone]
     demand_t = get_as_dense(n, "Load", "p_set")[load]
@@ -201,6 +205,7 @@ if __name__ == "__main__":
     indicators = [str(x) for x in snakemake.params.indicators]  # noqa: F821
     networks = [str(p) for p in snakemake.input.networks]  # noqa: F821
     baseline = [str(p) for p in snakemake.input.get("baseline", [])]  # noqa: F821
+    reference_nc = [str(p) for p in snakemake.input.get("reference", [])]  # noqa: F821
     csvs = [str(p) for p in snakemake.output.csvs]  # noqa: F821
 
     if len(labels) != len(networks):
@@ -208,8 +213,13 @@ if __name__ == "__main__":
                          "networks — must match 1:1")
     if len(set(labels)) != len(labels):
         raise ValueError(f"zygon_cfe: labels not unique: {labels}")
-    if reference not in labels:
-        raise ValueError(f"zygon_cfe: reference '{reference}' not in labels {labels}")
+    if reference not in labels and len(reference_nc) != 1:
+        raise ValueError(f"zygon_cfe: reference '{reference}' not in labels {labels} "
+                         f"and {len(reference_nc)} reference network(s) given — "
+                         "the rule's reference input must name exactly one")
+    if reference in labels and reference_nc:
+        raise ValueError(f"zygon_cfe: reference '{reference}' is a label of this run "
+                         f"AND a separate input {reference_nc} — ambiguous")
     unknown = [i for i in indicators if i not in INDICATORS]
     if unknown:
         raise ValueError(f"zygon_cfe: unknown indicators {unknown} (built-in: {list(INDICATORS)})")
@@ -222,6 +232,13 @@ if __name__ == "__main__":
                     label, res[label]["procurement_cost"], res[label]["cfe_score"]["annual_available"],
                     res[label]["cfe_score"]["annual_dispatched"], res[label]["cfe_score"]["hourly_min"],
                     res[label]["objective"])
+    if reference not in labels:
+        # the no-rule counterfactual solved in a sibling run of this submission
+        n = pypsa.Network(reference_nc[0])
+        res[reference] = collect_variant(n, cfg)
+        logger.info("reference '%s' read from %s: cost %.2f EUR/MWh, objective %.6g",
+                    reference, reference_nc[0], res[reference]["procurement_cost"],
+                    res[reference]["objective"])
     ref = res[reference]
     base_objective = None
     if baseline:
@@ -251,6 +268,7 @@ if __name__ == "__main__":
     ref["grid_cfe_factor"].rename("cfe").to_csv(snakemake.output.grid_cfe)  # noqa: F821
 
     manifest = {"labels": labels, "reference": reference, "networks": networks,
+                "reference_network": reference_nc[0] if reference_nc else None,
                 "baseline": baseline, "baseline_objective": base_objective,
                 "indicators": indicators,
                 "objective": {l: r["objective"] for l, r in res.items()},

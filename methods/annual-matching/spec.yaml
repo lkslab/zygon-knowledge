@@ -97,8 +97,10 @@ models:
       (rules/zygon_cfe.smk, scripts/build_cfe_network.py, zygon_cfe_constraints.py,
       zygon_cfe_collect.py, the config.yaml fragment). Stage it once; both specs read one
       zygon_cfe config block.
-      Dry-run validated on 9a0c6bc5 (lkslab/pypsa-eur, 2026-09-16) and on 09e8910a
-      (Snakemake 9.27, 2026-10-26); not yet solved end to end.
+      A run whose labels lack the reference variant reads it from the sibling
+      run that solves it (one-variant-per-scenario bundles). Dry-run validated
+      on 9a0c6bc5 (lkslab/pypsa-eur, 2026-09-16) and on 09e8910a (Snakemake
+      9.27, 2026-10-26); not yet solved end to end.
 
       '
   - kind: invocation

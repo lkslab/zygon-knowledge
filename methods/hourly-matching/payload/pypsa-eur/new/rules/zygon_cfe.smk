@@ -20,7 +20,11 @@
 # wildcards.horizon, so the {horizon} wildcard is kept on every path. Every
 # zygon_cfe.* value is read through config_provider, so under run.scenarios a
 # scenario's own labels/variants apply to its {run}; the collect rule is
-# per-run for the same reason (results/{run}/zygon_cfe/<indicator>.csv).
+# per-run for the same reason (results/{run}/zygon_cfe/<indicator>.csv). A run
+# whose labels lack the reference variant reads it from the sibling run that
+# solves it (_zygon_cfe_reference). build_cfe_network and solve_cfe_network
+# are cache-eligible like the model's own solve rules: the fork builds its
+# --cache rule list after the custom rules are included.
 # Dry-run validated against 82b13507 (lkslab/pypsa-eur, 2026-09-16).
 
 import os
@@ -56,6 +60,40 @@ def _zygon_cfe_solved(w):
     )
 
 
+def _zygon_cfe_reference(w):
+    """The reference variant's solved network when it lives in ANOTHER run of
+    this submission. A bundle may give every variant its own scenario (one
+    label per run, the app's one-network-per-scenario layout); the premium and
+    the system-cost delta still need the no-rule network, so the collect rule
+    of such a run also reads the reference from the scenario whose labels
+    carry it. Nothing extra when the reference is one of this run's labels."""
+    reference = config_provider("zygon_cfe", "reference")(w)
+    labels = config_provider("zygon_cfe", "labels")(w)
+    if reference in labels or "{run}" not in RESULTS:
+        return []
+    base_labels = config["zygon_cfe"].get("labels") or []
+    names = run["name"] if isinstance(run["name"], list) else [run["name"]]
+    owners = [
+        name
+        for name in names
+        if reference
+        in (((scenarios.get(name) or {}).get("zygon_cfe") or {}).get("labels") or base_labels)
+    ]
+    if len(owners) != 1:
+        raise ValueError(
+            f"zygon_cfe: run '{w.run}' does not solve the reference variant "
+            f"'{reference}' and {len(owners)} other run(s) of this submission do "
+            f"({owners}); exactly one must"
+        )
+    horizon = config_provider("planning_horizons")(w)[-1]
+    return expand(
+        RESULTS + "cfe/{zcfe}/solved_{horizon}.nc",
+        run=owners,
+        zcfe=[reference],
+        horizon=[horizon],
+    )
+
+
 def _zygon_cfe_baseline(w):
     """The run's own solved network (no consumer), when zygon_cfe.baseline is
     true, for the additionality reading."""
@@ -76,11 +114,15 @@ rule build_cfe_network:
         variant=lambda w: config_provider("zygon_cfe", "variants")(w)[w.zcfe],
         cfe=config_provider("zygon_cfe"),
     input:
+        code_dependencies=code_dependencies(
+            os.path.join(_ZYGON_CFE_RULES_DIR, "..", "scripts", "build_cfe_network.py")
+        ),
         network=resources("networks/composed_{horizon}.nc"),
     output:
         resources("cfe/{zcfe}/composed_{horizon}.nc"),
     log:
         RESULTS + "logs/zygon_cfe/build_{zcfe}_composed_{horizon}.log",
+    cache: True
     threads: 1
     resources:
         mem_mb=4000,
@@ -90,7 +132,15 @@ rule build_cfe_network:
 
 rule solve_cfe_network:
     input:
+        code_dependencies=code_dependencies(
+            "scripts/solve_network.py", "scripts/_benchmark.py"
+        ),
         network=resources("cfe/{zcfe}/composed_{horizon}.nc"),
+        # the payload's own hook: solve_network.py imports this module and
+        # calls the function named like the file (zygon_cfe_constraints)
+        custom_extra_functionality=os.path.join(
+            _ZYGON_CFE_RULES_DIR, "..", "scripts", "zygon_cfe_constraints.py"
+        ),
     output:
         network=RESULTS + "cfe/{zcfe}/solved_{horizon}.nc",
         model=(
@@ -102,10 +152,10 @@ rule solve_cfe_network:
         solver=normpath(RESULTS + "logs/zygon_cfe/{zcfe}_solver_{horizon}.log"),
         memory=RESULTS + "logs/zygon_cfe/{zcfe}_memory_{horizon}.log",
         python=RESULTS + "logs/zygon_cfe/{zcfe}_python_{horizon}.log",
-    benchmark:
-        (RESULTS + "benchmarks/solve_cfe_network/{zcfe}_{horizon}.log")
+    # no benchmark directive: Snakemake refuses it on a cache-eligible rule
     shadow:
         shadow_config
+    cache: True
     threads: solver_threads
     resources:
         mem_mb=config_provider("solving", "mem_mb"),
@@ -121,11 +171,6 @@ rule solve_cfe_network:
         solar_capacity_per_sqkm=_zygon_cfe_solar_capacity_per_sqkm,
         # the variant set of THIS run, read by zygon_cfe_constraints
         cfe=config_provider("zygon_cfe"),
-        # the payload's own hook: solve_network.py imports this module and
-        # calls the function named like the file (zygon_cfe_constraints)
-        custom_extra_functionality=lambda w: os.path.join(
-            _ZYGON_CFE_RULES_DIR, "..", "scripts", "zygon_cfe_constraints.py"
-        ),
     message:
         "Solving clean-procurement variant {wildcards.zcfe} for horizon {wildcards.horizon}"
     script:
@@ -141,6 +186,7 @@ rule zygon_cfe_collect:
     input:
         networks=_zygon_cfe_solved,
         baseline=_zygon_cfe_baseline,
+        reference=_zygon_cfe_reference,
     output:
         csvs=expand(
             RESULTS + "zygon_cfe/{indicator}.csv",
