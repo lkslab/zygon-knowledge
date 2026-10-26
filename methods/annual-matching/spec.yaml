@@ -19,8 +19,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 9a0c6bc5daa3c3398ab17de6350e90c809b993ec
-    date: '2026-09-16'
+    ref: 09e8910ae03ace9af8ff821514cda7822fdd473f
+    date: '2026-10-12'
   execution:
   - kind: config
     key: zygon_cfe
@@ -97,8 +97,8 @@ models:
       (rules/zygon_cfe.smk, scripts/build_cfe_network.py, zygon_cfe_constraints.py,
       zygon_cfe_collect.py, the config.yaml fragment). Stage it once; both specs read one
       zygon_cfe config block.
-      Dry-run validated on 9a0c6bc5 (lkslab/pypsa-eur, 2026-09-16); not yet solved
-      end to end.
+      Dry-run validated on 9a0c6bc5 (lkslab/pypsa-eur, 2026-09-16) and on 09e8910a
+      (Snakemake 9.27, 2026-10-26); not yet solved end to end.
 
       '
   - kind: invocation

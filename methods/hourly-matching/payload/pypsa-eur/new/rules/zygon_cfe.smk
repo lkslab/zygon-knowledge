@@ -27,8 +27,9 @@ import os
 
 # This rule file's own directory, captured at parse time (a lambda runs later,
 # when the included-file stack no longer points here). The payload's scripts sit
-# beside it in ../scripts, wherever the tree is staged.
-_ZYGON_CFE_RULES_DIR = workflow.current_basedir.get_path_or_uri()
+# beside it in ../scripts, wherever the tree is staged. str() rather than
+# get_path_or_uri(): Snakemake 9 made that method take a `secret_free` flag.
+_ZYGON_CFE_RULES_DIR = str(workflow.current_basedir)
 
 
 def _zygon_cfe_solar_capacity_per_sqkm(w):
