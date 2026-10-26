@@ -151,7 +151,7 @@ models:
   - id: compare_system_cost
     role: 'what the rule costs the system: total cost per regime beside the premium'
   version_anchor:
-    ref: b3606ff14c838bf1bda9cbf5289ea2ff68756fbb
+    ref: 6128bf7effbe7243bcc46b2770d04cebe45613a5
     date: '2026-10-26'
 - model: pypsa-earth
   approach: >-

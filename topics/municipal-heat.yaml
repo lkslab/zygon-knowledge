@@ -123,7 +123,7 @@ models:
   - id: compare_system_cost
     role: expand vs hold the network, with vs without storage, source sets
   version_anchor:
-    ref: b3606ff14c838bf1bda9cbf5289ea2ff68756fbb
+    ref: 6128bf7effbe7243bcc46b2770d04cebe45613a5
     date: '2026-10-26'
 - model: pypsa-earth
   approach: >-

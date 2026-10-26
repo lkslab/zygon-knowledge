@@ -11,7 +11,7 @@ when_to_use:
   - "known in pypsa-eur as: iron-air, iron-air charger, iron-air discharger"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "b3606ff14c838bf1bda9cbf5289ea2ff68756fbb", date: "2026-10-26"}
+    version_anchor: {ref: "6128bf7effbe7243bcc46b2770d04cebe45613a5", date: "2026-10-26"}
     out_of_box:
       covers: >
         Wired but dormant — unlike pypsa-earth, pypsa-eur ships a first-class

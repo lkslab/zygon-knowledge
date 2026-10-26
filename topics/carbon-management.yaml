@@ -114,7 +114,7 @@ models:
   - id: industrial_sites
     role: the industrial point sources capture would serve, sized by their CO2, before a run
   version_anchor:
-    ref: b3606ff14c838bf1bda9cbf5289ea2ff68756fbb
+    ref: 6128bf7effbe7243bcc46b2770d04cebe45613a5
     date: '2026-10-26'
 - model: pypsa-earth
   approach: >-
