@@ -164,7 +164,10 @@ rule solve_cfe_network:
         solving=config_provider("solving"),
         foresight=config_provider("foresight"),
         planning_horizons=config_provider("planning_horizons"),
+        electricity=config_provider("electricity"),
         sector=config_provider("sector"),
+        # solve_network.py reads params.horizon (b3606ff1 and later)
+        horizon="{horizon}",
         co2_sequestration_potential=config_provider(
             "sector", "co2_sequestration_potential"
         ),
