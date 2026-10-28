@@ -231,6 +231,20 @@ models:
     role: the emissions since 1990 by sector, industrial processes and manufacturing among them
   - id: energy_balance
     role: "today's industrial energy use by carrier: the gas, coal and oil to switch"
+  - id: industry_heat_demand
+    role: >-
+      today's process heat per temperature band (below 100, 100-200, 200-500, above
+      500 °C), the demand each band's supply options compete for, before a run
+  - id: technology_costs
+    query: {family: industry_steam}
+    role: >-
+      what the steam band's options cost, 100-200 °C: gas, electric and biomass boilers
+      against the high-temperature heat pump
+  - id: technology_costs
+    query: {family: industry_firing}
+    role: >-
+      what direct firing above 200 °C costs: gas against solid fuels, hydrogen a
+      placeholder at ten times gas
   version_anchor:
     ref: 2924c5089860dd058ea2a395b9a9f946de3f9536
     date: '2026-10-26'

@@ -114,7 +114,8 @@ notes: >-
   every horizon. (h) Limits: pypsa-eur has no renewable- or clean-share constraint (CCL caps
   capacity per country and carrier, EQ is a self-sufficiency share, BAU and SAFE are floors
   and reserve margins); hourly- and annual-matching are procurement rules for one consumer,
-  not system targets. A price instead of a cap is costs.emission_prices, a different card.
+  not system targets. A price instead of a cap is the specs key carbon_price
+  (costs.emission_prices.enable and .co2, the atmosphere store's marginal cost), no method.
   pypsa-earth still caps through the Co2L opts wildcard and electricity.co2limit; see the
   coal-power-plants carrier card.
   (i) A one-country or small-selection sector run meets the cap with the selection's own
