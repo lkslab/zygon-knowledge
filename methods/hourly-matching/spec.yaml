@@ -19,8 +19,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 9a0c6bc5daa3c3398ab17de6350e90c809b993ec
-    date: '2026-09-16'
+    ref: 09e8910ae03ace9af8ff821514cda7822fdd473f
+    date: '2026-10-12'
   execution:
   - kind: config
     key: zygon_cfe
