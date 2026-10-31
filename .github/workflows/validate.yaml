@@ -12,6 +12,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      # PYPSA_APP_REPO_TOKEN is a read token for the private lkslab/pypsa-app repo,
+      # which holds the knowledge reader the validator imports.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: lkslab/pypsa-app
+          path: pypsa-app
+          token: ${{ secrets.PYPSA_APP_REPO_TOKEN }}
+          sparse-checkout: src/knowledge
+          submodules: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
-      - run: uv run --no-project --python 3.13 --with pyyaml python tools/validate.py
-      - run: uv run --no-project --python 3.13 --with pyyaml --with pytest pytest tools/test_validate.py
+      - run: uv run --no-project --python 3.13 --with pyyaml --with pydantic python tools/validate.py --app pypsa-app
+      - run: uv run --no-project --python 3.13 --with pyyaml --with pydantic --with pytest pytest tools
+        env:
+          PYPSA_APP: pypsa-app
