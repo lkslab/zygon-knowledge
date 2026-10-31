@@ -42,12 +42,7 @@ projects).
 
 ## Regenerate / verify
 
-```bash
-cd /home/lukas/Desktop/earth/pypsa-earth   # eur's own pixi manifest is unparseable; use the earth env
-pixi run python /home/lukas/Desktop/enderpearl/pypsa-eur/cookbooks/data_quality/_qa/build_scorecards.py
-pixi run python /home/lukas/Desktop/enderpearl/pypsa-eur/cookbooks/data_quality/_qa/plot_matrix_maps.py
-pixi run python /home/lukas/Desktop/enderpearl/pypsa-eur/cookbooks/data_quality/_qa/check_registry.py
-```
+`build_scorecards.py`, `plot_matrix_maps.py` and `check_registry.py` generated the scorecards from the archived `cookbooks/data_quality/_qa/` tree (git history before the 2026-10 trim), run in a pypsa-earth pixi environment.
 
 Scorecards are deterministic (file probes + the `PROBE_OVERRIDES` dict of
 code-read facts in `build_scorecards.py`, each justified by a file:symbol

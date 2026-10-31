@@ -1,190 +1,91 @@
 # CLAUDE.md
 
-This repo is the knowledge base that pypsa-app's assistant reads at runtime. It holds no
-code the app imports; it holds YAML cards, CSV tables, config overlays and GeoJSON that the
-app's loaders parse by path. Every edit here is a contract change with a consumer in
-`../pypsa-app`, so read this file before touching a card's shape or a directory name.
+This repo is the knowledge base pypsa-app's assistant reads at runtime. It holds
+YAML cards and CSV tables, and the app's `knowledge` package (`src/knowledge/` in
+`pypsa-app`) parses them by path. Every edit to a card's shape or a directory name
+is a contract change with that reader. `README.md` covers the layout and card shapes;
+this file covers the link.
 
-The README covers the layout and the card schemas. This file covers the linkage: which app
-module reads which tree, what each reader assumes, how a version ships, and where the two
-repos currently disagree.
+## How the app gets the repo
 
-## How the app gets this repo
-
-- **Git submodule, shipped as package data.** `pypsa-app` carries this repo as the submodule
-  `src/pypsa_app/knowledge` (`.gitmodules`, url `lkslab/zygon-knowledge`). The gitlink is the
-  version pin: `backend/settings.py` hard-codes `KNOWLEDGE_ROOT` to that directory and
-  `settings.knowledge_path` returns it. There is no runtime fetch, no `KNOWLEDGE_REV`,
-  `KNOWLEDGE_DIR` or `KNOWLEDGE_PINNED` (removed in app commit `8c504f6`, 2026-09-10). The
-  Docker image and the wheel refuse to build without `topics/` under that path (`make knowledge`
-  initialises it). Submodules under `models/` are never initialised there.
-- **Content edits are live.** Cards are parsed on every call and the one cache
-  (`registry.py`) is mtime-keyed, so an edit under the resolved root is visible on the next
-  tool call, no restart needed. Only changing *which* directory is the root needs a restart.
-- **Local work happens in this checkout.** Two ways to point the app here, both gitignored on
-  the app side. Local mode (`uv run pypsa-app ...`, what this machine runs): `KNOWLEDGE_DIR=`
-  `/home/lukas/Desktop/zygon-knowledge` in `pypsa-app/.env`, read by `settings.knowledge_dir`
-  on the next start. Docker dev stack (`make dev`): `compose/compose.local.yaml` bind-mounts
-  `../zygon-knowledge` over the submodule path in the `api`, `prefect-worker`,
-  `snakedispatch` and `agent` containers; the Makefile layers it on when present.
-- **Branches.** This repo works on `main` only: commit here, push `main`. The app works on
-  `main` plus a long-running `dev` branch (one PR onto `main`, rebased now and then).
-- **Shipping content** means pushing `main` here, then on the app's `dev`:
+- The gitlink is the version pin. `pypsa-app` carries this repo as the submodule
+  `src/pypsa_app/knowledge` (`.gitmodules`, `lkslab/zygon-knowledge`), and
+  `KNOWLEDGE_ROOT` in `backend/settings.py` points at it. There is no runtime fetch.
+- `make knowledge` runs `git submodule update --init src/pypsa_app/knowledge`; the
+  Dockerfile refuses to build without it.
+- App CI checks it out with `.github/actions/checkout-knowledge`, passing
+  `secrets.KNOWLEDGE_REPO_TOKEN`. The pinned sha must be on this repo's `main`.
+- Ship content by committing here, then in the app:
   `git -C src/pypsa_app/knowledge fetch && git -C src/pypsa_app/knowledge checkout <sha>`,
-  `git add src/pypsa_app/knowledge`, commit. The sha must be on `origin/main` of this repo or
-  CI's submodule checkout fails. The app's test suite runs against
-  `pypsa-app/tests/fixtures/knowledge/`, a miniature of this layout, so a shape change needs
-  the fixture updated in the same app commit.
+  `git add src/pypsa_app/knowledge`, commit.
+- The read set is named twice: `[tool.setuptools.package-data]` in the app's
+  `pyproject.toml` and the `src/pypsa_app/knowledge/**` re-includes in its
+  `.dockerignore`. A new shipped directory needs both edited.
+- Cards are re-read on every call, so an edit under the root shows on the next call.
 
 ## Who reads what
 
-The nested agent that queries this repo is the **scoper** (`pypsa-app/src/agent/scoper.py`).
-It is dispatched by the consultant's `scope_question` tool and has six tools, all implemented in
-`knowledge_tools.py` over the pure loaders in `knowledge.py`. The consultant itself never opens
-a card.
+Handles are opened in `backend/services/agent/turn_input.py` (per turn),
+`backend/services/study/gate.py` and `scripts/preflight.py`: `Knowledge.open(root, model)`
+once per model, `Policy.open(root)` once.
 
-| tree here | app reader | what it assumes |
-|---|---|---|
-| `topics/<slug>.yaml` | `knowledge.list_topics` / `load_topic`; scoper tools `list_topics`, `get_topic_card` | One file per topic, `models[]` with one entry per model. A topic is listed for a model only when it has an entry. `get_topic_card` returns `approach`, `trade_offs`, `limitations` first, then `methods[]`, `defaults[]`, `plots[]`, `version_anchor`. There is no coverage verdict: every listed topic can be modelled; the consultant affirms the study from `approach`, raises each `trade_offs` entry (where a study spends resolution, compute and scenarios) at the interview question it bears on, and states `limitations` once at the end of the interview. |
-| `carriers/generation_conversion/`, `carriers/demand/` | `knowledge.list_carriers` / `locate_carrier`; scoper tools `list_carriers`, `get_carrier` | The two book names are hard-coded as `CARRIER_BOOKS`. Card ids must be unique across both books, since `get_carrier` searches both when no book is given. `list_carriers` returns id and title only, on purpose, because the scoper reads the whole list (~150 rows) before opening a card. The model section's `boundary[].rung` is what decides `executable`: only L0 and L1 run in the current deployment. |
-| `methods/<slug>.yaml` or `methods/<slug>/spec.yaml` | `knowledge.load_method`; scoper tool `get_method` | Resolved flat file first, then directory spec. The scoper only opens methods the topic card names. `payload/<model>/` trees are not read by the scoper; the app stages them into the submission directory (never onto the project's checkout): for pypsa-eur a `payload/pypsa-eur/config.yaml` fragment (one top-level config section, comments kept) plus `new/rules/*.smk` and `new/scripts/*.py`, no patches; the rules are included through the fork's `custom_rules` config key, and payload scripts are referenced rule-file-relative (`"../scripts/x.py"`). A `payload` entry's `source` names another card's tree when several methods share one. A `payload/pypsa-earth/` tree keeps the legacy `new/**` + `edits/*.patch` shape, is not consumed, and the validator skips it; citing one would fail `payload-stale-format`. |
-| `data_quality/<model>/countries/<CC>.yaml` | `knowledge.load_country`; scoper tool `get_data_quality` | Whole document returned, keyed by upper-cased ISO2 (per-family roll-up across many countries). The scoper calls this first; grade `C` (a borrowed number) is the model's routine condition and is never a flag on its own, a flag is a grade `D` (the feature silently disappears) on a family the question rests on, so a mainstream question on pypsa-eur's full set carries none. The brief keeps every family's worst grade for follow-up questions. Cards carry `families[].grade` and `datasets`, no top-level `overall`. `datasets.yaml`, `MATRIX.csv`, `INDEX.md` are not read by the app. |
-| `policy/*.csv` | `agent/registry.py`, `policy_tools.py`, dispatched as the **policy researcher** subagent (`research_policy`) | Tables `assets`, `targets`, `subsidies`, `regulation`, plus `coverage`, `blocs`, `technology_taxonomy`. Same checkout, same `ensure_root`. `record_id` values are what `report.md` refs comments cite and the referee checks. `policy/tools/`, `_qa/`, `_work/` are not read. |
-| (no `baselines/`) | `backend/services/agent/model_profile.py` | Removed 2026-09-11: the app runs no reference config. Its target/verify templates and the solver overlay are app-owned constants, every study folds onto the checkout's own `config/config.default.yaml`, and a method section's `execution[kind: config]` entries are applied by the app underneath the bundle's changes. Method sections no longer carry a `baseline:` field. |
-| `basemaps/_land50m.json`, `_admin1_10m.json`, `_admin0_50m.json` | `backend/services/agent/plots.py` passes the dir as `--basemaps` to `plots/style.py` | Exact file names are hard-coded in the app. Missing dir degrades to a labelled fallback rather than failing. |
-| `models/<model>` submodules | nobody at runtime | The version anchor the cards cite. See Anchors below. |
-| `toymodels/index.yaml`, `toymodels/<slug>/` | the playground agent (`pypsa-app/src/agent/playground.py`, active while a session's `active_skill` is `playground`) through `src/agent/knowledge.py`'s `toymodel_*` loaders and the tools in `src/agent/toymodel_tools.py`: the index is rendered into its instructions every turn, `open_toy_model` reads `card.yaml` plus `results.yaml`, `read_toy_code` the `model.py`, `show_toy_figure` posts a committed `figures/<id>.json` as a project figure bundle, `run_toy_script` re-solves a toy through the figure-script runner with the knowledge root mounted read-only; the Context tab serves `toymodels`, `toymodels/<slug>` and `toymodels/<slug>/model.py` | Plain-PyPSA toys, not workflow models: cards carry `pypsa: "1.3.0"` and no `models:`/`version_anchor:`. `figures/*.json` are already in the app's `figure.json` contract (`backend/services/figure_spec.py`) and pass `validate_figure`; series are named by pypsa-eur carrier id so the client colours them. Outputs are generated and committed; `tools/check_toymodels.py` (run from the app venv) validates and, with `--rerun`, diffs a regeneration. |
-| `archive/` | nobody | Pre-restructure content. `archive/tools/restructure.py --validate` is the schema check. |
+| tree here | `knowledge` API |
+|---|---|
+| `topics/<slug>.yaml` | `topics()`, `topic(slug)` |
+| `carriers/<book>/<slug>.yaml` | `carriers()`, `carrier(...)` |
+| `methods/<slug>.yaml`, `methods/<slug>/spec.yaml` | `methods()`, `method(slug)` |
+| `data_quality/<model>/countries/<CC>.yaml` | `data_quality_cards()`, `data_quality(...)` |
+| `version_anchor` of every section | `anchors()`, the ref per card id |
+| `policy/*.csv` | `Policy`: tables `assets`, `targets`, `subsidies`, `regulation` through `query`, plus `coverage`, `blocs`, `technology_taxonomy` (`resolve_technology`) |
+| `models/<model>`, `tools/`, `policy/tools/`, `policy/_qa/`, `policy/sources.csv` | nobody at runtime |
 
-Two more app readers open the same files without going through the scoper:
+What the app does not do:
 
-- **Referee citations** (`backend/referee/citations.py`, `network_asserts.py`, `config_static.py`)
-  resolve a bundle's `justified_by: {book, card, rung}` by loading the carrier card and checking
-  the rung sits on that model's `boundary` ladder. Rung L0/L1 map to `config` changes, higher
-  rungs to code/data/rule changes. `network_asserts` also looks for a `section.asserts[]` list
-  keyed by boundary `variant` and `stage`; no carrier card in this repo carries one yet, so that
-  check always skips with `no-asserts`.
-- **The Context tab** (`backend/services/agent/knowledge_docs.py`) replays what a turn read at
-  `topics/<slug>`, `carriers/<book>/<slug>`, `methods/<slug>`, `policy/<CC>/<table>`, naming the
-  source file. It still accepts the pre-rename `recipes/` path so stored sessions replay.
+- It applies no `payload/` trees since pypsa-app #296 (bundles are config-only). A later
+  feature re-adds payload application with a contract; the trees stay for it.
+- It branches on no `execution[].kind`.
+- Its basemaps are its own; none live here.
 
-## Cross-repo ids that must stay in sync
+## Cross-repo ids
 
-- **Carrier books**: `generation_conversion`, `demand`. Adding a third book means editing
-  `CarrierBook` in the app.
-- **Models**: `pypsa-eur`, `pypsa-earth`. Both the app's `Model` literal and the validator's
-  `MODELS` tuple hard-code them.
-- **Coverage vocabulary**: `ready`, `partial`, `gap`, `unknown` (app), enforced by the validator.
-- **Rungs**: `L0`..`L5` on carrier `boundary[]`. The app's kind-rung matrix lives in
-  `backend/referee/bundle.py`.
-- **Plot ids** in `topics/*.yaml` `plots[].id` must exist under `pypsa-app/src/pypsa_app/plots/cards/`.
-  Currently cited: `marginal_prices`, `price_duration`. Both exist.
-- **Method ids** a topic names must resolve through `load_method` with a section for that
-  model. The validator enforces this and also rejects any method no topic cites.
-- **Topic slugs** are a fixed list in the validator (`TOPIC_SLUGS`). Adding a topic means
-  editing `archive/tools/restructure.py` too, or the validate step fails.
+Edit the app together with this repo when one of these changes:
+
+- `Model`: `pypsa-eur`, `pypsa-earth` (`src/knowledge/cards.py`).
+- `CarrierBook`: `generation_conversion`, `demand` (`cards.py`).
+- `Rung`: `L0`..`L5` on carrier `boundary[]` (`cards.py`).
+- `Table`: `targets`, `assets`, `subsidies`, `regulation`, and `Coverage`: `complete`,
+  `partial`, `seed`, `missing` (`src/knowledge/policy.py`).
+- Method ids a topic names must resolve to a method with a section for that model; the
+  validator also rejects a method no topic cites.
 
 ## Anchors
 
-Every card section cites a `version_anchor.ref`. The validator requires the canonical one per
-model. Earth cards cite `8435f4c8`, which is also the `models/pypsa-earth` submodule pin. Eur
-cards cite `492f05d32e91ff76b26a7ee67604811a54cb315a`, the `lkslab/pypsa-eur` fork commit the app
-runs (its `workflows/pypsa-eur` gitlink and `workflow_catalog.pinned_ref`; branch `dev`, which
-is upstream `a6c45e5a` "Streamline workflow" #1838 plus the fork's fixes and the ports of
-PyPSA/pypsa-eur#1943 (industry heat), #1719 (steel and cement routes), #1875 (industry load
-profiles), #2317 (endogenous shipping), #1654 (waste sector) and the merged #2357, plus the
-fork's own hydrogen-boosted biofuel, biogas methanol and grey/blue methanol routes after Zhang et
-al. 2026, and its geology-dependent EGS and heat-only geothermal on the Limberger et al.
-temperature model), which is also the `models/pypsa-eur` submodule pin (`.gitmodules` points
-at `git@github.com:lkslab/pypsa-eur.git`); `tools/validate.py` checks the two agree. The
-canonical eur sha lives in `tools/validate.py` (`EUR_ANCHOR`), not in the frozen
-`archive/tools/restructure.py`. Since 2026-10-09 the eur anchor follows the app's fork pin, so
-the cards describe the model the app runs and the referee's anchor check matches. Bumping it
-when the app pins a new fork commit: `git -C models/pypsa-eur fetch origin dev && git -C
-models/pypsa-eur checkout <sha>`, set `EUR_ANCHOR`, replace the old sha and its `date:` in
-every eur `version_anchor` (one `sed`), then `python3 tools/validate.py` and
-`python3 tools/resolve_eur_citations.py`.
+Every topic, carrier and method section cites `version_anchor.ref`. Current refs:
 
-What the anchor means for card content (unchanged since a6c45e5): there is no `scenario` block and no wildcard
-(`{clusters}`, `{opts}`, `{sector_opts}`, `{ll}`); cluster count is
-`clustering.cluster_network.n_clusters`, time resolution `clustering.temporal.averaging`,
-horizons the top-level `planning_horizons` list, CO2 the top-level `co2_budget` block
-(`electricity.co2limit*` is gone). The rule graph is build_* -> `cluster_network` ->
-`compose_network` (rules/compose.smk: add_electricity, prepare_sector_network,
-prepare_network, brownfield/perfect, CO2 budget, adjustments in one rule) -> `solve_network`
-(rules/solve.smk). Networks are `resources/<run>/networks/composed_<horizon>.nc` and
-`results/<run>/networks/solved_<horizon>.nc`; resource files carry no cluster suffix.
+- pypsa-eur `09e8910ae03ace9af8ff821514cda7822fdd473f` (`2026-10-12`), the `lkslab/pypsa-eur`
+  fork commit the app runs. It equals the `models/pypsa-eur` gitlink, the app's
+  `workflows/pypsa-eur` gitlink and the profile `pinned_ref`.
+- pypsa-earth `8435f4c8cc05f30088933b37b7db497ff860dc53`, equal to `models/pypsa-earth`.
 
-History: until 2026-09-10 the eur anchor was `849c8858`, a commit on the fork branch
-`endogenous-industry-heat` (LukasFrankenQ/resilient-pypsa-eur, not on any public remote) that
-carried an early version of the endogenous industrial process heat; from 2026-09-10 to
-2026-10-09 it was upstream `a6c45e5a` and the cards described that feature as absent (L4 gaps
-naming the fork branch). On 2026-10-09 the fork gained the port of PyPSA/pypsa-eur#1943
-(`sector.industry_t`, `build_industry_sector_ratios_endogenous.py`, `add_t_industry*`, off by
-default) and the cards re-anchored on the fork pin: `industry-process-heat-endogenous`
-describes the mechanism, the method `industry-heat-endogenous` turns it on, and the former L4
-boundaries on the industry and heat cards are L0/L1 again. Fork-only features the cards cite
-beyond that: `solving.options.infeasibility_diagnosis`, `custom_rules`, the one-country data
-fixes.
+The app's `tests/test_preflight_real_tree.py` requires profile `pinned_ref`, the
+`workflows/pypsa-eur` gitlink and every eur anchor to agree (`pin_trio` in
+`scripts/preflight.py`). To bump eur when the app pins a new fork commit:
 
-## Current state of the link (as of 2026-09-10)
+1. `git -C models/pypsa-eur fetch origin dev && git -C models/pypsa-eur checkout <sha>`.
+2. Set `ANCHORS` in `tools/validate.py`.
+3. One `sed` over every eur `version_anchor`: replace the old ref and its `date:`.
+4. Run the validator and `tools/resolve_eur_citations.py`.
+5. Bump the app's gitlink for this repo in the commit that bumps its fork pin.
 
-- **Pins.** The app's `origin/main` gitlink points at `ffb1d8e`, its `dev` branch at
-  `499ccfd`; both are on `main` here. Between app commit `32f57ae` (readers switched to
-  `carriers/`) and `24af385` the pin sat at `8809a8c`, a commit that still had `recipes/`, so
-  any deployment built from that window saw no carrier cards. When changing a directory name
-  or card shape again, bump the gitlink in the same app commit that changes the reader.
-- **Eur content re-anchored on the fork pin `d31ad9fa` on 2026-10-09, bumped to `f55cdf34` and
-  then `d2e0d486` the same day, and to `6b3a9fd6`, then `492f05d3`, on 2026-10-10** (see Anchors): one sha
-  replacement in every eur section plus the industry-heat content, then the steel/cement routes,
-  industry load profiles, endogenous shipping and waste sector content, then the e-biofuel, biogas
-  methanol, grey/blue methanol and biofuel waste-heat content (method `biogenic-carbon-routes`),
-  then the geology-dependent EGS and heat-only geothermal content (method `geothermal-geology`,
-  cards enhanced-geothermal and geothermal-conventional, four new data_quality datasets);
-  `tools/resolve_eur_citations.py` resolves against the fork checkout. Nothing re-run beyond the
-  industry demand rules on the NL 2040 resources (the numbers in biomass-bioenergy, the method
-  cards and the route cards) and the geothermal potential rules on a 50-region Europe (the
-  geothermal numbers).
-- **Eur content re-anchored to upstream a6c45e5 on 2026-09-10, nothing re-run.** Every
-  pypsa-eur section (146 carrier cards, 7 topics, 12 method docs, data_quality, the
-  seven payloads) was rewritten against the streamlined workflow and passes
-  `tools/resolve_eur_citations.py` with zero unresolved citations, but no baseline has been
-  rebuilt and no `success_metric` evaluated on an a6c45e5 install. This is the one place
-  that caveat is recorded: the topic cards no longer carry it (the sentence was a
-  maintainer note, not a limitation of the modelling, and was dropped from the four eur
-  sections that had it when `pitfalls` split into `trade_offs` and `limitations` on
-  2026-09-13). `storage-dispatch` and `transmission-planning` dropped to
-  `partial`, `clean-procurement` stays `partial`. The `baselines/` tree and the method
-  sections' `baseline:` fields were removed on 2026-09-11 when the app dropped baseline runs
-  (see the layout table). pypsa-earth content was not touched (earth sections and trees are
-  byte-identical).
-- **Payload shape.** Each `methods/*/payload/pypsa-eur/` tree is self-contained: a
-  `config.yaml` fragment beside `new/` (no `edits/`, no patches). The payload rule files read
-  `networks/composed_{horizon}.nc` and keep the `{horizon}` wildcard because `solve_network.py`
-  reads `wildcards.horizon`. The schema allows extra top-level config keys (`extra="allow"`),
-  so the payload config blocks pass validation.
-- **No `asserts` on any carrier card**, so the referee's network-asserts check is inert.
-- **Three eur-only methods added 2026-09-10, unverified by an eval run.** `hourly-matching`
-  (payload `zygon_cfe`: consumer + palette builder, the matching hook, the collector),
-  `annual-matching` (a spec that shares that payload, no payload dir of its own) and
-  `storage-economics` (payload `zygon_storage_economics`). Their scripts were exercised
-  standalone against the settled baselines at the previous anchor (constraint rows counted per
-  window, cost-recovery identity checked) but no `success_metric` has been evaluated by the
-  referee, and nothing has run on a6c45e5.
+History of the eur anchor: `849c8858` until 2026-09-10 (fork branch, no public remote);
+upstream `a6c45e5a` from 2026-09-10; fork pins from 2026-10-09; `09e8910a` since 2026-10-12.
 
 ## Checks to run after editing
 
 ```
-python3 tools/validate.py                # schema check with the current anchors, plus toymodels/ structure
-python3 tools/resolve_eur_citations.py   # every eur citation resolves in models/pypsa-eur
-cd ../pypsa-app && uv run python ../zygon-knowledge/tools/check_toymodels.py --rerun   # app validator on every toy figure, rerun diff
+uv run --no-project --python 3.13 --with pyyaml --with pydantic python tools/validate.py --app <pypsa-app checkout>
+uv run --no-project --python 3.13 --with pyyaml --with pydantic --with pytest pytest tools
+python3 tools/resolve_eur_citations.py   # needs: git submodule update --init models/pypsa-eur
 ```
 
-`archive/` is frozen. `archive/tools/restructure.py --validate` still works but rejects the
-current eur anchor; `tools/validate.py` wraps it. The resolver needs the eur submodule checked
-out (`git submodule update --init models/pypsa-eur`).
-
-To see the app read the working copy: nothing, if the server is already up with
-`KNOWLEDGE_DIR` (local mode) or `compose/compose.local.yaml` (Docker) pointing here, since
-cards are re-read per call. Otherwise restart it: `cd ../pypsa-app && uv run pypsa-app ...`
-or `make dev`.
+Inside the app's submodule path the validator finds the app by itself, so `--app` is optional there.
