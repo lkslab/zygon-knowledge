@@ -83,9 +83,10 @@ Verdicts: `complete` / `partial` / `seed` / `missing`.
 - **138 target groups share a queryable key but differ only in `notes`** — an
   aggregate and its components from the NECP import that the schema cannot
   separate. Surfaced as a WARN, not hidden.
-- **64 rows are quarantined** in `_work/contradictory_targets.csv`: the import
-  recorded two values under byte-identical provenance and nothing can adjudicate
-  them. Recoverable by re-importing Ember with its `FUEL_LOWER` column.
+- **64 rows were quarantined** in `policy/_work/contradictory_targets.csv` until
+  the 2026-10 trim (git history): the import recorded two values under
+  byte-identical provenance and nothing can adjudicate them. Recoverable by
+  re-importing Ember with its `FUEL_LOWER` column.
 - **9,235 of 9,282 rows share one `retrieved` date** (2026-06-28, the bulk
   import); the 47 rows from the first fill batch carry a real date. Honest, not
   a bug — but staleness only starts discriminating as more research lands.

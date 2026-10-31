@@ -70,9 +70,10 @@ what the thin countries are missing.
 
 ## Known repair jobs
 
-- `_work/contradictory_targets.csv` — 64 rows quarantined because the Ember
-  import recorded two values under identical provenance. Re-import Ember
-  carrying its `FUEL_LOWER` column and they can come back.
+- 64 rows were quarantined in `policy/_work/contradictory_targets.csv` until the
+  2026-10 trim (git history) because the Ember import recorded two values under
+  identical provenance. Re-import Ember carrying its `FUEL_LOWER` column and
+  they can come back.
 - 138 target groups differ only in `notes` (an aggregate and its components).
   Same root cause; same fix.
 - 81 countries have no rows at all. Breadth work, after the floor.
