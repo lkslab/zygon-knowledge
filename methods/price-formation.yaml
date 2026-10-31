@@ -36,11 +36,12 @@ models:
       tail of every statistic IS this number, report it beside results.
 
       '
-  - kind: code
-    where: scripts/solve_network.py:assign_all_duals
-    do: 'set `solving.options.assign_all_duals: true` in the run config — read via
-      bare .get(), the key is absent from config.default.yaml; without it storage
-      energy-balance duals (marginal storage value) are lost.
+  - kind: config
+    key: solving.options.assign_all_duals
+    value: true
+    note: 'read via bare .get() in scripts/solve_network.py:assign_all_duals and absent
+      from config.default.yaml; without it storage energy-balance duals (marginal storage
+      value) are lost.
 
       '
   invalidates:
