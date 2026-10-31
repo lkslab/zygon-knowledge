@@ -5,14 +5,10 @@ from __future__ import annotations
 import posixpath
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import yaml
 
-from knowledge import KnowledgeError
-
-if TYPE_CHECKING:
-    from knowledge import Knowledge
+from knowledge import CARRIER_BOOKS, Knowledge, KnowledgeError
 
 
 def anchor_errors(handle: Knowledge, expected: str) -> list[str]:
@@ -53,6 +49,30 @@ def citation_errors(handle: Knowledge) -> list[str]:
         for m in handle.methods()
         if m.id not in cited
     )
+    return errors
+
+
+def identity_errors(handle: Knowledge) -> list[str]:
+    """Every listed card's `id` equals its file stem and holds one section per model."""
+    root, model = handle.root, handle.model
+    cards = [("topics", path, path.stem) for path in root.glob("topics/*.yaml")]
+    cards += [
+        ("carriers", path, path.stem)
+        for book in CARRIER_BOOKS
+        for path in root.glob(f"carriers/{book}/*.yaml")
+    ]
+    cards += [("methods", path, path.stem) for path in root.glob("methods/*.yaml")]
+    cards += [("methods", path, path.parent.name) for path in root.glob("methods/*/spec.yaml")]
+    errors: list[str] = []
+    for kind, path, stem in sorted(cards):
+        doc = yaml.safe_load(path.read_text())
+        sections = [s for s in doc.get("models", []) if s.get("model") == model]
+        if not sections:
+            continue
+        if doc.get("id") != stem:
+            errors.append(f"{kind}/{stem}: id is '{doc.get('id')}'")
+        if len(sections) > 1:
+            errors.append(f"{kind}/{doc.get('id')}/{model}: {len(sections)} sections for the model")
     return errors
 
 

@@ -25,9 +25,9 @@ this file covers the link.
 
 ## Who reads what
 
-Handles are opened in `backend/services/agent/turn_input.py` (per turn),
-`backend/services/study/gate.py` and `scripts/preflight.py`: `Knowledge.open(root, model)`
-once per model, `Policy.open(root)` once.
+Handles are opened in `backend/services/agent/turn_input.py` (`Knowledge.open(root, model)`
+for the turn's model and `Policy.open(root)`, per turn), `backend/services/study/gate.py`
+(`Knowledge.open` for the profile's model) and `scripts/preflight.py` (`Knowledge.open` per model).
 
 | tree here | `knowledge` API |
 |---|---|
@@ -41,8 +41,8 @@ once per model, `Policy.open(root)` once.
 
 What the app does not do:
 
-- It applies no `payload/` trees since pypsa-app #296 (bundles are config-only). A later
-  feature re-adds payload application with a contract; the trees stay for it.
+- It applies no `payload/` trees since app commit `67997b0a` (the config-only `Bundle`
+  contract). A later feature re-adds payload application with a contract; the trees stay for it.
 - It branches on no `execution[].kind`.
 - Its basemaps are its own; none live here.
 

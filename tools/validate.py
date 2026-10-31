@@ -64,28 +64,30 @@ def main(argv: list[str] | None = None) -> int:
     from knowledge import MODELS, TABLES, Knowledge, KnowledgeError, Policy
 
     errors: list[str] = []
+    has_topics = (ROOT / "topics").is_dir()
+    if not has_topics:
+        errors.append("topics/ missing")
     for model in MODELS:
-        handle = Knowledge.open(ROOT, model)
-        if handle is None:
-            errors.append("topics/ missing")
-        else:
+        handle = Knowledge.open(ROOT, model) if has_topics else None
+        if handle is not None:
             readers = {
                 "topics": handle.topics,
                 "carriers": handle.carriers,
                 "methods": handle.methods,
                 "data quality cards": handle.data_quality_cards,
             }
+            unreadable = False
             for kind, read in readers.items():
                 try:
                     if not read():
                         errors.append(f"{model}: no {kind}")
                 except KnowledgeError as exc:
+                    unreadable = True
                     errors.append(str(exc))
-            try:
+            if not unreadable:
                 errors += checks.anchor_errors(handle, ANCHORS[model])
                 errors += checks.citation_errors(handle)
-            except KnowledgeError as exc:
-                errors.append(str(exc))
+                errors += checks.identity_errors(handle)
         gitlink = submodule_gitlink(f"models/{model}")
         if gitlink != ANCHORS[model]:
             errors.append(f"models/{model} gitlink is {gitlink}, anchor is {ANCHORS[model]}")

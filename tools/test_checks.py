@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
-from checks import anchor_errors, citation_errors, validate_payloads
+from checks import anchor_errors, citation_errors, identity_errors, validate_payloads
 from knowledge import MODELS, Knowledge
 
 RULE = 'rule x:\n    script:\n        "{path}"\n'
@@ -170,6 +170,7 @@ def test_well_formed_tree_passes(tmp_path: Path) -> None:
     h = handle(tree(tmp_path))
     assert anchor_errors(h, CANONICAL) == []
     assert citation_errors(h) == []
+    assert identity_errors(h) == []
 
 
 def test_other_carrier_ref_reported(tmp_path: Path) -> None:
@@ -200,3 +201,21 @@ def test_cited_method_without_model_section_reported(tmp_path: Path) -> None:
     errors = citation_errors(handle(root))
     assert len(errors) == 1
     assert "methods/m has no pypsa-eur section" in errors[0]
+
+
+def test_id_differing_from_file_stem_reported(tmp_path: Path) -> None:
+    root = tree(tmp_path)
+    path = root / "topics" / "t.yaml"
+    doc = yaml.safe_load(path.read_text())
+    doc["id"] = "other"
+    put(path, doc)
+    assert identity_errors(handle(root)) == ["topics/t: id is 'other'"]
+
+
+def test_duplicate_model_section_reported(tmp_path: Path) -> None:
+    root = tree(tmp_path)
+    path = root / "carriers" / "demand" / "c.yaml"
+    doc = yaml.safe_load(path.read_text())
+    doc["models"].append(dict(doc["models"][0]))
+    put(path, doc)
+    assert identity_errors(handle(root)) == ["carriers/c/pypsa-eur: 2 sections for the model"]
