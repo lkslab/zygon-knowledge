@@ -32,8 +32,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 2924c5089860dd058ea2a395b9a9f946de3f9536
-    date: '2026-10-26'
+    ref: 90c28a11449a75ff30446603194ed36ad6f91f66
+    date: '2026-11-03'
   execution:
   - kind: config
     key: sector.endogenous_sectors.enable

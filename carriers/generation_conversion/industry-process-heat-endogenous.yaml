@@ -16,7 +16,7 @@ when_to_use:
   - "which industries can pick their heat source"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "2924c5089860dd058ea2a395b9a9f946de3f9536", date: "2026-10-26"}
+    version_anchor: {ref: "90c28a11449a75ff30446603194ed36ad6f91f66", date: "2026-11-03"}
     out_of_box:
       covers: >
         Implemented on this fork (the port of PyPSA/pypsa-eur#1943, open
@@ -149,9 +149,12 @@ models:
       - variant: "flexible operation (lower must-run share)"
         rung: L1
         note: "sector.industry_t.must_run — one global value; per-band or per-tech values need edits in the add_t_industry* calls (L2)"
-      - variant: "new technology in a band (MVR, electric furnace, biomass 500+ °C, geothermal steam)"
+      - variant: "new technology in a band (MVR, electric furnace, biomass 500+ °C)"
         rung: L2
         note: "add a branch in the respective add_t_industry* function plus a config flag; cost row via data/custom_costs.csv if missing (L3)"
+      - variant: "geothermal heat in the 100-200 °C band"
+        rung: L0
+        note: "not a band flag and no add_t_industry* branch: sector.enhanced_geothermal.industry_heat.enable (with sector.enhanced_geothermal.enable) adds a 'geothermal industry heat' Link per region from the EGS surface heat into '<bus> heat100-200 industry' — the industry_heat levers, boundary row and asserts live on the enhanced-geothermal card; nothing above 200 °C (150 °C wellhead floor)"
       - variant: "proper hydrogen combustion costs (replace the 10x-gas placeholder)"
         rung: L3
         note: "provide a dedicated cost row and swap the 10x 'direct firing gas' lookups in add_t_industry200_500 / add_t_industry500 (L2 for the code part)"

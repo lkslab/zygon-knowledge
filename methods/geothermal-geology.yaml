@@ -35,8 +35,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 2924c5089860dd058ea2a395b9a9f946de3f9536
-    date: '2026-10-26'
+    ref: 90c28a11449a75ff30446603194ed36ad6f91f66
+    date: '2026-11-03'
   execution:
   - kind: config
     key: sector.enhanced_geothermal.enable
@@ -75,8 +75,10 @@ models:
       read by horizon-free rules, so set them once in the base config; a per-scenario
       difference makes the harness rebuild the resources per scenario. Read EGS off the
       links of carrier "geothermal organic rankine cycle" (electric output, one per
-      region), "geothermal heat" (the well steps "<bus> enhanced geothermal <i>") and
-      "geothermal district heat"; geothermal heat off the generators of carrier "urban
+      region), "geothermal heat" (the well steps "<bus> enhanced geothermal <i>"),
+      "geothermal district heat" and, with sector.enhanced_geothermal.industry_heat,
+      "geothermal industry heat" (the delivery into the industrial heat loads, one link
+      per region and band); geothermal heat off the generators of carrier "urban
       central geothermal heat" (one per region and step) and the "urban central
       geothermal heat pump" and direct-utilisation links. p_nom_opt per region against
       the step's cost is the result.

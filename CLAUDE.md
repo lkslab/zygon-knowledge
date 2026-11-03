@@ -88,19 +88,19 @@ Two more app readers open the same files without going through the scoper:
 
 Every card section cites a `version_anchor.ref`. The validator requires the canonical one per
 model. Earth cards cite `8435f4c8`, which is also the `models/pypsa-earth` submodule pin. Eur
-cards cite `492f05d32e91ff76b26a7ee67604811a54cb315a`, the `lkslab/pypsa-eur` fork commit the app
-runs (its `workflows/pypsa-eur` gitlink and `workflow_catalog.pinned_ref`; branch `dev`, which
+cards cite `90c28a11449a75ff30446603194ed36ad6f91f66`, the `lkslab/pypsa-eur` fork commit the app
+runs (its `workflows/pypsa-eur` gitlink and the profile's `pinned_ref`; branch `main`, which
 is upstream `a6c45e5a` "Streamline workflow" #1838 plus the fork's fixes and the ports of
 PyPSA/pypsa-eur#1943 (industry heat), #1719 (steel and cement routes), #1875 (industry load
 profiles), #2317 (endogenous shipping), #1654 (waste sector) and the merged #2357, plus the
 fork's own hydrogen-boosted biofuel, biogas methanol and grey/blue methanol routes after Zhang et
 al. 2026, and its geology-dependent EGS and heat-only geothermal on the Limberger et al.
-temperature model), which is also the `models/pypsa-eur` submodule pin (`.gitmodules` points
+temperature model, and its geothermal industry heat link), which is also the `models/pypsa-eur` submodule pin (`.gitmodules` points
 at `git@github.com:lkslab/pypsa-eur.git`); `tools/validate.py` checks the two agree. The
 canonical eur sha lives in `tools/validate.py` (`EUR_ANCHOR`), not in the frozen
 `archive/tools/restructure.py`. Since 2026-10-09 the eur anchor follows the app's fork pin, so
 the cards describe the model the app runs and the referee's anchor check matches. Bumping it
-when the app pins a new fork commit: `git -C models/pypsa-eur fetch origin dev && git -C
+when the app pins a new fork commit: `git -C models/pypsa-eur fetch git@github.com:lkslab/pypsa-eur.git main && git -C
 models/pypsa-eur checkout <sha>`, set `EUR_ANCHOR`, replace the old sha and its `date:` in
 every eur `version_anchor` (one `sed`), then `python3 tools/validate.py` and
 `python3 tools/resolve_eur_citations.py`.

@@ -93,6 +93,15 @@ models:
     marginal price (the landed-HBI break-even, a number the analyst reads off the solved
     network after the run), never a staged import route or a re-solve; a forbidden route
     is a solving.options.custom_extra_functionality hook capping its links
+  - >-
+    geothermal process heat is a region-bound supply curve, not a technology at one
+    price: with sector.enhanced_geothermal.industry_heat (the enhanced-geothermal card,
+    method geothermal-geology) the 100-200 °C band and the low-temperature industry heat
+    can draw on EGS surface heat wherever the rock reaches the 150 °C wellhead floor, at
+    that region's drilling-cost step, while electrification (heat pump, electric boiler)
+    costs the same everywhere — a study weighing the two spends its spatial resolution
+    on the regions whose geology differs and turns both features on; nothing above
+    200 °C sees geothermal
   limitations:
   - >-
     country totals distributed by site lists, never a site: no plant business case, no
@@ -140,6 +149,13 @@ models:
     (sector.regional_co2_sequestration_potential.enable false,
     sector.co2_sequestration_potential at an accepted Mt/a) or a residual cap, and says
     which (co2-budget note (j))
+  - >-
+    the geothermal cost a region's industry heat sees is built per region from the
+    subsurface temperature model and the EGS cost model (well steps plus the delivery
+    surcharge), not read from a technology-data row, so the technology-cost comparison
+    plot (the industry_steam family) cannot show it beside the boilers and the heat
+    pump — the number to report is the region's cheapest supply-curve step and the
+    solved "geothermal industry heat" build
   methods:
   - id: industry-fuel-switching
     role: >-
@@ -246,8 +262,8 @@ models:
       what direct firing above 200 °C costs: gas against solid fuels, hydrogen a
       placeholder at ten times gas
   version_anchor:
-    ref: 2924c5089860dd058ea2a395b9a9f946de3f9536
-    date: '2026-10-26'
+    ref: 90c28a11449a75ff30446603194ed36ad6f91f66
+    date: '2026-11-03'
 - model: pypsa-earth
   approach: >-
     The study runs on the carrier levers and the default config; no method spec is
