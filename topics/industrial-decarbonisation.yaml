@@ -151,10 +151,11 @@ models:
     which (co2-budget note (j))
   - >-
     the geothermal cost a region's industry heat sees is built per region from the
-    subsurface temperature model and the EGS cost model (well steps plus the delivery
+    subsurface temperature model and the EGS cost model (the regional well step plus the delivery
     surcharge), not read from a technology-data row, so the technology-cost comparison
     plot (the industry_steam family) cannot show it beside the boilers and the heat
-    pump — the number to report is the region's cheapest supply-curve step and the
+    pump — the number to report is the region's supply step (its whole potential at
+    the capacity-weighted average cost, the default single lcoe_bins edge) and the
     solved "geothermal industry heat" build
   methods:
   - id: industry-fuel-switching
@@ -270,8 +271,8 @@ models:
       what direct firing above 200 °C costs: gas against solid fuels, hydrogen a
       placeholder at ten times gas
   version_anchor:
-    ref: 90c28a11449a75ff30446603194ed36ad6f91f66
-    date: '2026-11-03'
+    ref: 0abdceb5798c641a859fa0dbc8ba61db13f9cc06
+    date: '2026-11-04'
 - model: pypsa-earth
   approach: >-
     The study runs on the carrier levers and the default config; no method spec is

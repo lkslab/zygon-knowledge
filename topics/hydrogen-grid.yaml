@@ -139,8 +139,8 @@ models:
   - id: compare_system_cost
     role: backbone vs no backbone, repurposed vs new-build, import vs domestic
   version_anchor:
-    ref: 90c28a11449a75ff30446603194ed36ad6f91f66
-    date: '2026-11-03'
+    ref: 0abdceb5798c641a859fa0dbc8ba61db13f9cc06
+    date: '2026-11-04'
 - model: pypsa-earth
   approach: >-
     The study runs on the carrier levers and the default config; no method spec is

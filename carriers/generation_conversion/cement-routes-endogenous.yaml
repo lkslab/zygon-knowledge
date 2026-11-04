@@ -16,7 +16,7 @@ when_to_use:
   - "where should cement CCS go"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "90c28a11449a75ff30446603194ed36ad6f91f66", date: "2026-11-03"}
+    version_anchor: {ref: "0abdceb5798c641a859fa0dbc8ba61db13f9cc06", date: "2026-11-04"}
     out_of_box:
       covers: >
         Implemented on this fork (the port of PyPSA/pypsa-eur#1719, open

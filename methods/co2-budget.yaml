@@ -32,8 +32,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 90c28a11449a75ff30446603194ed36ad6f91f66
-    date: '2026-11-03'
+    ref: 0abdceb5798c641a859fa0dbc8ba61db13f9cc06
+    date: '2026-11-04'
   # No execution entries on purpose: co2_budget.* is a study-frame key the bundle
   # sets citing the tracker's emissions_target, never a method lever. This card is
   # the grounding the scoper relays and the consultant settles the key against.

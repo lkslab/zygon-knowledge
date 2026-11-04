@@ -88,7 +88,7 @@ Two more app readers open the same files without going through the scoper:
 
 Every card section cites a `version_anchor.ref`. The validator requires the canonical one per
 model. Earth cards cite `8435f4c8`, which is also the `models/pypsa-earth` submodule pin. Eur
-cards cite `90c28a11449a75ff30446603194ed36ad6f91f66`, the `lkslab/pypsa-eur` fork commit the app
+cards cite `0abdceb5798c641a859fa0dbc8ba61db13f9cc06`, the `lkslab/pypsa-eur` fork commit the app
 runs (its `workflows/pypsa-eur` gitlink and the profile's `pinned_ref`; branch `main`, which
 is upstream `a6c45e5a` "Streamline workflow" #1838 plus the fork's fixes and the ports of
 PyPSA/pypsa-eur#1943 (industry heat), #1719 (steel and cement routes), #1875 (industry load

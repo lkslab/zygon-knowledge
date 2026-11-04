@@ -120,7 +120,7 @@ models:
       scenario: "{demand} + {planning_horizons} via CAGR; custom_data.industry_demand override per scenario"
 
   - model: pypsa-eur
-    version_anchor: {ref: "90c28a11449a75ff30446603194ed36ad6f91f66", date: "2026-11-03"}
+    version_anchor: {ref: "0abdceb5798c641a859fa0dbc8ba61db13f9cc06", date: "2026-11-04"}
     out_of_box:
       covers: >
         Cement, "Ceramics & other NMM" and Glass production as separate

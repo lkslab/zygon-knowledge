@@ -18,7 +18,7 @@ when_to_use:
   - "pypsa-eur carrier names: geothermal heat, geothermal organic rankine cycle, geothermal district heat, geothermal industry heat"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "90c28a11449a75ff30446603194ed36ad6f91f66", date: "2026-11-03"}
+    version_anchor: {ref: "0abdceb5798c641a859fa0dbc8ba61db13f9cc06", date: "2026-11-04"}
     out_of_box:
       covers: >
         A geology-dependent EGS chain for SECTOR runs, still disabled by
@@ -48,16 +48,20 @@ models:
         0.85, lifetime 30 a, the costs' discount rate); its capacity is the
         cost model's technical density times the column's area times its
         onwind land share. Columns are grouped per region into LCOE steps
-        (lcoe_bins, EUR/MWh_el, default 75, 100, 125, 150, 175, 200, 250,
-        300, 400; anything above 400 is dropped). Output egs_potentials.csv,
-        one row per region and step: p_nom_max (MW_el net), well_capex and
+        (lcoe_bins, EUR/MWh_el; the default is the single edge 400, so each
+        region is one step holding its whole potential at the capacity-weighted
+        mean cost, efficiency and depth of its columns, anything above 400
+        dropped; several edges such as 75, 100, 125, 150, 175, 200, 250, 300,
+        400 restore a stepped curve). Output egs_potentials.csv, one row per
+        region and step: p_nom_max (MW_el net), well_capex and
         plant_capex (EUR/kW_el), fom (EUR/kW_el/yr), efficiency (net
         electricity per heat extracted), lcoe, depth and temperature; plus
         egs_capacity_factors.csv, the Ricks et al. binary-plant response to the
         deviation of the regional air temperature from its mean (var_cf).
         NETWORK (add_enhanced_geothermal): a free extendable "geothermal heat"
         Generator on one "EU enhanced geothermal systems" bus feeds, per region,
-        well Links "<bus> enhanced geothermal <i>" (one per step) into a
+        well Links "<bus> enhanced geothermal" (one per region by default;
+        "<bus> enhanced geothermal <i>", one per step, with several edges) into a
         "<bus> geothermal heat surface" bus, sized in heat: p_nom_max =
         MW_el / efficiency, p_max_pu = availability, capital cost = (annuity +
         FOM share) x well capex x efficiency, efficiency = the hourly capacity
@@ -161,8 +165,8 @@ models:
         default: "0.836"
         provenance: "config/config.default.yaml:usd2021_to_eur; scripts/build_egs_potentials.py:column_costs"
       - key: sector.enhanced_geothermal.lcoe_bins
-        effect: "Upper edges (EUR/MWh_el) of the supply-curve steps per region; columns above the last edge are dropped, so the last edge is also a potential cut-off."
-        default: "[75, 100, 125, 150, 175, 200, 250, 300, 400]"
+        effect: "Upper edges (EUR/MWh_el) of the supply-curve steps per region; columns above the last edge are dropped, so the last edge is also a potential cut-off. One edge (the default) is one step per region at the region's average cost: the model does not resolve where within a region the heat users and the hot rock coincide, so the average is what a region's industry and district heat can count on; several edges let the model take the cheapest tranche first."
+        default: "[400]"
         provenance: "config/config.default.yaml:lcoe_bins; scripts/lib/geothermal.py:bin_supply_curve"
       - key: sector.enhanced_geothermal.reinjection_temperature
         effect: "Brine reinjection temperature (°C) of the cost model; with producers_per_injector (1.5), flow_derating (0.77) and lateral_length (2286 m) the Ricks & Jenkins central deep-EGS case."
@@ -185,7 +189,7 @@ models:
         default: "null (25 from the costs row)"
         provenance: "config/config.default.yaml:surcharge; scripts/prepare_sector_network.py:add_enhanced_geothermal"
       - key: adjustments.sector.factor.Link.geothermal heat.capital_cost
-        effect: "Drilling-cost sensitivity: multiplies the capital_cost of every EGS well Link '<bus> enhanced geothermal <i>' (carrier 'geothermal heat'; the wellfield, one Link per supply-curve step, every step by the same factor) in compose_network after the chain is built. The carrier is 'geothermal heat', not 'enhanced geothermal' (that is only the Link name). A dict keyed by planning horizon applies per horizon."
+        effect: "Drilling-cost sensitivity: multiplies the capital_cost of every EGS well Link '<bus> enhanced geothermal' (carrier 'geothermal heat'; the wellfield, one Link per region at its average cost by default, '<bus> enhanced geothermal <i>' per step with several lcoe_bins edges, every one by the same factor) in compose_network after the chain is built. The carrier is 'geothermal heat', not 'enhanced geothermal' (that is only the Link name). A dict keyed by planning horizon applies per horizon."
         default: "1.0 (no entry; the shipped adjustments.sector carries only the 'electricity distribution grid' factor)"
         provenance: "config/config.default.yaml:adjustments; scripts/prepare_network.py:maybe_adjust_costs_and_potentials; scripts/compose_network.py:maybe_adjust_costs_and_potentials"
       - key: adjustments.sector.factor.Link.geothermal organic rankine cycle.capital_cost
@@ -218,7 +222,7 @@ models:
         note: "sector.enhanced_geothermal.industry_heat.enable: true beside enable: true — a 'geothermal industry heat' Link per region into the low-temperature industry heat bus and, with sector.industry_t.endogen (method industry-heat-endogenous), the 100-200 °C band bus; bands narrows it, efficiency and surcharge reprice it; hotter bands are not offered (150 °C wellhead floor)"
       - variant: "cut the potential (e.g. a national ceiling or only sites below a cost)"
         rung: L0
-        note: "drop upper lcoe_bins edges to cut expensive sites; a hard national ceiling on the well Links needs a custom constraint (L2)"
+        note: "lower the single lcoe_bins edge to cut expensive columns out of the regional average; a hard national ceiling on the well Links needs a custom constraint (L2)"
       - variant: "EGS as combined heat and power vs electricity-only"
         rung: L0
         note: "automatic — the district heat link appears wherever the region has an 'urban central heat' bus; no separate switch"
