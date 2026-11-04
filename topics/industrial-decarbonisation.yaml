@@ -251,6 +251,14 @@ models:
     role: >-
       today's process heat per temperature band (below 100, 100-200, 200-500, above
       500 °C), the demand each band's supply options compete for, before a run
+  - id: geothermal_temperature
+    query: {depth_km: 5}
+    role: >-
+      how hot the rock is 5 km down and where it reaches the 150 °C wellhead floor
+      (sector.enhanced_geothermal.min_temperature) enhanced geothermal needs: the
+      regions whose 100-200 °C and low-temperature industry heat can draw on EGS, before
+      a geothermal sensitivity; the 3 km view with the 70 °C hydrothermal floor belongs
+      to the heat-network topics, nothing above 200 °C sees geothermal
   - id: technology_costs
     query: {family: industry_steam}
     role: >-
