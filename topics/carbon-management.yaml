@@ -111,9 +111,13 @@ models:
     role: storage potentials and caps against each other, the cost of a tonne removed
   - id: network_map
     role: CO2 pipelines and sequestration per cluster
+  - id: industrial_sites
+    role: the industrial point sources capture would serve, sized by their CO2, before a run
+  - id: emission_history
+    role: the emissions since 1990 by sector, the history a cap or budget is measured against
   version_anchor:
-    ref: 09e8910ae03ace9af8ff821514cda7822fdd473f
-    date: '2026-10-12'
+    ref: 0abdceb5798c641a859fa0dbc8ba61db13f9cc06
+    date: '2026-11-04'
 - model: pypsa-earth
   approach: >-
     The study runs on the carrier levers and the default config; no method spec is

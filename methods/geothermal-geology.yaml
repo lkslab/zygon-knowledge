@@ -12,7 +12,7 @@ what: >-
   pumping netted out, land as for onshore wind), keeps each column's cheapest depth and
   groups the columns per region into levelised-cost steps;
   scripts/prepare_sector_network.py:add_enhanced_geothermal builds per region one well
-  link per step, an organic Rankine cycle to the AC bus, a district-heat link wherever
+  link per region (per step with several lcoe_bins edges), an organic Rankine cycle to the AC bus, a district-heat link wherever
   the region has district heating (CHP), and with flexible a reservoir StorageUnit.
   Heat-only geothermal (geothermal listed under sector.heat_pump_sources.urban central,
   source: geology, the shipped source): rules/build_sector.smk:build_geothermal_heat_potential
@@ -35,8 +35,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 09e8910ae03ace9af8ff821514cda7822fdd473f
-    date: '2026-10-12'
+    ref: 0abdceb5798c641a859fa0dbc8ba61db13f9cc06
+    date: '2026-11-04'
   execution:
   - kind: config
     key: sector.enhanced_geothermal.enable
@@ -75,8 +75,10 @@ models:
       read by horizon-free rules, so set them once in the base config; a per-scenario
       difference makes the harness rebuild the resources per scenario. Read EGS off the
       links of carrier "geothermal organic rankine cycle" (electric output, one per
-      region), "geothermal heat" (the well steps "<bus> enhanced geothermal <i>") and
-      "geothermal district heat"; geothermal heat off the generators of carrier "urban
+      region), "geothermal heat" (the well links "<bus> enhanced geothermal", "<bus> enhanced geothermal <i>" with several lcoe_bins edges),
+      "geothermal district heat" and, with sector.enhanced_geothermal.industry_heat,
+      "geothermal industry heat" (the delivery into the industrial heat loads, one link
+      per region and band); geothermal heat off the generators of carrier "urban
       central geothermal heat" (one per region and step) and the "urban central
       geothermal heat pump" and direct-utilisation links. p_nom_opt per region against
       the step's cost is the result.
@@ -95,7 +97,7 @@ models:
   - name: egs-chain-present
     needs: prepared
     check: n.links.carrier.eq('geothermal organic rankine cycle').any() and n.links.carrier.eq('geothermal heat').any()
-    expect: per region with potential below the last lcoe_bins edge, well steps and one organic Rankine cycle link
+    expect: per region with potential below the lcoe_bins edge, one well link (one per step with several edges) and one organic Rankine cycle link
   - name: geothermal-heat-steps-present
     needs: prepared
     check: n.generators.carrier.eq('urban central geothermal heat').any()

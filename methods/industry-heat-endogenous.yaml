@@ -31,8 +31,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 09e8910ae03ace9af8ff821514cda7822fdd473f
-    date: '2026-10-12'
+    ref: 0abdceb5798c641a859fa0dbc8ba61db13f9cc06
+    date: '2026-11-04'
   execution:
   - kind: config
     key: sector.industry_t.endogen
@@ -91,6 +91,9 @@ models:
       the links feeding them (carriers "<band> industry <technology>"); the
       technology split per band is the answer, the remaining "solid biomass for
       industry" and "gas for industry" loads are the non-endogenised rest.
+      Geothermal enters the 100-200 °C band not through the band dicts but through
+      sector.enhanced_geothermal.industry_heat (a "geothermal industry heat" link per
+      region from the EGS surface heat, cited on the enhanced-geothermal carrier card).
   invalidates:
   - compose_network
   - solve_network

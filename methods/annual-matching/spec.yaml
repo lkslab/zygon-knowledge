@@ -19,8 +19,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 09e8910ae03ace9af8ff821514cda7822fdd473f
-    date: '2026-10-12'
+    ref: 0abdceb5798c641a859fa0dbc8ba61db13f9cc06
+    date: '2026-11-04'
   execution:
   - kind: config
     key: zygon_cfe
@@ -76,7 +76,10 @@ models:
       - grid_exchange
     note: 'window year = one row over the year (Eq. 1), month = twelve rows; score
       is the matched share. credit_storage.year MUST stay false. Add the hourly-*
-      variants of hourly-matching to the same block for the full ladder.
+      variants of hourly-matching to the same block for the full ladder. `bus` is
+      the clustered AC bus name when known; for a study that only knows a place,
+      leave `bus: ""` and set `near: [lon, lat]` (optionally `country: <ISO2>`) and
+      the payload picks the nearest AC bus at build time, at any spatial resolution.
 
       '
   - kind: config
@@ -94,8 +97,10 @@ models:
       (rules/zygon_cfe.smk, scripts/build_cfe_network.py, zygon_cfe_constraints.py,
       zygon_cfe_collect.py, the config.yaml fragment). Stage it once; both specs read one
       zygon_cfe config block.
-      Dry-run validated on 9a0c6bc5 (lkslab/pypsa-eur, 2026-09-16); not yet solved
-      end to end.
+      A run whose labels lack the reference variant reads it from the sibling
+      run that solves it (one-variant-per-scenario bundles). Dry-run validated
+      on 9a0c6bc5 (lkslab/pypsa-eur, 2026-09-16) and on 09e8910a (Snakemake
+      9.27, 2026-10-26); not yet solved end to end.
 
       '
   - kind: invocation
@@ -104,9 +109,16 @@ models:
       config_provider). verify_networks: {stage: solved, path:
       results/{run.name}/cfe/{zygon_cfe.labels}/solved_{planning_horizons}.nc} (one
       per variant per scenario) and {stage: collected, path:
-      results/{run.name}/zygon_cfe/{zygon_cfe.indicators}.csv}. Optional
-      zygon_cfe.baseline: true adds the run''s own solved network (no consumer) to
-      the collect inputs for the additionality reading.
+      results/{run.name}/zygon_cfe/{zygon_cfe.indicators}.csv}. The study''s answer
+      lives in the VARIANT network: the profile''s own solved network
+      (results/{run.name}/networks/solved_*.nc) carries no consumer and is identical
+      across the scenarios. The app lists a bundle''s verify networks ahead of the
+      profile''s (pypsa-app 25ee02fc, 2026-10-26), so the settlement takes the
+      variant network as the scenario''s network and the comparisons read it;
+      before that fix the five identical base networks were compared and the rules
+      reported as ineffective. Optional zygon_cfe.baseline: true adds the
+      run''s own solved network (no consumer) to the collect inputs for the
+      additionality reading.
 
       '
   invalidates:

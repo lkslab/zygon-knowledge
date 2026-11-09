@@ -93,6 +93,15 @@ models:
     marginal price (the landed-HBI break-even, a number the analyst reads off the solved
     network after the run), never a staged import route or a re-solve; a forbidden route
     is a solving.options.custom_extra_functionality hook capping its links
+  - >-
+    geothermal process heat is a region-bound supply curve, not a technology at one
+    price: with sector.enhanced_geothermal.industry_heat (the enhanced-geothermal card,
+    method geothermal-geology) the 100-200 °C band and the low-temperature industry heat
+    can draw on EGS surface heat wherever the rock reaches the 150 °C wellhead floor, at
+    that region's drilling-cost step, while electrification (heat pump, electric boiler)
+    costs the same everywhere — a study weighing the two spends its spatial resolution
+    on the regions whose geology differs and turns both features on; nothing above
+    200 °C sees geothermal
   limitations:
   - >-
     country totals distributed by site lists, never a site: no plant business case, no
@@ -140,6 +149,14 @@ models:
     (sector.regional_co2_sequestration_potential.enable false,
     sector.co2_sequestration_potential at an accepted Mt/a) or a residual cap, and says
     which (co2-budget note (j))
+  - >-
+    the geothermal cost a region's industry heat sees is built per region from the
+    subsurface temperature model and the EGS cost model (the regional well step plus the delivery
+    surcharge), not read from a technology-data row, so the technology-cost comparison
+    plot (the industry_steam family) cannot show it beside the boilers and the heat
+    pump — the number to report is the region's supply step (its whole potential at
+    the capacity-weighted average cost, the default single lcoe_bins edge) and the
+    solved "geothermal industry heat" build
   methods:
   - id: industry-fuel-switching
     role: >-
@@ -172,6 +189,22 @@ models:
     role: >-
       the hourly shape of industry electricity (FfE branch profiles) instead of a flat
       load — when industrial demand timing matters to the power side
+  questions:
+  - key: industry_heat
+    question: How should the model treat industrial process heat?
+    options:
+    - value: bands
+      label: Split into temperature bands, supply chosen by the model
+      detail: >-
+        heat at 100–200, 200–500 and above 500 °C each picks from heat pumps, electric
+        boilers, biomass, gas or hydrogen at today's intensities; steel stays out
+      default: true
+      methods: [industry-heat-endogenous]
+    - value: exogenous
+      label: Keep the shipped fuel shares inside the industry loads
+      detail: >-
+        pypsa-eur's default; process heat follows the assumed electrification
+        trajectory, no priced choice
   defaults:
   - aspect: route-trajectory
     is: >-
@@ -191,9 +224,9 @@ models:
       exogenous (sector.industry_t.endogen false) — process heat stays a fuel share
       inside the industry loads, following the shipped electrification trajectory
     note: >-
-      industry-heat-endogenous switches to the temperature bands; the study says which
-      treatment it runs, since the two read differently (an assumed mix versus a priced
-      choice at today's intensities)
+      industry-heat-endogenous switches to the temperature bands; the industry_heat
+      question asks which treatment the study runs, since the two read differently (an
+      assumed mix versus a priced choice at today's intensities)
   - aspect: industry-routes
     is: exogenous (sector.endogenous_sectors.enable false) — steel and cement follow the route shares and the JRC-IDEES intensities
     note: >-
@@ -209,9 +242,37 @@ models:
     role: route pathways against each other on system cost and hydrogen need
   - id: region_map
     role: industrial hydrogen and electricity demand per cluster
+  - id: industrial_sites
+    role: where today's steelworks, cement kilns, refineries and chemical plants stand and what they emit, before a run
+  - id: emission_history
+    role: the emissions since 1990 by sector, industrial processes and manufacturing among them
+  - id: energy_balance
+    role: "today's industrial energy use by carrier: the gas, coal and oil to switch"
+  - id: industry_heat_demand
+    role: >-
+      today's process heat per temperature band (below 100, 100-200, 200-500, above
+      500 °C), the demand each band's supply options compete for, before a run
+  - id: geothermal_temperature
+    query: {depth_km: 5}
+    role: >-
+      how hot the rock is 5 km down and where it reaches the 150 °C wellhead floor
+      (sector.enhanced_geothermal.min_temperature) enhanced geothermal needs: the
+      regions whose 100-200 °C and low-temperature industry heat can draw on EGS, before
+      a geothermal sensitivity; the 3 km view with the 70 °C hydrothermal floor belongs
+      to the heat-network topics, nothing above 200 °C sees geothermal
+  - id: technology_costs
+    query: {family: industry_steam}
+    role: >-
+      what the steam band's options cost, 100-200 °C: gas, electric and biomass boilers
+      against the high-temperature heat pump
+  - id: technology_costs
+    query: {family: industry_firing}
+    role: >-
+      what direct firing above 200 °C costs: gas against solid fuels, hydrogen a
+      placeholder at ten times gas
   version_anchor:
-    ref: 09e8910ae03ace9af8ff821514cda7822fdd473f
-    date: '2026-10-12'
+    ref: 0abdceb5798c641a859fa0dbc8ba61db13f9cc06
+    date: '2026-11-04'
 - model: pypsa-earth
   approach: >-
     The study runs on the carrier levers and the default config; no method spec is

@@ -32,8 +32,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 09e8910ae03ace9af8ff821514cda7822fdd473f
-    date: '2026-10-12'
+    ref: 0abdceb5798c641a859fa0dbc8ba61db13f9cc06
+    date: '2026-11-04'
   # No execution entries on purpose: co2_budget.* is a study-frame key the bundle
   # sets citing the tracker's emissions_target, never a method lever. This card is
   # the grounding the scoper relays and the consultant settles the key against.
@@ -114,7 +114,8 @@ notes: >-
   every horizon. (h) Limits: pypsa-eur has no renewable- or clean-share constraint (CCL caps
   capacity per country and carrier, EQ is a self-sufficiency share, BAU and SAFE are floors
   and reserve margins); hourly- and annual-matching are procurement rules for one consumer,
-  not system targets. A price instead of a cap is costs.emission_prices, a different card.
+  not system targets. A price instead of a cap is the specs key carbon_price
+  (costs.emission_prices.enable and .co2, the atmosphere store's marginal cost), no method.
   pypsa-earth still caps through the Co2L opts wildcard and electricity.co2limit; see the
   coal-power-plants carrier card.
   (i) A one-country or small-selection sector run meets the cap with the selection's own

@@ -122,9 +122,15 @@ models:
     role: a winter week of the urban central heat balance — sources, storage, venting
   - id: compare_system_cost
     role: expand vs hold the network, with vs without storage, source sets
+  - id: district_heating_areas
+    role: where heat networks run today and how much heat they deliver, the areas urban central heat serves, before a run
+  - id: geothermal_temperature
+    role: how hot the rock is at 2, 3 and 5 km, where hydrothermal wells can feed the networks, before a run
+  - id: energy_balance
+    role: "today's final energy use of households and services by carrier: the gas and oil heating to replace"
   version_anchor:
-    ref: 09e8910ae03ace9af8ff821514cda7822fdd473f
-    date: '2026-10-12'
+    ref: 0abdceb5798c641a859fa0dbc8ba61db13f9cc06
+    date: '2026-11-04'
 - model: pypsa-earth
   approach: >-
     The study runs on the carrier levers and the default config; no method spec is

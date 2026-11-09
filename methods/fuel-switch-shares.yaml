@@ -27,8 +27,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 09e8910ae03ace9af8ff821514cda7822fdd473f
-    date: '2026-10-12'
+    ref: 0abdceb5798c641a859fa0dbc8ba61db13f9cc06
+    date: '2026-11-04'
   execution:
   - kind: config
     key: sector.shipping_methanol_share

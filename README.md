@@ -41,7 +41,7 @@ carrier, method and `spec.yaml` cards, the data-quality country cards and
 ## Anchors
 
 Every topic, carrier and method section cites a `version_anchor.ref`: pypsa-eur
-`09e8910a`, the `lkslab/pypsa-eur` fork commit the app pins, and pypsa-earth
+`0abdceb5` (2026-11-04), the `lkslab/pypsa-eur` fork commit the app pins, and pypsa-earth
 `8435f4c8`. Both equal the `models/<model>` gitlinks.
 
 ## Checks
