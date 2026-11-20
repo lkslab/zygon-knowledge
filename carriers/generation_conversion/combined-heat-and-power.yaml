@@ -21,7 +21,7 @@ when_to_use:
   - "known in pypsa-eur as: CHP, CHP CC, CHP heat, CHP electric, urban central gas CHP, urban central gas CHP CC, urban central solid biomass CHP, urban central solid biomass CHP CC"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "429cfff32c2b438c676a92afcc7ebcb69ab75d6e", date: "2026-11-18"}
+    version_anchor: {ref: "c45e051d536487a3299fe7d87b077b8804e16284", date: "2026-11-20"}
     out_of_box:
       covers: >
         Sector runs build extendable greenfield CHP by default. With

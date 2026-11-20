@@ -93,7 +93,7 @@ models:
       scenario: "None; CAGR-file pattern of prepare_energy_totals is the natural hook"
 
   - model: pypsa-eur
-    version_anchor: {ref: "429cfff32c2b438c676a92afcc7ebcb69ab75d6e", date: "2026-11-18"}
+    version_anchor: {ref: "c45e051d536487a3299fe7d87b077b8804e16284", date: "2026-11-20"}
 
     out_of_box:
       covers: >

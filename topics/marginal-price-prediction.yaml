@@ -93,8 +93,8 @@ models:
   - id: dispatch_weeks
     role: why the price is what it is — the hourly balance behind the priced hours
   version_anchor:
-    ref: 429cfff32c2b438c676a92afcc7ebcb69ab75d6e
-    date: '2026-11-18'
+    ref: c45e051d536487a3299fe7d87b077b8804e16284
+    date: '2026-11-20'
 - model: pypsa-earth
   approach: >-
     Workable but narrower than eur: the solved power network prices every bus at every

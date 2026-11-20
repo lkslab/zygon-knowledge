@@ -150,7 +150,7 @@ models:
       temporal: "flat profile or ship batch cycles (fill/travel/unload/pause from export.ship.*); optional export-bus store decouples production timing"
       scenario: "h2export list sweeps volumes as separate runs; policy_config.hydrogen adds matching/additionality scenario variants"
   - model: pypsa-eur
-    version_anchor: {ref: "429cfff32c2b438c676a92afcc7ebcb69ab75d6e", date: "2026-11-18"}
+    version_anchor: {ref: "c45e051d536487a3299fe7d87b077b8804e16284", date: "2026-11-20"}
     out_of_box:
       covers: >
         Nothing — pypsa-eur has no hydrogen (or other fuel) export demand mechanism.

@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # The eur ref is the fork commit the app pins (the `workflows/pypsa-eur` gitlink and the
 # profile's `pinned_ref`); it must equal the `models/pypsa-eur` gitlink.
 ANCHORS = {
-    "pypsa-eur": "429cfff32c2b438c676a92afcc7ebcb69ab75d6e",
+    "pypsa-eur": "c45e051d536487a3299fe7d87b077b8804e16284",
     "pypsa-earth": "8435f4c8cc05f30088933b37b7db497ff860dc53",
 }
 
