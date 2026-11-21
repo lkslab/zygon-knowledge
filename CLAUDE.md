@@ -62,7 +62,7 @@ Edit the app together with this repo when one of these changes:
 
 Every topic, carrier and method section cites `version_anchor.ref`. Current refs:
 
-- pypsa-eur `0abdceb5798c641a859fa0dbc8ba61db13f9cc06` (`2026-11-04`), the `lkslab/pypsa-eur`
+- pypsa-eur `429cfff32c2b438c676a92afcc7ebcb69ab75d6e` (`2026-11-18`), the `lkslab/pypsa-eur`
   fork commit the app runs. It equals the `models/pypsa-eur` gitlink, the app's
   `workflows/pypsa-eur` gitlink and the profile `pinned_ref`.
 - pypsa-earth `8435f4c8cc05f30088933b37b7db497ff860dc53`, equal to `models/pypsa-earth`.
@@ -79,7 +79,7 @@ The app's `tests/test_preflight_real_tree.py` requires profile `pinned_ref`, the
 
 History of the eur anchor: `849c8858` until 2026-09-10 (fork branch, no public remote);
 upstream `a6c45e5a` from 2026-09-10; fork pins from 2026-10-09; `09e8910a` from 2026-10-12;
-`0abdceb5` since 2026-11-04.
+`0abdceb5` from 2026-11-04; `429cfff3` since 2026-11-18 (pixi-only bump).
 
 ## Checks to run after editing
 

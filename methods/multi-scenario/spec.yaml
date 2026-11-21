@@ -22,8 +22,8 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 0abdceb5798c641a859fa0dbc8ba61db13f9cc06
-    date: '2026-11-04'
+    ref: 429cfff32c2b438c676a92afcc7ebcb69ab75d6e
+    date: '2026-11-18'
   execution:
   - kind: config
     key: run.scenarios.enable

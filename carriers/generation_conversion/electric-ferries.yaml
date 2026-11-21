@@ -16,7 +16,7 @@ when_to_use:
   - "electrify domestic navigation"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "0abdceb5798c641a859fa0dbc8ba61db13f9cc06", date: "2026-11-04"}
+    version_anchor: {ref: "429cfff32c2b438c676a92afcc7ebcb69ab75d6e", date: "2026-11-18"}
     out_of_box:
       covers: >
         Not covered. Shipping demand is split exogenously between exactly three
