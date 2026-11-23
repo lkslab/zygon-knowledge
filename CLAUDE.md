@@ -61,7 +61,7 @@ Edit the app together with this repo when one of these changes:
 
 ## Anchors
 
-Every topic, carrier and method section cites `version_anchor.ref`. Current refs:
+Every topic, carrier, method and input-figure section cites `version_anchor.ref`. Current refs:
 
 - pypsa-eur `c45e051d536487a3299fe7d87b077b8804e16284` (`2026-11-20`), the `lkslab/pypsa-eur`
   fork commit the app runs. It equals the `models/pypsa-eur` gitlink, the app's

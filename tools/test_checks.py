@@ -185,6 +185,22 @@ def test_topic_without_anchor_reported(tmp_path: Path) -> None:
     assert errors == ["topics/t/pypsa-eur: no version_anchor"]
 
 
+def test_inputs_card_with_other_ref_reported(tmp_path: Path) -> None:
+    root = tree(tmp_path)
+    put(
+        root / "inputs" / "run-files.yaml",
+        {
+            "id": "run-files",
+            "title": "T",
+            "models": [{"model": "pypsa-eur", "version_anchor": anchor(OTHER), "files": []}],
+        },
+    )
+    errors = anchor_errors(handle(root), CANONICAL)
+    assert len(errors) == 1
+    assert errors[0].startswith("inputs/run-files/pypsa-eur")
+    assert "not the canonical" in errors[0]
+
+
 def test_cited_method_without_file_reported(tmp_path: Path) -> None:
     errors = citation_errors(handle(tree(tmp_path, cited=("m", "ghost"))))
     assert len(errors) == 1

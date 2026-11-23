@@ -8,21 +8,38 @@ models:
   files:
   - path: resources/{run}/cell_capacity_factor_{technology}.nc
     source: grid
-    shows: Average capacity factor of the technology in every weather cell.
-    question: Where are wind and solar resources good?
+    shows: Average capacity factor in every weather cell, for the onshore technologies onwind, solar and solar-hsat, cut to the onshore regions.
+    question: Where are onshore wind and solar resources good?
     query:
       variable: capacity_factor
       window:
         file: resources/{run}/onshore_regions.geojson
+  - path: resources/{run}/cell_capacity_factor_{technology}.nc
+    source: grid
+    shows: Average capacity factor in every weather cell, for the offshore technologies offwind-ac, offwind-dc and offwind-float, cut to the offshore regions.
+    question: Where are offshore wind resources good?
+    query:
+      variable: capacity_factor
+      window:
+        file: resources/{run}/offshore_regions.geojson
   - path: resources/{run}/availability_matrix_{technology}.nc
     source: grid
-    shows: Eligible land share of every weather cell for the technology, summed over the model regions.
-    question: How much land is eligible for the technology, and where?
+    shows: Eligible land share of every weather cell, summed over the model regions, for onwind, solar and solar-hsat.
+    question: How much land is eligible for onshore wind or solar, and where?
     query:
       reduce:
         bus: sum
       window:
         file: resources/{run}/onshore_regions.geojson
+  - path: resources/{run}/availability_matrix_{technology}.nc
+    source: grid
+    shows: Eligible sea share of every weather cell, summed over the model regions, for offwind-ac, offwind-dc and offwind-float.
+    question: How much sea area is eligible for offshore wind, and where?
+    query:
+      reduce:
+        bus: sum
+      window:
+        file: resources/{run}/offshore_regions.geojson
   - path: resources/{run}/onshore_regions.geojson
     source: geometry
     shows: The onshore regions the network is clustered into.
@@ -44,8 +61,19 @@ models:
       value: Capacity
   - path: resources/{run}/costs_{horizon}_processed.csv
     source: table
-    shows: Investment cost of every technology for the planning horizon.
-    question: What cost assumptions does the run use?
+    shows: Investment cost in EUR/MW of the power generation technologies onwind, offwind, offwind-float, solar-hsat, OCGT, CCGT, nuclear, coal and lignite for the planning horizon. These are the rows the generators of add_electricity take their capital cost from; the other rows of the file mix units (stores per MWh, lines per km) and are left out.
+    question: What generation cost assumptions does the run use?
     query:
       x: technology
       value: investment
+      filters:
+        technology:
+        - onwind
+        - offwind
+        - offwind-float
+        - solar-hsat
+        - OCGT
+        - CCGT
+        - nuclear
+        - coal
+        - lignite

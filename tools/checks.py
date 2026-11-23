@@ -12,7 +12,7 @@ from knowledge import CARRIER_BOOKS, Knowledge, KnowledgeError
 
 
 def anchor_errors(handle: Knowledge, expected: str) -> list[str]:
-    """Every topic, carrier and method section carries the canonical anchor."""
+    """Every topic, carrier, method and inputs section carries the canonical anchor."""
     model = handle.model
     keys = (
         [f"topics/{t.id}" for t in handle.topics()]
@@ -20,6 +20,7 @@ def anchor_errors(handle: Knowledge, expected: str) -> list[str]:
         + [f"methods/{m.id}" for m in handle.methods()]
     )
     anchors = handle.anchors()
+    keys += [key for key in anchors if key.startswith("inputs/")]
     errors: list[str] = []
     for key in keys:
         ref = anchors.get(key)

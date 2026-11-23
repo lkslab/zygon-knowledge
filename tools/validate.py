@@ -77,6 +77,11 @@ def main(argv: list[str] | None = None) -> int:
                 "data quality cards": handle.data_quality_cards,
             }
             unreadable = False
+            try:
+                handle.input_files()
+            except KnowledgeError as exc:
+                unreadable = True
+                errors.append(str(exc))
             for kind, read in readers.items():
                 try:
                     if not read():
