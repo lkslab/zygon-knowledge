@@ -35,6 +35,7 @@ for the turn's model and `Policy.open(root)`, per turn), `backend/services/study
 | `carriers/<book>/<slug>.yaml` | `carriers()`, `carrier(...)` |
 | `methods/<slug>.yaml`, `methods/<slug>/spec.yaml` | `methods()`, `method(slug)` |
 | `data_quality/<model>/countries/<CC>.yaml` | `data_quality_cards()`, `data_quality(...)` |
+| `inputs/<slug>.yaml` | `input_files()` |
 | `version_anchor` of every section | `anchors()`, the ref per card id |
 | `policy/*.csv` | `Policy`: tables `assets`, `targets`, `subsidies`, `regulation` through `query`, plus `coverage`, `blocs`, `technology_taxonomy` (`resolve_technology`) |
 | `models/<model>`, `tools/`, `policy/tools/`, `policy/_qa/`, `policy/sources.csv` | nobody at runtime |

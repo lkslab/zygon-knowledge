@@ -1,0 +1,51 @@
+id: run-files
+title: Input files of a run
+models:
+- model: pypsa-eur
+  version_anchor:
+    ref: c45e051d536487a3299fe7d87b077b8804e16284
+    date: '2026-11-20'
+  files:
+  - path: resources/{run}/cell_capacity_factor_{technology}.nc
+    source: grid
+    shows: Average capacity factor of the technology in every weather cell.
+    question: Where are wind and solar resources good?
+    query:
+      variable: capacity_factor
+      window:
+        file: resources/{run}/onshore_regions.geojson
+  - path: resources/{run}/availability_matrix_{technology}.nc
+    source: grid
+    shows: Eligible land share of every weather cell for the technology, summed over the model regions.
+    question: How much land is eligible for the technology, and where?
+    query:
+      reduce:
+        bus: sum
+      window:
+        file: resources/{run}/onshore_regions.geojson
+  - path: resources/{run}/onshore_regions.geojson
+    source: geometry
+    shows: The onshore regions the network is clustered into.
+    question: Which regions does the model resolve?
+    query: {}
+  - path: resources/{run}/offshore_regions.geojson
+    source: geometry
+    shows: The offshore regions attached to the clustered buses.
+    question: Which offshore regions does the model resolve?
+    query: {}
+  - path: resources/{run}/powerplants.csv
+    source: geometry
+    shows: Conventional power plants by location, split by fuel type and sized by capacity in MW.
+    question: Where does the existing conventional fleet sit?
+    query:
+      lon: lon
+      lat: lat
+      category: Fueltype
+      value: Capacity
+  - path: resources/{run}/costs_{horizon}_processed.csv
+    source: table
+    shows: Investment cost of every technology for the planning horizon.
+    question: What cost assumptions does the run use?
+    query:
+      x: technology
+      value: investment

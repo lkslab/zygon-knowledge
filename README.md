@@ -14,6 +14,7 @@ committing the new sha there. `CLAUDE.md` covers the link in detail.
 | `methods/<slug>.yaml` or `methods/<slug>/spec.yaml` | method specs a topic cites; `payload/<model>/` beside a spec holds the files the method adds to a run |
 | `data_quality/<model>/countries/<CC>.yaml` | generated per-country data-quality scorecards, next to `datasets.yaml`, `MATRIX.csv` and `INDEX.md` |
 | `policy/*.csv` | the policy registry (`assets`, `targets`, `subsidies`, `regulation`, `coverage`, `blocs`, `technology_taxonomy`, `sources`) with its `tools/` and `_qa/` |
+| `inputs/<slug>.yaml` | one card per set of run input files, each with the figure query that draws it |
 | `models/<model>` | gitlinks to pypsa-eur and pypsa-earth, the commits the cards cite |
 | `tools/` | the validator, its checks and the citation resolver |
 
@@ -26,6 +27,7 @@ shapes; unknown keys are ignored (`extra="ignore"`).
 - `Topic`: `id, title, question, when_to_use[], models[]`. Section: `model, approach, trade_offs[], limitations[], methods[{id, role}], defaults[], plots[{id, role}], version_anchor{ref, date}`.
 - `Carrier`: `id, book, title, summary, when_to_use[], models[]`. Section: `model, version_anchor, out_of_box, levers[{key, effect, default, provenance}], boundary[{variant, rung, note}], where[], data_dependencies[], demand_dimensions`. `rung` is `L0`..`L5`.
 - `Method`: `id, title, family, what, when_to_use[], notes, models[]`. Section: `model, version_anchor, execution[], invalidates[], budget, success_metric[]`.
+- `InputFigures`: `id, title, models[]`. Section: `model, version_anchor{ref, date}, files[{path, source, shows, question, query}]`. `source` is `grid`, `geometry` or `table`; `query` holds the `create_chart` query args of that source; `path` sits under `resources/{run}/`.
 - `DataQuality`: `country, name, families, datasets, fleet_evidence, build_evidence, continent`.
 
 `model` is `pypsa-eur` or `pypsa-earth`. A topic lists a model only when it has a section for it.
@@ -35,7 +37,7 @@ shapes; unknown keys are ignored (`extra="ignore"`).
 `Knowledge.open(root, model)` returns a handle per model; `Policy.open(root)`
 returns the policy tables. Cards are re-read on every call, so an edit is visible
 on the next call. The wheel and the image ship only the read set: topic,
-carrier, method and `spec.yaml` cards, the data-quality country cards and
+carrier, method, input-figure and `spec.yaml` cards, the data-quality country cards and
 `policy/*.csv`. Everything else here stays out.
 
 ## Anchors
