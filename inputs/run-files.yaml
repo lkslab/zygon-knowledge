@@ -61,7 +61,7 @@ models:
       value: Capacity
   - path: resources/{run}/costs_{horizon}_processed.csv
     source: table
-    shows: Investment cost in EUR/MW of the power generation technologies onwind, offwind, offwind-float, solar-hsat, OCGT, CCGT, nuclear, coal and lignite for the planning horizon. These are the rows the generators of add_electricity take their capital cost from; the other rows of the file mix units (stores per MWh, lines per km) and are left out.
+    shows: Investment cost in EUR/MW of a selection of the generation technologies (onwind, offwind, offwind-float, solar-hsat, OCGT, CCGT, nuclear, coal and lignite) for the planning horizon; the other rows of the file mix units (stores per MWh, lines per km) and are left out.
     question: What generation cost assumptions does the run use?
     query:
       x: technology
