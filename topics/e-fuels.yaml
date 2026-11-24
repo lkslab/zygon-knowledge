@@ -146,8 +146,8 @@ models:
   - id: energy_balance
     role: "today's final energy use by carrier: the oil and gas e-fuels would replace"
   version_anchor:
-    ref: c45e051d536487a3299fe7d87b077b8804e16284
-    date: '2026-11-20'
+    ref: 8ac32b87db61256db24d133791ed13fa101bb68f
+    date: '2026-11-24'
 - model: pypsa-earth
   approach: >-
     The study runs on the carrier levers and the default config; no method spec is

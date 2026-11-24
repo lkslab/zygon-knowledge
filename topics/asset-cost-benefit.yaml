@@ -79,8 +79,8 @@ models:
       a strict fixed-reference-grid reading wants expansion frozen — see the transmission-expansion-projects
       carrier card for the levers.
   version_anchor:
-    ref: c45e051d536487a3299fe7d87b077b8804e16284
-    date: '2026-11-20'
+    ref: 8ac32b87db61256db24d133791ed13fa101bb68f
+    date: '2026-11-24'
 - model: pypsa-earth
   approach: >-
     A strong pypsa-earth topic, and since the single-asset-cba method landed the canonical
