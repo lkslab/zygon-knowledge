@@ -18,7 +18,7 @@ when_to_use:
   - "known in pypsa-eur as: lines, transmission lines, AC, AC-AC, AC line"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Fully covered, with THREE selectable base topologies via
@@ -64,10 +64,9 @@ models:
         which calls add_electricity.py (set_transmission_costs with
         lines.length_factor) and then prepare_network.py
         (set_transmission_limit, cap_transmission_capacity for s_max_pu and
-        the extension caps, optional enforce_autarky) -> rule solve_network. Note set_transmission_limit calls
-        set_transmission_costs(n, costs) again WITHOUT length factors, so the
-        final line capital cost is HVAC-overhead-cost * length with factor 1.0
-        — lines.length_factor only sticks for renewable connection costing.
+        the extension caps) -> rule solve_network (optional enforce_autarky).
+        The final line capital cost is HVAC-overhead-cost * length *
+        lines.length_factor (set_transmission_limit no longer re-prices lines).
       not_covered: >
         No sub-transmission below the electricity.voltages window (default
         220 kV floor; widening it requires the base dataset to actually contain
@@ -120,13 +119,13 @@ models:
         default: "true"
         provenance: "config/config.default.yaml:reconnect_crimea; scripts/base_network.py:_reconnect_crimea"
       - key: lines.length_factor
-        effect: "Detour multiplier on line lengths for costing — but note the final transmission capital cost is overwritten in set_transmission_limit without it; it sticks for renewable-connection costing (attach_wind_and_solar) and the transmission-projects length fill."
+        effect: "Detour multiplier on line lengths for costing: applies to the transmission capital cost (set_transmission_costs), renewable-connection costing (attach_wind_and_solar) and the transmission-projects length fill."
         default: "1.25"
         provenance: "config/config.default.yaml:length_factor; scripts/add_electricity.py:set_transmission_costs"
       - key: electricity.autarky
         effect: "enable: true removes cross-border lines and DC links (by_country: true) or ALL lines and DC links (by_country: false) in enforce_autarky."
         default: "{enable: false, by_country: false}"
-        provenance: "config/config.default.yaml:autarky; scripts/prepare_network.py:enforce_autarky"
+        provenance: "config/config.default.yaml:autarky; scripts/solve_network.py:enforce_autarky"
       - key: solving.options.skip_iterations
         effect: "false enables iterative transmission expansion (impedances updated between LPs via optimize_transmission_expansion_iteratively, min/max_iterations); true (default) solves a single LP with fixed impedances. Auto-forced true if no line is extendable."
         default: "true"
@@ -187,8 +186,8 @@ models:
         anchor: "scripts/prepare_network.py::set_transmission_limit (consumes electricity.transmission_limit)"
         provenance: "scripts/prepare_network.py:set_transmission_limit"
       - change: "line capital costs (HVAC overhead row)"
-        anchor: "scripts/add_electricity.py::set_transmission_costs (called from add_electricity inside compose_network AND re-called factor-less inside set_transmission_limit)"
-        provenance: "scripts/add_electricity.py:set_transmission_costs; scripts/prepare_network.py:set_transmission_costs"
+        anchor: "scripts/add_electricity.py::set_transmission_costs (called from add_electricity inside compose_network)"
+        provenance: "scripts/add_electricity.py:set_transmission_costs"
       - change: "iterative expansion / losses / discretisation in the solve"
         anchor: "scripts/solve_network.py::collect_kwargs + n.optimize.optimize_transmission_expansion_iteratively (solving.options)"
         provenance: "scripts/solve_network.py:collect_kwargs; scripts/solve_network.py:optimize_transmission_expansion_iteratively"

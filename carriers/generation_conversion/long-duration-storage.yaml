@@ -12,7 +12,7 @@ when_to_use:
   - "pypsa-eur config tokens: H2, iron-air, pair, lair, vanadium"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         No tech labelled "LDES", but the model ships a whole duration ladder.
@@ -52,15 +52,14 @@ models:
         forcing storage to behave seasonally beyond cyclic state of charge
         (e_cyclic / cyclic_state_of_charge). StorageUnit durations are fixed
         parameters, never optimised. None of the chemistry tokens beyond
-        battery and H2 are active by default, and NONE of them survive into
-        sector-coupled runs (patch_electricity_network strips all elec-network
-        Stores; prepare_sector_network re-adds only H2, home battery and EV
-        battery on the electricity side) — multi-day electricity storage in a
-        default sector run is H2-only. For bicharger tokens (vanadium, pair,
+        battery and H2 are active by default. In sector-coupled runs
+        add_electricity drops the elec-network H2 (prepare_sector_network adds
+        its own H2 chain) and keeps every other listed token, so multi-day
+        electricity storage in a default sector run is H2-only. For bicharger tokens (vanadium, pair,
         lfp) the Store representation has a free, uncoupled discharger link
         (see flow-batteries carrier card). No pan-storage duration reporting or LDES
         target/mandate machinery.
-      provenance: "scripts/add_electricity.py:attach_stores; scripts/add_electricity.py:attach_storageunits; scripts/add_electricity.py:STORE_LOOKUP; scripts/process_cost_data.py:costs_for_storage; scripts/prepare_sector_network.py:add_h2_gas_infrastructure; scripts/prepare_sector_network.py:remove_elec_base_techs"
+      provenance: "scripts/add_electricity.py:attach_stores; scripts/add_electricity.py:attach_storageunits; scripts/add_electricity.py:STORE_LOOKUP; scripts/process_cost_data.py:costs_for_storage; scripts/prepare_sector_network.py:add_h2_gas_infrastructure; scripts/add_electricity.py:SECTOR_CARRIERS"
     levers:
       - key: electricity.extendable_carriers.Store
         effect: "Tokens getting the endogenous-duration Store+Links representation — the default LDES-capable setup (battery + H2)."
@@ -116,7 +115,7 @@ models:
         note: "default via sector.hydrogen_underground_storage"
       - variant: "multi-day chemistry storage inside sector-coupled runs"
         rung: L2
-        note: "elec-workflow chemistry stores are stripped; add the technology as a Bus/Store/Links block in prepare_sector_network (home battery block is the template)"
+        note: "list the token in electricity.extendable_carriers (add_electricity keeps it in sector runs); costs as in the electricity workflow"
       - variant: "a new named LDES technology as its own token"
         rung: L2
         note: "add a STORE_LOOKUP entry + electricity.max_hours key + carrier-list entry; +L3 (rows in data/custom_costs.csv) if technology-data lacks the cost rows — see sodium-ion-batteries/gravity-storage carrier cards for worked examples"
@@ -139,7 +138,7 @@ models:
     data_dependencies:
       - input: "cost rows for the wired tokens: 'hydrogen storage underground', 'electrolysis', 'fuel cell', 'iron-air battery' (+charge/discharge), 'Compressed-Air-Adiabatic-*', 'Liquid-Air-*', 'Vanadium-Redox-Flow-*', 'battery storage'/'battery inverter'"
         required_for: "the whole duration ladder"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data (verified in a locally built processed costs file)"
+        availability: "exists by default via retrieve_costs + rule process_cost_data (verified in a locally built processed costs file)"
       - input: "salt_cavern_potentials.csv"
         required_for: "geologically capped seasonal H2 in sector runs"
         availability: "must be built (rule build_salt_cavern_potentials; automatic in the sector workflow)"

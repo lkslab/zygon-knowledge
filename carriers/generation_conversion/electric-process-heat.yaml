@@ -14,7 +14,7 @@ when_to_use:
   - "pypsa-eur terms: industry electricity, sector_ratios_fraction_future"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         One mechanism, exogenous and on by default: deep electrification is
@@ -45,7 +45,7 @@ models:
         that reaches industry is via the "low-temperature heat for industry"
         load on district-heating buses, where resistive heaters and heat
         pumps compete). No temperature bands. All industry loads are flat
-        (annual/8760). On this fork the industry_t temperature bands exist (heat100-200 / heat200-500 / heat500+ industry buses with competing supply links) behind sector.industry_t.endogen, off by default — see the industry-process-heat-endogenous carrier card and the industry-heat-endogenous method. Even then there is no electric option above 200 °C, and the endogenised sectors run on today's intensities rather than the electrified future ratios.
+        (annual/8760). The industry_heat temperature bands exist (heat100-200 / heat200-500 / heat500+ industry buses with competing supply links) behind sector.industry_heat.enable, off by default — see the industry-process-heat-endogenous carrier card and the industry-heat-endogenous method. Even then there is no electric option above 200 °C, and the covered sectors run on today's intensities rather than the electrified future ratios.
       provenance: "scripts/build_industry_sector_ratios.py:chemicals_industry; scripts/build_industry_sector_ratios_intermediate.py:sector_ratios_fraction_future; scripts/prepare_sector_network.py:industry electricity; scripts/prepare_sector_network.py:add_industry; scripts/build_industrial_energy_demand_per_node.py"
     levers:
       - key: industry.sector_ratios_fraction_future
@@ -65,7 +65,7 @@ models:
         note: "edit the sector function in build_industry_sector_ratios.py (e.g. chemicals_industry, nonmetalic_mineral_products) — no config hook"
       - variant: "endogenous electric vs fuel competition for process heat"
         rung: L0
-        note: "sector.industry_t.endogen: true (method industry-heat-endogenous) on this fork: band loads per node with an industrial heat pump and an electric steam boiler (both on the AC node) competing with gas and biomass boilers at 100-200 °C; no electric option above 200 °C; today's intensities for the endogenised sectors — industry-process-heat-endogenous"
+        note: "sector.industry_heat.enable: true (method industry-heat-endogenous): band loads per node with an industrial heat pump and an electric steam boiler (both on the low-voltage bus with the distribution grid) competing with gas and biomass boilers at 100-200 °C; no electric option above 200 °C; today's intensities for the covered sectors — industry-process-heat-endogenous"
       - variant: "direct electric furnace/kiln above 200 °C as a network component"
         rung: L4
         note: "same prerequisite; no cost row exists for high-T electric heat either (L3 data part)"

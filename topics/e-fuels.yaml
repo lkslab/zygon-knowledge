@@ -20,9 +20,9 @@ models:
     its siting: scripts/prepare_sector_network.py:add_shipping splits the shipping demand by
     the methanol, hydrogen, oil and LNG shares per horizon (or, with
     sector.shipping_endogenous and the method shipping-fuel-endogenous, lets the model
-    choose the shipping fuel per node among oil, methanol, LNG through CH4 liquefaction with
-    its methane slip counted as CO2-equivalent, and hydrogen when sector.shipping_hydrogen
-    is on, which makes H2 for shipping an endogenous hydrogen demand),
+    choose the shipping fuel per node among the listed fuels: oil, methanol, LNG through CH4
+    liquefaction with its methane slip counted as CO2-equivalent, and hydrogen when listed,
+    which makes shipping hydrogen an endogenous hydrogen demand),
     scripts/prepare_sector_network.py:add_aviation adds the kerosene load (scaled by
     sector.aviation_demand_factor, met from the oil balance or from methanol-to-kerosene),
     and the synthesis routes — Fischer-Tropsch and methanolisation Links per cluster with
@@ -131,11 +131,10 @@ models:
     is: sector.imports.enable false — the finished fuel is made domestically unless the study turns imports on
     note: an import scenario names the price per carrier and the cap as settled assumptions
   - aspect: shipping-fuel
-    is: fixed shares (sector.shipping_endogenous false)
+    is: fixed shares (sector.shipping_endogenous [])
     note: >-
-      turning it on replaces the share dicts by an optimised mix; the study says which
-      fuels are on the menu per horizon (sector.shipping_oil / _methanol / _lng /
-      _hydrogen)
+      listing fuels replaces their share dicts by an optimised mix; the study says which
+      fuels it lists (oil, methanol, lng, hydrogen), the same for every horizon
   plots:
   - id: capacity_mix
     role: synthesis, electrolysis and capture capacity per scenario
@@ -146,7 +145,7 @@ models:
   - id: energy_balance
     role: "today's final energy use by carrier: the oil and gas e-fuels would replace"
   version_anchor:
-    ref: 8ac32b87db61256db24d133791ed13fa101bb68f
+    ref: ee7c6d86e475ee17a6af6d49ebf5ba8118b16723
     date: '2026-11-24'
 - model: pypsa-earth
   approach: >-

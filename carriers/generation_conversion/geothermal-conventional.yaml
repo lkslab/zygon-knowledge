@@ -19,7 +19,7 @@ when_to_use:
   - "known in pypsa-eur as: geothermal, geothermal heat, geothermal district heat, geothermal heat direct utilisation, geothermal organic rankine cycle"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Two distinct sides. POWER (electricity workflow, on by default):
@@ -117,13 +117,12 @@ models:
         default, and simply adding it to extendable_carriers.Generator is a
         trap: the cost row carries zero investment, so candidates would be
         free — pair expansion with a cost override. In sector runs the power
-        fleet disappears entirely: remove_elec_base_techs keeps only nuclear
-        among conventionals (pypsa_eur keep-list) and
-        sector.conventional_generation has no geothermal entry; the myopic
-        brownfield step also drops Fueltype "Geothermal" (fueltype_to_drop in
-        add_existing_baseyear). Keeping the fleet as Generators would leave
-        its CO2 (Larderello's 0.12 tCO2/MWh) unbooked, since sector runs book
-        CO2 only through the "co2 atmosphere" bus. HEAT, geology: no
+        fleet stays as Generators by default (geothermal is not in
+        SECTOR_CARRIERS, so add_electricity keeps it); the myopic brownfield
+        step drops Fueltype "Geothermal" (fueltype_to_drop in
+        add_existing_baseyear), so there is no double count. Its CO2
+        (Larderello's 0.12 tCO2/MWh) goes unbooked there, since sector runs
+        book CO2 only through the "co2 atmosphere" bus. HEAT, geology: no
         sediment or permeability map (the hydrothermal assumption above 3 km is
         depth-only, optimistic on crystalline shields such as Fennoscandia),
         no thermal drawdown, no learning (one 2025 cost level for every
@@ -133,7 +132,7 @@ models:
         plants are seeded. Decentral (building-level) geothermal heat pumps
         are the "ground" source in sector.heat_pump_sources rural, a
         different, unlimited heat source.
-      provenance: "scripts/add_electricity.py:attach_conventional_generators; scripts/add_electricity.py:add_co2_emissions; scripts/prepare_sector_network.py:add_heat; scripts/prepare_sector_network.py:add_geothermal_heat_steps; scripts/prepare_sector_network.py:remove_elec_base_techs; scripts/build_geothermal_heat_potential.py:geology_heat_cells; scripts/build_geothermal_heat_potential.py:doublet_calibration; scripts/build_geothermal_heat_potential.py:get_heat_source_power; scripts/lib/geothermal.py:doublet_costs; rules/build_sector.smk:build_geothermal_heat_potential; rules/build_sector.smk:geothermal_heat_source; rules/build_sector.smk:input_geothermal_heat_steps; rules/build_sector.smk:input_heat_source_power; scripts/add_existing_baseyear.py:fueltype_to_drop; scripts/add_brownfield.py:adjust_geothermal_capacity_limits"
+      provenance: "scripts/add_electricity.py:attach_conventional_generators; scripts/add_electricity.py:add_co2_emissions; scripts/prepare_sector_network.py:add_heat; scripts/prepare_sector_network.py:add_geothermal_heat_steps; scripts/add_electricity.py:SECTOR_CARRIERS; scripts/build_geothermal_heat_potential.py:geology_heat_cells; scripts/build_geothermal_heat_potential.py:doublet_calibration; scripts/build_geothermal_heat_potential.py:get_heat_source_power; scripts/lib/geothermal.py:doublet_costs; rules/build_sector.smk:build_geothermal_heat_potential; rules/build_sector.smk:geothermal_heat_source; rules/build_sector.smk:input_geothermal_heat_steps; rules/build_sector.smk:input_heat_source_power; scripts/add_existing_baseyear.py:fueltype_to_drop; scripts/add_brownfield.py:adjust_geothermal_capacity_limits"
     levers:
       - key: electricity.conventional_carriers
         effect: "Include/exclude the existing geothermal power fleet."
@@ -211,17 +210,13 @@ models:
         effect: "Heat sources allowed to feed district heating directly (without heat pump) when hot enough; geothermal is listed by default; under source: geology the per-region temp_geothermal.nc is requested only where geothermal is also an urban central heat pump source (since 492f05d3), otherwise the constant temperature fills the unused profile."
         default: "[geothermal]"
         provenance: "config/config.default.yaml:direct_utilisation_heat_sources; rules/build_sector.smk:build_direct_heat_source_utilisation_profiles"
-      - key: pypsa_eur.Generator
-        effect: "Sector-run keep-list: append 'geothermal' to carry the existing geothermal POWER fleet into sector networks (dropped by default by remove_elec_base_techs) — its CO2 then goes unbooked."
-        default: "[onwind, offwind-ac, offwind-dc, offwind-float, solar-hsat, solar, ror, nuclear]"
-        provenance: "config/config.default.yaml:pypsa_eur; scripts/prepare_sector_network.py:remove_elec_base_techs"
     boundary:
-      - variant: "run with the existing geothermal power fleet (electricity workflow)"
+      - variant: "run with the existing geothermal power fleet (electricity or sector workflow)"
         rung: L0
         note: "default — 'geothermal' in electricity.conventional_carriers"
       - variant: "run without geothermal power"
         rung: L1
-        note: "remove 'geothermal' from electricity.conventional_carriers"
+        note: "remove 'geothermal' from electricity.conventional_carriers (applies to sector runs too)"
       - variant: "expand geothermal power at existing sites"
         rung: L1
         note: "add 'geothermal' to extendable_carriers.Generator AND override investment via costs.overwrites / data/custom_costs.csv (default row is zero-cost); cap nationally with CCL"
@@ -232,11 +227,11 @@ models:
         rung: L1
         note: "the same plus limited_heat_sources.geothermal.source: manz (constant 65 or 85 °C, technology-data cost)"
       - variant: "keep geothermal power in sector runs"
-        rung: L1
-        note: "append 'geothermal' to pypsa_eur.Generator (keep-list of remove_elec_base_techs) — the fleet runs but its CO2 is not booked, since sector runs count CO2 only on the 'co2 atmosphere' bus; sector.conventional_generation is not usable here (it keys Link costs by generator name and would need a fuel bus)"
+        rung: L0
+        note: "default, since 'geothermal' is in electricity.conventional_carriers and not in SECTOR_CARRIERS. The fleet runs but its CO2 is not booked, since sector runs count CO2 only on the 'co2 atmosphere' bus; sector.conventional_generation is not usable here (it keys Link costs by generator name and would need a fuel bus)"
       - variant: "keep geothermal power in sector runs with its CO2 booked"
         rung: L2
-        note: "convert the kept Generators into Links from a free source bus to the AC bus with bus2 'co2 atmosphere' at the carrier's 0.12 t/MWh, in prepare_sector_network after remove_elec_base_techs"
+        note: "convert the kept Generators into Links from a free source bus to the AC bus with bus2 'co2 atmosphere' at the carrier's 0.12 t/MWh, in prepare_sector_network"
       - variant: "add known plants or candidate sites missing from the database"
         rung: L3
         note: "rows in data/custom_powerplants.csv (Fueltype Geothermal) + electricity.custom_powerplants: true"
@@ -295,7 +290,7 @@ models:
         availability: "retrieved by the workflow; shipped archive has 36 units, concentrated in Italy"
       - input: "cost row 'geothermal' in the processed technology-data file"
         required_for: "power-side costs — NOTE zero investment, efficiency 1.0, CO2 intensity 0.12 at this ref"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "Limberger et al. subsurface temperature model (temperature_voxel.nc)"
         required_for: "source: geology (the default), including temp_geothermal.nc for direct utilisation"
         availability: "retrieved by rule retrieve_limberger_temperature (Zenodo 22149195, CC-BY-4.0, md5-checked)"

@@ -18,7 +18,7 @@ when_to_use:
   - "known in pypsa-eur as: home battery, home battery storage, home battery charger, home battery discharger"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Sector runs build the full BTM set by default. With
@@ -79,10 +79,8 @@ models:
         are no kW_per_m2/m2_per_person config keys and no building-footprint
         option. There is no home-battery on/off config switch either — the
         Store comes unconditionally with the LV layer.
-        sector.electricity_distribution_grid_cost_factor is a DEAD KEY at this
-        ref: it exists in config and is validated, but no script reads it —
-        distribution grid cost scaling only works via adjustments.sector (the
-        shipped config example is exactly this factor). No BTM assets exist in
+        There is no distribution grid cost-factor key; cost scaling works via
+        adjustments.sector (the shipped config example is exactly this factor). No BTM assets exist in
         the electricity-only workflow; the whole block lives in
         prepare_sector_network. Rooftop generators do not receive the
         "electricity grid connection" cost adder (add_electricity_grid_connection
@@ -140,7 +138,7 @@ models:
         note: "sector.chp.micro_chp: true (see combined-heat-and-power carrier card)"
       - variant: "scale distribution grid cost"
         rung: L1
-        note: "adjustments.sector.factor.Link.'electricity distribution grid'.capital_cost (ships as the config example); do NOT use sector.electricity_distribution_grid_cost_factor — the key is read by nothing"
+        note: "adjustments.sector.factor.Link.'electricity distribution grid'.capital_cost (ships as the config example)"
       - variant: "cap home battery or rooftop adoption (policy scenario)"
         rung: L1
         note: "adjustments.sector absolute/factor on Store 'home battery' e_nom_max or Generator 'solar rooftop' p_nom_max; per-node caps need an edit in insert_electricity_distribution_grid (L2)"
@@ -175,16 +173,13 @@ models:
       - change: "existing rooftop vintages in brownfield runs"
         anchor: "scripts/add_existing_baseyear.py::add_power_capacities_installed_before_baseyear (solar_rooftop_ratio split)"
         provenance: "scripts/add_existing_baseyear.py:add_power_capacities_installed_before_baseyear"
-      - change: "dead cost-factor key"
-        anchor: "scripts/lib/validation/config/sector.py::electricity_distribution_grid_cost_factor — repair means wiring the factor into insert_electricity_distribution_grid"
-        provenance: "scripts/lib/validation/config/sector.py:electricity_distribution_grid_cost_factor; scripts/prepare_sector_network.py:insert_electricity_distribution_grid"
     data_dependencies:
       - input: "population layout + cutout + solar class regions (inputs of rule build_solar_rooftop_potentials)"
         required_for: "rooftop p_nom_max per (bus, bin)"
         availability: "exists by default (built by the workflow)"
       - input: "cost rows 'solar-rooftop', 'solar-utility', 'home battery storage', 'home battery inverter', 'battery inverter', 'battery storage', 'electricity distribution grid', 'micro CHP', 'decentral water tank storage' (standing losses for heat DSM)"
         required_for: "all BTM assets"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "residential_heat_dsm_profile CSV"
         required_for: "sector.residential_heat.dsm.enable"
         availability: "must be built (rule build_hourly_heat_demand outputs it alongside hourly heat demand)"

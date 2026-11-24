@@ -107,7 +107,7 @@ models:
       temporal: "purely multiplicative on the load profile (efficiency_static); no flow- or peak-dependence"
       scenario: "static across years and scenarios — no per-year dict for the efficiency"
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Two-part explicit mechanism in prepare_sector_network.
@@ -152,15 +152,6 @@ models:
           grid' keeps the LV link lossless AND skips the demand deduction.
         default: "[DC, H2 pipeline, H2 pipeline retrofitted, gas pipeline, electricity distribution grid]"
         provenance: "config/config.default.yaml:transmission_efficiency; scripts/prepare_sector_network.py:lossy_bidirectional_links"
-      - key: sector.electricity_distribution_grid_cost_factor
-        effect: >
-          Documented as multiplying distribution grid investment cost (validation
-          schema) — NOTE: no code
-          applying this factor to the link capital cost was found at this ref in
-          prepare_sector_network.py; treat as potentially vestigial and verify before
-          relying on it.
-        default: "1.0"
-        provenance: "config/config.default.yaml:electricity_distribution_grid_cost_factor; scripts/lib/validation/config/sector.py:electricity_distribution_grid_cost_factor"
     boundary:
       - variant: "turn the distribution grid layer off"
         rung: L0
@@ -182,7 +173,7 @@ models:
         note: "losses are link conversion losses; a tracking Load is flow-dependent — custom component/constraint logic"
       - variant: "distribution grid cost sensitivity"
         rung: L1
-        note: "adjustments.sector factor on the 'electricity distribution grid' Link capital_cost (the shipped config example); sector.electricity_distribution_grid_cost_factor is read by no script at this ref"
+        note: "adjustments.sector factor on the 'electricity distribution grid' Link capital_cost (the shipped config example); there is no dedicated cost-factor key"
     where:
       - change: "LV layer, demand deduction, load/DER relocation, rooftop PV, home battery"
         anchor: "scripts/prepare_sector_network.py:insert_electricity_distribution_grid"
@@ -190,9 +181,6 @@ models:
       - change: "lossy split of the LV link (and other enabled carriers)"
         anchor: "scripts/prepare_sector_network.py:lossy_bidirectional_links (loop over options transmission_efficiency)"
         provenance: "scripts/prepare_sector_network.py:lossy_bidirectional_links"
-      - change: "cost-factor key validation (no consumer in scripts)"
-        anchor: "scripts/lib/validation/config/sector.py::electricity_distribution_grid_cost_factor"
-        provenance: "config/config.default.yaml:electricity_distribution_grid_cost_factor; scripts/lib/validation/config/sector.py:electricity_distribution_grid_cost_factor"
     data_dependencies:
       - input: "cost data rows 'electricity distribution grid' (capital_cost, lifetime)"
         required_for: "CAPEX of the extendable HV-LV link"

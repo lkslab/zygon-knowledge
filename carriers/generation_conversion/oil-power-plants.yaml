@@ -26,7 +26,7 @@ when_to_use:
   - "known in pypsa-eur as: oil"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Electricity workflow: "oil" is in electricity.conventional_carriers, so
@@ -47,9 +47,8 @@ models:
         rule build_powerplants -> rule compose_network, which calls
         add_electricity.py (attach_conventional_generators; costs from rule
         process_cost_data).
-        Sector overnight: remove_elec_base_techs strips oil generators when the
-        sector network is built (the pypsa_eur keep-list retains only nuclear
-        among conventionals) and sector.conventional_generation has no oil
+        Sector overnight: add_electricity skips oil generators in sector runs
+        (oil is in SECTOR_CARRIERS) and sector.conventional_generation has no oil
         entry by default — so overnight sector runs contain NO oil power.
         Adding "oil: oil" to sector.conventional_generation makes
         add_generation create extendable oil->AC Links at every node, bus0 =
@@ -74,7 +73,7 @@ models:
         re-added oil plants competes with Fischer-Tropsch synfuel and green
         oil imports on the same EU oil bus — there is no dedicated
         fossil-only power fuel.
-      provenance: "scripts/add_electricity.py:attach_conventional_generators; scripts/prepare_sector_network.py:add_generation; scripts/prepare_sector_network.py:define_spatial; scripts/add_existing_baseyear.py:add_power_capacities_installed_before_baseyear; scripts/prepare_sector_network.py:remove_elec_base_techs"
+      provenance: "scripts/add_electricity.py:attach_conventional_generators; scripts/prepare_sector_network.py:add_generation; scripts/prepare_sector_network.py:define_spatial; scripts/add_existing_baseyear.py:add_power_capacities_installed_before_baseyear; scripts/add_electricity.py:SECTOR_CARRIERS"
     levers:
       - key: electricity.conventional_carriers
         effect: "Include/exclude the existing oil fleet (remove 'oil' to drop it)."
@@ -161,7 +160,7 @@ models:
         availability: "retrieved by the workflow; European coverage decent but small peakers/backup units often missing — use custom_powerplants.csv"
       - input: "cost row 'oil' (fuel price, CO2 intensity) and an oil plant technology row for efficiency/VOM"
         required_for: "oil plant economics"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "data/custom_powerplants.csv"
         required_for: "user-added oil/diesel plants"
         availability: "template exists by default; rows user-authored"

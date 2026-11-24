@@ -150,30 +150,30 @@ models:
       temporal: "flat profile or ship batch cycles (fill/travel/unload/pause from export.ship.*); optional export-bus store decouples production timing"
       scenario: "h2export list sweeps volumes as separate runs; policy_config.hydrogen adds matching/additionality scenario variants"
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Nothing — pypsa-eur has no hydrogen (or other fuel) export demand mechanism.
         Grepping rules/ and scripts/prepare_sector_network.py for export/h2export finds
         no export bus, export load, or export wildcard. Hydrogen demand arises only
         endogenously (industry, shipping, synfuels): e.g. add_shipping creates Loads
-        with carrier "H2 for shipping". The mirror concept exists instead: Europe as an
+        with carrier "shipping hydrogen". The mirror concept exists instead: Europe as an
         IMPORTER of green fuels via add_import_options (sector.imports.enable, fixed
         import prices per carrier including H2).
       mechanism: >
-        Absent. Nearest in-repo patterns: (a) add_shipping's "H2 for shipping" Load on
-        nodal H2 buses — the template for attaching an exogenous H2 demand at chosen
+        Absent. Nearest in-repo patterns: (a) add_shipping's "shipping hydrogen" Load
+        on a nodal demand bus fed from the nodal H2 bus, the template for attaching an exogenous H2 demand at chosen
         nodes; (b) add_import_options — the reverse (import) mechanism with per-carrier
         prices.
       not_covered: >
         Any representation of hydrogen leaving the modelled system as a demand:
         no export ports, no export volume wildcard, no export price sink.
-      provenance: "scripts/prepare_sector_network.py:add_shipping; scripts/prepare_sector_network.py:H2 for shipping; scripts/prepare_sector_network.py:add_import_options; config/config.default.yaml:imports"
+      provenance: "scripts/prepare_sector_network.py:add_shipping; scripts/prepare_sector_network.py:shipping hydrogen; scripts/prepare_sector_network.py:add_import_options; config/config.default.yaml:imports"
     levers: []
     boundary:
       - variant: "fixed H2 export demand at selected (e.g. port) nodes"
         rung: L3
-        note: "add a Load on the chosen '<node> H2' buses with an annual-volume-derived p_set, following the add_shipping 'H2 for shipping' pattern; needs a small data input for volumes/locations plus a script edit — no native config"
+        note: "add a Load on the chosen '<node> H2' buses with an annual-volume-derived p_set, following the add_shipping 'shipping hydrogen' pattern; needs a small data input for volumes/locations plus a script edit — no native config"
       - variant: "price-driven endogenous export sink"
         rung: L3
         note: "add a negative-sign Generator (or Load with negative marginal utility via a Store/Link construction) on an export bus, priced at an assumed world-market price — mirror of add_import_options' fixed prices"

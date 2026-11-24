@@ -23,7 +23,7 @@ when_to_use:
   - "sponge iron"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Covered as an exogenously phased-in demand route. In
@@ -46,9 +46,9 @@ models:
         and iron capacities (today's primary sites as proxy for conversion)
         including "announced" plants starting by 2030, retirement filter after
         2030. That is the default (exogenous) path. With
-        sector.endogenous_sectors.enable (steel listed; off by default, see
+        steel in sector.endogenous_sectors (empty by default, see
         steel-routes-endogenous and the method industry-routes-endogenous)
-        add_steel makes the route a choice instead: per node a "DRI reduction"
+        the steel block of add_industry makes the route a choice instead: per node a "DRI reduction"
         bus fed by "<node> H2 DRI reduction" (carrier H2 DRI, from the H2 bus)
         or "<node> gas DRI reduction" (carrier gas DRI, from the gas bus, its
         CO2 onto a "gas DRI emission" bus that is vented or captured), an
@@ -82,10 +82,10 @@ models:
         cost instead), no iron-ore or scrap material flows, a flat steel (or
         DRI hydrogen) demand over all snapshots with no hbi or steel store,
         although upstream H2 storage effectively buffers it.
-      provenance: "scripts/build_industry_sector_ratios.py:H2_DRI; scripts/build_industrial_production_per_country_tomorrow.py:dri_fraction; scripts/prepare_sector_network.py:H2 for industry; scripts/build_industrial_energy_demand_per_node.py; scripts/build_industrial_distribution_key.py:steel_processes; scripts/prepare_sector_network.py:add_steel"
+      provenance: "scripts/build_industry_sector_ratios.py:H2_DRI; scripts/build_industrial_production_per_country_tomorrow.py:dri_fraction; scripts/prepare_sector_network.py:H2 for industry; scripts/build_industrial_energy_demand_per_node.py; scripts/build_industrial_distribution_key.py:steel_processes; scripts/build_industrial_energy_demand_per_node.py:ENDOGENOUS_SUBSECTORS"
     levers:
       - key: industry.DRI_fraction
-        effect: "Per-horizon fraction of persistent primary steel produced via H2-DRI+EAF; the rest stays as integrated steelworks. Dormant for primary steel once sector.endogenous_sectors routes steel endogenously."
+        effect: "Per-horizon fraction of persistent primary steel produced via H2-DRI+EAF; the rest stays as integrated steelworks. Dormant for primary steel once steel is in sector.endogenous_sectors."
         default: "{2020: 0, 2025: 0, 2030: 0.05, 2035: 0.2, 2040: 0.4, 2045: 0.7, 2050: 1}"
         provenance: "config/config.default.yaml:DRI_fraction; scripts/build_industrial_production_per_country_tomorrow.py:dri_fraction"
       - key: industry.H2_DRI
@@ -105,9 +105,9 @@ models:
         default: "{2020: 0.0, ..., 2050: 1.0}"
         provenance: "config/config.default.yaml:sector_ratios_fraction_future; scripts/build_industry_sector_ratios_intermediate.py:sector_ratios_fraction_future"
       - key: sector.endogenous_sectors
-        effect: "enable true with steel in subsectors: the DRI route becomes extendable H2 DRI / gas DRI reduction links, a DRI furnace and an EAF competing with a coal BOF on cost for a per-node steel load."
-        default: "{enable: false, subsectors: [steel, cement]}"
-        provenance: "config/config.default.yaml:endogenous_sectors; scripts/prepare_sector_network.py:add_steel"
+        effect: "With steel listed: the DRI route becomes extendable H2 DRI / gas DRI reduction links, a DRI furnace and an EAF competing with a coal BOF on cost for a per-node steel load."
+        default: "[]"
+        provenance: "config/config.default.yaml:endogenous_sectors; scripts/prepare_sector_network.py:add_industry"
       - key: sector.hbi_relocation
         effect: "With the routes on: one EU hbi bus, so DRI can be built away from the steel sites (at hydrogen hubs) and the iron reaches the EAFs at no transport cost."
         default: "false"
@@ -124,7 +124,7 @@ models:
         note: "acts on the H2 supply side, not on steel: sector.SMR / sector.SMR_cc false removes fossil hydrogen options network-wide"
       - variant: "natural-gas DRI as bridge technology"
         rung: L0
-        note: "with sector.endogenous_sectors.enable the '<node> gas DRI reduction' link feeds the same DRI furnace from the gas bus (CO2 vented or captured); on the exogenous path there is still no NG-DRI column"
+        note: "with steel in sector.endogenous_sectors the '<node> gas DRI reduction' link feeds the same DRI furnace from the gas bus (CO2 vented or captured); on the exogenous path there is still no NG-DRI column"
       - variant: "country-specific DRI shares"
         rung: L2
         note: "DRI_fraction is one EU-wide scalar per horizon, applied via EU-total scaling in build_industrial_production_per_country_tomorrow"
@@ -133,7 +133,7 @@ models:
         note: "sector.hbi_relocation: true together with the routes switch (one EU hbi bus, the DRI goes where hydrogen is cheapest, hbi moves free of cost); on the exogenous path edit the 'DRI + EAF' branch of build_nodal_distribution_key (L2)"
       - variant: "endogenous blast-furnace vs H2-DRI choice"
         rung: L0
-        note: "with sector.endogenous_sectors.enable (see [[steel-routes-endogenous]] and the method [[industry-routes-endogenous]])"
+        note: "with steel in sector.endogenous_sectors (see [[steel-routes-endogenous]] and the method [[industry-routes-endogenous]])"
       - variant: "DRI plant with H2 storage flexibility on-site"
         rung: L5
         note: "the steel load is flat and there is no hbi or steel store; nodal H2 stores already buffer supply, but explicit DRI flexibility needs a bespoke Link+Store demand model"
@@ -151,8 +151,8 @@ models:
         anchor: "scripts/prepare_sector_network.py::add_industry ('H2 for industry' Load)"
         provenance: "scripts/prepare_sector_network.py:H2 for industry"
       - change: "endogenous DRI route (H2 DRI / gas DRI reduction, DRI furnace, EAF, BOF, vent and capture)"
-        anchor: "scripts/prepare_sector_network.py::add_steel"
-        provenance: "scripts/prepare_sector_network.py:add_steel"
+        anchor: "scripts/prepare_sector_network.py::add_industry (steel block)"
+        provenance: "scripts/prepare_sector_network.py:add_industry"
     data_dependencies:
       - input: "GEM Global Steel Plant Tracker xlsx (BOF/OHF/iron capacities, announced plants, start/retired dates)"
         required_for: "nodal placement of DRI+EAF production"

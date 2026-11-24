@@ -124,7 +124,7 @@ models:
       scenario: "scenario.demand wildcard x planning_horizons via CAGR and fuel-share data files; load_options.scale for the power model"
 
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
 
     out_of_box:
       covers: >
@@ -134,21 +134,20 @@ models:
         synthetic data, and build_electricity_demand_base distributes it to nodes by
         distribution keys (energy-atlas raster where available, GB DESNZ sub-national
         consumption, else NUTS3 GDP/population weights); attach_load applies
-        load.scaling_factor. In the sector workflow all base loads get carrier 'electricity'
-        (patch_electricity_network); electric heating is then subtracted in build_heat_demand
+        load.scaling_factor. All base loads carry carrier 'electricity' (set in
+        attach_load); electric heating is then subtracted in build_heat_demand
         (using JRC 'electricity residential space/water' totals) and today's industrial
         electricity is scaled out in add_industry — what remains implicitly contains
         residential appliance/lighting electricity but is never labelled residential.
       mechanism: >
         rules build_electricity_demand -> build_electricity_demand_base -> add_electricity:
-        attach_load; prepare_sector_network: patch_electricity_network (carrier
-        'electricity'), build_heat_demand (electric-heat subtraction), add_industry
+        attach_load (carrier 'electricity'); prepare_sector_network: build_heat_demand (electric-heat subtraction), add_industry
         (industry-electricity subtraction).
       not_covered: >
         No residential/services split of the electric load, no appliance end uses, no
         residential-specific profile; JRC-IDEES columns 'electricity residential' exist in the
         energy totals but are not used to build a separate network load.
-      provenance: "scripts/build_electricity_demand.py:load_timeseries; scripts/build_electricity_demand_base.py:upsample_load; scripts/add_electricity.py:attach_load; scripts/prepare_sector_network.py:patch_electricity_network; scripts/prepare_sector_network.py:electric_heat_supply; scripts/prepare_sector_network.py:current electricity"
+      provenance: "scripts/build_electricity_demand.py:load_timeseries; scripts/build_electricity_demand_base.py:upsample_load; scripts/add_electricity.py:attach_load; scripts/prepare_sector_network.py:electric_heat_supply; scripts/prepare_sector_network.py:current electricity"
 
     levers:
       - key: load.scaling_factor

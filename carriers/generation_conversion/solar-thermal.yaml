@@ -17,7 +17,7 @@ when_to_use:
   - "known in pypsa-eur as: solar thermal, residential rural solar thermal, services rural solar thermal, residential urban decentral solar thermal, services urban decentral solar thermal, urban central solar thermal"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         On by default (sector.solar_thermal: true). Rule
@@ -114,7 +114,7 @@ models:
         note: "one atlite parameterisation and one cost row per central/decentral; multiple collector classes need parallel profiles + generators"
       - variant: "solar process heat for industry"
         rung: L2
-        note: "industry heat has no solar route; with sector.industry_t.endogen (fork) the band buses exist (served by gas/H2/biomass firing, electric boilers and heat pumps in add_t_industry*), so a solar-thermal link onto heat100-200 industry is a code branch there plus the profile input"
+        note: "industry heat has no solar route; with sector.industry_heat.enable the band buses exist (served by gas/H2/biomass firing, electric boilers and heat pumps in add_industry_heat), so a solar-thermal link onto heat100-200 industry is a code branch there plus the profile input"
       - variant: "existing solar thermal stock (brownfield)"
         rung: L2
         note: "not in the myopic heating vintages; extend add_heating_capacities_installed_before_baseyear and the existing_heating_raw.csv data (L3) to include it"
@@ -134,7 +134,7 @@ models:
         availability: "exists by default (cutout chain)"
       - input: "cost rows 'central solar thermal', 'decentral solar thermal'"
         required_for: "capital cost and lifetime"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
   - model: pypsa-earth
     version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
 

@@ -15,7 +15,7 @@ when_to_use:
   - "pypsa-eur carrier names: allam gas (and allam methanol, covered in methanol-to-power)"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Implemented but OFF by default (sector.allam_cycle_gas: false). When
@@ -115,7 +115,7 @@ models:
     data_dependencies:
       - input: "cost rows 'allam' and 'gas' (CO2 intensity, fuel price) in the technology-data costs file"
         required_for: "plant economics and the carbon coefficients"
-        availability: "exists by default via retrieve_cost_data — but the allam row is flagged 'Own assumption' in its source field"
+        availability: "exists by default via retrieve_costs — but the allam row is flagged 'Own assumption' in its source field"
       - input: "per-node gas buses with supply (SciGRID gas network chain)"
         required_for: "fuel input at each node"
         availability: "must be built (rules build_gas_network / cluster_gas_network); exists by default in the sector workflow"

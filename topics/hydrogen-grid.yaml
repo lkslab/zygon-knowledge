@@ -28,8 +28,8 @@ models:
     heavy transport, re-electrification — fixed loads by default, but two of them can be
     made endogenous demand channels: with industry-routes-endogenous the H2 DRI reduction
     link competes with gas DRI and the blast furnace for primary steel, and with
-    shipping-fuel-endogenous (sector.shipping_hydrogen on) H2 for shipping competes with
-    oil, methanol and LNG, so the hydrogen they take is found, not set. The study scope
+    shipping-fuel-endogenous (hydrogen in sector.shipping_endogenous) shipping hydrogen
+    competes with oil, methanol and LNG, so the hydrogen they take is found, not set. The study scope
     is sector-coupled by nature,
     and the h2-network-expansion method settles the network keys: the backbone pair
     (H2_network on/off), repurposing (H2_retrofit), imports (sector.imports). The
@@ -103,7 +103,7 @@ models:
   - id: shipping-fuel-endogenous
     role: >-
       hydrogen for shipping as a model choice against oil, methanol and LNG, when the
-      study puts hydrogen on the shipping menu (sector.shipping_hydrogen)
+      study lists hydrogen in sector.shipping_endogenous
   defaults:
   - aspect: sector-coupling
     is: >-
@@ -121,13 +121,13 @@ models:
       config cannot drop a price key, so a hydrogen-only import case prices the others
       out (a very high sector.imports.price for each) and says so
   - aspect: industry-routes
-    is: exogenous (sector.endogenous_sectors.enable false) — the DRI hydrogen follows the industry.DRI_fraction ramp
+    is: exogenous (steel not in sector.endogenous_sectors) — the DRI hydrogen follows the industry.DRI_fraction ramp
     note: >-
       with the routes on the steel hydrogen is endogenous and DRI_fraction is dormant for
       primary steel; the study says which it assumes
   - aspect: shipping-fuel
-    is: fixed shares (sector.shipping_endogenous false) — no hydrogen ships in the shipped shares
-    note: endogenous shipping still leaves hydrogen off the menu unless sector.shipping_hydrogen is true
+    is: fixed shares (sector.shipping_endogenous [], no hydrogen ships in the shipped shares)
+    note: endogenous shipping leaves hydrogen at its share (0 by default) unless hydrogen is listed in sector.shipping_endogenous
   - aspect: industry-load-profiles
     is: flat (industry.temporal_electricity_industry_load false)
     note: the hourly FfE industry electricity shape is method industry-load-profiles
@@ -139,7 +139,7 @@ models:
   - id: compare_system_cost
     role: backbone vs no backbone, repurposed vs new-build, import vs domestic
   version_anchor:
-    ref: 8ac32b87db61256db24d133791ed13fa101bb68f
+    ref: ee7c6d86e475ee17a6af6d49ebf5ba8118b16723
     date: '2026-11-24'
 - model: pypsa-earth
   approach: >-

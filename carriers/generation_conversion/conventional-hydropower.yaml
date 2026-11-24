@@ -16,7 +16,7 @@ when_to_use:
   - "known in pypsa-eur as: hydro, hydro reservoir, hydroelectricity"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Existing fleet fully covered, expansion not. 'hydro' is in
@@ -53,8 +53,8 @@ models:
         'capital_cost'] (nonzero row) to the fixed reservoir fleet
         unconditionally — a constant objective term for non-extendable
         assets. All three groups are added with fixed p_nom (no
-        p_nom_extendable); sector runs keep them via the pypsa_eur
-        keep-lists (Generator: ror; StorageUnit: PHS, hydro).
+        p_nom_extendable); sector runs keep them (none of ror, PHS, hydro
+        is in SECTOR_CARRIERS of add_electricity).
       mechanism: >
         rule build_hydro_profile (EIA-normalised country runoff;
         wildcard-independent single output profile_hydro.nc — the
@@ -202,7 +202,7 @@ models:
         availability: "exists by default; some countries have no E_store entry (fallback 6 h with a logged warning)"
       - input: "technology-data cost rows 'hydro', 'PHS', 'ror'"
         required_for: "efficiencies and capital/marginal cost attributes"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
   - model: pypsa-earth
     version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
 

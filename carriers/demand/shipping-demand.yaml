@@ -13,7 +13,7 @@ when_to_use:
   - "international bunkers emissions"
   - "scale shipping demand"
   - "H2 liquefaction for shipping"
-  - "known in pypsa-eur as: shipping, shipping oil, H2 for shipping"
+  - "known in pypsa-eur as: shipping, shipping oil, shipping methanol, shipping LNG, shipping hydrogen"
 
 models:
   - model: pypsa-earth
@@ -119,58 +119,58 @@ models:
       scenario: "H2 share dict keyed '{demand}_{planning_horizons}'; totals via CAGR csvs per {demand} wildcard"
 
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
-        Nodal navigation demand split by default per investment year into 'H2 for
-        shipping' (with optional liquefaction), 'shipping methanol', 'shipping oil' and
-        'shipping LNG' loads (the LNG share is zero by default), each with its own
-        efficiency conversion relative to fuel oil, CO2 booked on the supply links;
-        international demand allocated by real port cargo volumes, domestic by
-        population. With sector.shipping_endogenous (off by default; method
-        shipping-fuel-endogenous) the fuel mix is an optimisation choice instead: one
-        '<node> shipping demand' load in oil-equivalent MWh on a '<node> shipping' bus,
-        served by extendable 'shipping oil', 'shipping methanol', 'shipping LNG' and
-        (if enabled) 'H2 for shipping' links.
+        Nodal navigation demand split by default per investment year into 'shipping
+        hydrogen', 'shipping methanol', 'shipping oil' and 'shipping LNG' loads (the
+        hydrogen and LNG shares are zero by default), each with its own efficiency
+        conversion relative to fuel oil, CO2 booked on the supply links; international
+        demand allocated by real port cargo volumes, domestic by population. Fuels
+        listed in sector.shipping_endogenous (empty by default; method
+        shipping-fuel-endogenous) are an optimisation choice instead: they compete for
+        the demand the exogenous shares of the other fuels leave uncovered, through one
+        '<node> shipping demand' load in oil-equivalent MWh on a '<node> shipping' bus.
       mechanism: >
         rule build_shipping_demand (scripts/build_shipping_demand.py) distributes each
         country's 'total international navigation' across regions by the outflow volumes
         of ports from the attributed-ports dataset (sjoin_nearest of ports to regions,
         properties_outflows fractions). add_shipping in scripts/prepare_sector_network.py
         adds population-weighted 'total domestic navigation', forms p_set = total * 1e6 /
-        nhours, and applies get(shipping_{hydrogen,methanol,oil}_share, investment_year).
-        H2 demand is scaled by shipping_oil_efficiency / fuel-cell efficiency (liquefied
-        via 'H2 liquefaction' links if shipping_hydrogen_liquefaction); methanol by
-        shipping_oil_efficiency / shipping_methanol_efficiency on 'shipping methanol'
-        buses (regional per methanol.regional_methanol_demand); oil on 'shipping oil'
-        buses (regional per regional_oil_demand). Shares summing to != 1 are allowed and
-        act as demand scaling (logged warning). LNG in both modes passes through a
-        per-node '<node> LNG' bus fed from the gas bus by a 'CH4 liquefaction' link
-        (_add_lng_liquefaction, technology-data electricity input and capital cost); its
-        CO2 is booked as CO2-equivalent, the burnt share at the gas CO2 intensity plus
-        the slipped methane (shipping_lng_methane_slip, FuelEU Maritime) at
-        shipping_methane_gwp100. Endogenous mode (_add_shipping_endogenous): each link
-        converts its fuel into oil-equivalent at its engine efficiency over
-        shipping_oil_efficiency (methanol 0.46/0.40, LNG 0.45 x (1 - slip)/0.40, H2 the
-        fuel-cell efficiency/0.40), with methanol's CO2 at the methanolisation
-        carbondioxide-input; the per-fuel flags shipping_oil / shipping_methanol /
-        shipping_lng / shipping_hydrogen (bool or year-indexed dict) set the menu per
-        horizon.
-        No ammonia shipping in either mode (not in the endogenous menu either); flat
-        profile (no seasonality); port allocation applies only to international
-        navigation (domestic is population-weighted); no explicit efficiency-improvement
-        pathway for ships beyond the static efficiency ratios. In endogenous mode the
-        links carry no ship or engine capital cost and no fleet turnover, so the mix is
-        bounded only by fuel costs and the economy-wide CO2 limit, and the LNG engine
-        efficiency (0.45) is a placeholder.
-      provenance: "scripts/build_shipping_demand.py:properties_outflows;scripts/prepare_sector_network.py:add_shipping;rules/build_sector.smk:rule build_shipping_demand;scripts/prepare_sector_network.py:_add_shipping_endogenous;scripts/prepare_sector_network.py:_add_lng_liquefaction;scripts/prepare_sector_network.py:_shipping_lng_co2_equivalent"
+        nhours, and applies get(shipping_{hydrogen,methanol,oil,lng}_share,
+        investment_year), with share 0 for every fuel in shipping_endogenous. Per MWh of
+        oil-equivalent demand a fuel needs shipping_oil_efficiency / its own efficiency:
+        methanol shipping_methanol_efficiency, LNG shipping_lng_efficiency (which
+        includes the slipped fuel), hydrogen the fuel-cell efficiency, times the
+        'H2 liquefaction' hydrogen input. Exogenous fuels get a load in fuel units on a
+        '<node> shipping <fuel>' bus (methanol and oil on one EU bus unless
+        methanol.regional_methanol_demand / regional_oil_demand) fed by a ' conversion'
+        link. Hydrogen always pays H2 liquefaction (capital cost and electricity input on
+        the link); LNG links run from the gas bus and pay CH4 liquefaction (technology-data
+        electricity input and capital cost), with CO2 booked as CO2-equivalent, the burnt
+        share at the gas CO2 intensity plus the slipped methane (shipping_lng_methane_slip,
+        FuelEU Maritime) at shipping_methane_gwp100. Methanol's CO2 is the
+        methanolisation carbondioxide-input. Exogenous shares summing to != 1 without
+        endogenous fuels are allowed and act as demand scaling (logged warning); with
+        endogenous fuels the residual 1 - sum is optimised, and none is left if the
+        exogenous shares reach 1. Endogenous links are extendable with p_min_pu 1 (flat
+        output over the year) and efficiency 1 / fuel demand.
+      not_covered: >
+        No ammonia shipping in either mode; flat profile (no seasonality); port
+        allocation applies only to international navigation (domestic is
+        population-weighted); no explicit efficiency-improvement pathway for ships beyond
+        the static efficiency ratios. Endogenous links carry no ship or engine capital
+        cost and no fleet turnover, so the optimised mix is bounded only by fuel costs,
+        liquefaction costs and the economy-wide CO2 limit, and the cheapest fuel tends to
+        take the whole residual.
+      provenance: "scripts/build_shipping_demand.py:properties_outflows;scripts/prepare_sector_network.py:add_shipping;rules/build_sector.smk:rule build_shipping_demand;scripts/prepare_sector_network.py:shipping_endogenous;scripts/prepare_sector_network.py:lng_co2_intensity"
     levers:
       - key: sector.shipping
         effect: "Toggles add_shipping on/off."
         default: "true"
         provenance: "config/config.default.yaml:shipping;scripts/prepare_sector_network.py:add_shipping"
       - key: sector.shipping_hydrogen_share
-        effect: "H2 share per investment year (dict 2020-2050)."
+        effect: "H2 share per investment year (dict 2020-2050), always liquefied."
         default: "0 for all years"
         provenance: "config/config.default.yaml:shipping_hydrogen_share;scripts/prepare_sector_network.py:shipping_hydrogen_share"
       - key: sector.shipping_methanol_share
@@ -187,28 +187,20 @@ models:
         provenance: "config/config.default.yaml:shipping_oil_efficiency;scripts/prepare_sector_network.py:shipping_oil_efficiency"
       - key: sector.shipping_methanol_efficiency
         effect: "Methanol propulsion efficiency (demand multiplier oil_eff/methanol_eff)."
-        default: "0.46"
+        default: "0.4"
         provenance: "config/config.default.yaml:shipping_methanol_efficiency;scripts/prepare_sector_network.py:shipping_methanol_efficiency"
-      - key: sector.shipping_hydrogen_liquefaction
-        effect: "Serve shipping H2 as liquid H2 via liquefaction links."
-        default: "false"
-        provenance: "config/config.default.yaml:shipping_hydrogen_liquefaction;scripts/prepare_sector_network.py:shipping_hydrogen_liquefaction"
       - key: sector.shipping_endogenous
-        effect: "true replaces the fixed shares by an endogenous fuel choice: one oil-equivalent shipping load per node served by extendable oil, methanol, LNG and (if enabled) hydrogen links."
-        default: "false"
-        provenance: "config/config.default.yaml:shipping_endogenous;scripts/prepare_sector_network.py:_add_shipping_endogenous"
-      - key: sector.shipping_oil / shipping_methanol / shipping_lng / shipping_hydrogen
-        effect: "Endogenous mode only: which fuels are on the menu, a bool or a year-indexed dict per fuel."
-        default: "oil true, methanol true, lng true, hydrogen false"
-        provenance: "config/config.default.yaml:shipping_methanol;config/config.default.yaml:shipping_hydrogen;scripts/prepare_sector_network.py:_add_shipping_endogenous"
+        effect: "List of fuels (hydrogen, methanol, oil, lng) whose share is optimised. Their own *_share is ignored and they compete for the demand the other fuels' shares leave uncovered, via extendable flat-output links onto one oil-equivalent '<node> shipping' bus. E.g. [methanol, oil, lng] with default shares leaves hydrogen (share 0) as the only exogenous fuel and optimises the full demand."
+        default: "[] (all fuels exogenous)"
+        provenance: "config/config.default.yaml:shipping_endogenous;scripts/prepare_sector_network.py:shipping_endogenous"
       - key: sector.shipping_lng_share
-        effect: "Exogenous mode: LNG share per investment year, served through CH4 liquefaction."
+        effect: "LNG share per investment year, served through CH4 liquefaction."
         default: "0 for all years"
         provenance: "config/config.default.yaml:shipping_lng_share;scripts/prepare_sector_network.py:shipping_lng_share"
       - key: sector.shipping_lng_efficiency / shipping_lng_methane_slip / shipping_methane_gwp100
         effect: "LNG engine efficiency (placeholder), methane slip share (FuelEU Maritime Annex II, LNG Otto dual-fuel) and the GWP100 the slip is booked at as CO2-equivalent (IPCC AR4)."
-        default: "0.45 / 0.031 / 25.0"
-        provenance: "config/config.default.yaml:shipping_lng_efficiency;config/config.default.yaml:shipping_lng_methane_slip;config/config.default.yaml:shipping_methane_gwp100;scripts/prepare_sector_network.py:_shipping_lng_co2_equivalent"
+        default: "0.4 / 0.031 / 25.0"
+        provenance: "config/config.default.yaml:shipping_lng_efficiency;config/config.default.yaml:shipping_lng_methane_slip;config/config.default.yaml:shipping_methane_gwp100;scripts/prepare_sector_network.py:lng_co2_intensity"
       - key: sector.regional_oil_demand
         effect: "Regional vs single EU bus for the shipping-oil load."
         default: "true"
@@ -227,13 +219,13 @@ models:
         note: "Edit the per-year dicts of the four shares (hydrogen, methanol, oil, LNG; must sum to 1 unless intentional scaling)."
       - variant: "let the model choose the marine fuel mix (oil, methanol, LNG, hydrogen)"
         rung: L0
-        note: "sector.shipping_endogenous: true (method [[shipping-fuel-endogenous]]); restrict the menu per horizon with the shipping_<fuel> flags; LNG goes through CH4 liquefaction and its methane slip counts as CO2-equivalent"
+        note: "List the competing fuels in sector.shipping_endogenous (method [[shipping-fuel-endogenous]]); the list is the same for every horizon, but the per-year shares of the other fuels set how much demand is left to optimise; LNG goes through CH4 liquefaction and its methane slip counts as CO2-equivalent"
       - variant: "scale total shipping demand"
         rung: L1
-        note: "Deliberately let the three shares sum to !=1 (the code warns but proceeds: 'increased or decreased demand assumptions')."
+        note: "Deliberately let the four shares sum to !=1 with shipping_endogenous empty (the code warns but proceeds: 'increased or decreased demand assumptions')."
       - variant: "ammonia shipping"
         rung: L5
-        note: "No shipping ammonia share/carrier in the config or add_shipping, and not in the endogenous menu either; new logic needed (the methanol branch, or a link onto the endogenous '<node> shipping' bus, is the template)."
+        note: "No shipping ammonia share/carrier in the config or add_shipping, and not an allowed shipping_endogenous fuel either; new logic needed (a new entry in the supply dict of add_shipping is the template)."
       - variant: "different port allocation (own port/cargo data)"
         rung: L3
         note: "Replace the attributed_ports dataset input (datasets.attributed_ports / rule retrieve_attributed_ports) with same-schema geojson including properties_outflows."
@@ -244,9 +236,9 @@ models:
       - change: "fuel split, efficiencies, liquefaction, emissions"
         anchor: "scripts/prepare_sector_network.py:add_shipping"
         provenance: "scripts/prepare_sector_network.py:add_shipping"
-      - change: "endogenous fuel menu and LNG liquefaction"
-        anchor: "scripts/prepare_sector_network.py:_add_shipping_endogenous / _add_lng_liquefaction"
-        provenance: "scripts/prepare_sector_network.py:_add_shipping_endogenous;scripts/prepare_sector_network.py:_add_lng_liquefaction"
+      - change: "endogenous fuel competition and LNG/H2 liquefaction"
+        anchor: "scripts/prepare_sector_network.py:add_shipping (endogenous and supply dicts)"
+        provenance: "scripts/prepare_sector_network.py:shipping_endogenous;scripts/prepare_sector_network.py:lng_co2_intensity"
       - change: "international-navigation port allocation"
         anchor: "rule build_shipping_demand -> scripts/build_shipping_demand.py"
         provenance: "rules/build_sector.smk:rule build_shipping_demand;scripts/build_shipping_demand.py:sjoin_nearest"
@@ -270,4 +262,4 @@ models:
       driver: "Country domestic + international navigation final energy (JRC-IDEES/eurostat)"
       spatial: "International: port cargo-outflow fractions (attributed ports, nearest region); domestic: population weighting"
       temporal: "Annual-constant static p_set"
-      scenario: "Four per-year fuel-share dicts (2020-2050) via get(); shares summing !=1 scale demand; or, with sector.shipping_endogenous, per-fuel menu flags and an optimised mix; baseline via energy.energy_totals_year"
+      scenario: "Four per-year fuel-share dicts (2020-2050) via get(); shares summing !=1 scale demand; fuels listed in sector.shipping_endogenous share the residual through an optimised mix; baseline via energy.energy_totals_year"

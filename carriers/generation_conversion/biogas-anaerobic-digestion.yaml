@@ -23,7 +23,7 @@ when_to_use:
   - "known in pypsa-eur as: biogas, biogas to gas, biogas to gas CC, biogas to methanol, e-biogas-methanol"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         A regionally-resolved biogas resource used by upgrading into the gas
@@ -53,7 +53,7 @@ models:
         CC" + "biomass CHP capture" rows). The upgraded biomethane is then
         indistinguishable from fossil gas at the gas bus and feeds every gas
         consumer (CHP, boilers, OCGT/CCGT, industry). Methanol from biogas
-        (fork commit d2e0d486, after Zhang et al. 2026, arXiv 2604.12080):
+        (fork commit f2bd0ecb, after Zhang et al. 2026, arXiv 2604.12080):
         sector.methanol.biogas_to_methanol adds "<biogas bus> to methanol"
         (carrier "biogas to methanol", partial oxidation of raw biogas, 0.6601
         MWh methanol per MWh biogas methane, binding 0.164 tCO2), and
@@ -217,7 +217,7 @@ models:
         availability: "must be built (built by the workflow)"
       - input: "cost rows 'biogas', 'biogas upgrading', 'biogas CC', 'biomass CHP capture'"
         required_for: "biogas fuel price and upgrading (± CC) economics; the 'biogas' capital cost is also the digester cost on the methanol routes"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "Park et al. 2025 biogas methanol figures (sector.biogas_methanol, see data_quality dataset park-2025-biogas-methanol)"
         required_for: "biogas to methanol and e-biogas-methanol"
         availability: "shipped as config defaults; closed-access source, single plant scale, 2040 parametrisation by Zhang et al. 2026"

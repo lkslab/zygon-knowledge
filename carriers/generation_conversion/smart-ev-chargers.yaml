@@ -21,7 +21,7 @@ when_to_use:
   - "known in pypsa-eur as: BEV charger"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Covered and ON by default (sector.bev_dsm: true), active whenever the
@@ -140,7 +140,7 @@ models:
         provenance: "scripts/build_transport_demand.py:bev_dsm_profile"
       - change: "weekly passenger-car traffic input"
         anchor: "rule build_transport_demand input traffic_data_Pkw (BASt pkw.csv from rule build_mobility_profiles)"
-        provenance: "rules/build_sector.smk:traffic_data_Pkw; scripts/build_mobility_profiles.py:Passenger cars only"
+        provenance: "rules/build_sector.smk:traffic_data_Pkw; scripts/build_mobility_profiles.py:pkw"
     data_dependencies:
       - input: "BASt pkw.csv weekly passenger-car counts"
         required_for: "plug-in availability profile (charger p_max_pu)"

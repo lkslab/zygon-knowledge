@@ -106,7 +106,7 @@ models:
       scenario: "{demand} wildcard naming different CAGR/custom-csv worlds per planning horizon"
 
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
 
     out_of_box:
       covers: >
@@ -118,12 +118,12 @@ models:
         today x (1 - f) + future x f. The route-share dicts
         (St_primary_fraction, DRI_fraction, Al_primary_fraction, HVC
         recycling fractions) act as hand-set technology-diffusion proxies;
-        with sector.endogenous_sectors.enable (off by default) primary steel
+        with sector.endogenous_sectors (off by default) primary steel
         and cement leave them: BOF, gas-DRI and H2-DRI routes and kiln fuels
         compete on cost, DRI_fraction is dormant for primary steel, and under
-        myopic foresight existing blast furnaces retire by vintage or pledged
+        myopic foresight existing blast furnaces (existing_capacities.industry_plants) retire by vintage or announced
         year (steel-routes-endogenous, cement-routes-endogenous).
-        Heat-supply technology inside industry is not an optimiser choice either by default: the carrier split follows the same exogenous blend; with sector.industry_t.endogen (fork) the endogenised sectors leave that blend and their heat supply becomes a model choice per temperature band.
+        Heat-supply technology inside industry is not an optimiser choice either by default: the carrier split follows the same exogenous blend; with sector.industry_heat.enable the covered sectors leave that blend and their heat supply becomes a model choice per temperature band.
       mechanism: >
         build_industrial_energy_demand_per_country_today derives today's
         country ratios; build_industry_sector_ratios the future best-in-class
@@ -167,7 +167,7 @@ models:
         note: "edit the electrification assumptions in the sector functions of build_industry_sector_ratios."
       - variant: "endogenous heat-tech uptake in industry with a diffusion-speed brake"
         rung: L1
-        note: "sector.industry_t.endogen: true (method industry-heat-endogenous) on this fork gives the endogenised sectors competing heat links (industry-process-heat-endogenous); sector.limit_max_growth is then the blunt per-carrier growth brake and sector.industry_t.must_run the duty floor. Note those sectors drop the fraction_future blend (today's intensities)."
+        note: "sector.industry_heat.enable: true (method industry-heat-endogenous) gives the covered sectors competing heat links (industry-process-heat-endogenous); sector.limit_max_growth is then the blunt per-carrier growth brake and sector.industry_heat.min_part_load the part-load floor. Note those sectors drop the fraction_future blend (today's intensities)."
       - variant: "explicit EEM catalogue with stock turnover and vintage retirement"
         rung: L5
         note: "honest answer: not implementable by config or data — needs a vintage-tracked demand-side model (FORECAST soft-link) or bespoke myopic-foresight components per industry."

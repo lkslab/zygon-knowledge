@@ -28,7 +28,7 @@ when_to_use:
   - "known in pypsa-eur as: biomass to liquid, biomass to liquid CC, unsustainable bioliquids, electrobiofuels, e-biomethanol, e-bioSNG, BioSNG, BioSNG CC"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         add_biomass wires a rich conversion menu on the nodal solid-biomass
@@ -72,7 +72,7 @@ models:
         its product. At 2040 (technology-data v0.15.0, checked on a composed
         NL 2040 network): e-biomethanol 1.393 MWh methanol and 0.868 MWh H2
         per MWh biomass; e-bioSNG 1.733 MWh gas and 1.37 MWh H2 per MWh
-        biomass. Since the fork commit d2e0d486 electrobiofuels draws its
+        biomass. Since the fork commit f2bd0ecb electrobiofuels draws its
         hydrogen by the same rule, (1.325 - BtL efficiency) x the
         Fischer-Tropsch hydrogen-input = 1.238 MWh_H2 per MWh biomass at 2040
         instead of the 1.150 implied by the row's efficiency-hydrogen, which
@@ -80,7 +80,7 @@ models:
         The parameters are derived from the technology-data rows, NOT taken
         from the paper's own dataset (GPL-3.0, Zenodo 18985275, which
         under-counts the hydrogen by about 6-7 % and books a phantom removal
-        on its biogas routes). WASTE HEAT (new in d2e0d486, changes default
+        on its biogas routes). WASTE HEAT (new in f2bd0ecb, changes default
         runs with sector.heating on): a share of the conversion heat goes to
         the "<node> urban central heat" bus at the location of the link's
         feed bus (bus0) — sector.use_biofuel_waste_heat (0.25) for BtL, BtL
@@ -194,7 +194,7 @@ models:
     boundary:
       - variant: "BtL and electrobiofuels as investment options"
         rung: L0
-        note: "both default true; electrobiofuels draws the corrected Fischer-Tropsch hydrogen input since d2e0d486"
+        note: "both default true; electrobiofuels draws the corrected Fischer-Tropsch hydrogen input since f2bd0ecb"
       - variant: "BtL with carbon capture / BioSNG / bioH2"
         rung: L0
         note: "flip sector.biomass_to_liquid_cc / sector.biosng(_cc) / sector.bioH2"
@@ -253,7 +253,7 @@ models:
         availability: "retrieved by the workflow (rule build_biomass_potentials inputs); European coverage"
       - input: "cost rows 'BtL', 'BioSNG', 'biomass-to-methanol' (each with 'C in fuel', 'C stored', 'CO2 stored', capture rate), 'electrobiofuels' (efficiency-biomass), the synthesis rows 'Fischer-Tropsch', 'methanolisation', 'methanation' (hydrogen-input, investment, VOM), 'biogas', 'biogas upgrading', 'biodiesel crops', 'fuelwood'"
         required_for: "conversion economics, the boosted routes' yields and hydrogen, and the carbon splits"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "biomass transport cost csv (per-country EUR/km/MWh)"
         required_for: "biomass_transport links or the biomass_spatial markup"
         availability: "exists by default (workflow data)"

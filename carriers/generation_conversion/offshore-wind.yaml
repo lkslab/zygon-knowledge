@@ -19,7 +19,7 @@ when_to_use:
   - "known in pypsa-eur as: offwind, offshore wind, offwind-ac, offshore wind (AC), offshore wind ac, offwind-dc, offshore wind (DC), offshore wind dc"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Fully covered with two fixed-bottom carriers, both default renewable
@@ -47,7 +47,7 @@ models:
         Technology 'Offshore' are force-attached via
         attach_renewable_powerplants under technology_mapping Offshore ->
         'offwind-ac' (ALL existing offshore lands on the ac carrier).
-        Sector runs keep the carriers (pypsa_eur keep-list); compose_network
+        Sector runs keep the carriers (add_electricity skips only SECTOR_CARRIERS); compose_network
         calls attach_wind_and_solar per planning horizon with that horizon's
         costs, so the connection-cost formula is applied in exactly one place.
         Myopic
@@ -199,7 +199,7 @@ models:
         availability: "retrieved by the workflow"
       - input: "technology-data cost rows 'offwind', 'offwind-ac-station', 'offwind-ac-connection-submarine', 'offwind-ac-connection-underground' (+ dc twins)"
         required_for: "capex incl. connection adder"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "powerplantmatching database (Technology Offshore)"
         required_for: "existing offshore fleet (forced onto offwind-ac)"
         availability: "retrieved by the workflow (rule build_powerplants)"

@@ -63,7 +63,7 @@ Edit the app together with this repo when one of these changes:
 
 Every topic, carrier, method and input-figure section cites `version_anchor.ref`. Current refs:
 
-- pypsa-eur `8ac32b87db61256db24d133791ed13fa101bb68f` (`2026-11-24`), the `lkslab/pypsa-eur`
+- pypsa-eur `ee7c6d86e475ee17a6af6d49ebf5ba8118b16723` (`2026-11-24`), the `LukasFrankenQ/pypsa-eur`
   fork commit the app runs. It equals the `models/pypsa-eur` gitlink, the app's
   `workflows/pypsa-eur` gitlink and the profile `pinned_ref`.
 - pypsa-earth `8435f4c8cc05f30088933b37b7db497ff860dc53`, equal to `models/pypsa-earth`.
@@ -72,7 +72,7 @@ The app's `tests/test_preflight_real_tree.py` requires profile `pinned_ref`, the
 `workflows/pypsa-eur` gitlink and every eur anchor to agree (`pin_trio` in
 `scripts/preflight.py`). To bump eur when the app pins a new fork commit:
 
-1. `git -C models/pypsa-eur fetch origin main && git -C models/pypsa-eur checkout <sha>`.
+1. `git -C models/pypsa-eur fetch origin master && git -C models/pypsa-eur checkout <sha>`.
 2. Set `ANCHORS` in `tools/validate.py`.
 3. One `sed` over every eur `version_anchor`: replace the old ref and its `date:`.
 4. Run the validator and `tools/resolve_eur_citations.py`.
@@ -82,7 +82,8 @@ History of the eur anchor: `849c8858` until 2026-09-10 (fork branch, no public r
 upstream `a6c45e5a` from 2026-09-10; fork pins from 2026-10-09; `09e8910a` from 2026-10-12;
 `0abdceb5` from 2026-11-04; `429cfff3` from 2026-11-18 (pixi-only bump);
 `c45e051d` from 2026-11-20 (per-cell capacity factor rule);
-`8ac32b87` since 2026-11-24 (fine eligibility raster rule).
+`8ac32b87` from 2026-11-24 (fine eligibility raster rule);
+`ee7c6d86` since 2026-11-24 (fork `master`: current upstream plus the replayed fork stack).
 
 ## Checks to run after editing
 

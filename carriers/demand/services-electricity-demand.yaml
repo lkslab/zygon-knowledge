@@ -99,7 +99,7 @@ models:
       scenario: "scenario.demand wildcard x planning_horizons via CAGR files"
 
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
 
     out_of_box:
       covers: >
@@ -113,7 +113,7 @@ models:
         build_energy_totals but no separate network load is built from them.
       mechanism: >
         rules build_electricity_demand / build_electricity_demand_base -> add_electricity:
-        attach_load; prepare_sector_network: patch_electricity_network + build_heat_demand
+        attach_load; prepare_sector_network: build_heat_demand
         (electric services heating subtraction).
       not_covered: >
         No residential/services split, no commercial load profile, no sub-sector detail; the

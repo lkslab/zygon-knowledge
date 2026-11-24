@@ -10,7 +10,7 @@ when_to_use:
   - "why are line capacities constant all year"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         DLR: genuinely covered (unlike pypsa-earth), off by default. With
@@ -51,10 +51,10 @@ models:
         (non-underground) lines; a code comment flags "TODO: Only considers
         overhead lines"; conductor geometry (D, Ts, epsilon, alpha) is
         hardcoded, not config; project lines and anything added after
-        base.nc get no DLR series. prepare_network's set_line_s_max_pu still
-        writes the static s_max_pu scalar into n.lines['s_max_pu'] — the DLR
+        base.nc get no DLR series. prepare_network's cap_transmission_capacity
+        still writes the static lines.s_max_pu scalar into n.lines['s_max_pu'] — the DLR
         time series in lines_t.s_max_pu is a separate, snapshot-varying input.
-      provenance: "scripts/build_line_rating.py:calculate_line_rating; scripts/add_transmission_projects_and_dlr.py:attach_line_rating; scripts/base_network.py:_set_electrical_parameters_transformers; scripts/prepare_network.py:set_line_s_max_pu"
+      provenance: "scripts/build_line_rating.py:calculate_line_rating; scripts/add_transmission_projects_and_dlr.py:attach_line_rating; scripts/base_network.py:_set_electrical_parameters_transformers; scripts/prepare_network.py:cap_transmission_capacity"
     levers:
       - key: lines.dynamic_line_rating.activate
         effect: "Master switch: triggers rule build_line_rating and the attach in add_transmission_projects_and_dlr."
@@ -113,8 +113,8 @@ models:
         anchor: "scripts/add_transmission_projects_and_dlr.py::attach_line_rating (rule add_transmission_projects_and_dlr)"
         provenance: "scripts/add_transmission_projects_and_dlr.py:attach_line_rating"
       - change: "static margin fallback"
-        anchor: "scripts/prepare_network.py::set_line_s_max_pu"
-        provenance: "scripts/prepare_network.py:set_line_s_max_pu"
+        anchor: "scripts/prepare_network.py::cap_transmission_capacity (line_max_pu)"
+        provenance: "scripts/prepare_network.py:cap_transmission_capacity"
       - change: "custom stability-proxy or FACTS-like constraints"
         anchor: "scripts/solve_network.py::extra_functionality (or the solving.options.custom_extra_functionality file hook)"
         provenance: "scripts/solve_network.py:extra_functionality; config/config.default.yaml:custom_extra_functionality"

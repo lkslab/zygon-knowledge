@@ -146,7 +146,7 @@ models:
       scenario: "{demand} + planning_horizons CAGRs; ammonia via production_year choice"
 
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
 
     out_of_box:
       covers: >
@@ -154,14 +154,15 @@ models:
         (HVC production x MWh naphtha/t from JRC-IDEES), scaled by
         sector.HVC_demand_factor; the supply link books steam-cracker feedstock
         emissions (process emission from feedstock / naphtha ratio) to the
-        process-emissions bus, while the product carbon becomes, in the waste
-        sector (sector.waste, default true), a "non-sequestered HVC" Generator
-        on the node's waste bus whose energy must be used within the year (e_sum_min
-        = e_sum_max), via "waste to air" or (optionally) waste CHP / waste CHP
-        CC (waste.waste_to_energy, waste.waste_to_energy_cc), with
-        HVC_environment_sequestration_fraction withholding landfilled plastic
-        carbon; with sector.waste false the naphtha link releases that carbon
-        directly. With sector.methanol.meoh_to_oa (off by default) a
+        process-emissions bus, while the product carbon, less the
+        HVC_environment_sequestration_fraction withheld as landfilled plastic,
+        is by default released directly at the naphtha link. With
+        industry.waste_to_energy, industry.waste_to_energy_cc or "cement" in
+        sector.endogenous_sectors (all off by default) the waste sector takes it
+        instead: a "non-sequestered HVC" Generator on the waste bus (one EU bus
+        unless sector.waste_spatial) whose energy must be used within the year
+        (e_sum_min = e_sum_max), via "HVC to air", waste CHP / waste CHP CC or
+        the cement kiln. With sector.methanol.meoh_to_oa (off by default) a
         "methanol-to-olefins/aromatics" link from the methanol bus serves the
         naphtha-for-industry bus as an alternative HVC feedstock. Ammonia: with sector.ammonia,
         demand is an NH3 carrier load, supplied by endogenous Haber-Bosch /
@@ -206,8 +207,8 @@ models:
         effect: "Fraction of plastic carbon never returning to the atmosphere (landfill) — shrinks the non-sequestered HVC generator on the waste bus."
         default: "0.0"
         provenance: "config/config.default.yaml:HVC_environment_sequestration_fraction; scripts/prepare_sector_network.py:HVC_environment_sequestration_fraction"
-      - key: waste.waste_to_energy
-        effect: "Adds waste CHP links burning the waste bus (non-sequestered HVC, plus MSW once on) for power+district heat (waste.waste_to_energy_cc adds the CC variant)."
+      - key: industry.waste_to_energy
+        effect: "Builds the waste sector and adds waste CHP links burning the waste bus (non-sequestered HVC, plus MSW with sector.municipal_solid_waste) for power+district heat (industry.waste_to_energy_cc adds the CC variant)."
         default: "false"
         provenance: "config/config.default.yaml:waste_to_energy; scripts/prepare_sector_network.py:waste CHP"
       - key: sector.methanol.meoh_to_oa
@@ -256,8 +257,8 @@ models:
 
     where:
       - change: "naphtha load, feedstock-emission link, HVC waste chain"
-        anchor: "add_industry in prepare_sector_network (naphtha for industry); add_waste (non-sequestered HVC generator; waste to air; waste CHP)"
-        provenance: "scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:add_waste; scripts/prepare_sector_network.py:waste to air"
+        anchor: "add_industry in prepare_sector_network (naphtha for industry); add_waste (non-sequestered HVC generator; HVC to air; waste CHP)"
+        provenance: "scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:add_waste; scripts/prepare_sector_network.py:HVC to air"
       - change: "basic-chemicals separation (ammonia/chlorine/methanol/HVC)"
         anchor: "separate_basic_chemicals in build_industrial_production_per_country"
         provenance: "scripts/build_industrial_production_per_country.py:separate_basic_chemicals"
@@ -278,7 +279,7 @@ models:
       - input: "JRC-IDEES chemicals sheets"
         required_for: "naphtha/HVC intensities"
         availability: "must be built (retrieved); EU-focused"
-      - input: "Hotmaps industrial sites + data/ammonia_plants.csv"
+      - input: "Hotmaps industrial sites + GEM Global Chemicals Tracker (ammonia, methanol and HVC keys)"
         required_for: "nodal placement of chemicals/ammonia demand"
         availability: "exists by default / retrieved; EU coverage"
       - input: "technology-data rows (Fischer-Tropsch, waste CHP, Haber-Bosch, ammonia cracker)"

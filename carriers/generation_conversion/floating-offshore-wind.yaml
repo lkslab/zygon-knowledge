@@ -16,7 +16,7 @@ when_to_use:
   - "known in pypsa-eur as: offwind-float, offshore wind (Float), offshore wind float"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Fully covered as a first-class default carrier (in contrast to
@@ -40,8 +40,8 @@ models:
         adder built from 'offwind-float-connection-submarine' /
         '-underground' rows and lines.length_factor. All four
         offwind-float* rows exist in the processed technology-data costs
-        file. Sector runs keep the carrier (pypsa_eur Generator keep-list
-        includes offwind-float); since compose_network calls
+        file. Sector runs keep the carrier (add_electricity skips only
+        SECTOR_CARRIERS); since compose_network calls
         attach_wind_and_solar per planning horizon with that horizon's costs,
         there is no separate sector-run re-costing step any more. Myopic land-use bookkeeping
         (add_land_use_constraint) and CCL aggregation

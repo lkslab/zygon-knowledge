@@ -12,7 +12,7 @@ when_to_use:
   - "known in pypsa-eur as: PHS, hydro+PHS"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         The EXISTING pumped-hydro fleet, on by default. Plants with technology
@@ -25,9 +25,9 @@ models:
         from the plant data with zeros/NaNs filled from
         renewable.hydro.PHS_max_hours (6 h). Active because "hydro" is in
         electricity.renewable_carriers and "PHS" in renewable.hydro.carriers.
-        Sector runs KEEP the fleet: the pypsa_eur StorageUnit keep-list defaults
-        to [PHS, hydro], so patch_electricity_network carries PHS StorageUnits
-        into sector-coupled networks unchanged.
+        Sector runs KEEP the fleet: PHS and hydro are not in SECTOR_CARRIERS,
+        so add_electricity carries PHS StorageUnits into sector-coupled
+        networks unchanged.
       mechanism: >
         rule build_powerplants creates the plant table (amendable via
         data/custom_powerplants.csv + electricity.custom_powerplants and
@@ -50,7 +50,7 @@ models:
         open-loop/closed-loop distinction. Myopic runs do not add PHS vintages
         (add_existing_baseyear drops fueltype "Hydro"); the fleet simply
         persists from the electricity network.
-      provenance: "scripts/add_electricity.py:attach_hydro; scripts/add_electricity.py:tech_dict; scripts/add_electricity.py:get_available_storage_carriers; scripts/prepare_sector_network.py:remove_elec_base_techs; scripts/add_existing_baseyear.py:fueltype_to_drop"
+      provenance: "scripts/add_electricity.py:attach_hydro; scripts/add_electricity.py:tech_dict; scripts/add_electricity.py:get_available_storage_carriers; scripts/add_electricity.py:SECTOR_CARRIERS; scripts/add_existing_baseyear.py:fueltype_to_drop"
     levers:
       - key: renewable.hydro.carriers
         effect: "Include/exclude 'PHS' (alongside ror, hydro) — removing it drops the existing PHS fleet."
@@ -72,10 +72,6 @@ models:
         effect: "Pandas query on the fleet (DateIn/DateOut) — retire or exclude PHS units by year."
         default: "(DateOut > 2025 or DateOut != DateOut) and (DateIn < 2026 or DateIn != DateIn)"
         provenance: "config/config.default.yaml:powerplants_filter; scripts/build_powerplants.py:add_custom_powerplants"
-      - key: pypsa_eur.StorageUnit
-        effect: "Sector runs: which elec-network StorageUnit carriers survive into prepare_sector_network — PHS is kept by default."
-        default: "[PHS, hydro]"
-        provenance: "config/config.default.yaml:pypsa_eur; scripts/prepare_sector_network.py:remove_elec_base_techs"
       - key: costs.overwrites
         effect: "Override the 'PHS' row's investment/lifetime/FOM/efficiency (or use rows in data/custom_costs.csv via costs.custom_cost_fn)."
         default: "{} (empty)"
@@ -116,15 +112,15 @@ models:
         anchor: "rule build_powerplants (scripts/build_powerplants.py::add_custom_powerplants) + electricity.custom_powerplants / powerplants_filter"
         provenance: "scripts/build_powerplants.py:add_custom_powerplants"
       - change: "sector-run carry-over of the fleet"
-        anchor: "scripts/prepare_sector_network.py::remove_elec_base_techs (pypsa_eur.StorageUnit keep-list)"
-        provenance: "scripts/prepare_sector_network.py:remove_elec_base_techs"
+        anchor: "scripts/add_electricity.py::SECTOR_CARRIERS (carriers skipped in sector runs; PHS is not among them)"
+        provenance: "scripts/add_electricity.py:SECTOR_CARRIERS"
     data_dependencies:
       - input: "powerplantmatching table with technology 'Pumped Storage' (incl. per-plant max_hours where known)"
         required_for: "existing PHS fleet"
         availability: "retrieved by the workflow (rule build_powerplants input); good European coverage"
       - input: "cost row 'PHS' (capital cost, efficiency) in the technology-data costs file"
         required_for: "fleet capital cost and round-trip efficiency"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "cost rows 'Pumped-Storage-Hydro-store' / 'Pumped-Storage-Hydro-bicharger'"
         required_for: "the L2 extendable-PHS wiring"
         availability: "exists by default in the technology-data costs file (verified in a locally built processed costs file); unconsumed by code at this ref"

@@ -21,7 +21,7 @@ when_to_use:
   - "known in pypsa-eur as: Fischer-Tropsch, liquid, power-to-liquid"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         ON by default and unconditional within add_industry: an extendable
@@ -61,7 +61,7 @@ models:
         bus; sector.regional_oil_demand only regionalises demand
         accounting). No existing FT plants. Electrobiofuels — an FT-based
         biomass+H2 hybrid — is a separate default-on technology covered in
-        advanced-biofuels; since the fork commit d2e0d486 it draws its
+        advanced-biofuels; since the fork commit f2bd0ecb it draws its
         hydrogen at the Fischer-Tropsch hydrogen-input for the fuel beyond
         BtL's own yield (1.238 MWh H2 per MWh biomass at 2040, up from the
         1.150 the electrobiofuels row implied), so it competes with this route
@@ -137,7 +137,7 @@ models:
     data_dependencies:
       - input: "cost rows 'Fischer-Tropsch' and 'oil' (CO2 intensity sets the carbon withdrawal coefficient)"
         required_for: "FT economics and carbon accounting"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "co2 stored buses with captured CO2 supply"
         required_for: "the CO2 feedstock input (bus2)"
         availability: "exists by default (add_co2_tracking; DAC/point-source capture per their carrier cards)"

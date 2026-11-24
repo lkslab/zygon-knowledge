@@ -16,7 +16,8 @@ what: >-
   build_geothermal_heat_potential turn into a per-cluster cap), resistive heaters, gas
   and biomass CHP, boilers, solar thermal, waste heat from electrolysis, fuel synthesis,
   fuel cells and the biofuel plants (add_waste_heat; the biofuel groups at the node of
-  the feed bus), and water tank or pit storage when sector.tes is on.
+  the feed bus), and water tank storage when sector.ttes is on and pit storage when
+  sector.district_heating.ptes.enable is on.
   Geothermal is the catch: its potential — by default heat-only doublets priced on the
   Limberger subsurface temperature model in cost steps per cluster with a per-cluster
   source temperature (source: geology, since the fork commit 6b3a9fd6; the Fraunhofer ISI
@@ -35,7 +36,7 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 8ac32b87db61256db24d133791ed13fa101bb68f
+    ref: ee7c6d86e475ee17a6af6d49ebf5ba8118b16723
     date: '2026-11-24'
   execution:
   - kind: config
@@ -81,12 +82,12 @@ models:
       temperature allows, with a heat pump only for the rest. Keep in step with
       heat_pump_sources.
   - kind: config
-    key: sector.tes
+    key: sector.ttes
     value: true
     note: >-
-      the shipped default; central water tank (and pit, sector.district_heating.ptes)
-      storage per urban central bus, decentral tanks elsewhere. False is the no-storage
-      counterfactual for a storage-value question.
+      the shipped default; central water tank storage per urban central bus, decentral
+      tanks elsewhere. Pits are the separate sector.district_heating.ptes.enable (default
+      true). Both false is the no-storage counterfactual for a storage-value question.
   - kind: config
     key: sector.heat_vent.urban central
     value: true

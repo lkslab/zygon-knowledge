@@ -18,7 +18,7 @@ when_to_use:
   - "pypsa-eur carrier names: co2, co2 stored, co2 sequestered, co2 vent, CO2 pipeline, DAC"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Fully active by default; add_co2_tracking runs UNCONDITIONALLY in every
@@ -31,10 +31,11 @@ models:
         is true — each with an extendable CYCLIC tank Store ("CO2 storage tank"
         row, 2584 EUR/tCO2 investment: intra-year buffering only, no net annual
         accumulation). (3) "co2 sequestered" buses behind one-way extendable
-        links from co2 stored, holding NON-cyclic Stores that accumulate over
-        the year: capital_cost = sector.co2_sequestration_cost (30 EUR/tCO2),
-        marginal_cost = -0.1 (small reward), lifetime =
-        sector.co2_sequestration_lifetime (50 a). With
+        links from co2 stored (marginal_cost = sector.co2_sequestration_cost,
+        30 EUR/tCO2), holding NON-cyclic Stores that accumulate over the year:
+        marginal_cost = -0.1 (small reward), lifetime infinite so that
+        add_brownfield drops them and each myopic horizon gets a fresh store
+        with one annual potential. With
         sector.regional_co2_sequestration_potential.enable (default true) each
         store's e_nom_max comes from the CO2Stop geodatabase: rule
         retrieve_co2stop -> build_co2_sequestration_potentials (geojson of
@@ -147,13 +148,9 @@ models:
         default: "25"
         provenance: "config/config.default.yaml:max_size; scripts/prepare_sector_network.py:add_co2_tracking"
       - key: sector.co2_sequestration_cost
-        effect: "EUR/tCO2 capital cost on sequestered-store capacity — the price of burial that utilisation routes compete against."
+        effect: "EUR/tCO2 marginal cost on the links into the sequestered stores — the price of burial that utilisation routes compete against."
         default: "30"
         provenance: "config/config.default.yaml:co2_sequestration_cost; scripts/prepare_sector_network.py:add_co2_tracking"
-      - key: sector.co2_sequestration_lifetime
-        effect: "Lifetime (years) of sequestration assets for annuitisation in myopic/perfect accounting."
-        default: "50"
-        provenance: "config/config.default.yaml:co2_sequestration_lifetime; scripts/prepare_sector_network.py:add_co2_tracking"
       - key: sector.co2_vent
         effect: "true adds vent links co2 stored -> atmosphere (relief valve for surplus captured CO2); false (default) forces every captured tonne to be stored, used or sequestered."
         default: "false"
@@ -235,7 +232,7 @@ models:
         availability: "must be built (rules build_co2_sequestration_potentials -> build_clustered_co2_sequestration_potentials); automatic in the sector workflow"
       - input: "cost rows 'CO2 pipeline', 'CO2 submarine pipeline' (DEA energy-transport data) and 'CO2 storage tank'"
         required_for: "pipeline and buffer-tank capital costs"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "regions_onshore/regions_offshore geojsons per cluster"
         required_for: "allocating CO2Stop polygons to model regions"
         availability: "exists by default (base workflow outputs)"

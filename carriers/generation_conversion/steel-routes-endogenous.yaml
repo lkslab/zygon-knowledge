@@ -12,28 +12,27 @@ when_to_use:
   - "green steel cost-optimal route"
   - "natural gas DRI as a bridge to hydrogen DRI"
   - "steel CCS / blast furnace carbon capture"
-  - "blast furnace phase-out pledges"
+  - "blast furnace announced retirement"
   - "HBI / hot briquetted iron relocation to cheap hydrogen regions"
-  - "endogenous_sectors / steel_bof / hbi_relocation"
+  - "endogenous_sectors / industry_plants / hbi_relocation"
   - "steel as a material bus in tonnes"
   - "existing steel plants as brownfield capacity"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
-        Implemented on this fork (the port of PyPSA/pypsa-eur#1719, open
-        upstream) and OFF by default (sector.endogenous_sectors.enable: false;
-        the method industry-routes-endogenous turns it on). Demand side: with
-        the switch on and "steel" in sector.endogenous_sectors.subsectors,
-        build_industrial_energy_demand_per_node drops the JRC-IDEES sectors
-        "Integrated steelworks" and "DRI + Electric arc" from BOTH the
-        exogenous and the endogenous (industry_t) block of
-        industrial_energy_demand_<horizon>.csv (route_endogenised_sectors), so
-        their electricity, coal, coke, methane, hydrogen and process emission
-        leave the flat industry loads; secondary "Electric arc" (scrap) steel
-        stays an exogenous electricity demand. Network side (add_steel, called
-        from add_industry): the primary steel production of the horizon
+        Upstream PyPSA/pypsa-eur#1719 and OFF by default
+        (sector.endogenous_sectors: [], a list; the method
+        industry-routes-endogenous turns it on). Demand side: with "steel" in
+        sector.endogenous_sectors, build_industrial_energy_demand_per_node
+        zeroes the sector ratios of the JRC-IDEES sectors "Integrated
+        steelworks" and "DRI + Electric arc" (ENDOGENOUS_SUBSECTORS, applied
+        after any sector.industry_heat replacement), so their electricity,
+        coal, coke, methane, hydrogen and process emission leave the flat
+        industry loads of industrial_energy_demand_<horizon>.csv; secondary
+        "Electric arc" (scrap) steel stays an exogenous electricity demand.
+        Network side (the steel block of add_industry): the primary steel production of the horizon
         (Integrated + DRI, industrial_production_<horizon>.csv, Mt/a) becomes
         a flat Load "<node> steel demand" (carrier steel, t/h) on a
         "<node> steel" bus. Routes, all extendable Links with technology-data
@@ -49,36 +48,42 @@ models:
         priced as marginal cost (iron ore DRI-ready, 97.73 EUR/t, times 1.59 t
         ore per t HBI on DRI and 1.539 t per t steel on BOF). Both emission
         buses (carrier steel emission) empty through a vent link to co2
-        atmosphere or a "<node> ... emission CC" link (carrier steel emission
+        atmosphere or, with industry.process_emissions_cc (default true), a
+        "<node> ... emission CC" link (carrier steel emission
         CC, steel carbon capture retrofit: 90 % to the CO2 stored bus, 0.16
         MWh electricity per t CO2, the rest vented). The reduction agent can
         switch hour by hour between hydrogen and gas; the furnaces carry no
         must-run. With sector.hbi_relocation one "EU hbi" bus replaces the
         nodal ones, so HBI made anywhere feeds any EAF at no transport cost.
         Brownfield (add_existing_industry, first horizon of myopic or perfect
-        foresight only, with the switch on): today's blast furnaces and gas DRI
-        plants from the Fraunhofer ISI site database (rule
-        build_industry_plants) become non-extendable dated links
-        "<node> BOF-<year>-<out>" and "<node> gas DRI-<year>" (carrier DRI),
-        grouped by region, route and existing_capacities.grouping_years_industry;
-        blast furnaces retire at their pledged phase-out year Out plus
-        sector.steel_bof.pledge_delay when sector.steel_bof.pledge is true,
-        else at the 40-year catalogue lifetime. The same call also adds
-        today's Haber-Bosch (with sector.ammonia) and grey methanol (with
-        sector.methanol) plants as dated links; new grey methanol is
-        extendable on its own switch, sector.methanol.grey_methanol (default
-        false), at the same parameters (grey_methanol_attrs).
+        foresight only, with existing_capacities.industry_plants: true, default
+        false): today's operating blast furnaces and direct reduction furnaces
+        of the GEM Global Iron and Steel Tracker (rule build_industry_plants,
+        prepare_gem_iron_units; build year is the most recent relining) become
+        non-extendable dated links "<node> BOF-<year>-<out>" and
+        "<node> gas DRI-<year>" (carrier DRI), grouped by region, route and
+        existing_capacities.grouping_years_industry; units older than their
+        catalogue lifetime count as reinvested, units of unknown age sit at
+        half the lifetime. Blast furnaces retire at their announced retirement
+        year when existing_capacities.blast_furnace_announced_retirement is
+        true (default), else at the 40-year catalogue lifetime. The same call
+        also adds today's Haber-Bosch (with sector.ammonia) and fossil grey
+        methanol plants of the GEM Global Chemicals Tracker as dated links;
+        new grey methanol is extendable on its own switch,
+        sector.methanol.grey_methanol (default false), at the same parameters
+        (grey_methanol_attrs).
       mechanism: >
         rule build_industrial_production_per_country_tomorrow (St_primary_fraction,
         DRI_fraction) -> rule build_industrial_production_per_node -> rule
         build_industrial_energy_demand_per_node (params endogenous_sectors;
-        route_endogenised_sectors drops the steel sectors before both blocks)
-        -> rule compose_network: define_spatial (hbi buses), add_industry ->
-        add_steel; under myopic/perfect the horizon-free rule
-        build_industry_plants (input data/1-s2.0-S0196890424010586-mmc2.xlsx,
-        the GEM cement tracker, data/ammonia_plants.csv) feeds
-        add_existing_baseyear's add_existing_industry on the first horizon,
-        and add_brownfield carries the built route links forward.
+        ENDOGENOUS_SUBSECTORS zeroes the steel sector ratios) -> rule
+        compose_network: define_spatial (hbi buses), add_industry (steel
+        block); with existing_capacities.industry_plants under myopic/perfect
+        the horizon-free rule build_industry_plants (the GEM iron and steel,
+        cement and chemicals trackers from retrieve_gem_gspt, retrieve_gem_gcct
+        and retrieve_gem_gct) feeds add_existing_baseyear's
+        add_existing_industry on the first horizon, and add_brownfield carries
+        the built route links forward.
       not_covered: >
         Scrap steel is outside the route choice: secondary EAF stays a fixed
         exogenous electricity load, with no scrap availability limit and no
@@ -100,7 +105,8 @@ models:
         The capture retrofit charges electricity only: its catalogue gas-input
         (0.76 MWh per t CO2) for solvent regeneration is unused. No route can
         be switched off by config (the five route links are always built
-        together): forbidding or capping one is a
+        together, only the capture links hang on
+        industry.process_emissions_cc): forbidding or capping one is a
         solving.options.custom_extra_functionality hook constraining the
         route links' capacity on n.model, and under a binding CO2 cap gas DRI
         without capture limits itself. The "<node> hbi" bus marginal price of
@@ -109,31 +115,32 @@ models:
         by-product credit (industry.MWh_H2_per_tCl is negative) and loses the
         DRI hydrogen, so it turns negative at nodes with chlorine production
         (NL 2040: about -1.04 TWh), a free hydrogen injection the upstream
-        code has too. The ISI database rows cover 21 countries (no blast
-        furnaces or gas DRI elsewhere in brownfield runs); missing build
-        years take the route mean.
-      provenance: "scripts/prepare_sector_network.py:add_steel; scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:define_spatial; scripts/build_industrial_energy_demand_per_node.py:route_endogenised_sectors; scripts/build_industrial_energy_demand_per_node.py:ROUTE_ENDOGENOUS_SECTORS; scripts/add_existing_baseyear.py:add_existing_industry; scripts/build_industry_plants.py:prepare_isi_plants; rules/build_sector.smk:build_industry_plants; rules/build_sector.smk:build_industrial_energy_demand_per_node; doc/release_notes.md:Endogenous steel and cement production routes"
+        code has too. Brownfield units more than 100 km from every region are
+        dropped, and units with unknown capacity get the 20 % quantile of
+        their route. There is no delay or bring-forward knob for the announced
+        blast-furnace retirements, only on or off.
+      provenance: "scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:define_spatial; scripts/build_industrial_energy_demand_per_node.py:ENDOGENOUS_SUBSECTORS; scripts/add_existing_baseyear.py:add_existing_industry; scripts/add_existing_baseyear.py:assign_industry_grouping_years; scripts/build_industry_plants.py:prepare_gem_iron_units; rules/build_sector.smk:build_industry_plants; rules/build_sector.smk:build_industrial_energy_demand_per_node; doc/release_notes.md:endogenous_sectors"
     levers:
-      - key: sector.endogenous_sectors.enable
-        effect: "Master switch: true drops the route sectors from the industry demand file and builds the steel (and cement) material buses, loads and route links; under myopic/perfect it also adds today's plants."
-        default: "false"
-        provenance: "config/config.default.yaml:endogenous_sectors; scripts/prepare_sector_network.py:add_industry"
-      - key: sector.endogenous_sectors.subsectors
-        effect: "Which subsectors are endogenised: steel, cement or both. Removing steel keeps the exogenous Integrated and DRI + Electric arc demand."
-        default: "[steel, cement]"
-        provenance: "config/config.default.yaml:subsectors; scripts/build_industrial_energy_demand_per_node.py:route_endogenised_sectors"
+      - key: sector.endogenous_sectors
+        effect: "List of endogenised subsectors (steel, cement or both). Listing steel drops the Integrated and DRI + Electric arc sector ratios from the industry demand file and builds the steel material buses, load and route links."
+        default: "[]"
+        provenance: "config/config.default.yaml:endogenous_sectors; scripts/prepare_sector_network.py:add_industry; scripts/build_industrial_energy_demand_per_node.py:ENDOGENOUS_SUBSECTORS"
       - key: sector.hbi_relocation
         effect: "true replaces the nodal hbi buses with one EU hbi bus: hot briquetted iron is reduced wherever hydrogen or gas is cheapest and melted at any EAF, with no transport cost."
         default: "false"
         provenance: "config/config.default.yaml:hbi_relocation; scripts/prepare_sector_network.py:define_spatial"
-      - key: sector.steel_bof.pledge
-        effect: "Brownfield only (myopic/perfect): true retires each existing blast furnace at its pledged phase-out year (ISI database Out column); false gives every one the 40-year catalogue lifetime."
+      - key: existing_capacities.industry_plants
+        effect: "Brownfield only (myopic/perfect, first horizon): true adds today's blast furnaces and gas DRI (with steel listed), cement kilns (with cement listed), Haber-Bosch (with sector.ammonia) and grey methanol plants as dated links."
+        default: "false"
+        provenance: "config/config.default.yaml:industry_plants; rules/compose.smk:industry_plants; scripts/add_existing_baseyear.py:add_existing_industry"
+      - key: existing_capacities.blast_furnace_announced_retirement
+        effect: "Brownfield only: true retires each existing blast furnace at its GEM announced retirement year; false gives every one the 40-year catalogue lifetime."
         default: "true"
-        provenance: "config/config.default.yaml:pledge; scripts/add_existing_baseyear.py:add_existing_industry"
-      - key: sector.steel_bof.pledge_delay
-        effect: "Years added to every pledged blast-furnace phase-out (a late-closure sensitivity)."
-        default: "0"
-        provenance: "config/config.default.yaml:pledge_delay; scripts/add_existing_baseyear.py:add_existing_industry"
+        provenance: "config/config.default.yaml:blast_furnace_announced_retirement; scripts/add_existing_baseyear.py:add_existing_industry"
+      - key: industry.process_emissions_cc
+        effect: "Builds the steel emission CC links on the BOF and gas DRI emission buses (and the cement capture links); false leaves venting as the only outlet."
+        default: "true"
+        provenance: "config/config.default.yaml:process_emissions_cc; scripts/prepare_sector_network.py:add_industry"
       - key: existing_capacities.grouping_years_industry
         effect: "Build-year bins the existing plants are grouped into (one dated link per region, route and bin)."
         default: "[1995, 2000, 2005, 2010, 2015, 2020, 2025]"
@@ -149,19 +156,22 @@ models:
     boundary:
       - variant: "endogenous route choice (blast furnace vs DRI + EAF)"
         rung: L0
-        note: "sector.endogenous_sectors.enable: true, the method industry-routes-endogenous; the routes compete on capex, fuel and the CO2 constraint"
+        note: "steel in sector.endogenous_sectors, the method industry-routes-endogenous; the routes compete on capex, fuel and the CO2 constraint"
       - variant: "natural-gas DRI as a bridge to hydrogen DRI"
         rung: L0
         note: "part of the menu once the switch is on: the DRI furnace takes its reduction agent from gas or hydrogen, hour by hour"
       - variant: "carbon capture on blast furnaces and gas DRI"
         rung: L0
-        note: "the steel emission CC links are built with the switch; no separate flag"
+        note: "the steel emission CC links are built with the switch while industry.process_emissions_cc is true (the default)"
       - variant: "endogenise steel only (keep cement exogenous)"
         rung: L1
-        note: "sector.endogenous_sectors.subsectors: [steel]"
-      - variant: "blast-furnace phase-out timing"
+        note: "sector.endogenous_sectors: [steel]"
+      - variant: "blast-furnace phase-out at announced dates or at end of lifetime"
         rung: L1
-        note: "sector.steel_bof.pledge / pledge_delay; acts on the brownfield plants, so myopic or perfect foresight only"
+        note: "existing_capacities.industry_plants: true with existing_capacities.blast_furnace_announced_retirement true or false; acts on the brownfield plants, so myopic or perfect foresight only"
+      - variant: "delay or bring forward the announced blast-furnace retirements"
+        rung: L2
+        note: "no knob: shift the BOF Out year in add_existing_industry (scripts/add_existing_baseyear.py)"
       - variant: "relocate iron reduction to cheap-hydrogen regions"
         rung: L1
         note: "sector.hbi_relocation: true (one EU hbi bus, free HBI transport)"
@@ -173,16 +183,16 @@ models:
         note: "rows 'iron ore DRI-ready,commodity' or 'hydrogen direct iron reduction furnace,hydrogen-input' in data/custom_costs.csv (costs.custom_cost_fn); costs.overwrites only reaches investment, lifetime, FOM, VOM, efficiency, fuel, standing losses, marginal_cost and capital_cost, and industry.H2_DRI no longer acts"
       - variant: "country-specific iron ore cost"
         rung: L2
-        note: "the ore marginal cost is one EU-wide row in add_steel (and add_existing_industry); a per-country price needs an edit there"
+        note: "the ore marginal cost is one EU-wide row in the steel block of add_industry (and add_existing_industry); a per-country price needs an edit there"
       - variant: "forbid a route (e.g. no new blast furnaces)"
         rung: L2
-        note: "no flag: a solving.options.custom_extra_functionality hook (a staged file the bundle's data change points the key at; its function, named like the file's stem, takes n, snapshots, snakemake) adds n.model.add_constraints(n.model['Link-p_nom'].loc[<the route's links>] <= 0); never an add_steel edit, never a staged solve rule"
+        note: "no flag: a solving.options.custom_extra_functionality hook (a staged file the bundle's data change points the key at; its function, named like the file's stem, takes n, snapshots, snakemake) adds n.model.add_constraints(n.model['Link-p_nom'].loc[<the route's links>] <= 0); never an add_industry edit, never a staged solve rule"
       - variant: "steel or HBI transport between regions"
         rung: L2
-        note: "add links between the steel or hbi buses in add_steel; hbi_relocation (L1) is the free-transport extreme"
+        note: "add links between the steel or hbi buses in the steel block of add_industry; hbi_relocation (L1) is the free-transport extreme"
       - variant: "capture retrofit with its regeneration heat"
         rung: L2
-        note: "add the catalogue gas-input as a further input on the emission CC links in add_steel"
+        note: "add the catalogue gas-input as a further input on the emission CC links in the steel block of add_industry"
       - variant: "endogenous scrap (secondary) EAF"
         rung: L5
         note: "secondary steel is an exogenous electricity load; a scrap route needs a scrap resource bus and a second EAF chain"
@@ -194,30 +204,30 @@ models:
         note: "the steel load is flat with no steel or HBI store; a flexible EAF needs stores plus plant-level operating constraints"
     where:
       - change: "route buses, loads, links, vent and capture"
-        anchor: "scripts/prepare_sector_network.py::add_steel (called from add_industry)"
-        provenance: "scripts/prepare_sector_network.py:add_steel"
+        anchor: "scripts/prepare_sector_network.py::add_industry (block under 'steel' in endogenous_sectors)"
+        provenance: "scripts/prepare_sector_network.py:add_industry"
       - change: "dropping the route sectors from the demand blocks"
-        anchor: "scripts/build_industrial_energy_demand_per_node.py::route_endogenised_sectors (ROUTE_ENDOGENOUS_SECTORS)"
-        provenance: "scripts/build_industrial_energy_demand_per_node.py:route_endogenised_sectors"
+        anchor: "scripts/build_industrial_energy_demand_per_node.py (ENDOGENOUS_SUBSECTORS loop)"
+        provenance: "scripts/build_industrial_energy_demand_per_node.py:ENDOGENOUS_SUBSECTORS"
       - change: "one EU hbi bus"
         anchor: "scripts/prepare_sector_network.py::define_spatial (spatial.hbi)"
         provenance: "scripts/prepare_sector_network.py:hbi_relocation"
-      - change: "existing plants, pledged phase-out, build-year grouping"
-        anchor: "scripts/add_existing_baseyear.py::add_existing_industry; scripts/build_industry_plants.py::prepare_isi_plants"
-        provenance: "scripts/add_existing_baseyear.py:add_existing_industry; scripts/build_industry_plants.py:ISI_ROUTES"
+      - change: "existing plants, announced retirement, build-year grouping"
+        anchor: "scripts/add_existing_baseyear.py::add_existing_industry (assign_industry_grouping_years); scripts/build_industry_plants.py::prepare_gem_iron_units"
+        provenance: "scripts/add_existing_baseyear.py:assign_industry_grouping_years; scripts/build_industry_plants.py:prepare_gem_iron_units"
       - change: "route cost and intensity rows"
         anchor: "scripts/process_cost_data.py::prepare_costs; data/custom_costs.csv (costs.custom_cost_fn)"
         provenance: "scripts/process_cost_data.py:overwrite_costs; config/config.default.yaml:custom_cost_fn"
     data_dependencies:
-      - input: "data/1-s2.0-S0196890424010586-mmc2.xlsx (Fraunhofer ISI industry site database, Neuwirth et al. 2024, CC-BY-4.0; blast furnaces, gas DRI, ammonia and methanol SMR units with production, last modernisation or relining year and pledged Out year)"
+      - input: "GEM Global Iron and Steel Tracker, plant-level data and iron unit data (blast furnaces and direct reduction furnaces with capacity, start, most recent relining and announced retirement)"
         required_for: "existing blast furnaces and gas DRI plants under myopic/perfect foresight"
-        availability: "exists by default (checked into the fork); read only by build_industry_plants, which runs only when the switch is on and foresight is not overnight"
+        availability: "retrieved from the archive only (rule retrieve_gem_gspt, release september-2026-v1); read by build_industry_plants, which runs only with existing_capacities.industry_plants and foresight not overnight"
       - input: "industrial_production_<horizon>.csv (Integrated steelworks + DRI + Electric arc, JRC-IDEES chain)"
         required_for: "the primary steel load"
         availability: "must be built (build_industrial_production_per_country_tomorrow, build_industrial_production_per_node)"
       - input: "cost rows: blast furnace-basic oxygen furnace, hydrogen direct iron reduction furnace, natural gas direct iron reduction furnace, electric arc furnace, iron ore DRI-ready, steel carbon capture retrofit"
         required_for: "route intensities, capex and the ore price"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data (technology-data v0.15.0)"
+        availability: "exists by default via retrieve_costs + rule process_cost_data (technology-data v0.16.0)"
       - input: "nodal H2 buses, spatial gas buses, EU coal bus, CO2 stored buses"
         required_for: "route fuel inputs and the capture output"
-        availability: "exists by default in sector runs (the coal bus is added by add_steel when missing)"
+        availability: "exists by default in sector runs (the coal bus is added by the steel block when missing)"

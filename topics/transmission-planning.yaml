@@ -134,7 +134,7 @@ models:
   - id: compare_system_cost
     role: 'the cost of not building: total cost across cap values or with/without'
   version_anchor:
-    ref: 8ac32b87db61256db24d133791ed13fa101bb68f
+    ref: ee7c6d86e475ee17a6af6d49ebf5ba8118b16723
     date: '2026-11-24'
 - model: pypsa-earth
   approach: >-

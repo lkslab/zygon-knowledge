@@ -129,7 +129,7 @@ models:
       temporal: "Keys are static; profiles handled separately"
       scenario: "Keys do not vary by scenario (same distribution key for all {demand} tags and horizons)"
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >-
         (1) Electricity: build_electricity_demand_base combines three keys with
@@ -141,19 +141,19 @@ models:
         build_population_weighted_energy_totals multiplies country totals by
         pop_layout.fraction. (3) Industry: rule build_industrial_distribution_key
         builds per-subsector keys from Hotmaps industrial sites
-        (emission-weighted, prepare_hotmaps_database) supplemented by GEM steel
-        and cement plant trackers, an ammonia site list and refineries
-        (prepare_gem_steel_database, prepare_gem_cement_database,
-        prepare_ammonia_database); build_industrial_energy_demand_per_node
-        multiplies nodal production by sector energy ratios. With
-        sector.endogenous_sectors.enable under foresight myopic or perfect, a
-        second, plant-level siting places the brownfield industry links: rule
-        build_industry_plants assigns each existing blast furnace, gas DRI,
-        ammonia and methanol unit of the Fraunhofer ISI site database
-        (data/1-s2.0-S0196890424010586-mmc2.xlsx, EU27 + GB + NO), each GEM
-        cement tracker plant and the data/ammonia_plants.csv sites elsewhere to
-        its onshore region (industry_plants.csv); the route demand itself
-        still follows the distribution keys. (4) Shipping: rule
+        (emission-weighted, prepare_hotmaps_database) supplemented by the GEM steel, cement and chemicals plant trackers
+        and refineries (prepare_gem_steel_database, prepare_gem_cement_database,
+        prepare_gem_chemicals_database for ammonia, methanol and HVC);
+        build_industrial_energy_demand_per_node multiplies nodal production by
+        sector energy ratios. With existing_capacities.industry_plants under
+        foresight myopic or perfect, a second, plant-level siting places the
+        brownfield industry links: rule build_industry_plants assigns each
+        operating blast furnace and direct reduction furnace of the GEM Global
+        Iron and Steel Tracker, each integrated plant of the GEM cement tracker
+        and each ammonia and fossil methanol plant of the GEM Global Chemicals
+        Tracker to its nearest onshore region within 100 km
+        (industry_plants.csv); the route demand itself still follows the
+        distribution keys. (4) Shipping: rule
         build_shipping_demand assigns international navigation demand to nodes by
         port outflow volumes (sjoin_nearest on the world port index,
         properties_outflows). (5) Transport: car stock split by population
@@ -172,7 +172,7 @@ models:
         NUTS3 GDP/pop); heat and most sector demands are population-weighted with
         no urban-density option at this step; no per-carrier custom key config —
         alternative keys mean new data or code.
-      provenance: "scripts/build_electricity_demand_base.py:nuts3_distribution_keys ; scripts/build_electricity_demand_base.py:energy_atlas_distribution_keys ; scripts/build_industry_plants.py:prepare_isi_plants ; rules/build_sector.smk:build_industry_plants ; scripts/build_industrial_distribution_key.py:prepare_hotmaps_database ; scripts/build_shipping_demand.py:properties_outflows ; scripts/build_population_weighted_energy_totals.py:pop_layout.fraction"
+      provenance: "scripts/build_electricity_demand_base.py:nuts3_distribution_keys ; scripts/build_electricity_demand_base.py:energy_atlas_distribution_keys ; scripts/build_industry_plants.py:map_to_regions ; rules/build_sector.smk:build_industry_plants ; scripts/build_industrial_distribution_key.py:prepare_hotmaps_database ; scripts/build_shipping_demand.py:properties_outflows ; scripts/build_population_weighted_energy_totals.py:pop_layout.fraction"
     levers:
       - key: load.distribution_key
         effect: "Weights of the NUTS3 GDP/pop electricity key; caveat: code reads keys 'gdp' and 'pop', while the shipped default provides 'gdp' and 'population', so only gdp takes effect until a 'pop' key is supplied."
@@ -225,12 +225,12 @@ models:
       - input: "NUTS3 shapes with gdp/pop attributes"
         required_for: "Fallback electricity key and industry population column"
         availability: "exists by default (resources nuts3_shapes)"
-      - input: "Hotmaps industrial sites, GEM steel/cement trackers, ammonia and refinery lists"
+      - input: "Hotmaps industrial sites, GEM steel/cement/chemicals trackers, refinery list"
         required_for: "Industry keys"
         availability: "exists by default (retrieve rules); Europe coverage"
-      - input: "Fraunhofer ISI industry site database (Neuwirth et al. 2024, CC-BY-4.0) + GEM cement tracker + data/ammonia_plants.csv"
-        required_for: "existing plant sites for the brownfield steel, cement, ammonia and methanol links (routes switch, myopic/perfect only)"
-        availability: "exists by default (the ISI xlsx is checked into the repo; GEM retrieved); built by rule build_industry_plants"
+      - input: "GEM Global Iron and Steel Tracker (plant and iron unit data), Global Cement and Concrete Tracker, Global Chemicals Tracker"
+        required_for: "existing plant sites for the brownfield steel, cement, ammonia and methanol links (existing_capacities.industry_plants, myopic/perfect only)"
+        availability: "retrieved from the archive only (retrieve_gem_gspt, retrieve_gem_gcct, retrieve_gem_gct); built by rule build_industry_plants"
       - input: "World port index with outflow attributes"
         required_for: "Shipping demand allocation"
         availability: "exists by default (input of rule build_shipping_demand)"

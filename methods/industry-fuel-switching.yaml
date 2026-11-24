@@ -30,7 +30,7 @@ when_to_use:
 models:
 - model: pypsa-eur
   version_anchor:
-    ref: 8ac32b87db61256db24d133791ed13fa101bb68f
+    ref: ee7c6d86e475ee17a6af6d49ebf5ba8118b16723
     date: '2026-11-24'
   execution:
   - kind: config
@@ -123,13 +123,13 @@ models:
 notes: >-
   Country totals, not sites: production is national and reaches a cluster through the
   site lists, so the answer is the demand and the supply built around a cluster, never
-  a plant's business case. Process heat is split by fuel, not by temperature band, unless [[industry-heat-endogenous]] is on (sector.industry_t.endogen, fork): then the endogenised sectors' heat becomes band demand the model supplies, and those sectors leave the sector_ratios_fraction_future blend (today's intensities); no production-route choice is endogenous on this method's own, only steel and cement under [[industry-routes-endogenous]] (below). Pair with [[co2-budget]] for the
+  a plant's business case. Process heat is split by fuel, not by temperature band, unless [[industry-heat-endogenous]] is on (sector.industry_heat.enable): then the covered sectors' heat becomes band demand the model supplies, and those sectors leave the sector_ratios_fraction_future blend (today's intensities); no production-route choice is endogenous on this method's own, only steel and cement under [[industry-routes-endogenous]] (below). Pair with [[co2-budget]] for the
   target that prices the routes, [[h2-network-expansion]] when the question is where
   the hydrogen comes from, [[pathway-myopic]] when it is when the switch has to happen.
   The carrier cards h2-dri-steel, electric-arc-furnace, low-clinker-cement,
   electrolytic-chemicals, industrial-ccs, electric-process-heat and
   industrial-process-heat-temperature-bands carry the levers. With
-  [[industry-routes-endogenous]] (sector.endogenous_sectors.enable) primary steel and
+  [[industry-routes-endogenous]] (steel or cement in sector.endogenous_sectors) primary steel and
   cement leave this chain's demand tables and their routes become a model choice:
   industry.DRI_fraction is then dormant for primary steel (St_primary_fraction still
   sizes the primary load, which is Integrated plus DRI production), the Cement column's

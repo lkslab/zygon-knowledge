@@ -23,7 +23,7 @@ when_to_use:
   - "known in pypsa-eur as: methanol, methanol transport, methanolisation, biomass-to-methanol, biomass-to-methanol CC, e-biomethanol, biogas to methanol, e-biogas-methanol, grey methanol, blue methanol, Methanol steam reforming, Methanol steam reforming CC, methanol-to-olefins/aromatics, allam methanol, CCGT methanol, CCGT methanol CC, OCGT methanol"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         The synthesis route is ON by default, but it lives inside
@@ -46,9 +46,10 @@ models:
         sector.shipping_methanol_share — combustion CO2 charged to
         atmosphere at the methanolisation carbondioxide-input), and
         "industry methanol" loads from the industrial demand chain
-        (add_industry); with sector.shipping_endogenous the shipping share is
-        no longer set but chosen: a "<node> shipping methanol" link competes
-        with oil, LNG and hydrogen for the oil-equivalent shipping load. With
+        (add_industry); with methanol listed in sector.shipping_endogenous the
+        shipping share is no longer set but chosen: a "<node> shipping methanol"
+        link competes with the other listed fuels for the oil-equivalent
+        shipping load the exogenous shares leave uncovered. With
         sector.methanol.meoh_to_oa (off by default) add_meoh_to_oa adds a third
         demand channel: an extendable "<node> methanol-to-olefins/aromatics"
         link from the methanol bus onto the naphtha-for-industry bus
@@ -75,7 +76,7 @@ models:
         (sector.methanol.e_biomethanol) on [[biomass-to-methanol]] and
         [[advanced-biofuels]]; biogas to methanol and e-biogas-methanol
         (sector.methanol.biogas_to_methanol / e_biogas_methanol) on
-        [[biogas-anaerobic-digestion]]; and, since the fork commit d2e0d486,
+        [[biogas-anaerobic-digestion]]; and, since the fork commit f2bd0ecb,
         extendable fossil methanol from the gas bus — "<gas location> grey
         methanol" (sector.methanol.grey_methanol: 0.569 MWh methanol per MWh
         gas, the gas carbon not bound in the methanol, 0.0568 t/MWh gas,
@@ -103,7 +104,7 @@ models:
         No fuel-origin quota: hydrogen is any H2 (no RFNBO tracking, no
         ReFuelEU or FuelEU sub-quota); blue methanol captures the
         concentrated synthesis stream with no efficiency penalty.
-      provenance: "scripts/prepare_sector_network.py:methanolisation; scripts/prepare_sector_network.py:add_methanol; scripts/prepare_sector_network.py:define_spatial; scripts/prepare_sector_network.py:add_shipping; scripts/prepare_sector_network.py:add_waste_heat; scripts/prepare_sector_network.py:import methanol; scripts/prepare_sector_network.py:add_meoh_to_oa; scripts/prepare_sector_network.py:_add_shipping_endogenous; scripts/prepare_sector_network.py:add_grey_methanol; scripts/prepare_sector_network.py:grey_methanol_attrs; scripts/add_existing_baseyear.py:add_existing_industry"
+      provenance: "scripts/prepare_sector_network.py:methanolisation; scripts/prepare_sector_network.py:add_methanol; scripts/prepare_sector_network.py:define_spatial; scripts/prepare_sector_network.py:add_shipping; scripts/prepare_sector_network.py:add_waste_heat; scripts/prepare_sector_network.py:import methanol; scripts/prepare_sector_network.py:add_meoh_to_oa; scripts/prepare_sector_network.py:shipping_endogenous; scripts/prepare_sector_network.py:add_grey_methanol; scripts/prepare_sector_network.py:grey_methanol_attrs; scripts/add_existing_baseyear.py:add_existing_industry"
     levers:
       - key: sector.min_part_load_methanolisation
         effect: "p_min_pu of the methanolisation links — must-run floor as a fraction of built capacity in every snapshot."
@@ -150,9 +151,9 @@ models:
         default: "false"
         provenance: "config/config.default.yaml:meoh_to_oa; scripts/prepare_sector_network.py:add_meoh_to_oa"
       - key: sector.shipping_endogenous
-        effect: "true lets shipping methanol compete endogenously with oil, LNG and hydrogen instead of following shipping_methanol_share."
-        default: "false"
-        provenance: "config/config.default.yaml:shipping_endogenous; scripts/prepare_sector_network.py:_add_shipping_endogenous"
+        effect: "Listing methanol (e.g. [methanol, oil, lng]) lets shipping methanol compete endogenously with the other listed fuels instead of following shipping_methanol_share."
+        default: "[]"
+        provenance: "config/config.default.yaml:shipping_endogenous; scripts/prepare_sector_network.py:shipping_endogenous"
       - key: costs.overwrites
         effect: "Override the 'methanolisation' investment/VOM/lifetime (the hydrogen-input/electricity-input/carbondioxide-input attributes need data/custom_costs.csv rows)."
         default: "{} (empty)"
@@ -166,7 +167,7 @@ models:
         note: "default ramp reaches 100% by 2050; adjust sector.shipping_methanol_share"
       - variant: "shipping methanol chosen endogenously against oil, LNG and hydrogen"
         rung: L0
-        note: "sector.shipping_endogenous: true (method [[shipping-fuel-endogenous]])"
+        note: "sector.shipping_endogenous: [methanol, oil, lng] or similar (method [[shipping-fuel-endogenous]])"
       - variant: "methanol-to-olefins/aromatics (methanol as HVC feedstock)"
         rung: L0
         note: "sector.methanol.meoh_to_oa: true; the link draws from the methanol bus, so e-methanol, biomass-to-methanol and imports all serve it"
@@ -208,8 +209,8 @@ models:
         anchor: "scripts/prepare_sector_network.py::add_methanol (add_biomass_to_methanol, add_e_biomethanol, add_biogas_to_methanol, add_grey_methanol); the brownfield grey plants in scripts/add_existing_baseyear.py::add_existing_industry, both over ::grey_methanol_attrs"
         provenance: "scripts/prepare_sector_network.py:add_methanol; scripts/prepare_sector_network.py:add_grey_methanol; scripts/prepare_sector_network.py:grey_methanol_attrs; scripts/add_existing_baseyear.py:add_existing_industry"
       - change: "shipping methanol demand"
-        anchor: "scripts/prepare_sector_network.py::add_shipping (shipping_methanol_share block); endogenous mode in ::_add_shipping_endogenous"
-        provenance: "scripts/prepare_sector_network.py:shipping methanol; scripts/prepare_sector_network.py:_add_shipping_endogenous"
+        anchor: "scripts/prepare_sector_network.py::add_shipping (methanol entries of its supply and demand dicts, both modes)"
+        provenance: "scripts/prepare_sector_network.py:shipping methanol; scripts/prepare_sector_network.py:shipping_endogenous"
       - change: "methanol-to-olefins/aromatics"
         anchor: "scripts/prepare_sector_network.py::add_meoh_to_oa (called from add_methanol)"
         provenance: "scripts/prepare_sector_network.py:add_meoh_to_oa"
@@ -222,7 +223,7 @@ models:
     data_dependencies:
       - input: "cost row 'methanolisation' (hydrogen-input, electricity-input, carbondioxide-input, heat-output)"
         required_for: "all synthesis energetics and costs"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "co2 stored buses with captured CO2 supply (capture chain / DAC)"
         required_for: "the CO2 feedstock (bus3)"
         availability: "exists by default (add_co2_tracking; capture technologies per their carrier cards)"

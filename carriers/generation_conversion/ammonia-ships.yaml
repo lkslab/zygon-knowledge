@@ -13,15 +13,15 @@ when_to_use:
   - "alternative marine fuels"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Demand side NOT covered: at this ref the shipping fuel split in
         add_shipping knows four shares — shipping_hydrogen_share,
         shipping_methanol_share, shipping_oil_share, shipping_lng_share; there
         is no shipping_ammonia_share key and no ammonia shipping Load/carrier,
-        and the endogenous fuel menu of sector.shipping_endogenous (oil,
-        methanol, LNG, hydrogen) has no ammonia link either. The
+        and sector.shipping_endogenous only accepts hydrogen, methanol, oil
+        and lng, so ammonia cannot compete there either. The
         SUPPLY side, however, exists in full: with sector.ammonia (default
         true) add_ammonia builds an "NH3" carrier with Haber-Bosch synthesis
         Links (electricity + H2 in, per-node), ammonia crackers (NH3 back to
@@ -74,11 +74,11 @@ models:
         note: "beyond the nodal ammonia store: new components + port data + rule/config plumbing"
       - variant: "endogenous fuel competition (NH3 vs H2 vs methanol vs oil)"
         rung: L2
-        note: "sector.shipping_endogenous (method [[shipping-fuel-endogenous]]) already makes oil, methanol, LNG and H2 compete on one oil-equivalent '<node> shipping' bus; ammonia joins with one more link in _add_shipping_endogenous from spatial.ammonia.nodes onto that bus (mirror the methanol link), plus an NH3-engine efficiency assumption (L3)"
+        note: "sector.shipping_endogenous (method [[shipping-fuel-endogenous]]) already lets the listed fuels among oil, methanol, LNG and H2 compete on one oil-equivalent '<node> shipping' bus; ammonia joins with one more entry in the supply and fuel_demand dicts of add_shipping (bus0 spatial.ammonia.nodes, mirror methanol), 'ammonia' added to the allowed shipping_endogenous values in scripts/lib/validation/config/sector.py, plus an NH3-engine efficiency assumption (L3)"
     where:
       - change: "where the ammonia shipping share/load would be added"
-        anchor: "scripts/prepare_sector_network.py::add_shipping (mirror the shipping_methanol_share block, bus0 -> spatial.ammonia.nodes); for the endogenous menu ::_add_shipping_endogenous"
-        provenance: "scripts/prepare_sector_network.py:add_shipping; scripts/prepare_sector_network.py:shipping_methanol_share; scripts/prepare_sector_network.py:_add_shipping_endogenous"
+        anchor: "scripts/prepare_sector_network.py::add_shipping (one more entry in its share, supply, fuel_demand and demand dicts, bus0 -> spatial.ammonia.nodes); the same entry serves the endogenous mode"
+        provenance: "scripts/prepare_sector_network.py:add_shipping; scripts/prepare_sector_network.py:shipping_methanol_share; scripts/prepare_sector_network.py:shipping_endogenous"
       - change: "NH3 supply chain (synthesis, cracking, storage)"
         anchor: "scripts/prepare_sector_network.py::add_ammonia (sector.ammonia)"
         provenance: "scripts/prepare_sector_network.py:add_ammonia"
@@ -91,7 +91,7 @@ models:
     data_dependencies:
       - input: "cost rows 'Haber-Bosch', 'Ammonia cracker', 'NH3 (l) storage tank incl. liquefaction'"
         required_for: "the existing NH3 supply chain"
-        availability: "exists by default via retrieve_cost_data (referenced in add_ammonia)"
+        availability: "exists by default via retrieve_costs (referenced in add_ammonia)"
       - input: "NH3 marine engine efficiency/cost row"
         required_for: "a grounded ammonia shipping demand conversion"
         availability: "absent — assumption or new costs row needed"

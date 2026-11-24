@@ -8,7 +8,7 @@ when_to_use:
   - "battery chemistry alternatives / lithium-free storage"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Nothing sodium-ion-specific — grounded absence. Unlike the other
@@ -83,7 +83,7 @@ models:
         availability: "absent — not in the technology-data costs file; must be user-authored as new rows in data/custom_costs.csv (overwrite_costs adds technologies that don't already exist)"
       - input: "cost rows 'Lithium-Ion-LFP-store' / 'Lithium-Ion-LFP-bicharger' (or 'battery storage'/'battery inverter') to be overridden"
         required_for: "proxy route"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
   - model: pypsa-earth
     version_anchor: {ref: "8435f4c8cc05f30088933b37b7db497ff860dc53", date: "2026-07-08"}
     out_of_box:

@@ -15,7 +15,7 @@ when_to_use:
   - "pypsa-eur carrier names: OCGT methanol, CCGT methanol, CCGT methanol CC, allam methanol"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Partially ON by default: sector.methanol.methanol_to_power.ocgt is true,
@@ -128,7 +128,7 @@ models:
     data_dependencies:
       - input: "cost rows 'OCGT', 'CCGT', 'allam', 'cement capture', 'methanolisation' (carbondioxide-input)"
         required_for: "efficiencies, costs and carbon coefficients of the four variants"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "methanol supply on the EU methanol bus (methanolisation / biomass-to-methanol / imports) plus the extendable methanol Store"
         required_for: "fuel for dispatch — no fossil methanol generator exists"
         availability: "exists by default in sector runs"

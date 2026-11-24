@@ -18,7 +18,7 @@ when_to_use:
   - "known in pypsa-eur as: ror, run of river"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Fully covered on the existing-fleet side, in both workflows. "hydro" is
@@ -42,8 +42,8 @@ models:
         regression-fill missing statistic years from ERA5 country runoff
         (eia_approximate_missing), or pin all years to one statistics year
         (eia_norm_year); inflow below clip_min_inflow is zeroed. Sector runs:
-        "ror" is in the pypsa_eur keep-list (Generator), so ror generators
-        survive remove_elec_base_techs and appear unchanged in sector
+        "ror" is not in SECTOR_CARRIERS, so add_electricity keeps ror
+        generators and they appear unchanged in sector
         networks; add_existing_baseyear drops Fueltype "Hydro" from its
         brownfield step (fueltype_to_drop), so there is no double count in
         myopic runs.
@@ -112,17 +112,13 @@ models:
         effect: "Pandas query (or true) to inject user rows from data/custom_powerplants.csv — the route for ror plants missing from powerplantmatching (Fueltype Hydro, Technology 'Run-Of-River')."
         default: "false"
         provenance: "config/config.default.yaml:custom_powerplants; scripts/build_powerplants.py:add_custom_powerplants"
-      - key: pypsa_eur.Generator
-        effect: "Sector-run keep-list: 'ror' is included by default so run-of-river survives into sector networks; removing it makes remove_elec_base_techs strip ror there."
-        default: "[onwind, offwind-ac, offwind-dc, offwind-float, solar-hsat, solar, ror, nuclear]"
-        provenance: "config/config.default.yaml:pypsa_eur; scripts/prepare_sector_network.py:remove_elec_base_techs"
     boundary:
       - variant: "run with the existing ror fleet (electricity or sector workflow)"
         rung: L0
-        note: "default — 'hydro' in renewable_carriers, 'ror' in renewable.hydro.carriers and in the pypsa_eur keep-list"
+        note: "default — 'hydro' in renewable_carriers, 'ror' in renewable.hydro.carriers"
       - variant: "turn run-of-river off (keep other hydro)"
         rung: L1
-        note: "remove 'ror' from renewable.hydro.carriers (and from pypsa_eur.Generator for sector runs)"
+        note: "remove 'ror' from renewable.hydro.carriers (applies to sector runs too)"
       - variant: "remove hydrological year-to-year variation / pin to a statistics year"
         rung: L1
         note: "renewable.hydro.eia_norm_year: <year>; eia_correct_by_capacity and eia_approximate_missing refine the statistics for long weather-year sets"
@@ -158,8 +154,8 @@ models:
         anchor: "rule build_powerplants; scripts/add_electricity.py::load_and_aggregate_powerplants (tech_dict); scripts/build_powerplants.py::add_custom_powerplants"
         provenance: "scripts/add_electricity.py:tech_dict; scripts/build_powerplants.py:add_custom_powerplants"
       - change: "ror survival into sector networks"
-        anchor: "scripts/prepare_sector_network.py::remove_elec_base_techs (pypsa_eur keep-list)"
-        provenance: "scripts/prepare_sector_network.py:remove_elec_base_techs"
+        anchor: "scripts/add_electricity.py::SECTOR_CARRIERS (carriers skipped in sector runs; ror is not among them)"
+        provenance: "scripts/add_electricity.py:SECTOR_CARRIERS"
     data_dependencies:
       - input: "powerplantmatching hydro fleet with Technology labels (Run-Of-River)"
         required_for: "identifying ror plants — plants with missing Technology silently drop out of the hydro attachment"
@@ -175,7 +171,7 @@ models:
         availability: "retrieved by default; the europe-1940-2024-era5 cutout config includes runoff in prepare_kwargs"
       - input: "cost row 'ror' in the processed technology-data costs file"
         required_for: "efficiency and capital_cost of ror generators"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "data/custom_powerplants.csv"
         required_for: "user-added ror plants"
         availability: "template exists by default; rows user-authored"

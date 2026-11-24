@@ -14,7 +14,7 @@ when_to_use:
   - "pypsa-eur carrier names: H2 pipeline retrofitted, gas pipeline"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Fully wired but OPT-IN (sector.H2_retrofit: false by default; the
@@ -153,7 +153,7 @@ models:
         availability: "must be built; retrieved + built by default in the sector workflow (European coverage only)"
       - input: "cost rows 'H2 (g) pipeline repurposed' (retrofit) and 'H2 (g) pipeline' (greenfield reference)"
         required_for: "the retrofit-vs-new cost asymmetry"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "nodal H2 buses at both pipe endpoints"
         required_for: "retrofitted links' bus0/bus1"
         availability: "exists by default (add_h2_gas_infrastructure creates H2 buses at every node)"

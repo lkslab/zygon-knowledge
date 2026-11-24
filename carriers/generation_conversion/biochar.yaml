@@ -12,14 +12,14 @@ when_to_use:
   - "non-geological CDR / removal outside DAC and BECCS"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         No biochar component: "biochar" appears nowhere in scripts/, rules/ or
         config/ — a grounded absence in the WORKFLOW. But unlike pypsa-earth,
         the shipped COST DATA already contains it: technology-data v0.14.0
         (data/versions.csv row costs,v0.14.0, retrieved by rule
-        retrieve_cost_data) carries a "biochar pyrolysis" technology
+        retrieve_costs) carries a "biochar pyrolysis" technology
         (investment, VOM, FOM, lifetime, efficiency-biochar 0.404,
         efficiency-heat 0.4848, yield-biochar 0.0582 t/MWh_feedstock), and the
         processed cost table keeps dedicated efficiency-biochar /
@@ -100,8 +100,8 @@ models:
         anchor: "scripts/solve_network.py::prepare_network (alongside ::add_co2_sequestration_limit)"
         provenance: "scripts/solve_network.py:prepare_network; scripts/solve_network.py:add_co2_sequestration_limit"
       - change: "biochar cost row"
-        anchor: "'biochar pyrolysis' in the retrieved technology-data costs (rule retrieve_cost_data); overrides via data/custom_costs.csv"
-        provenance: "rules/retrieve.smk:retrieve_cost_data; scripts/process_cost_data.py:overwrite_costs"
+        anchor: "'biochar pyrolysis' in the retrieved technology-data costs (rule retrieve_costs); overrides via data/custom_costs.csv"
+        provenance: "rules/retrieve.smk:retrieve_costs; scripts/process_cost_data.py:overwrite_costs"
     data_dependencies:
       - input: "cost row 'biochar pyrolysis' (technology-data v0.14.0: investment, efficiency-biochar, yield-biochar, efficiency-heat)"
         required_for: "the L2 pathway's techno-economics"

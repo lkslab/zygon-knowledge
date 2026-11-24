@@ -23,7 +23,7 @@ when_to_use:
   - "known in pypsa-eur as: NH3, ammonia, ammonia store, ammonia cracker, Haber-Bosch"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         An ammonia economy is ON by default (sector.ammonia: true).
@@ -149,7 +149,7 @@ models:
         availability: "retrieved by the workflow; European coverage via country converter"
       - input: "cost rows 'Haber-Bosch' (electricity-input, hydrogen-input), 'Ammonia cracker', 'NH3 (l) storage tank incl. liquefaction'"
         required_for: "synthesis/cracking/storage economics"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "nodal H2 buses with supply (electrolysis/SMR)"
         required_for: "Haber-Bosch hydrogen input and cracker output"
         availability: "exists by default (add_h2_gas_infrastructure)"

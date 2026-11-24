@@ -16,10 +16,11 @@ when_to_use:
   - "known in pypsa-eur as: water tanks, residential rural water tanks, services rural water tanks, residential urban decentral water tanks, services urban decentral water tanks, urban central water tanks, hot water storage, hot water charging, hot water discharging, urban central water tanks charger, urban central water tanks discharger, residential rural water tanks charger, residential rural water tanks discharger, residential urban decentral water tanks charger, residential urban decentral water tanks discharger, services rural water tanks charger, services rural water tanks discharger, services urban decentral water tanks charger, services urban decentral water tanks discharger, water pits, water pits charger, water pits discharger, urban central water pits, urban central water pits charger, urban central water pits discharger, aquifer thermal energy storage, aquifer thermal energy storage charger, aquifer thermal energy storage discharger"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
-        Sector runs, on by default (sector.tes: true). add_heat gives EVERY heat
+        Sector runs, on by default (sector.ttes: true for tanks,
+        sector.district_heating.ptes.enable: true for pits). add_heat gives EVERY heat
         system (residential rural, services rural, residential urban decentral,
         services urban decentral, urban central) a "{heat system} water tanks"
         Bus + extendable Store + charger/discharger Links, with capital cost,
@@ -32,7 +33,7 @@ models:
         Store e_nom = "energy to power ratio" (a technology-data column stamped
         onto the charger links) * charger p_nom for water tanks AND pits, and
         add_TES_charger_ratio_constraints ties charger p_nom = discharger p_nom
-        * efficiency — both gated on sector.tes. Two optional PTES refinements
+        * efficiency — both added whenever tanks, pits or ATES exist. Two optional PTES refinements
         from rule build_ptes_operations (temperature-dependent operation between
         ptes.max_top_temperature 90 C and min_bottom_temperature 35 C):
         district_heating.ptes.dynamic_capacity applies a time-varying e_max_pu
@@ -49,14 +50,14 @@ models:
         rule compose_network runs scripts/prepare_sector_network.py:
         add_heat loops over the five HeatSystem values wherever heat buses exist
         (urban central buses only where the district heating share is nonzero)
-        and creates the tank blocks under options["tes"] plus the water-pit
-        block for HeatSystem.URBAN_CENTRAL. rule build_ptes_operations
+        and creates the tank blocks under options["ttes"] plus the water-pit
+        block for HeatSystem.URBAN_CENTRAL (gated on district_heating.ptes.enable). rule build_ptes_operations
         (scripts/build_ptes_operations/run.py) precomputes
         ptes_e_max_pu_profiles, ptes_top_temperature_profiles and
         ptes_direct_utilisation_profiles per planning horizon from the
         district-heating temperature approximation. rule solve_network wires the
-        two TES constraints in extra_functionality when config sector.tes is
-        true and heat buses exist.
+        two TES constraints in extra_functionality unconditionally (they skip
+        networks without TES).
       not_covered: >
         No power-to-heat-to-power storage (Carnot battery): technology-data
         ships "Pumped-Heat-store/charger/discharger", "LowT-Molten-Salt" and
@@ -73,10 +74,14 @@ models:
         extendable.
       provenance: "scripts/prepare_sector_network.py:add_heat; scripts/solve_network.py:add_TES_energy_to_power_ratio_constraints; scripts/solve_network.py:add_TES_charger_ratio_constraints; rules/build_sector.smk:build_ptes_operations; scripts/add_brownfield.py:update_dynamic_ptes_capacity; scripts/prepare_sector_network.py:water pits charger"
     levers:
-      - key: sector.tes
-        effect: "Master switch: adds water tanks at all heat systems and water pits at urban central nodes; also gates the two TES constraints in solve_network."
+      - key: sector.ttes
+        effect: "Adds water tanks at all heat systems (the deprecated sector.tes still sets both ttes and ptes.enable, with a warning)."
         default: "true"
-        provenance: "config/config.default.yaml:tes; scripts/prepare_sector_network.py:add_heat"
+        provenance: "config/config.default.yaml:ttes; scripts/prepare_sector_network.py:add_heat"
+      - key: sector.district_heating.ptes.enable
+        effect: "Adds water pits at urban central nodes, independent of sector.ttes."
+        default: "true"
+        provenance: "config/config.default.yaml:ptes; scripts/prepare_sector_network.py:enable_ptes"
       - key: sector.heating
         effect: "Gates add_heat entirely — false removes all heat buses and with them every TES."
         default: "true"
@@ -120,16 +125,16 @@ models:
     boundary:
       - variant: "water-tank heat storage at all heat nodes"
         rung: L0
-        note: "default via sector.tes"
+        note: "default via sector.ttes"
       - variant: "pit storage (PTES) for district heating"
         rung: L0
-        note: "default at urban central nodes (needs a nonzero district heating share, see district-heating carrier card)"
+        note: "default at urban central nodes via sector.district_heating.ptes.enable (needs a nonzero district heating share, see district-heating carrier card)"
       - variant: "temperature-dependent PTES capacity and discharge"
         rung: L1
         note: "ptes.dynamic_capacity: true and/or ptes.supplemental_heating.enable: true (+ booster_heat_pump with 'ptes' added to sector.heat_pump_sources.'urban central')"
       - variant: "run without thermal storage"
         rung: L0
-        note: "sector.tes: false (also disables the TES constraints)"
+        note: "sector.ttes: false and sector.district_heating.ptes.enable: false (ATES is off by default)"
       - variant: "change storage losses or the fixed energy-to-power ratio"
         rung: L3
         note: "standing_losses and 'energy to power ratio' live in the costs file — author rows in data/custom_costs.csv; there is no config time-constant (no tes_tau in pypsa-eur)"
@@ -141,19 +146,19 @@ models:
         note: "cost rows Pumped-Heat-store/charger/discharger exist unconsumed; add an elec->heat-store->elec chain (the STORE_LOOKUP pattern in add_electricity.py or a new block in prepare_sector_network) — no data gap"
       - variant: "molten salt / sand / concrete high-temperature storage"
         rung: L2
-        note: "LowT/HighT-Molten-Salt, Sand and Concrete store/charger/discharger rows exist unconsumed; needs a code branch and a bus to serve (the industry_t band buses exist on this fork behind sector.industry_t.endogen and are the natural bus to serve)"
+        note: "LowT/HighT-Molten-Salt, Sand and Concrete store/charger/discharger rows exist unconsumed; needs a code branch and a bus to serve (the industry_heat band buses exist behind sector.industry_heat.enable and are the natural bus to serve)"
       - variant: "industrial process-heat storage"
         rung: L2
-        note: "with sector.industry_t.endogen (fork) the band buses exist but carry no Store; a store/charger/discharger on a band bus is a code branch in add_t_industry* using the unconsumed molten-salt / sand / concrete cost rows"
+        note: "with sector.industry_heat.enable the band buses exist but carry no Store; a store/charger/discharger on a band bus is a code branch in add_industry_heat using the unconsumed molten-salt / sand / concrete cost rows"
       - variant: "borehole thermal storage (BTES)"
         rung: L5
         note: "no code, no cost rows, no geodata; nearest template is the ATES chain (aquifer-thermal-storage carrier card)"
     where:
       - change: "tank and pit component creation (cost keys, standing losses, etpr stamping)"
-        anchor: "scripts/prepare_sector_network.py::add_heat (options['tes'] block + URBAN_CENTRAL water pits block)"
+        anchor: "scripts/prepare_sector_network.py::add_heat (options['ttes'] block + URBAN_CENTRAL water pits block)"
         provenance: "scripts/prepare_sector_network.py:add_heat"
       - change: "fixed-duration and charger-ratio constraints"
-        anchor: "scripts/solve_network.py::add_TES_energy_to_power_ratio_constraints / ::add_TES_charger_ratio_constraints (gated on sector.tes in ::extra_functionality)"
+        anchor: "scripts/solve_network.py::add_TES_energy_to_power_ratio_constraints / ::add_TES_charger_ratio_constraints (called unconditionally in ::extra_functionality)"
         provenance: "scripts/solve_network.py:add_TES_energy_to_power_ratio_constraints; scripts/solve_network.py:extra_functionality"
       - change: "PTES temperature profiles (e_max_pu, direct utilisation, top temperature)"
         anchor: "rule build_ptes_operations -> scripts/build_ptes_operations/run.py (params from sector.district_heating.ptes)"
@@ -167,7 +172,7 @@ models:
     data_dependencies:
       - input: "cost rows 'central water tank storage', 'decentral water tank storage', 'central water pit storage' (+ matching charger/discharger rows) incl. the 'energy to power ratio' and 'standing_losses' columns"
         required_for: "all tank/pit TES"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "heat buses per node (rule compose_network heat workflow; urban central where district heat share > 0)"
         required_for: "placement of tanks and pits"
         availability: "must be built (default sector workflow)"

@@ -15,7 +15,7 @@ when_to_use:
   - "known in pypsa-eur as: links, HVDC links, DC, DC-DC, DC link"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Fully covered on the existing-asset side and — unlike pypsa-earth —
@@ -54,7 +54,7 @@ models:
         add_transmission_projects_and_dlr (project links appended) -> rule
         simplify_network (remove_converters, simplify_links) -> rule
         cluster_network -> rule compose_network, which calls add_electricity.py
-        and prepare_network.py (set_transmission_costs, set_transmission_limit,
+        (set_transmission_costs) and prepare_network.py (set_transmission_limit,
         cap_transmission_capacity) -> rule solve_network. Sector chain: the
         prepare_sector_network.py part of compose_network runs
         lossy_bidirectional_links for every carrier listed in
@@ -114,7 +114,7 @@ models:
       - key: electricity.autarky
         effect: "enable: true with by_country: true removes cross-border DC links (and lines); by_country: false removes all DC links."
         default: "{enable: false, by_country: false}"
-        provenance: "config/config.default.yaml:autarky; scripts/prepare_network.py:enforce_autarky"
+        provenance: "config/config.default.yaml:autarky; scripts/solve_network.py:enforce_autarky"
     boundary:
       - variant: "let existing HVDC links expand cost-optimally"
         rung: L0
@@ -171,7 +171,7 @@ models:
         availability: "must be built (standard workflow)"
       - input: "cost rows 'HVDC overhead', 'HVDC submarine', 'HVDC inverter pair'"
         required_for: "expansion costing of DC links"
-        availability: "exists by default (technology-data via rule retrieve_cost_data)"
+        availability: "exists by default (technology-data via rule retrieve_costs)"
       - input: "data/transmission_projects/{tyndp2020,nep,manual}/new_links.csv"
         required_for: "candidate interconnector projects"
         availability: "exists by default in the repo; manual rows user-extendable"

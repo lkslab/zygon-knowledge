@@ -25,7 +25,7 @@ when_to_use:
   - "naphtha / HVC feedstock switch"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         The chemicals block of build_industry_sector_ratios carves dedicated
@@ -139,9 +139,9 @@ models:
       - variant: "chlor-alkali demand response / flexible operation"
         rung: L5
         note: "chlorine electricity is part of a flat Load; flexibility needs a bespoke Link+Store demand model"
-      - variant: "site chlorine/methanol at real plant locations"
+      - variant: "site chlorine at real plant locations"
         rung: L2
-        note: "distributed via hotmaps 'Chemical industry' keys; a dedicated plant list needs a new branch in build_industrial_distribution_key (ammonia already has one: prepare_ammonia_database + data/ammonia_plants.csv)"
+        note: "chlorine is distributed via hotmaps 'Chemical industry' keys; a dedicated plant list needs a new branch in build_industrial_distribution_key (ammonia, methanol and HVC already have one: GEM Global Chemicals Tracker capacities via prepare_gem_chemicals_database)"
     where:
       - change: "chemical sector definitions and intensities (Chlorine, Methanol, Ammonia, HVC recycling)"
         anchor: "scripts/build_industry_sector_ratios.py::chemicals_industry"
@@ -155,16 +155,16 @@ models:
       - change: "recycling-route phase-in"
         anchor: "scripts/build_industrial_production_per_country_tomorrow.py (HVC fractions)"
         provenance: "scripts/build_industrial_production_per_country_tomorrow.py:HVC_mechanical_recycling_fraction"
-      - change: "ammonia plant siting"
-        anchor: "scripts/build_industrial_distribution_key.py::prepare_ammonia_database (data/ammonia_plants.csv)"
-        provenance: "scripts/build_industrial_distribution_key.py:prepare_ammonia_database"
+      - change: "ammonia and methanol plant siting"
+        anchor: "scripts/build_industrial_distribution_key.py::prepare_gem_chemicals_database (GEM Global Chemicals Tracker) and build_nodal_distribution_key"
+        provenance: "scripts/build_industrial_distribution_key.py:prepare_gem_chemicals_database"
     data_dependencies:
       - input: "cost rows 'Haber-Bosch', 'Ammonia cracker', 'methanolisation', 'NH3 (l) storage tank incl. liquefaction'"
         required_for: "explicit ammonia and e-methanol supply"
-        availability: "exists by default via retrieve_cost_data"
-      - input: "ammonia production statistics (rule build_ammonia_production) + data/ammonia_plants.csv"
-        required_for: "carving ammonia out of Basic chemicals; nodal NH3 distribution"
-        availability: "exists by default (USGS data retrieved; plant list in repo)"
+        availability: "exists by default via retrieve_costs"
+      - input: "ammonia production statistics (rule build_ammonia_production) + GEM Global Chemicals Tracker (rule retrieve_gem_gct)"
+        required_for: "carving ammonia out of Basic chemicals; nodal NH3 and methanol distribution"
+        availability: "retrieved by the workflow (USGS data; the GEM tracker from the archive only)"
       - input: "JRC-IDEES Chemicals Industry sheets"
         required_for: "Basic chemicals baseline the carve-outs subtract from"
         availability: "retrieved by the workflow (rule retrieve_jrc_idees)"

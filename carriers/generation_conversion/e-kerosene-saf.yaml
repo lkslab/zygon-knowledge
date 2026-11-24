@@ -22,7 +22,7 @@ when_to_use:
   - "known in pypsa-eur as: methanol-to-kerosene"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Aviation demand is exogenous and ON by default (sector.aviation:
@@ -141,7 +141,7 @@ models:
         availability: "must be built (energy-totals chain); default in sector workflow"
       - input: "cost rows 'Fischer-Tropsch', 'methanol-to-kerosene', 'oil' (fuel price + CO2 intensity)"
         required_for: "synthetic routes and fossil competitor economics"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "co2 stored buses with captured CO2 (for FT feedstock)"
         required_for: "the e-fuel synthesis side"
         availability: "exists by default (add_co2_tracking + capture chain)"

@@ -21,7 +21,7 @@ when_to_use:
   - "known in pypsa-eur as: CHP, CHP CC, CHP heat, CHP electric, urban central gas CHP, urban central gas CHP CC, urban central solid biomass CHP, urban central solid biomass CHP CC"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Sector runs build extendable greenfield CHP by default. With
@@ -46,7 +46,7 @@ models:
         insert_gas_distribution_costs re-point them to the low-voltage bus and
         add gas distribution costs. Waste-burning CHP ("waste CHP") exists as
         a separate chain on the waste bus (add_waste, behind
-        waste.waste_to_energy / waste.waste_to_energy_cc, both off by default)
+        industry.waste_to_energy / industry.waste_to_energy_cc, both off by default)
         — see the waste-to-energy carrier card. Existing fleet:
         with myopic/perfect foresight, add_existing_baseyear maps the
         powerplantmatching "Bioenergy" fleet to brownfield "urban central
@@ -137,7 +137,7 @@ models:
         note: "append 'coal'/'oil' to sector.chp.fuel — mechanically works (own fuel bus + CO2 intensity + CC variant) but is priced with the 'central gas CHP' cost row; correct economics need a code edit to key the costs.at lookups per fuel (L2) plus cost rows (L3)"
       - variant: "CHP without the carbon-capture variants"
         rung: L2
-        note: "no config switch — the CC add calls in add_heat and add_biomass are unconditional; comment them out or filter afterwards (contrast: waste CHP CC, waste.waste_to_energy_cc, and coal CC DO have flags)"
+        note: "no config switch — the CC add calls in add_heat and add_biomass are unconditional; comment them out or filter afterwards (contrast: waste CHP CC, industry.waste_to_energy_cc, and coal CC DO have flags)"
       - variant: "control where central CHP can be built"
         rung: L1
         note: "CHP follows the district heating footprint — tune sector.district_heating.potential/progress (see district-heating carrier card); no direct per-node CHP siting key"
@@ -178,7 +178,7 @@ models:
     data_dependencies:
       - input: "cost rows 'central gas CHP' (incl. c_b), 'central solid biomass CHP' (+' CC', incl. efficiency-heat), 'biomass CHP capture', 'micro CHP'"
         required_for: "all CHP variants (costs, efficiencies, capture energetics)"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "urban central heat buses (district heat share per node from build_district_heat_share)"
         required_for: "central CHP placement"
         availability: "must be built (heat workflow); nonzero wherever district heating share > 0 given potential 0.6 and the progress schedule"

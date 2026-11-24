@@ -31,21 +31,22 @@ models:
     scenario (the route shares and the ratio blend, per horizon) and which hold for the
     whole submission (the intensities, sector.ammonia, the site lists). Process heat has
     two treatments: by default it is an exogenous fuel share inside those loads; with
-    the industry-heat-endogenous method (sector.industry_t.endogen) the heat of the
+    the industry-heat-endogenous method (sector.industry_heat.enable) the heat of the
     endogenised sectors becomes three temperature-band loads per node (100-200,
     200-500, 500+ °C) that steam boilers, direct firing, an industrial heat pump, an
     electric boiler and hydrogen firing compete for under the carbon cap and the
     biomass limit, so the study reads a technology choice instead of assuming one.
     Steel and cement have a route branch on top: with the industry-routes-endogenous
-    method (sector.endogenous_sectors.enable) primary steel and cement leave the demand
-    tables and become per-node tonnage loads met by competing production links —
-    scripts/prepare_sector_network.py:add_steel (blast furnace on coal, H2 or gas DRI
-    feeding an electric arc furnace, the furnace CO2 vented or captured) and
-    scripts/prepare_sector_network.py:add_cement (clinker kiln fired by solid biomass,
-    gas or waste, cement finishing, kiln capture retrofit) — and under myopic or perfect
-    foresight today's plants from rules/build_sector.smk:build_industry_plants (the
-    Fraunhofer ISI site database, the GEM cement tracker) enter as dated brownfield
-    links with the blast furnaces retiring at their pledged year; secondary (scrap) EAF
+    method (sector.endogenous_sectors: [steel, cement]) primary steel and cement leave
+    the demand tables and become per-node tonnage loads met by competing production
+    links in scripts/prepare_sector_network.py:add_industry (blast furnace on coal, H2
+    or gas DRI feeding an electric arc furnace, the furnace CO2 vented or captured;
+    a cement kiln at the JRC-IDEES intensities fired by solid biomass, gas or waste,
+    with a kiln capture retrofit), and with existing_capacities.industry_plants under
+    myopic or perfect foresight today's plants from
+    rules/build_sector.smk:build_industry_plants (the GEM iron and steel, cement and
+    chemicals trackers) enter as dated brownfield links with the blast furnaces
+    retiring at their announced year; secondary (scrap) EAF
     steel stays an exogenous electricity load. Industry electricity is flat unless the
     industry-load-profiles method gives it the hourly FfE branch shape. The
     target comes from co2-budget, the hydrogen supply from h2-network-expansion when
@@ -111,11 +112,12 @@ models:
     production routes are inputs except for primary steel and cement under
     industry-routes-endogenous (off by default), and even then secondary (scrap) EAF
     steel stays an exogenous electricity load with no scrap availability constraint and
-    no flexible EAF, there is no electric or hydrogen kiln, the clinker ratio is fixed
-    per finishing link, there is no clinker or steel trade between nodes, and
+    no flexible EAF, there is no electric or hydrogen kiln, the cement kiln keeps the
+    JRC-IDEES intensity per tonne (no clinker ratio lever), there is no cement or
+    steel trade between nodes, and
     industry.DRI_fraction no longer acts on primary steel. Process heat is split by
     temperature band only with the industry-heat-endogenous method
-    (sector.industry_t.endogen, off by default), and then steel stays out of the bands
+    (sector.industry_heat.enable, off by default), and then steel stays out of the bands
     (and cement too when its route is endogenous), the endogenised sectors lose the
     exogenous efficiency and electrification blend (today's intensities), there is no
     electric option above 200 °C and hydrogen firing carries a placeholder cost; no
@@ -221,17 +223,18 @@ models:
       submission
   - aspect: industry-heat
     is: >-
-      exogenous (sector.industry_t.endogen false) — process heat stays a fuel share
+      exogenous (sector.industry_heat.enable false) — process heat stays a fuel share
       inside the industry loads, following the shipped electrification trajectory
     note: >-
       industry-heat-endogenous switches to the temperature bands; the industry_heat
       question asks which treatment the study runs, since the two read differently (an
       assumed mix versus a priced choice at today's intensities)
   - aspect: industry-routes
-    is: exogenous (sector.endogenous_sectors.enable false) — steel and cement follow the route shares and the JRC-IDEES intensities
+    is: exogenous (sector.endogenous_sectors empty) — steel and cement follow the route shares and the JRC-IDEES intensities
     note: >-
-      industry-routes-endogenous switches primary steel and cement to priced routes at
-      technology-data intensities; the study says which treatment it runs
+      industry-routes-endogenous switches primary steel to priced routes at
+      technology-data intensities and cement to a priced kiln fuel and capture choice at
+      the JRC-IDEES intensities; the study says which treatment it runs
   - aspect: industry-load-profiles
     is: flat (industry.temporal_electricity_industry_load false)
     note: industry-load-profiles gives industry electricity the hourly FfE branch shape
@@ -271,7 +274,7 @@ models:
       what direct firing above 200 °C costs: gas against solid fuels, hydrogen a
       placeholder at ten times gas
   version_anchor:
-    ref: 8ac32b87db61256db24d133791ed13fa101bb68f
+    ref: ee7c6d86e475ee17a6af6d49ebf5ba8118b16723
     date: '2026-11-24'
 - model: pypsa-earth
   approach: >-

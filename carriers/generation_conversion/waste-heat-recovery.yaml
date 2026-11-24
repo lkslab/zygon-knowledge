@@ -17,7 +17,7 @@ when_to_use:
   - "industrial heat integration"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Power-to-X and biofuel waste heat is covered, on by default.
@@ -26,7 +26,7 @@ models:
         heat" bus: the six power-to-X donors Fischer-Tropsch, Sabatier
         (methanation), Haber-Bosch, methanolisation, H2 Electrolysis and H2
         Fuel Cell, each with its own key, plus (since the fork commit
-        d2e0d486) three biofuel group keys, each 0.25 by default:
+        f2bd0ecb) three biofuel group keys, each 0.25 by default:
         sector.use_biofuel_waste_heat (biomass to liquid, biomass to liquid
         CC, electrobiofuels), sector.use_biosng_waste_heat (BioSNG, BioSNG CC,
         e-bioSNG) and sector.use_biomethanol_waste_heat (biomass-to-methanol
@@ -139,7 +139,7 @@ models:
         note: "district heating heat-pump sources are configured heat sources (heat_pump_sources) with dedicated potential rules — no industrial-excess-heat source chain exists (limited_heat_sources knows geothermal and river_water only)"
       - variant: "on-site reuse within industry (cascading between temperature levels)"
         rung: L2
-        note: "with sector.industry_t.endogen (fork) the band buses exist per node, but their supply links have no heat byproduct output and no link connects the bands; a cascade (e.g. heat500+ exhaust feeding heat100-200) is an extra output bus on the firing links or a band-to-band link in add_t_industry* — see industry-process-heat-endogenous"
+        note: "with sector.industry_heat.enable the band buses exist per node, but their supply links have no heat byproduct output and no link connects the bands; a cascade (e.g. heat500+ exhaust feeding heat100-200) is an extra output bus on the firing links or a band-to-band link in add_industry_heat — see industry-process-heat-endogenous"
       - variant: "ORC electricity from waste heat"
         rung: L5
         note: "no ORC technology; needs new links + cost rows and a heat source to draw on"
@@ -168,7 +168,7 @@ models:
         availability: "exists by default in sector runs (respective supply blocks)"
       - input: "methanolisation cost row with heat-output attribute; biomass-to-methanol row with efficiency-heat"
         required_for: "methanolisation and biomass-to-methanol recovery efficiency"
-        availability: "exists by default via retrieve_cost_data"
+        availability: "exists by default via retrieve_costs"
       - input: "industrial excess-heat potentials by site and temperature"
         required_for: "genuine industrial waste-heat recovery"
         availability: "absent — no such dataset in the workflow"

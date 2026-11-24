@@ -17,7 +17,7 @@ when_to_use:
   - "pypsa-eur carrier names: biomass-to-methanol, biomass-to-methanol CC, e-biomethanol, methanol, solid biomass"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         ON by default in sector runs. add_methanol (gated on any true flag under
@@ -58,7 +58,7 @@ models:
         v0.15.0), capital cost = the biomass-to-methanol plant plus
         methanolisation for the extra product, atmosphere withdrawal =
         exactly the methanol's carbon; see [[advanced-biofuels]] for the
-        construction. Waste heat (since the fork commit d2e0d486): with
+        construction. Waste heat (since the fork commit f2bd0ecb): with
         sector.heating, sector.use_biomethanol_waste_heat (0.25) of the
         row's own recoverable heat (biomass-to-methanol "efficiency-heat",
         0.22 MWh per MWh biomass, so 0.055 by default) goes from the plain
@@ -183,7 +183,7 @@ models:
         availability: "must be built (rule build_biomass_potentials); exists by default in the sector workflow"
       - input: "cost rows 'biomass-to-methanol' (efficiency, C in fuel, C stored, CO2 stored, capture rate, efficiency-heat, VOM), 'solid biomass' (CO2 intensity), 'biomass CHP capture' (CC capex), 'methanolisation' (hydrogen-input, investment, for e-biomethanol)"
         required_for: "energetics, CO2 split and costs of both variants"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "methanol demand (shipping methanol share, industry methanol) or methanol-consuming technologies"
         required_for: "any dispatch of the route — without a methanol sink the links sit idle"
         availability: "exists by default (sector.shipping_methanol_share ramps from 2030; industry methanol demand from industrial_energy_demand)"

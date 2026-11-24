@@ -28,11 +28,11 @@ models:
     electrobiofuels by default, BioSNG and the bio- and biogas methanol routes when on,
     each at the node of its biomass or biogas bus, sector.use_biofuel_waste_heat,
     use_biosng_waste_heat, use_biomethanol_waste_heat), and water tank or pit storage
-    (sector.tes); per decentral bus heat pumps, boilers and tanks, seeded with today's
+    (sector.ttes, sector.district_heating.ptes.enable); per decentral bus heat pumps, boilers and tanks, seeded with today's
     heating stock. The district-heating-expansion method settles those keys and is where
     the two study shapes live: the share question is a scenario pair of progress dicts
     (expand vs hold), the source question is the supply mix the solver picks once the
-    sources are let in (geothermal is a no-op unless listed), and storage value is tes on
+    sources are let in (geothermal is a no-op unless listed), and storage value is ttes/ptes on
     vs off. The geothermal-geology method lets geothermal in on its geology (heat-only
     doublets per cluster, and optionally enhanced geothermal CHP). The emissions target
     comes from co2-budget, today's boilers and heat pumps from
@@ -129,7 +129,7 @@ models:
   - id: energy_balance
     role: "today's final energy use of households and services by carrier: the gas and oil heating to replace"
   version_anchor:
-    ref: 8ac32b87db61256db24d133791ed13fa101bb68f
+    ref: ee7c6d86e475ee17a6af6d49ebf5ba8118b16723
     date: '2026-11-24'
 - model: pypsa-earth
   approach: >-

@@ -24,7 +24,7 @@ when_to_use:
   - "known in pypsa-eur as: solar, solar PV, solar-hsat"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Fully covered with TWO competing utility-scale carriers by default:
@@ -229,7 +229,7 @@ models:
         availability: "retrieved by the workflow; good European coverage"
       - input: "technology-data cost rows 'solar-utility', 'solar-utility single-axis tracking', 'solar-rooftop'"
         required_for: "capital costs ('solar' capital_cost = solar-utility; hsat renamed)"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "IRENASTAT statistics (via powerplantmatching)"
         required_for: "from_irenastat gap filling and myopic add_existing_renewables vintages"
         availability: "exists by default (pm.data.IRENASTAT)"

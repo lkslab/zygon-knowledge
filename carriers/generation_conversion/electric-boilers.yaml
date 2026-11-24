@@ -18,7 +18,7 @@ when_to_use:
   - "electrode boiler"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Heating side (on by default): with sector.resistive_heaters true,
@@ -47,7 +47,7 @@ models:
         electrification only enters via the exogenous future sector ratios
         (see the electric-process-heat carrier card). No temperature bands,
         so no electric option at any process temperature above the
-        district-heating level. On this fork the industry_t temperature bands exist (heat100-200 / heat200-500 / heat500+ industry buses with competing supply links) behind sector.industry_t.endogen, off by default — see the industry-process-heat-endogenous carrier card and the industry-heat-endogenous method. Its electric steam boiler sits in the 100-200 °C band only, on the AC node.
+        district-heating level. The industry_heat temperature bands exist (heat100-200 / heat200-500 / heat500+ industry buses with competing supply links) behind sector.industry_heat.enable, off by default — see the industry-process-heat-endogenous carrier card and the industry-heat-endogenous method. Its electric steam boiler sits in the 100-200 °C band only, on the low-voltage bus with the distribution grid.
       provenance: "scripts/prepare_sector_network.py:resistive heater; scripts/prepare_sector_network.py:add_heat; scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:low-temperature heat for industry; config/config.default.yaml:resistive_heaters"
     levers:
       - key: sector.resistive_heaters
@@ -78,10 +78,10 @@ models:
         note: "raise industry.sector_ratios_fraction_future — shifts the fixed industry loads from gas/biomass towards 'industry electricity' following the JRC-IDEES future ratios; no boiler asset, no dispatch"
       - variant: "industrial electric steam boiler competing for process steam"
         rung: L0
-        note: "sector.industry_t.endogen: true (method industry-heat-endogenous) on this fork: '<node> heat100-200 industry electric boiler steam' (cost row 'electric boiler steam', AC node) competes with the industrial heat pump, gas and biomass steam boilers for the 100-200 °C band — industry-process-heat-endogenous"
+        note: "sector.industry_heat.enable: true (method industry-heat-endogenous): '<node> heat100-200 industry electric boiler' (cost row 'electric boiler steam', low-voltage bus with the distribution grid) competes with the industrial heat pump, gas and biomass steam boilers for the 100-200 °C band — industry-process-heat-endogenous"
       - variant: "hybrid gas-electric boiler switching on price"
         rung: L0
-        note: "with sector.industry_t.endogen the gas and electric boilers share the band bus and dispatch splits by marginal cost, within the must-run floor each built plant carries (sector.industry_t.must_run)"
+        note: "with sector.industry_heat.enable the gas and electric boilers share the band bus and dispatch splits by marginal cost, within the minimum part load each newly built plant carries (sector.industry_heat.min_part_load)"
     where:
       - change: "heating-system resistive heaters"
         anchor: "scripts/prepare_sector_network.py::add_heat (resistive heater block per heat system)"
@@ -95,7 +95,7 @@ models:
     data_dependencies:
       - input: "cost rows 'central resistive heater', 'decentral resistive heater'"
         required_for: "boiler costs and efficiencies"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "heat buses per node (add_heat, district heat share)"
         required_for: "resistive heater placement and the industrial low-T heat load"
         availability: "exists by default in sector runs with heating enabled"

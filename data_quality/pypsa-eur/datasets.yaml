@@ -17,15 +17,15 @@
   notes: "2023-v1 archive holds EU27 dirs only (plus EU27 aggregate); GR stored as EL, GB would map to UK but no UK dir exists at this version — so AL BA CH GB ME MK NO RS XK all take the EU-average path; per-country xlsx JRC-IDEES-{2023|2021}_{Residential|Tertiary|Transport|Industry...}_<CT>.xlsx"
 
 - id: fleiter-2025-process-temperature-bands
-  title: "Fleiter et al. 2025 industrial process heat temperature bands (supplementary data S1)"
-  path: data/ente202300981-sup-0001-suppdata-s1.xlsx
+  title: "Industry process heat temperature shares (data/industry_heat_temperature_shares.csv, mostly Fleiter et al. 2025)"
+  path: data/industry_heat_temperature_shares.csv
   code_convention: global
   coverage_class: proxy-global
-  consumer: "scripts/build_industry_sector_ratios_endogenous.py:process_temperature_band_mapper; scripts/build_industry_sector_ratios_endogenous.py:backup_temperature_band_shares"
-  missing_behavior: "EU-wide shares per industry process (sheet Industry_ESC_FEC) with no country dimension — every country gets the same temperature split of a sector's heat; sectors absent from the sheet (alumina, pharma, other industrial sectors, transport and machinery equipment, wood, textiles) use the hard-coded backup_temperature_band_shares; a process absent from the selected countries is skipped"
+  consumer: "scripts/build_industry_sector_ratios_endogenous.py:build_industry_sector_ratios_endogenous; rules/build_sector.smk:build_industry_sector_ratios_endogenous"
+  missing_behavior: "EU-wide shares of heat<100, heat100-200, heat200-500 and heat500+ per subsector with no country dimension, so every country gets the same temperature split of a sector's heat; 18 subsectors (no steel), rows normalised to sum 1; a subsector without production in a country keeps its exogenous ratios there"
   tier_when_missing: C
   used_by: [industry-process-heat-endogenous, industrial-process-heat-temperature-bands, chemicals-demand, cement-minerals-demand, aluminium-nonferrous-demand, pulp-paper-demand, food-beverages-demand, light-manufacturing-demand, mining-construction-demand]
-  notes: "checked into the fork (CC-BY-4.0, REUSE annotation); read only by the horizon-free rule build_industry_sector_ratios_endogenous, whose output feeds the endogenous block of industrial_energy_demand_<horizon>.csv used when sector.industry_t.endogen is true; the Fleiter 'Mechanical pulp' row is overridden in code to 100% heat100-200"
+  notes: "checked into the repo; one row per subsector with a source column (Fleiter et al. 2025 means for most rows, JRC-IDEES for alumina and pharma, energyinnovation.org for transport and machinery equipment and other industrial sectors, USDA and IFC for wood and textiles); read only by the horizon-free rule build_industry_sector_ratios_endogenous, which runs only when sector.industry_heat.enable is true; sector.industry_heat.exclude_sectors drops rows (default Pulp production)"
 
 - id: eurostat-balances
   title: "Eurostat complete energy balances (nrg_bal_c)"
@@ -173,39 +173,39 @@
 - id: gem-steel-cement-trackers
   title: "GEM Global Steel Plant Tracker + Global Cement and Concrete Tracker"
   path:
-    - data/gem_gspt/archive/march-2025-v1.1/Global-Steel-Plant-Tracker.xlsx
-    - data/gem_gcct/archive/july-2025/Global-Cement-and-Concrete-Tracker.xlsx
+    - data/gem_gspt/archive/september-2026-v1/Global-Steel-Plant-Tracker.xlsx
+    - data/gem_gcct/archive/july-2026-v1/Global-Cement-and-Concrete-Tracker.xlsx
   code_convention: country-name
   coverage_class: global-listed
-  consumer: "scripts/build_industrial_distribution_key.py:prepare_gem_steel_database; scripts/build_industrial_distribution_key.py:prepare_gem_cement_database; scripts/build_industry_plants.py:prepare_gem_cement_plants"
+  consumer: "scripts/build_industrial_distribution_key.py:prepare_gem_steel_database; scripts/build_industrial_distribution_key.py:prepare_gem_cement_database; scripts/build_industry_plants.py:prepare_gem_database"
   missing_behavior: "countries with no GEM steel or cement capacities fall back to the population-share key in build_nodal_distribution_key (else branch key = keys.loc[regions_ct, 'population']) for EAF / DRI + EAF / Integrated steelworks and Cement"
   tier_when_missing: C
   used_by: [steel-demand, cement-minerals-demand, h2-dri-steel, electric-arc-furnace, low-clinker-cement, demand-spatial-disaggregation, cement-routes-endogenous]
-  notes: "global trackers, so European coverage is good incl. Balkans; missing clinker/cement capacities imputed with the 1% quantile; the steel capacities by process (EAF, BOF/OHF, iron) are the spatial keys that place the exogenous EAF, DRI + EAF and Integrated steelworks production on the nodes (the country split comes from industry.St_primary_fraction and DRI_fraction), not a route choice; the endogenous routes are steel-routes-endogenous and cement-routes-endogenous, whose existing blast furnaces come from neuwirth-isi-industry-sites and whose existing cement kilns come from this cement tracker (build_industry_plants, operating plants at nominal cement capacity, grinding-only sites included, only with sector.endogenous_sectors.enable under myopic or perfect foresight)"
+  notes: "global trackers, so European coverage is good incl. Balkans; missing clinker/cement capacities imputed with the 1% quantile; the steel capacities by process (EAF, BOF/OHF, iron) are the spatial keys that place the exogenous EAF, DRI + EAF and Integrated steelworks production on the nodes (the country split comes from industry.St_primary_fraction and DRI_fraction), not a route choice; the endogenous routes are steel-routes-endogenous and cement-routes-endogenous, whose existing blast furnaces and gas DRI furnaces come from the iron-units file of the same steel tracker download (gem-iron-units-chemicals-trackers) and whose existing cement kilns come from this cement tracker (build_industry_plants, operating integrated plants at nominal cement capacity, grinding-only sites excluded, read only with existing_capacities.industry_plants under myopic or perfect foresight at the first horizon)"
 
-- id: neuwirth-isi-industry-sites
-  title: "Fraunhofer ISI industry site database (Neuwirth et al. 2024, production units)"
-  path: data/1-s2.0-S0196890424010586-mmc2.xlsx
-  code_convention: ISO2
-  coverage_class: country-listed
-  consumer: "scripts/build_industry_plants.py:prepare_isi_plants; scripts/build_industry_plants.py:prepare_ammonia_plants; scripts/add_existing_baseyear.py:add_existing_industry"
-  missing_behavior: "a country without rows gets no existing blast furnaces, gas DRI or methanol SMR plants, silently (its brownfield primary steel is built from scratch); for ammonia, countries the database does not cover fall back to data/ammonia_plants.csv at the database's mean build year; a unit without a modernisation or relining year takes its route's mean build year"
+- id: gem-iron-units-chemicals-trackers
+  title: "GEM Global Iron and Steel Tracker (iron units) + Global Chemicals Tracker"
+  path:
+    - data/gem_gspt/archive/september-2026-v1/Global-Iron-and-Steel-Tracker-iron-units.xlsx
+    - data/gem_gct/archive/november-2026-v1/Global-Chemicals-Tracker.xlsx
+  code_convention: country-name
+  coverage_class: global-listed
+  consumer: "scripts/build_industry_plants.py:prepare_gem_iron_units; scripts/build_industry_plants.py:prepare_gem_chemicals; scripts/build_industrial_distribution_key.py:prepare_gem_chemicals_database; scripts/add_existing_baseyear.py:add_existing_industry"
+  missing_behavior: "a country without operating units gets no existing blast furnaces, gas DRI, ammonia or fossil methanol plants, silently (its brownfield capacity is built from scratch); a unit without a relining year takes its start year; a unit with unknown capacity gets the 20% quantile of its carrier; units further than 100 km from every region are dropped; for the Ammonia, Methanol and HVC distribution keys a country without tracker plants falls back to its Chemical industry key"
   tier_when_missing: C
   used_by: [steel-routes-endogenous, cement-routes-endogenous]
-  notes: "checked into the fork (CC-BY-4.0, REUSE annotation, doi 10.1016/j.enconman.2024.119117), sheet Database, Eurostat codes (UK, EL renamed); 154 production units scoped on EU27 + GB + NO with rows in 21 countries: 58 blast furnaces, 47 steam crackers (not read), 41 ammonia SMR, 7 methanol SMR, 1 gas DRI; columns calibrated production (t/a), last modernisation or relining year and a pledged phase-out year Out (37 units, 2024-2045) that sector.steel_bof.pledge uses; read only by the horizon-free rule build_industry_plants, which runs only with sector.endogenous_sectors.enable under myopic or perfect foresight; cement-routes-endogenous is listed because build_industry_plants needs the file to write the one plant table (industry_plants.csv) its existing kilns are read from"
+  notes: "global trackers keyed by country names (Kosovo mapped to XK by hand); operating and operating pre-retirement units only; blast furnaces carry the announced retirement year as Out, honoured with existing_capacities.blast_furnace_announced_retirement (default true); read by the horizon-free rule build_industry_plants, whose one plant table (industry_plants.csv, also holding the cement kilns of gem-steel-cement-trackers) compose_network reads only with existing_capacities.industry_plants under myopic or perfect foresight at the first horizon. Replaces the Fraunhofer ISI site database (Neuwirth et al. 2024) of the earlier fork, which the code no longer reads"
 
 - id: ammonia-production-usgs
-  title: "Ammonia production and plant locations (USGS nitrogen statistics + plant list)"
-  path:
-    - data/nitrogen_statistics/archive/2023/nitro-ert.xlsx
-    - data/ammonia_plants.csv
+  title: "Ammonia production statistics (USGS nitrogen statistics)"
+  path: data/nitrogen_statistics/archive/2023/nitro-ert.xlsx
   code_convention: country-name
   coverage_class: country-listed
-  consumer: "scripts/build_ammonia_production.py:snakemake.input.usgs; scripts/build_industrial_production_per_country.py:separate_basic_chemicals; scripts/build_industrial_distribution_key.py:prepare_ammonia_database"
-  missing_behavior: "separate_basic_chemicals sets demand['Ammonia'] = 0.0 for countries absent from the USGS table (logged 'Following countries have no ammonia demand'), and prepare-side the Ammonia distribution key is set to 0.0 where no plant row exists"
+  consumer: "scripts/build_ammonia_production.py:snakemake.input.usgs; scripts/build_industrial_production_per_country.py:separate_basic_chemicals"
+  missing_behavior: "separate_basic_chemicals sets demand['Ammonia'] = 0.0 for countries absent from the USGS table (logged 'Following countries have no ammonia demand'); the nodal Ammonia distribution key no longer comes from a plant list here but from the GEM Global Chemicals Tracker (gem-iron-units-chemicals-trackers), falling back to the Chemical industry key where a country has no plant"
   tier_when_missing: D
   used_by: [green-ammonia, chemicals-demand, electrolytic-chemicals, industrial-feedstocks-nonenergy, industrial-material-production-drivers]
-  notes: "USGS sheet T12 (ktonN/a, 2019-2023, converted to ktonNH3); data/ammonia_plants.csv lists individual European plants with capacities; both keyed by country names -> ISO2 via country_converter"
+  notes: "USGS sheet T12 (ktonN/a, 2019-2023, converted to ktonNH3), keyed by country names -> ISO2 via country_converter; the plant list data/ammonia_plants.csv of the earlier fork is no longer read"
 
 - id: h2-salt-caverns
   title: "Hydrogen salt cavern storage potentials (Caglayan et al.)"
@@ -465,11 +465,11 @@
 
 - id: ffe-industry-load-profiles
   title: "FfE normed industrial electrical load profiles (open data id 59, Germany 2017)"
-  path: data/ffe_industry_load_profiles/primary/2017-v1/ffe_industry_load_profiles.json
+  path: data/ffe_industry_load_profiles/archive/2026-11-16/ffe_industry_load_profiles.json
   code_convention: global
   coverage_class: proxy-global
-  consumer: "scripts/build_industrial_energy_demand_per_node.py:load_ffe_profiles; scripts/build_industrial_energy_demand_per_node.py:map_profiles_to_snapshots; scripts/build_industrial_energy_demand_per_node.py:build_electricity_profiles"
-  missing_behavior: "no per-country data exists at all: the German 2017 hourly branch profiles shape every country's industrial electricity, weighted by the node's JRC-IDEES sector mix and moved onto the target calendar with the country's own holidays (holidays package; a country without a calendar gets none, with a warning); a node without industrial electricity gets a flat profile"
+  consumer: "scripts/build_industrial_electricity_profiles.py:load_ffe_load_profiles; scripts/build_industrial_electricity_profiles.py:shift_profiles; scripts/build_industrial_electricity_profiles.py:build_electricity_profiles"
+  missing_behavior: "no per-country data exists at all: the German 2017 hourly branch profiles shape every country's industrial electricity, weighted by the node's electricity demand per subsector (horizon sector ratios x nodal production) and moved onto the target calendar, local time and public holidays of each country (holidays package; German holidays become the average weekday, target holidays the average Sunday); each profile keeps the annual mean of a flat load"
   tier_when_missing: C
   used_by: [demand-temporal-profiles, industrial-crosscutting-electricity, industry-load-profiles]
-  notes: "retrieved by rules/retrieve.smk:retrieve_ffe_industry_load_profiles (dataset ffe_industry_load_profiles in data/versions.csv, data.ffe_industry_load_profiles config, CC-BY-4.0, FfE eXtremOS); eleven NACE branches (iron and steel, non-metallic minerals, transport equipment, machinery, mining, food and tobacco, paper/pulp/print, wood, construction, textile, non-specified), no chemicals or non-ferrous profile, so INDUSTRY_SECTOR_TO_PROFILE maps chemicals to paper/pulp/print, non-ferrous metals to iron and steel and pharmaceuticals to food; industrial_electricity_profile_<horizon>.csv is always written, used only with industry.temporal_electricity_industry_load (method industry-load-profiles, not a carrier card)"
+  notes: "retrieved by rules/retrieve.smk:retrieve_ffe_industry_load_profiles (dataset ffe_industry_load_profiles in data/versions.csv, data.ffe_industry_load_profiles config, CC-BY-4.0, FfE eXtremOS); eleven NACE branches (iron and steel, non-metallic minerals, transport equipment, machinery, mining, food and tobacco, paper/pulp/print, wood, construction, textile, non-specified), no chemicals or non-ferrous profile, so INDUSTRY_CATEGORY_TO_PROFILE maps chemicals to paper/pulp/print, non-ferrous metals to iron and steel and pharmaceuticals to food; rule build_industrial_electricity_profiles writes industrial_electricity_profiles_<horizon>.csv only when industry.temporal_electricity_industry_load is true, which is the default (method industry-load-profiles, not a carrier card); endogenous steel and cement subsectors get no profile share"

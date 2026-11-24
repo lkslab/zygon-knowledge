@@ -19,7 +19,7 @@ when_to_use:
   - "COP for industry heat"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Indirect only. Industrial low-temperature heat demand is attached in
@@ -43,7 +43,7 @@ models:
         heat-bus heat pumps whose dispatch may cover the industrial low-T
         share.
       not_covered: >
-        By default no industrial (high-temperature) heat pump at any process temperature — no "industrial heat pump high temperature" link, no temperature bands, no supply competition inside industry. On this fork the industry_t temperature bands exist (heat100-200 / heat200-500 / heat500+ industry buses with competing supply links) behind sector.industry_t.endogen, off by default — see the industry-process-heat-endogenous carrier card and the industry-heat-endogenous method. Its heat pump (100-200 °C band only) runs at the catalogue COP with free, unlimited source heat from the environment, draws from the AC node and has no waste-heat source or temperature lift.
+        By default no industrial (high-temperature) heat pump at any process temperature — no "industrial heat pump high temperature" link, no temperature bands, no supply competition inside industry. The industry_heat temperature bands exist (heat100-200 / heat200-500 / heat500+ industry buses with competing supply links) behind sector.industry_heat.enable, off by default — see the industry-process-heat-endogenous carrier card and the industry-heat-endogenous method. Its heat pump (100-200 °C band only) runs at the catalogue COP with free, unlimited source heat (excess heat assumed), draws electricity from the node (the low-voltage bus with the distribution grid) and has no waste-heat source or temperature lift.
       provenance: "scripts/prepare_sector_network.py:low-temperature heat for industry; scripts/prepare_sector_network.py:add_industry; scripts/prepare_sector_network.py:heat_pump_sources; rules/build_sector.smk:build_cop_profiles; scripts/build_industrial_energy_demand_per_node.py"
     levers:
       - key: sector.heat_pump_sources
@@ -67,7 +67,7 @@ models:
         note: "raise industry.sector_ratios_fraction_future; no heat pump asset, demand simply moves to 'industry electricity'"
       - variant: "dedicated industrial heat pump for 100-200 °C process heat/steam"
         rung: L0
-        note: "sector.industry_t.endogen: true (method industry-heat-endogenous) on this fork adds '<node> heat100-200 industry industrial heat pump high temperature' per node (cost row 'industrial heat pump high temperature', fixed COP, AC node, free source heat) competing with the electric steam boiler, gas and biomass boilers in the 100-200 °C band — industry-process-heat-endogenous"
+        note: "sector.industry_heat.enable: true (method industry-heat-endogenous) adds '<node> heat100-200 industry heat pump' per node (cost row 'industrial heat pump high temperature', fixed COP, low-voltage bus with the distribution grid, free source heat) competing with the electric steam boiler, gas and biomass boilers in the 100-200 °C band — industry-process-heat-endogenous"
       - variant: "temperature-dependent industrial COP time series"
         rung: L5
         note: "the build_cop_profiles chain is keyed to heat systems and sources, not industrial processes; a dynamic industrial COP is bespoke on top of the L4 variant"
@@ -90,7 +90,7 @@ models:
     data_dependencies:
       - input: "cost rows for the heat-system heat pumps (looked up per system and source via heat_system.heat_pump_costs_name)"
         required_for: "the heat pumps that serve the industrial low-T heat load"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "JRC-IDEES industrial energy demand + production today"
         required_for: "today's sector intensities, including the low-temperature heat share"
         availability: "must be built (rules build_industrial_energy_demand_per_country_today, build_industrial_production_per_country)"

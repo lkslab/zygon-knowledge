@@ -22,7 +22,7 @@ when_to_use:
   - "known in pypsa-eur as: H2 Electrolysis, H2 electrolysis, power-to-H2"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Fully covered as a greenfield investment option, in BOTH workflows.
@@ -137,7 +137,7 @@ models:
     data_dependencies:
       - input: "cost row 'electrolysis' (and 'fuel cell', 'hydrogen storage underground' for the elec-only H2 cycle) in the technology-data costs file"
         required_for: "all electrolyser economics"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "clustered population layout (defines the node set electrolysers are placed at)"
         required_for: "siting"
         availability: "must be built (rule build_clustered_population_layouts); default in workflow"

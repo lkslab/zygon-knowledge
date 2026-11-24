@@ -15,7 +15,7 @@ when_to_use:
   - "zero-emission aircraft"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Not covered — aviation is 100% kerosene by construction. add_aviation
@@ -29,9 +29,10 @@ models:
         indistinguishably, and sector.methanol.methanol_to_kerosene (default
         false) adds an explicit methanol+H2-to-kerosene route feeding the
         kerosene buses. The building blocks for an H2-aviation edit do exist
-        elsewhere: nodal H2 buses, and the "H2 liquid"/"H2 liquefaction"
-        bus/Link pattern in add_shipping (sector.shipping_hydrogen_liquefaction)
-        that an airport LH2 chain can copy. A notable accounting quirk: the
+        elsewhere: nodal H2 buses, and the "shipping hydrogen" link in
+        add_shipping that charges the "H2 liquefaction" capital cost and
+        electricity input on the way from the H2 bus, which an airport LH2 chain
+        can copy. A notable accounting quirk: the
         historical aviation emissions entering the CO2 budget baseline
         ("domestic aviation", "international aviation" in
         determine_emission_sectors) are gated by sector.industry, not
@@ -80,7 +81,7 @@ models:
         note: "no key exists; localised edit in add_aviation mirroring add_shipping's H2 block: an aviation_hydrogen_share read via get(), an H2 Load on spatial.h2.nodes (or an LH2 bus) with an H2-aircraft efficiency assumption, and the kerosene p_set scaled to the remainder; new config key threaded through options"
       - variant: "liquid hydrogen supply at airports"
         rung: L2
-        note: "pattern-copy the shipping_hydrogen_liquefaction block from add_shipping ('H2 liquid' buses + 'H2 liquefaction' Links, cost row exists) into the aviation load's bus choice"
+        note: "pattern-copy the hydrogen entry of add_shipping's supply dict (H2 bus to a demand bus, 'H2 liquefaction' capital cost and electricity input on the link, cost row exists) into the aviation load's bus choice"
       - variant: "grounded H2-aircraft efficiency/cost and airport-resolved demand"
         rung: L3
         note: "needs an H2-aircraft assumption row (nothing in the referenced cost data) and an airports dataset for spatial placement (none in the repo — aviation is population-weighted)"
@@ -92,7 +93,7 @@ models:
         anchor: "scripts/prepare_sector_network.py::add_aviation (rule compose_network)"
         provenance: "scripts/prepare_sector_network.py:add_aviation"
       - change: "the liquefaction pattern to copy for airport LH2"
-        anchor: "scripts/prepare_sector_network.py::add_shipping (shipping_hydrogen_liquefaction block, 'H2 liquefaction' cost row)"
+        anchor: "scripts/prepare_sector_network.py::add_shipping (hydrogen entry of the supply dict, 'H2 liquefaction' cost row)"
         provenance: "scripts/prepare_sector_network.py:add_shipping; scripts/prepare_sector_network.py:H2 liquefaction"
       - change: "methanol-to-kerosene route"
         anchor: "scripts/prepare_sector_network.py::add_aviation (methanol_to_kerosene branch)"

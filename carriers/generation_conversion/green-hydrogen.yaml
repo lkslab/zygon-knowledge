@@ -13,7 +13,7 @@ when_to_use:
   - "additionality / temporal matching for H2"
   - "hydrogen colour shares (green vs blue vs grey)"
   - "hydrogen for shipping or fuel-cell cars"
-  - "pypsa-eur carrier names: H2 Electrolysis, H2 pipeline, H2 Store, SMR, H2 for industry, H2 for shipping, import H2"
+  - "pypsa-eur carrier names: H2 Electrolysis, H2 pipeline, H2 Store, SMR, H2 for industry, shipping hydrogen, import H2"
   - "green hydrogen production or export"
   - "renewable hydrogen / RFNBO-style temporal matching"
   - "hydrogen additionality constraint"
@@ -24,7 +24,7 @@ when_to_use:
   - "known in pypsa-eur as: H2, hydrogen"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         The full electrolytic H2 chain is in every sector run: production via
@@ -38,7 +38,7 @@ models:
         from the industrial demand chain (add_industry), hydrogen input to
         Haber-Bosch ammonia (add_ammonia), methanolisation, Fischer-Tropsch
         and Sabatier synthesis, electrobiofuels (biomass + H2 to oil, 1.238
-        MWh H2 per MWh biomass at 2040 since the fork commit d2e0d486), the
+        MWh H2 per MWh biomass at 2040 since the fork commit f2bd0ecb), the
         off-by-default hydrogen-boosted bio routes e-biomethanol, e-bioSNG and
         e-biogas-methanol (sector.methanol.e_biomethanol, sector.e_biosng,
         sector.methanol.e_biogas_methanol; see advanced-biofuels), hydrogen
@@ -46,8 +46,8 @@ models:
         (industry.H2_DRI in the sector-ratios chain), and — behind default-0
         shares — fuel-cell land transport (sector.land_transport_fuel_cell_share,
         add_fuel_cell_cars) and H2 shipping fuel
-        (sector.shipping_hydrogen_share, optionally via "H2 liquefaction"
-        when sector.shipping_hydrogen_liquefaction is true). Optional H2
+        (sector.shipping_hydrogen_share, always paying "H2 liquefaction"
+        capital cost and electricity on the "shipping hydrogen" link). Optional H2
         imports at a fixed price appear as "import H2" Generators at former
         gas-pipeline entry points (sector.imports, default off — the
         green-energy-imports carrier card owns this). Crucially, "green" is NOT a
@@ -91,10 +91,6 @@ models:
         effect: "Per-horizon share of shipping energy served by H2 (fuel-cell propulsion at fuel cell efficiency); default 0 in ALL years — H2 shipping is opt-in."
         default: "0 for 2020-2050"
         provenance: "config/config.default.yaml:shipping_hydrogen_share; scripts/prepare_sector_network.py:add_shipping"
-      - key: sector.shipping_hydrogen_liquefaction
-        effect: "true routes shipping H2 through nodal 'H2 liquefaction' Links onto 'H2 liquid' buses before the load."
-        default: "false"
-        provenance: "config/config.default.yaml:shipping_hydrogen_liquefaction; scripts/prepare_sector_network.py:H2 liquefaction"
       - key: sector.land_transport_fuel_cell_share
         effect: "Per-horizon share of land transport demand served by fuel-cell vehicles drawing from the nodal H2 buses."
         default: "0 for 2020-2050"
@@ -155,7 +151,7 @@ models:
         availability: "must be built (industry demand rules); default in sector workflow"
       - input: "cost rows 'electrolysis', 'SMR', 'SMR CC', 'fuel cell', 'H2 (g) pipeline'"
         required_for: "supply-side economics of the H2 chain"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "gas_input_nodes_simplified.csv (entry points)"
         required_for: "siting of 'import H2' generators when sector.imports is enabled"
         availability: "must be built (rule build_gas_input_locations); default in sector workflow"

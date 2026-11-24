@@ -20,7 +20,7 @@ when_to_use:
   - "known in pypsa-eur as: onwind, onshore wind"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         Fully covered. 'onwind' is in electricity.renewable_carriers and
@@ -204,7 +204,7 @@ models:
         availability: "retrieved by the workflow (rule build_powerplants)"
       - input: "technology-data cost row 'onwind'"
         required_for: "capex/opex/lifetime"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "IRENASTAT statistics"
         required_for: "from_irenastat and myopic vintages"
         availability: "exists by default (pm.data.IRENASTAT)"

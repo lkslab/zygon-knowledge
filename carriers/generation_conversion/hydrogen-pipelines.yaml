@@ -22,7 +22,7 @@ when_to_use:
   - "known in pypsa-eur as: H2 pipeline, H2 pipeline retrofitted"
 models:
   - model: pypsa-eur
-    version_anchor: {ref: "8ac32b87db61256db24d133791ed13fa101bb68f", date: "2026-11-24"}
+    version_anchor: {ref: "ee7c6d86e475ee17a6af6d49ebf5ba8118b16723", date: "2026-11-24"}
     out_of_box:
       covers: >
         ON by default (sector.H2_network: true). In
@@ -144,7 +144,7 @@ models:
     data_dependencies:
       - input: "cost rows 'H2 (g) pipeline' and 'H2 (g) pipeline repurposed'"
         required_for: "greenfield and retrofit pipeline economics"
-        availability: "exists by default via retrieve_cost_data + rule process_cost_data"
+        availability: "exists by default via retrieve_costs + rule process_cost_data"
       - input: "electricity network topology (lines + DC links) and the clustered gas network"
         required_for: "the candidate corridor set"
         availability: "exists by default (base network + rules build_gas_network / cluster_gas_network)"
