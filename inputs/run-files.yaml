@@ -40,6 +40,22 @@ models:
         bus: sum
       window:
         file: resources/{run}/offshore_regions.geojson
+  - path: resources/{run}/availability_raster_{technology}.tif
+    source: grid
+    shows: The model's per-pixel verdict on where onwind, solar and solar-hsat may be built, at the excluder resolution (100 m by default), cut to the onshore regions. Regions in Moldova and Ukraine carry the plain excluder's verdict, not their separate availability matrix.
+    question: Where exactly may onshore wind or solar be built?
+    query:
+      classes:
+      - {label: excluded, codes: [0], color: "#bdbdbd"}
+      - {label: eligible, codes: [1], color: "#31a354"}
+  - path: resources/{run}/availability_raster_{technology}.tif
+    source: grid
+    shows: The model's per-pixel verdict on where offwind-ac, offwind-dc and offwind-float may be built, at the excluder resolution (200 m by default), cut to the offshore regions. Regions in Moldova and Ukraine carry the plain excluder's verdict, not their separate availability matrix.
+    question: Where exactly may offshore wind be built?
+    query:
+      classes:
+      - {label: excluded, codes: [0], color: "#bdbdbd"}
+      - {label: eligible, codes: [1], color: "#31a354"}
   - path: resources/{run}/onshore_regions.geojson
     source: geometry
     shows: The onshore regions the network is clustered into.
